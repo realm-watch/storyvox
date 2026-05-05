@@ -1,0 +1,178 @@
+[versions]
+# Build tools
+agp = "8.7.2"
+kotlin = "2.0.21"
+ksp = "2.0.21-1.0.27"
+
+# AndroidX core
+core-ktx = "1.13.1"
+appcompat = "1.7.0"
+activity-compose = "1.9.3"
+lifecycle = "2.8.7"
+navigation-compose = "2.8.4"
+startup = "1.2.0"
+security-crypto = "1.1.0-alpha06"
+
+# Compose
+compose-bom = "2024.12.01"
+compose-material-icons = "1.7.5"
+
+# Hilt + Hilt-Work
+hilt = "2.51.1"
+hilt-navigation-compose = "1.2.0"
+hilt-work = "1.2.0"
+
+# Persistence + work
+room = "2.6.1"
+work = "2.10.0"
+datastore = "1.1.1"
+
+# Media3 (playback / session / Auto)
+media3 = "1.5.0"
+
+# Networking + parsing
+okhttp = "4.12.0"
+jsoup = "1.18.1"
+androidx-webkit = "1.12.1"
+
+# Concurrency
+coroutines = "1.9.0"
+
+# Serialization
+kotlinx-serialization = "1.7.3"
+
+# Image loading
+coil = "2.7.0"
+
+# Legacy media (MediaBrowserServiceCompat for Auto)
+androidx-media = "1.7.0"
+
+# Wear
+wear-compose = "1.4.0"
+wear-tooling = "1.0.0"
+play-services-wearable = "18.2.0"
+
+# Test
+junit = "4.13.2"
+androidx-junit = "1.2.1"
+espresso = "3.6.1"
+
+# Desugaring
+desugar = "2.1.3"
+
+[libraries]
+# AndroidX core
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core-ktx" }
+androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
+androidx-lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
+androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+androidx-startup = { module = "androidx.startup:startup-runtime", version.ref = "startup" }
+androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "security-crypto" }
+
+# Navigation
+androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation-compose" }
+
+# Compose BOM
+androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+androidx-compose-ui = { module = "androidx.compose.ui:ui" }
+androidx-compose-ui-graphics = { module = "androidx.compose.ui:ui-graphics" }
+androidx-compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
+androidx-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+androidx-compose-ui-text-google-fonts = { module = "androidx.compose.ui:ui-text-google-fonts" }
+androidx-compose-foundation = { module = "androidx.compose.foundation:foundation" }
+androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
+androidx-compose-material-icons-core = { module = "androidx.compose.material:material-icons-core", version.ref = "compose-material-icons" }
+androidx-compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended", version.ref = "compose-material-icons" }
+
+# Hilt
+hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }
+hilt-compiler = { module = "com.google.dagger:hilt-compiler", version.ref = "hilt" }
+androidx-hilt-navigation-compose = { module = "androidx.hilt:hilt-navigation-compose", version.ref = "hilt-navigation-compose" }
+androidx-hilt-work = { module = "androidx.hilt:hilt-work", version.ref = "hilt-work" }
+androidx-hilt-compiler = { module = "androidx.hilt:hilt-compiler", version.ref = "hilt-work" }
+
+# Room
+androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
+androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+
+# WorkManager
+androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+
+# DataStore (settings)
+androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+
+# Media3
+androidx-media3-session = { module = "androidx.media3:media3-session", version.ref = "media3" }
+androidx-media3-common = { module = "androidx.media3:media3-common", version.ref = "media3" }
+androidx-media = { module = "androidx.media:media", version.ref = "androidx-media" }
+play-services-wearable = { module = "com.google.android.gms:play-services-wearable", version.ref = "play-services-wearable" }
+
+# Networking
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+okhttp-logging = { module = "com.squareup.okhttp3:logging-interceptor", version.ref = "okhttp" }
+jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
+androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "androidx-webkit" }
+
+# Coroutines
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-play-services = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-play-services", version.ref = "coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+
+# Coil
+coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
+
+# Wear
+androidx-wear-compose-material = { module = "androidx.wear.compose:compose-material", version.ref = "wear-compose" }
+androidx-wear-compose-foundation = { module = "androidx.wear.compose:compose-foundation", version.ref = "wear-compose" }
+androidx-wear-compose-navigation = { module = "androidx.wear.compose:compose-navigation", version.ref = "wear-compose" }
+androidx-wear-tooling-preview = { module = "androidx.wear:wear-tooling-preview", version.ref = "wear-tooling" }
+
+# Desugaring
+android-desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar" }
+
+# Test
+junit = { module = "junit:junit", version.ref = "junit" }
+androidx-junit = { module = "androidx.test.ext:junit", version.ref = "androidx-junit" }
+androidx-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+
+[bundles]
+compose = [
+    "androidx-compose-ui",
+    "androidx-compose-ui-graphics",
+    "androidx-compose-ui-tooling-preview",
+    "androidx-compose-foundation",
+    "androidx-compose-material3",
+    "androidx-compose-material-icons-core",
+    "androidx-compose-material-icons-extended",
+]
+lifecycle = [
+    "androidx-lifecycle-runtime-ktx",
+    "androidx-lifecycle-viewmodel-compose",
+    "androidx-lifecycle-runtime-compose",
+]
+coroutines = [
+    "kotlinx-coroutines-core",
+    "kotlinx-coroutines-android",
+]
+room = [
+    "androidx-room-runtime",
+    "androidx-room-ktx",
+]
+wear-compose = [
+    "androidx-wear-compose-material",
+    "androidx-wear-compose-foundation",
+    "androidx-wear-compose-navigation",
+]

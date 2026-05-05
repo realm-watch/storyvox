@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ (API 31+) backup rules.
+  Cloud backup: include everything except encrypted secrets.
+  Device transfer: include everything except encrypted secrets.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="storyvox_secure_prefs.xml" />
+        <exclude domain="sharedpref" path="storyvox_secure_prefs" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="storyvox_secure_prefs.xml" />
+        <exclude domain="sharedpref" path="storyvox_secure_prefs" />
+    </device-transfer>
+</data-extraction-rules>

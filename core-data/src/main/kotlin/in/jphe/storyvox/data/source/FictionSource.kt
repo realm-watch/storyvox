@@ -1,0 +1,109 @@
+package `in`.jphe.storyvox.data.source
+
+import `in`.jphe.storyvox.data.source.model.ChapterContent
+import `in`.jphe.storyvox.data.source.model.FictionDetail
+import `in`.jphe.storyvox.data.source.model.FictionResult
+import `in`.jphe.storyvox.data.source.model.FictionSummary
+import `in`.jphe.storyvox.data.source.model.ListPage
+import `in`.jphe.storyvox.data.source.model.SearchQuery
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+
+/**
+ * Read-side abstraction over a fiction-hosting site (Royal Road today, others later).
+ *
+ * Implementations are stateless w.r.t. the caller — caching is the repository
+ * layer's job. Auth-gated calls should return [FictionResult.AuthRequired]
+ * gracefully rather than throwing when no session is available.
+ *
+ * All `suspend` calls are expected to be cancellable and to surface IO/parse
+ * errors as [FictionResult.NetworkError] (with `cause` populated). A non-Success
+ * return is the normal failure path; throwing is reserved for programmer errors.
+ */
+interface FictionSource {
+
+    /** Stable identifier persisted with each cached row, e.g. `"royalroad"`. */
+    val id: String
+
+    /** Human-readable name for UI, e.g. `"Royal Road"`. */
+    val displayName: String
+
+    // ─── browse ───────────────────────────────────────────────────────────
+
+    /** Front-page popular / "best" list, paginated. */
+    suspend fun popular(page: Int = 1): FictionResult<ListPage<FictionSummary>>
+
+    /** New releases / latest updates, paginated. */
+    suspend fun latestUpdates(page: Int = 1): FictionResult<ListPage<FictionSummary>>
+
+    /** Best-by-genre listing, paginated. */
+    suspend fun byGenre(genre: String, page: Int = 1): FictionResult<ListPage<FictionSummary>>
+
+    /** Free-form search. */
+    suspend fun search(query: SearchQuery): FictionResult<ListPage<FictionSummary>>
+
+    // ─── detail ───────────────────────────────────────────────────────────
+
+    /**
+     * Fetch fiction-detail page (synopsis, chapter list, metadata).
+     * Does NOT fetch chapter bodies.
+     */
+    suspend fun fictionDetail(fictionId: String): FictionResult<FictionDetail>
+
+    /**
+     * Fetch a single chapter's body. Implementations should sanitize/clean
+     * as much as possible before returning.
+     */
+    suspend fun chapter(fictionId: String, chapterId: String): FictionResult<ChapterContent>
+
+    // ─── auth-gated ───────────────────────────────────────────────────────
+
+    /**
+     * The user's source-side "Follows" list. Returns
+     * [FictionResult.AuthRequired] if no session is available.
+     */
+    suspend fun followsList(page: Int = 1): FictionResult<ListPage<FictionSummary>>
+
+    /**
+     * Toggle follow on the source. Implementations may no-op when anonymous
+     * and return [FictionResult.AuthRequired].
+     */
+    suspend fun setFollowed(fictionId: String, followed: Boolean): FictionResult<Unit>
+
+    // ─── catalog ──────────────────────────────────────────────────────────
+
+    /** All genres the source supports — for the genre picker UI. */
+    suspend fun genres(): FictionResult<List<String>>
+
+    // ─── eventing ─────────────────────────────────────────────────────────
+
+    /**
+     * Optional hot stream the source can emit to when it observes content
+     * change (e.g. a polling worker discovering a new chapter). Default emits
+     * nothing — repositories drive change notification themselves in v1.
+     */
+    fun events(): Flow<FictionSourceEvent> = emptyFlow()
+}
+
+/** Events the source can push when it learns of upstream change. */
+sealed interface FictionSourceEvent {
+    data class NewChapter(val fictionId: String, val chapterId: String) : FictionSourceEvent
+    data class FictionUpdated(val fictionId: String) : FictionSourceEvent
+}
+
+/**
+ * Escape hatch for sources that hit Cloudflare or another bot-wall — implemented
+ * by the source module (`:source-royalroad`) using a hidden Android WebView so
+ * the JS challenge actually executes.
+ *
+ * Declared in `:core-data` so the download worker can consume it without taking
+ * a hard dep on the source module.
+ */
+interface WebViewFetcher {
+    /**
+     * Fetch [url] through a one-shot WebView. Returns the rendered HTML on
+     * success. If a [cookieHeader] is provided, the implementation should
+     * inject it into the WebView cookie jar before navigation.
+     */
+    suspend fun fetch(url: String, cookieHeader: String? = null): FictionResult<String>
+}

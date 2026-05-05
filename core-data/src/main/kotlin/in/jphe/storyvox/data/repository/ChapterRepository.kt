@@ -1,0 +1,175 @@
+package `in`.jphe.storyvox.data.repository
+
+import android.content.Context
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
+import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import dagger.hilt.android.qualifiers.ApplicationContext
+import `in`.jphe.storyvox.data.db.dao.ChapterDao
+import `in`.jphe.storyvox.data.db.entity.Chapter
+import `in`.jphe.storyvox.data.db.entity.ChapterDownloadState
+import `in`.jphe.storyvox.data.repository.playback.PlaybackChapter
+import `in`.jphe.storyvox.data.source.model.ChapterContent
+import `in`.jphe.storyvox.data.source.model.ChapterInfo
+import `in`.jphe.storyvox.data.work.ChapterDownloadWorker
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import java.time.Duration
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Read/write surface over chapters — both metadata (table-of-contents rows)
+ * and bodies (downloaded HTML/plain text). Bodies arrive via
+ * [ChapterDownloadWorker]; this repo schedules the work.
+ */
+interface ChapterRepository {
+
+    fun observeChapters(fictionId: String): Flow<List<ChapterInfo>>
+
+    /** Returns null until the body has been downloaded. */
+    fun observeChapter(chapterId: String): Flow<ChapterContent?>
+
+    fun observeDownloadState(fictionId: String): Flow<Map<String, ChapterDownloadState>>
+
+    /** Schedule a single chapter download via WorkManager. */
+    suspend fun queueChapterDownload(
+        fictionId: String,
+        chapterId: String,
+        requireUnmetered: Boolean = true,
+    )
+
+    /** Schedule downloads for every not-yet-downloaded chapter (eager mode). */
+    suspend fun queueAllMissing(
+        fictionId: String,
+        requireUnmetered: Boolean = true,
+    )
+
+    suspend fun markRead(chapterId: String, read: Boolean = true)
+
+    /** Courtesy alias for the playback layer. Same effect as `markRead(true)`. */
+    suspend fun markChapterPlayed(chapterId: String)
+
+    /** Drop body bytes for chapters older than [keepLast]; keeps metadata rows. */
+    suspend fun trimDownloadedBodies(fictionId: String, keepLast: Int)
+
+    // ─── playback-layer accessors ─────────────────────────────────────────
+
+    /**
+     * Joined "everything the player needs to start a track" lookup —
+     * chapter text + title + parent book's title + cover URL in one row.
+     * Returns `null` when either the chapter row doesn't exist or its body
+     * hasn't been downloaded yet.
+     */
+    suspend fun getChapter(id: String): PlaybackChapter?
+
+    /** ID of the next chapter in reading order, or null at the end of the book. */
+    suspend fun getNextChapterId(currentChapterId: String): String?
+
+    /** ID of the previous chapter in reading order, or null at the start. */
+    suspend fun getPreviousChapterId(currentChapterId: String): String?
+}
+
+@Singleton
+class ChapterRepositoryImpl @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val dao: ChapterDao,
+) : ChapterRepository {
+
+    private val workManager: WorkManager get() = WorkManager.getInstance(context)
+
+    override fun observeChapters(fictionId: String): Flow<List<ChapterInfo>> =
+        dao.observeByFiction(fictionId).map { it.map(Chapter::toInfo) }
+
+    override fun observeChapter(chapterId: String): Flow<ChapterContent?> =
+        dao.observe(chapterId).map { row ->
+            if (row == null || row.htmlBody == null || row.plainBody == null) null
+            else ChapterContent(
+                info = row.toInfo(),
+                htmlBody = row.htmlBody,
+                plainBody = row.plainBody,
+                notesAuthor = row.notesAuthor,
+                notesAuthorPosition = row.notesAuthorPosition,
+            )
+        }
+
+    override fun observeDownloadState(fictionId: String): Flow<Map<String, ChapterDownloadState>> =
+        dao.observeDownloadStates(fictionId).map { rows ->
+            rows.associate { it.id to it.downloadState }
+        }
+
+    override suspend fun queueChapterDownload(
+        fictionId: String,
+        chapterId: String,
+        requireUnmetered: Boolean,
+    ) {
+        dao.setDownloadState(chapterId, ChapterDownloadState.QUEUED, System.currentTimeMillis(), null)
+
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(if (requireUnmetered) NetworkType.UNMETERED else NetworkType.CONNECTED)
+            .setRequiresBatteryNotLow(true)
+            .build()
+
+        val input = Data.Builder()
+            .putString(ChapterDownloadWorker.KEY_FICTION_ID, fictionId)
+            .putString(ChapterDownloadWorker.KEY_CHAPTER_ID, chapterId)
+            .putBoolean(ChapterDownloadWorker.KEY_REQUIRE_UNMETERED, requireUnmetered)
+            .build()
+
+        val request = OneTimeWorkRequestBuilder<ChapterDownloadWorker>()
+            .setConstraints(constraints)
+            .setInputData(input)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, Duration.ofSeconds(30))
+            .addTag(ChapterDownloadWorker.TAG)
+            .build()
+
+        workManager.enqueueUniqueWork(
+            ChapterDownloadWorker.uniqueName(chapterId),
+            ExistingWorkPolicy.KEEP,
+            request,
+        )
+    }
+
+    override suspend fun queueAllMissing(fictionId: String, requireUnmetered: Boolean) {
+        val missing = dao.missingForFiction(fictionId)
+        for (chapter in missing) {
+            queueChapterDownload(fictionId, chapter.id, requireUnmetered)
+        }
+    }
+
+    override suspend fun markRead(chapterId: String, read: Boolean) {
+        dao.setRead(chapterId, read, System.currentTimeMillis())
+    }
+
+    override suspend fun markChapterPlayed(chapterId: String) = markRead(chapterId, true)
+
+    override suspend fun trimDownloadedBodies(fictionId: String, keepLast: Int) {
+        dao.trimDownloadedBodies(fictionId, keepLast)
+    }
+
+    override suspend fun getChapter(id: String): PlaybackChapter? =
+        dao.playbackChapter(id)?.let {
+            // The DAO uses COALESCE on plainBody → '', so an undownloaded
+            // chapter comes back with empty text. Treat that as "not yet
+            // available" so the player doesn't try to speak silence.
+            if (it.text.isEmpty()) null
+            else PlaybackChapter(
+                id = it.id,
+                fictionId = it.fictionId,
+                text = it.text,
+                title = it.title,
+                bookTitle = it.bookTitle,
+                coverUrl = it.coverUrl,
+            )
+        }
+
+    override suspend fun getNextChapterId(currentChapterId: String): String? =
+        dao.nextChapterId(currentChapterId)
+
+    override suspend fun getPreviousChapterId(currentChapterId: String): String? =
+        dao.previousChapterId(currentChapterId)
+}

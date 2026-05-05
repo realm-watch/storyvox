@@ -1,0 +1,146 @@
+package `in`.jphe.storyvox.data.repository
+
+import `in`.jphe.storyvox.data.db.dao.ContinueListeningRow
+import `in`.jphe.storyvox.data.db.dao.PlaybackDao
+import `in`.jphe.storyvox.data.db.dao.RecentPlaybackRow
+import `in`.jphe.storyvox.data.db.entity.PlaybackPosition
+import `in`.jphe.storyvox.data.repository.playback.RecentItem
+import `in`.jphe.storyvox.data.repository.playback.SavedPosition
+import `in`.jphe.storyvox.data.source.model.ChapterInfo
+import `in`.jphe.storyvox.data.source.model.FictionSummary
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import javax.inject.Inject
+import javax.inject.Singleton
+
+interface PlaybackPositionRepository {
+
+    fun observePosition(fictionId: String): Flow<PlaybackPosition?>
+
+    /** Joined "Continue listening" feed for the Library tab. */
+    fun observeContinueListening(): Flow<List<ContinueListeningEntry>>
+
+    suspend fun savePosition(
+        fictionId: String,
+        chapterId: String,
+        charOffset: Int,
+        paragraphIndex: Int,
+        playbackSpeed: Float,
+    )
+
+    suspend fun clearPosition(fictionId: String)
+
+    // ─── playback-layer accessors ─────────────────────────────────────────
+
+    /**
+     * Persist a resume point — playback-layer flavor. Updates `charOffset` and
+     * `durationEstimateMs`; leaves `paragraphIndex` and `playbackSpeed`
+     * untouched (the reader UI owns those). If no row exists yet, defaults
+     * are written for the untouched fields.
+     */
+    suspend fun save(
+        fictionId: String,
+        chapterId: String,
+        charOffset: Int,
+        durationEstimateMs: Long,
+    )
+
+    /** Load the resume point for a given fiction, or null if none. */
+    suspend fun load(fictionId: String): SavedPosition?
+
+    /** Most-recently-played list, denormalized for the Auto/Wear menu. */
+    suspend fun recent(limit: Int): List<RecentItem>
+}
+
+/** Public projection of the Continue-listening join. */
+data class ContinueListeningEntry(
+    val fiction: FictionSummary,
+    val chapter: ChapterInfo,
+    val charOffset: Int,
+    val playbackSpeed: Float,
+    val updatedAt: Long,
+)
+
+@Singleton
+class PlaybackPositionRepositoryImpl @Inject constructor(
+    private val dao: PlaybackDao,
+) : PlaybackPositionRepository {
+
+    override fun observePosition(fictionId: String): Flow<PlaybackPosition?> =
+        dao.observe(fictionId)
+
+    override fun observeContinueListening(): Flow<List<ContinueListeningEntry>> =
+        dao.observeContinueListening().map { rows -> rows.map(ContinueListeningRow::toEntry) }
+
+    override suspend fun savePosition(
+        fictionId: String,
+        chapterId: String,
+        charOffset: Int,
+        paragraphIndex: Int,
+        playbackSpeed: Float,
+    ) {
+        dao.upsert(
+            PlaybackPosition(
+                fictionId = fictionId,
+                chapterId = chapterId,
+                charOffset = charOffset,
+                paragraphIndex = paragraphIndex,
+                playbackSpeed = playbackSpeed,
+                updatedAt = System.currentTimeMillis(),
+            ),
+        )
+    }
+
+    override suspend fun clearPosition(fictionId: String) {
+        dao.delete(fictionId)
+    }
+
+    override suspend fun save(
+        fictionId: String,
+        chapterId: String,
+        charOffset: Int,
+        durationEstimateMs: Long,
+    ) {
+        val existing = dao.get(fictionId)
+        dao.upsert(
+            PlaybackPosition(
+                fictionId = fictionId,
+                chapterId = chapterId,
+                charOffset = charOffset,
+                paragraphIndex = existing?.paragraphIndex ?: 0,
+                playbackSpeed = existing?.playbackSpeed ?: 1.0f,
+                durationEstimateMs = durationEstimateMs,
+                updatedAt = System.currentTimeMillis(),
+            ),
+        )
+    }
+
+    override suspend fun load(fictionId: String): SavedPosition? =
+        dao.get(fictionId)?.let {
+            SavedPosition(
+                fictionId = it.fictionId,
+                chapterId = it.chapterId,
+                charOffset = it.charOffset,
+                durationEstimateMs = it.durationEstimateMs,
+            )
+        }
+
+    override suspend fun recent(limit: Int): List<RecentItem> =
+        dao.recent(limit).map(RecentPlaybackRow::toRecentItem)
+}
+
+private fun RecentPlaybackRow.toRecentItem(): RecentItem = RecentItem(
+    fictionId = fictionId,
+    chapterId = chapterId,
+    bookTitle = bookTitle,
+    chapterTitle = chapterTitle,
+    coverUrl = coverUrl,
+)
+
+private fun ContinueListeningRow.toEntry(): ContinueListeningEntry = ContinueListeningEntry(
+    fiction = fiction.toSummary(),
+    chapter = chapter.toInfo(),
+    charOffset = charOffset,
+    playbackSpeed = playbackSpeed,
+    updatedAt = updatedAt,
+)
