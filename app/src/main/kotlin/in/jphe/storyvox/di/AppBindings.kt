@@ -29,8 +29,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -60,15 +62,8 @@ import kotlinx.coroutines.SupervisorJob
 object AppBindings {
 
     @Provides @Singleton
-    fun provideFictionRepositoryUi(): FictionRepositoryUi = object : FictionRepositoryUi {
-        override val library: Flow<List<UiFiction>> = flowOf(emptyList())
-        override val follows: Flow<List<UiFollow>> = flowOf(emptyList())
-        override fun fictionById(id: String): Flow<UiFiction?> = flowOf(null)
-        override fun chaptersFor(fictionId: String): Flow<List<UiChapter>> = flowOf(emptyList())
-        override suspend fun setDownloadMode(fictionId: String, mode: DownloadMode) {}
-        override suspend fun follow(fictionId: String, follow: Boolean) {}
-        override suspend fun markAllCaughtUp() {}
-    }
+    fun provideFictionRepositoryUi(repo: FictionRepository): FictionRepositoryUi =
+        RealFictionRepositoryUi(repo)
 
     @Provides @Singleton
     fun provideBrowseRepositoryUi(repo: FictionRepository): BrowseRepositoryUi =
@@ -157,6 +152,83 @@ private fun defaultSettings() = UiSettings(
 )
 
 /**
+ * Adapter from [FictionRepositoryUi] (Aurora's UI contract) to
+ * [FictionRepository] (Selene's data layer).
+ *
+ * Library and Follows lists come straight from `observeLibrary()` /
+ * `observeFollowsRemote()` (Flow).
+ *
+ * `fictionById(id)` triggers a one-shot `refreshDetail(id)` on first
+ * subscription and then returns `observeFiction(id)` mapped to UiFiction.
+ * The first emission may be null (no row cached yet); subsequent emissions
+ * carry the real data once `refreshDetail` upserts.
+ */
+private class RealFictionRepositoryUi(
+    private val repo: FictionRepository,
+) : FictionRepositoryUi {
+
+    override val library: Flow<List<UiFiction>> =
+        repo.observeLibrary().map { list -> list.map(::toUiFiction) }
+
+    override val follows: Flow<List<UiFollow>> =
+        repo.observeFollowsRemote().map { list ->
+            list.map { UiFollow(fiction = toUiFiction(it), unreadCount = 0) }
+        }
+
+    override fun fictionById(id: String): Flow<UiFiction?> = flow {
+        // Kick off a refresh on first subscription; ignore failure (cached row may exist).
+        repo.refreshDetail(id)
+        emitAll(repo.observeFiction(id).map { detail -> detail?.summary?.let(::toUiFiction) })
+    }
+
+    override fun chaptersFor(fictionId: String): Flow<List<UiChapter>> =
+        repo.observeFiction(fictionId).map { detail ->
+            detail?.chapters.orEmpty().map { ch ->
+                UiChapter(
+                    id = ch.id,
+                    number = ch.index + 1,
+                    title = ch.title,
+                    publishedRelative = relativeTime(ch.publishedAt),
+                    durationLabel = ch.wordCount?.let { "${(it / 250).coerceAtLeast(1)} min" } ?: "",
+                    isDownloaded = false,
+                    isFinished = false,
+                )
+            }
+        }
+
+    override suspend fun setDownloadMode(fictionId: String, mode: DownloadMode) {
+        repo.setDownloadMode(fictionId, mode.toData())
+    }
+
+    override suspend fun follow(fictionId: String, follow: Boolean) {
+        if (follow) repo.addToLibrary(fictionId, mode = null) else repo.removeFromLibrary(fictionId)
+    }
+
+    override suspend fun markAllCaughtUp() {
+        // No-op for v1 — chapter-level "read" tracking lands when the reader is wired.
+    }
+}
+
+private fun DownloadMode.toData(): `in`.jphe.storyvox.data.db.entity.DownloadMode = when (this) {
+    DownloadMode.Lazy -> `in`.jphe.storyvox.data.db.entity.DownloadMode.LAZY
+    DownloadMode.Eager -> `in`.jphe.storyvox.data.db.entity.DownloadMode.EAGER
+    DownloadMode.Subscribe -> `in`.jphe.storyvox.data.db.entity.DownloadMode.SUBSCRIBE
+}
+
+private fun relativeTime(epochMs: Long?): String {
+    if (epochMs == null) return ""
+    val deltaSec = (System.currentTimeMillis() - epochMs) / 1000L
+    return when {
+        deltaSec < 60 -> "just now"
+        deltaSec < 3600 -> "${deltaSec / 60}m ago"
+        deltaSec < 86_400 -> "${deltaSec / 3600}h ago"
+        deltaSec < 86_400 * 7 -> "${deltaSec / 86_400}d ago"
+        deltaSec < 86_400 * 30 -> "${deltaSec / (86_400 * 7)}w ago"
+        else -> "${deltaSec / (86_400 * 30)}mo ago"
+    }
+}
+
+/**
  * Adapter from [BrowseRepositoryUi] (Aurora's UI contract) to
  * [FictionRepository] (Selene's data layer). Each tab triggers a one-shot
  * suspend fetch on subscription via `flow { emit(...) }`; results are mapped
@@ -182,7 +254,10 @@ private class RealBrowseRepositoryUi(
         flow {
             when (val res = call()) {
                 is FictionResult.Success -> emit(res.value.items.map(::toUiFiction))
-                is FictionResult.Failure -> emit(emptyList())
+                is FictionResult.Failure -> {
+                    android.util.Log.w("storyvox", "Browse fetch failed: ${res.message}", res.cause)
+                    emit(emptyList())
+                }
             }
         }
 }

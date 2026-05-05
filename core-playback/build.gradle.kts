@@ -19,7 +19,7 @@ android {
         buildConfigField(
             "String",
             "VOXSHERPA_PACKAGE",
-            "\"com.codebysonu.voxsherpa\"",
+            "\"com.CodeBySonu.VoxSherpa\"",
         )
         buildConfigField(
             "String",

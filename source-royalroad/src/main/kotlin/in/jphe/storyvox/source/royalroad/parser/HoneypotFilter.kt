@@ -19,7 +19,7 @@ import org.jsoup.nodes.Element
 internal object HoneypotFilter {
 
     private val HIDDEN_CLASS_RE = Regex(
-        """\.([A-Za-z_][\w-]*)\s*\{[^}]*?(?:display\s*:\s*none|speak\s*:\s*never)[^}]*?}""",
+        """\.([A-Za-z_][\w-]*)\s*\{[^}]*?(?:display\s*:\s*none|speak\s*:\s*never)[^}]*?\}""",
         RegexOption.IGNORE_CASE,
     )
 

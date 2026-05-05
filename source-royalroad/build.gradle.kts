@@ -33,6 +33,7 @@ dependencies {
     implementation(project(":core-data"))
 
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.serialization.json)
     implementation(libs.jsoup)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
