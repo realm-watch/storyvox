@@ -89,6 +89,7 @@ fun StoryvoxNavHost(
                 LibraryScreen(
                     onOpenFiction = { id -> navController.navigate(StoryvoxRoutes.fictionDetail(id)) },
                     onOpenReader = { f, c -> navController.navigate(StoryvoxRoutes.reader(f, c)) },
+                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
                 )
             }
             composable(StoryvoxRoutes.FOLLOWS) {

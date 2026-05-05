@@ -36,6 +36,8 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -259,6 +261,14 @@ class TtsPlayer @AssistedInject constructor(
             if (direction >= 0) _uiEvents.tryEmit(PlaybackUiEvent.BookFinished)
             return
         }
+        // The next chapter's body may not be cached yet — queue a download and
+        // wait for the row to materialize before we hand it to loadAndPlay.
+        // Without this, auto-advance hits the loadAndPlay null-body branch and
+        // pauses with ChapterFetchFailed instead of continuing playback.
+        chapterRepo.queueChapterDownload(fiction, nextId, requireUnmetered = false)
+        chapterRepo.observeChapter(nextId)
+            .filterNotNull()
+            .first()
         loadAndPlay(fiction, nextId, charOffset = 0)
         _uiEvents.tryEmit(PlaybackUiEvent.ChapterChanged(nextId))
     }
