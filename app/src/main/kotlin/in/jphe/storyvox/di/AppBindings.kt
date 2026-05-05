@@ -1,9 +1,14 @@
 package `in`.jphe.storyvox.di
 
+import android.content.Context
+import android.content.Intent
+import androidx.core.content.ContextCompat
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import `in`.jphe.storyvox.data.repository.ChapterRepository
 import `in`.jphe.storyvox.data.repository.FictionRepository
 import `in`.jphe.storyvox.data.source.WebViewFetcher
 import `in`.jphe.storyvox.data.source.model.FictionResult
@@ -24,19 +29,28 @@ import `in`.jphe.storyvox.feature.api.UiPlaybackState
 import `in`.jphe.storyvox.feature.api.UiSettings
 import `in`.jphe.storyvox.feature.api.UiVoice
 import `in`.jphe.storyvox.feature.api.VoiceProviderUi
+import `in`.jphe.storyvox.playback.PlaybackController
+import `in`.jphe.storyvox.playback.PlaybackState
+import `in`.jphe.storyvox.playback.SPEED_BASELINE_CHARS_PER_SECOND
+import `in`.jphe.storyvox.playback.StoryvoxPlaybackService
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * v1 stub adapters that bridge `feature.api.*` UI contracts to the concrete
@@ -70,22 +84,11 @@ object AppBindings {
         RealBrowseRepositoryUi(repo)
 
     @Provides @Singleton
-    fun providePlaybackControllerUi(): PlaybackControllerUi = object : PlaybackControllerUi {
-        private val _state = MutableStateFlow(emptyPlaybackState())
-        override val state: Flow<UiPlaybackState> = _state
-        override val chapterText: Flow<String> = flowOf("")
-        override fun play() {}
-        override fun pause() {}
-        override fun seekTo(ms: Long) {}
-        override fun skipForward() {}
-        override fun skipBack() {}
-        override fun nextChapter() {}
-        override fun previousChapter() {}
-        override fun setSpeed(speed: Float) {}
-        override fun setPitch(pitch: Float) {}
-        override fun setVoice(voiceId: String) {}
-        override fun startListening(fictionId: String, chapterId: String) {}
-    }
+    fun providePlaybackControllerUi(
+        @ApplicationContext context: Context,
+        controller: PlaybackController,
+        chapters: ChapterRepository,
+    ): PlaybackControllerUi = RealPlaybackControllerUi(context, controller, chapters)
 
     @Provides @Singleton
     fun provideVoiceProviderUi(): VoiceProviderUi = object : VoiceProviderUi {
@@ -272,3 +275,97 @@ private fun toUiFiction(s: FictionSummary): UiFiction = UiFiction(
     isOngoing = s.status == FictionStatus.ONGOING,
     synopsis = s.description.orEmpty(),
 )
+
+/**
+ * Adapter from [PlaybackControllerUi] (Aurora's UI contract) to
+ * [PlaybackController] (Hypnos's playback layer) plus [ChapterRepository]
+ * for chapter text streaming.
+ *
+ * `startListening` is the cold-start path. The chapter body almost certainly
+ * isn't downloaded on the first tap, so we (1) start the foreground media
+ * service so [TtsPlayer] binds to the controller, (2) queue a download with
+ * `requireUnmetered = false` so it actually runs on cell, (3) await the first
+ * non-null body emission from `chapters.observeChapter(chapterId)`, then
+ * (4) call `controller.play(...)` which kicks the TTS engine.
+ *
+ * Subsequent transport calls (play/pause/seek) just delegate to the
+ * controller — once a chapter is loaded, seeking and skipping never need
+ * new bytes from the network.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+private class RealPlaybackControllerUi(
+    private val context: Context,
+    private val controller: PlaybackController,
+    private val chapters: ChapterRepository,
+) : PlaybackControllerUi {
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    override val state: Flow<UiPlaybackState> = controller.state.map { it.toUi() }
+
+    override val chapterText: Flow<String> = controller.state
+        .map { it.currentChapterId }
+        .distinctUntilChanged()
+        .flatMapLatest { id ->
+            if (id == null) flowOf("") else chapters.observeChapter(id).map { it?.plainBody.orEmpty() }
+        }
+
+    override fun play() = controller.resume()
+    override fun pause() = controller.pause()
+    override fun seekTo(ms: Long) {
+        // UI thinks in milliseconds; the controller indexes by char offset.
+        // Reverse the same baseline conversion TtsPlayer uses for content position.
+        val s = controller.state.value
+        val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * s.speed
+        val charOffset = ((ms / 1000.0) * charsPerSec).toInt().coerceAtLeast(0)
+        controller.seekTo(charOffset)
+    }
+    override fun skipForward() = controller.skipForward30s()
+    override fun skipBack() = controller.skipBack30s()
+    override fun nextChapter() {
+        scope.launch { controller.nextChapter() }
+    }
+    override fun previousChapter() {
+        scope.launch { controller.previousChapter() }
+    }
+    override fun setSpeed(speed: Float) = controller.setSpeed(speed)
+    override fun setPitch(pitch: Float) = controller.setPitch(pitch)
+    override fun setVoice(voiceId: String) = controller.setVoice(voiceId)
+
+    override fun startListening(fictionId: String, chapterId: String) {
+        scope.launch {
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, StoryvoxPlaybackService::class.java),
+            )
+            // Kick off the download (idempotent — WorkManager dedupes by uniqueName).
+            // requireUnmetered=false: user just tapped Listen; honour their intent.
+            chapters.queueChapterDownload(fictionId, chapterId, requireUnmetered = false)
+            // Wait for the first non-null body to land in the DB.
+            chapters.observeChapter(chapterId).filterNotNull().first()
+            controller.play(fictionId, chapterId, charOffset = 0)
+        }
+    }
+
+    private fun PlaybackState.toUi(): UiPlaybackState {
+        val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * speed
+        val positionMs = if (charsPerSec > 0f) ((charOffset / charsPerSec) * 1000f).toLong() else 0L
+        val sentence = currentSentenceRange
+        return UiPlaybackState(
+            fictionId = currentFictionId,
+            chapterId = currentChapterId,
+            chapterTitle = chapterTitle.orEmpty(),
+            fictionTitle = bookTitle.orEmpty(),
+            coverUrl = coverUri,
+            isPlaying = isPlaying,
+            positionMs = positionMs,
+            durationMs = durationEstimateMs,
+            sentenceStart = sentence?.startCharInChapter ?: 0,
+            sentenceEnd = sentence?.endCharInChapter ?: 0,
+            speed = speed,
+            pitch = pitch,
+            voiceId = voiceId,
+            voiceLabel = voiceId ?: "Default",
+        )
+    }
+}

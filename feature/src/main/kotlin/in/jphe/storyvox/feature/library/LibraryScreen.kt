@@ -51,6 +51,10 @@ fun LibraryScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().padding(top = spacing.md)) {
+        if (!state.isLoading && state.fictions.isEmpty() && state.resume == null) {
+            EmptyLibrary()
+            return@Box
+        }
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 120.dp),
             contentPadding = PaddingValues(spacing.md),
@@ -146,6 +150,31 @@ private fun ResumeCard(entry: ContinueListeningEntry, onResume: () -> Unit) {
                 label = "Resume",
                 onClick = onResume,
                 variant = BrassButtonVariant.Primary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun EmptyLibrary() {
+    val spacing = LocalSpacing.current
+    Box(
+        modifier = Modifier.fillMaxSize().padding(spacing.lg),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(spacing.xs),
+        ) {
+            Text(
+                "Your library is empty",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                "Open Browse to add fictions",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

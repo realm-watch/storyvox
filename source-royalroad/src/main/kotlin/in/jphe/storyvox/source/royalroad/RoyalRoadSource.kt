@@ -7,14 +7,17 @@ import `in`.jphe.storyvox.data.source.model.FictionResult
 import `in`.jphe.storyvox.data.source.model.FictionSummary
 import `in`.jphe.storyvox.data.source.model.ListPage
 import `in`.jphe.storyvox.data.source.model.SearchQuery
+import `in`.jphe.storyvox.data.source.model.ChapterInfo
 import `in`.jphe.storyvox.source.royalroad.model.RoyalRoadIds
 import `in`.jphe.storyvox.source.royalroad.model.browseUrl
+import `in`.jphe.storyvox.source.royalroad.model.chapterUrl
 import `in`.jphe.storyvox.source.royalroad.model.fictionUrl
 import `in`.jphe.storyvox.source.royalroad.net.CloudflareAwareFetcher
 import `in`.jphe.storyvox.source.royalroad.net.FetchOutcome
 import `in`.jphe.storyvox.source.royalroad.net.RateLimitedClient
 import `in`.jphe.storyvox.source.royalroad.net.RoyalRoadCookieJar
 import `in`.jphe.storyvox.source.royalroad.parser.BrowseParser
+import `in`.jphe.storyvox.source.royalroad.parser.ChapterParser
 import `in`.jphe.storyvox.source.royalroad.parser.FictionDetailParser
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -75,7 +78,29 @@ class RoyalRoadSource @Inject internal constructor(
                 message = "HTTP ${outcome.code}: ${outcome.message}",
             )
         }
-    override suspend fun chapter(fictionId: String, chapterId: String): FictionResult<ChapterContent> = unimplemented()
+    override suspend fun chapter(fictionId: String, chapterId: String): FictionResult<ChapterContent> =
+        when (val outcome = fetcher.fetchHtml(chapterUrl(fictionId, chapterId))) {
+            is FetchOutcome.Body -> runCatching {
+                ChapterParser.parse(
+                    html = outcome.html,
+                    info = ChapterInfo(
+                        id = chapterId,
+                        sourceChapterId = chapterId,
+                        index = 0,
+                        title = "",
+                    ),
+                )
+            }.fold(
+                { FictionResult.Success(it) },
+                { FictionResult.NetworkError(message = "Chapter parser error: ${it.message}", cause = it) },
+            )
+            FetchOutcome.NotFound -> FictionResult.NotFound("Chapter $chapterId not found")
+            is FetchOutcome.CloudflareChallenge -> FictionResult.Cloudflare(outcome.url)
+            is FetchOutcome.RateLimited -> FictionResult.RateLimited(retryAfter = outcome.retryAfterSec.seconds)
+            is FetchOutcome.HttpError -> FictionResult.NetworkError(
+                message = "HTTP ${outcome.code}: ${outcome.message}",
+            )
+        }
     override suspend fun followsList(page: Int): FictionResult<ListPage<FictionSummary>> = unimplemented()
     override suspend fun setFollowed(fictionId: String, followed: Boolean): FictionResult<Unit> = unimplemented()
     override suspend fun genres(): FictionResult<List<String>> = FictionResult.Success(KnownTagSlugs)

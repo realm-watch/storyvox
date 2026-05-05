@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 
 enum class BrowseTab { Popular, NewReleases, BestRated, Search }
@@ -37,20 +39,29 @@ class BrowseViewModel @Inject constructor(
 
     private val _tab = MutableStateFlow(BrowseTab.Popular)
     private val _query = MutableStateFlow("")
+    private val _isLoading = MutableStateFlow(true)
     val query: StateFlow<String> = _query.asStateFlow()
 
     private val itemsFlow = combine(_tab, _query.debounce(300)) { tab, q -> tab to q }
         .flatMapLatest { (tab, q) ->
+            // Empty search query resolves instantly — not a loading state.
+            val isEmptySearch = tab == BrowseTab.Search && q.isBlank()
+            if (!isEmptySearch) _isLoading.value = true
             when (tab) {
                 BrowseTab.Popular -> repo.popular()
                 BrowseTab.NewReleases -> repo.newReleases()
                 BrowseTab.BestRated -> repo.bestRated()
                 BrowseTab.Search -> if (q.isBlank()) flowOf(emptyList()) else repo.search(q)
-            }
-        }
+            }.onEach { _isLoading.value = false }
+        }.onStart { _isLoading.value = true }
 
-    val uiState: StateFlow<BrowseUiState> = combine(_tab, _query, itemsFlow) { tab, q, items ->
-        BrowseUiState(tab = tab, query = q, items = items, isLoading = false)
+    val uiState: StateFlow<BrowseUiState> = combine(
+        _tab,
+        _query,
+        itemsFlow,
+        _isLoading,
+    ) { tab, q, items, loading ->
+        BrowseUiState(tab = tab, query = q, items = items, isLoading = loading)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BrowseUiState())
 
     fun selectTab(tab: BrowseTab) { _tab.value = tab }

@@ -49,10 +49,12 @@ class FictionDetailViewModel @Inject constructor(
     val uiState: StateFlow<FictionDetailUiState> = combine(
         repo.fictionById(fictionId),
         repo.chaptersFor(fictionId),
-    ) { fiction, chapters ->
+        repo.library,
+    ) { fiction, chapters, library ->
         FictionDetailUiState(
             fiction = fiction,
             chapters = chapters,
+            isInLibrary = library.any { it.id == fictionId },
             isLoading = fiction == null,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FictionDetailUiState())

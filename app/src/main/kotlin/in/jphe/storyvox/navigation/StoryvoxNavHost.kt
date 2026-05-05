@@ -18,6 +18,7 @@ import `in`.jphe.storyvox.feature.browse.BrowseScreen
 import `in`.jphe.storyvox.feature.fiction.FictionDetailScreen
 import `in`.jphe.storyvox.feature.follows.FollowsScreen
 import `in`.jphe.storyvox.feature.library.LibraryScreen
+import `in`.jphe.storyvox.feature.reader.HybridReaderScreen
 import `in`.jphe.storyvox.feature.settings.SettingsScreen
 import `in`.jphe.storyvox.feature.settings.VoicePickerScreen
 import `in`.jphe.storyvox.ui.component.BottomTabBar
@@ -117,8 +118,9 @@ fun StoryvoxNavHost(
                     navArgument("chapterId") { type = NavType.StringType },
                 ),
             ) {
-                // Reader screen wiring deferred — see docs/superpowers/specs/2026-05-05-storyvox-design.md §12.
-                Placeholder("Reader (wiring in progress)")
+                HybridReaderScreen(
+                    onPickVoice = { navController.navigate(StoryvoxRoutes.SETTINGS_VOICE) },
+                )
             }
 
             composable(
@@ -128,7 +130,9 @@ fun StoryvoxNavHost(
                     navArgument("chapterId") { type = NavType.StringType },
                 ),
             ) {
-                Placeholder("Audiobook (wiring in progress)")
+                HybridReaderScreen(
+                    onPickVoice = { navController.navigate(StoryvoxRoutes.SETTINGS_VOICE) },
+                )
             }
 
             composable(StoryvoxRoutes.SETTINGS) {

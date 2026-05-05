@@ -36,6 +36,7 @@ import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.ChapterCard
 import `in`.jphe.storyvox.ui.component.ChapterCardState
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
+import `in`.jphe.storyvox.ui.component.FictionDetailSkeleton
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
 @Composable
@@ -55,9 +56,7 @@ fun FictionDetailScreen(
     val fiction = state.fiction
     Box(modifier = Modifier.fillMaxSize()) {
         if (fiction == null) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Loading…", style = MaterialTheme.typography.bodyMedium)
-            }
+            FictionDetailSkeleton(modifier = Modifier.fillMaxSize())
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),

@@ -153,7 +153,11 @@ internal object FictionDetailParser {
             val publishedAt = row.selectFirst("time[unixtime]")?.attr("unixtime")
                 ?.toLongOrNull()?.let { it * 1000L }
             ChapterInfo(
-                id = "${row.parent()?.parent()?.id().orEmpty()}:$sourceChapterId".ifBlank { sourceChapterId },
+                // Use the bare sourceChapterId as the primary key — the playback
+                // and download paths feed this back to the source layer to build
+                // the chapter URL, so anything compound here (e.g., a parent DOM
+                // id) breaks the URL and produces a 404.
+                id = sourceChapterId,
                 sourceChapterId = sourceChapterId,
                 index = idx,
                 title = title,
