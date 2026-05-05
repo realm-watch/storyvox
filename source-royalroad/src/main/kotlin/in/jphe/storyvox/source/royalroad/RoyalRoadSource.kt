@@ -7,11 +7,16 @@ import `in`.jphe.storyvox.data.source.model.FictionResult
 import `in`.jphe.storyvox.data.source.model.FictionSummary
 import `in`.jphe.storyvox.data.source.model.ListPage
 import `in`.jphe.storyvox.data.source.model.SearchQuery
+import `in`.jphe.storyvox.source.royalroad.model.RoyalRoadIds
+import `in`.jphe.storyvox.source.royalroad.model.browseUrl
 import `in`.jphe.storyvox.source.royalroad.net.CloudflareAwareFetcher
+import `in`.jphe.storyvox.source.royalroad.net.FetchOutcome
 import `in`.jphe.storyvox.source.royalroad.net.RateLimitedClient
 import `in`.jphe.storyvox.source.royalroad.net.RoyalRoadCookieJar
+import `in`.jphe.storyvox.source.royalroad.parser.BrowseParser
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * v1 stub. The full RoyalRoadSource impl (with parsers, search, browse, follows)
@@ -28,7 +33,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class RoyalRoadSource @Inject internal constructor(
-    @Suppress("unused") private val fetcher: CloudflareAwareFetcher,
+    private val fetcher: CloudflareAwareFetcher,
     @Suppress("unused") private val client: RateLimitedClient,
     @Suppress("unused") private val cookieJar: RoyalRoadCookieJar,
 ) : FictionSource {
@@ -36,15 +41,44 @@ class RoyalRoadSource @Inject internal constructor(
     override val id: String = "royalroad"
     override val displayName: String = "Royal Road"
 
-    override suspend fun popular(page: Int): FictionResult<ListPage<FictionSummary>> = unimplemented()
-    override suspend fun latestUpdates(page: Int): FictionResult<ListPage<FictionSummary>> = unimplemented()
-    override suspend fun byGenre(genre: String, page: Int): FictionResult<ListPage<FictionSummary>> = unimplemented()
-    override suspend fun search(query: SearchQuery): FictionResult<ListPage<FictionSummary>> = unimplemented()
+    override suspend fun popular(page: Int): FictionResult<ListPage<FictionSummary>> =
+        fetchBrowsePage(browseUrl("/fictions/active-popular", page), page)
+
+    override suspend fun latestUpdates(page: Int): FictionResult<ListPage<FictionSummary>> =
+        fetchBrowsePage(browseUrl("/fictions/latest-updates", page), page)
+
+    override suspend fun byGenre(genre: String, page: Int): FictionResult<ListPage<FictionSummary>> =
+        fetchBrowsePage(
+            "${RoyalRoadIds.BASE_URL}/fictions/search?tagsAdd=$genre" + if (page > 1) "&page=$page" else "",
+            page,
+        )
+
+    override suspend fun search(query: SearchQuery): FictionResult<ListPage<FictionSummary>> {
+        val q = java.net.URLEncoder.encode(query.term, "UTF-8")
+        val url = "${RoyalRoadIds.BASE_URL}/fictions/search?title=$q" + if (query.page > 1) "&page=${query.page}" else ""
+        return fetchBrowsePage(url, query.page)
+    }
+
     override suspend fun fictionDetail(fictionId: String): FictionResult<FictionDetail> = unimplemented()
     override suspend fun chapter(fictionId: String, chapterId: String): FictionResult<ChapterContent> = unimplemented()
     override suspend fun followsList(page: Int): FictionResult<ListPage<FictionSummary>> = unimplemented()
     override suspend fun setFollowed(fictionId: String, followed: Boolean): FictionResult<Unit> = unimplemented()
     override suspend fun genres(): FictionResult<List<String>> = FictionResult.Success(KnownTagSlugs)
+
+    private suspend fun fetchBrowsePage(url: String, page: Int): FictionResult<ListPage<FictionSummary>> =
+        when (val outcome = fetcher.fetchHtml(url)) {
+            is FetchOutcome.Body -> runCatching { BrowseParser.parse(outcome.html, page) }
+                .fold(
+                    { FictionResult.Success(it) },
+                    { FictionResult.NetworkError(message = "Parser error: ${it.message}", cause = it) },
+                )
+            FetchOutcome.NotFound -> FictionResult.NotFound("Page not found")
+            is FetchOutcome.CloudflareChallenge -> FictionResult.Cloudflare(outcome.url)
+            is FetchOutcome.RateLimited -> FictionResult.RateLimited(retryAfter = outcome.retryAfterSec.seconds)
+            is FetchOutcome.HttpError -> FictionResult.NetworkError(
+                message = "HTTP ${outcome.code}: ${outcome.message}",
+            )
+        }
 
     private fun <T> unimplemented(): FictionResult<T> =
         FictionResult.NetworkError(

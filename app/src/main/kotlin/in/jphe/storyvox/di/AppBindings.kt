@@ -4,8 +4,13 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import `in`.jphe.storyvox.data.repository.FictionRepository
 import `in`.jphe.storyvox.data.source.WebViewFetcher
 import `in`.jphe.storyvox.data.source.model.FictionResult
+import `in`.jphe.storyvox.data.source.model.FictionStatus
+import `in`.jphe.storyvox.data.source.model.FictionSummary
+import `in`.jphe.storyvox.data.source.model.SearchOrder
+import `in`.jphe.storyvox.data.source.model.SearchQuery
 import `in`.jphe.storyvox.feature.api.BrowseRepositoryUi
 import `in`.jphe.storyvox.feature.api.DownloadMode
 import `in`.jphe.storyvox.feature.api.FictionRepositoryUi
@@ -22,7 +27,14 @@ import `in`.jphe.storyvox.feature.api.VoiceProviderUi
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /**
  * v1 stub adapters that bridge `feature.api.*` UI contracts to the concrete
@@ -59,12 +71,8 @@ object AppBindings {
     }
 
     @Provides @Singleton
-    fun provideBrowseRepositoryUi(): BrowseRepositoryUi = object : BrowseRepositoryUi {
-        override fun popular(): Flow<List<UiFiction>> = flowOf(emptyList())
-        override fun newReleases(): Flow<List<UiFiction>> = flowOf(emptyList())
-        override fun bestRated(): Flow<List<UiFiction>> = flowOf(emptyList())
-        override fun search(query: String): Flow<List<UiFiction>> = flowOf(emptyList())
-    }
+    fun provideBrowseRepositoryUi(repo: FictionRepository): BrowseRepositoryUi =
+        RealBrowseRepositoryUi(repo)
 
     @Provides @Singleton
     fun providePlaybackControllerUi(): PlaybackControllerUi = object : PlaybackControllerUi {
@@ -146,4 +154,46 @@ private fun defaultSettings() = UiSettings(
     downloadOnWifiOnly = true,
     pollIntervalHours = 6,
     isSignedIn = false,
+)
+
+/**
+ * Adapter from [BrowseRepositoryUi] (Aurora's UI contract) to
+ * [FictionRepository] (Selene's data layer). Each tab triggers a one-shot
+ * suspend fetch on subscription via `flow { emit(...) }`; results are mapped
+ * to [UiFiction]. Failures emit an empty list — the UI's empty-state already
+ * communicates "nothing to show", and we don't want a transient network blip
+ * to crash the screen. v1.1 should surface error state via a separate Flow.
+ */
+private class RealBrowseRepositoryUi(
+    private val repo: FictionRepository,
+) : BrowseRepositoryUi {
+
+    override fun popular(): Flow<List<UiFiction>> = fetch { repo.browsePopular(page = 1) }
+    override fun newReleases(): Flow<List<UiFiction>> = fetch { repo.browseLatest(page = 1) }
+    override fun bestRated(): Flow<List<UiFiction>> = fetch { repo.browseLatest(page = 1) } // RR has no /best-rated equivalent in our v1 source; falling back to latest until byGenre fronts a "Best Rated" pill
+    override fun search(query: String): Flow<List<UiFiction>> {
+        if (query.isBlank()) return flowOf(emptyList())
+        return fetch {
+            repo.search(SearchQuery(term = query, orderBy = SearchOrder.RELEVANCE, page = 1))
+        }
+    }
+
+    private inline fun fetch(crossinline call: suspend () -> FictionResult<`in`.jphe.storyvox.data.source.model.ListPage<FictionSummary>>): Flow<List<UiFiction>> =
+        flow {
+            when (val res = call()) {
+                is FictionResult.Success -> emit(res.value.items.map(::toUiFiction))
+                is FictionResult.Failure -> emit(emptyList())
+            }
+        }
+}
+
+private fun toUiFiction(s: FictionSummary): UiFiction = UiFiction(
+    id = s.id,
+    title = s.title,
+    author = s.author.ifBlank { "Royal Road" },
+    coverUrl = s.coverUrl,
+    rating = s.rating ?: 0f,
+    chapterCount = s.chapterCount ?: 0,
+    isOngoing = s.status == FictionStatus.ONGOING,
+    synopsis = s.description.orEmpty(),
 )
