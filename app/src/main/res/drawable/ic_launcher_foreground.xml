@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Library Nocturne launcher foreground: an open book in brass, with three
+     ascending sound-wave arcs above the gutter. The glyph reads as both
+     "book" and "audio" — storyvox's exact value proposition. Sits in the
+     center 72dp of a 108dp adaptive icon canvas (viewport 108×108, glyph
+     anchored at 54×54 with ~30dp radius safe). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Open book pages — left leaf -->
+    <path
+        android:fillColor="#B48C5A"
+        android:pathData="M28,62 C30,58 38,55 50,57 L50,80 C38,78 30,80 28,82 Z" />
+    <!-- Open book pages — right leaf -->
+    <path
+        android:fillColor="#B48C5A"
+        android:pathData="M80,62 C78,58 70,55 58,57 L58,80 C70,78 78,80 80,82 Z" />
+    <!-- Spine highlight -->
+    <path
+        android:fillColor="#7A5A30"
+        android:pathData="M50,57 L58,57 L58,80 L50,80 Z" />
+
+    <!-- Sound-wave arcs ascending above the spine -->
+    <path
+        android:strokeColor="#B48C5A"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M44,46 Q54,38 64,46" />
+    <path
+        android:strokeColor="#C9A774"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M40,38 Q54,26 68,38" />
+    <path
+        android:strokeColor="#E0C8A0"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M36,30 Q54,14 72,30" />
+</vector>
