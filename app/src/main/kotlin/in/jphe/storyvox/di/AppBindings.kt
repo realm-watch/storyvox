@@ -298,11 +298,15 @@ private class RealPlaybackControllerUi(
     override fun cancelSleepTimer() = controller.cancelSleepTimer()
 
     override fun startListening(fictionId: String, chapterId: String) {
+        // Start the service synchronously while we still have the click's foreground
+        // attribution. Calling startForegroundService from inside scope.launch (even on
+        // Dispatchers.Main.immediate) lost the FG attribution on Android 12+ and threw
+        // ForegroundServiceStartNotAllowedException — see f723e72.
+        ContextCompat.startForegroundService(
+            context,
+            Intent(context, StoryvoxPlaybackService::class.java),
+        )
         scope.launch {
-            ContextCompat.startForegroundService(
-                context,
-                Intent(context, StoryvoxPlaybackService::class.java),
-            )
             // Kick off the download (idempotent — WorkManager dedupes by uniqueName).
             // requireUnmetered=false: user just tapped Listen; honour their intent.
             chapters.queueChapterDownload(fictionId, chapterId, requireUnmetered = false)
