@@ -3,7 +3,9 @@ package `in`.jphe.storyvox.playback
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
+import androidx.core.app.NotificationCompat
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CacheBitmapLoader
 import androidx.media3.session.DefaultMediaNotificationProvider
@@ -72,6 +74,37 @@ class StoryvoxPlaybackService : MediaSessionService() {
         )
 
         wearBridge.start()
+    }
+
+    /**
+     * Android requires a foreground service started via `startForegroundService()` to
+     * call `startForeground()` within 5 seconds, or the OS kills the app with
+     * `ForegroundServiceDidNotStartInTimeException`. Media3's
+     * [DefaultMediaNotificationProvider] only posts the real MediaStyle notification
+     * once the player is actually playing — but storyvox waits for an HTTP fetch +
+     * DB write before play, which can easily exceed 5 s on a cold first listen.
+     *
+     * Fix: post a tiny placeholder notification *immediately* on every start command.
+     * Media3 replaces it with the real MediaStyle notification when playback begins.
+     */
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val placeholder = NotificationCompat.Builder(this, CHANNEL_PLAYBACK)
+            .setSmallIcon(R.drawable.ic_storyvox_notif)
+            .setContentTitle("storyvox")
+            .setContentText("Loading…")
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .build()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                placeholder,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, placeholder)
+        }
+        return super.onStartCommand(intent, flags, startId)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession = session
