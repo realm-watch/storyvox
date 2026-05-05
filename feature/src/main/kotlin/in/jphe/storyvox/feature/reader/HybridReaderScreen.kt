@@ -40,6 +40,12 @@ fun HybridReaderScreen(
                 onNextChapter = viewModel::nextChapter,
                 onPreviousChapter = viewModel::previousChapter,
                 onPickVoice = onPickVoice,
+                onSetSpeed = viewModel::setSpeed,
+                onPersistSpeed = viewModel::persistSpeed,
+                onSetPitch = viewModel::setPitch,
+                onPersistPitch = viewModel::persistPitch,
+                onStartSleepTimer = viewModel::startSleepTimer,
+                onCancelSleepTimer = viewModel::cancelSleepTimer,
             )
         },
         readerContent = {

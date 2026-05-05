@@ -1,5 +1,7 @@
 # storyvox
 
+![Build](https://github.com/jphein/storyvox/actions/workflows/android.yml/badge.svg)
+
 Android audiobook-style player for Royal Road web fiction. Hybrid reader + audiobook with sentence-level highlighting, eager downloads, auto-advance, polling, Bluetooth deep controls, Android Auto, and a Wear OS companion. Routes TTS through a forked VoxSherpa engine via `setEngineByPackageName`.
 
 **Status**: scaffold landing. v1 implementation in flight by the storyvox-dreamers team.

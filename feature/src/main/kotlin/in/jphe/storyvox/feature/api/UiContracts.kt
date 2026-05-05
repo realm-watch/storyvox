@@ -74,7 +74,15 @@ data class UiPlaybackState(
     val pitch: Float,
     val voiceId: String?,
     val voiceLabel: String,
+    /** Null when no sleep timer is active; otherwise milliseconds until it fires. */
+    val sleepTimerRemainingMs: Long? = null,
 )
+
+/** Mirrors core-playback's SleepTimerMode without leaking the playback module to feature. */
+sealed class UiSleepTimerMode {
+    data class Duration(val minutes: Int) : UiSleepTimerMode()
+    data object EndOfChapter : UiSleepTimerMode()
+}
 
 interface PlaybackControllerUi {
     val state: Flow<UiPlaybackState>
@@ -90,6 +98,8 @@ interface PlaybackControllerUi {
     fun setPitch(pitch: Float)
     fun setVoice(voiceId: String)
     fun startListening(fictionId: String, chapterId: String)
+    fun startSleepTimer(mode: UiSleepTimerMode)
+    fun cancelSleepTimer()
 }
 
 data class UiVoice(

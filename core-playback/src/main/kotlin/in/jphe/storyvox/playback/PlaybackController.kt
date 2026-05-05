@@ -67,9 +67,21 @@ class DefaultPlaybackController @Inject constructor(
 
     private var player: TtsPlayer? = null
 
+    init {
+        scope.launch {
+            sleepTimer.remainingMs.collect { remaining ->
+                _state.value = _state.value.copy(sleepTimerRemainingMs = remaining)
+            }
+        }
+    }
+
     fun bindPlayer(p: TtsPlayer) {
         player = p
-        scope.launch { p.observableState.collect { update -> _state.value = update } }
+        scope.launch {
+            p.observableState.collect { update ->
+                _state.value = update.copy(sleepTimerRemainingMs = sleepTimer.remainingMs.value)
+            }
+        }
     }
 
     fun unbindPlayer() {

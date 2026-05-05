@@ -30,6 +30,8 @@ import `in`.jphe.storyvox.ui.theme.LocalMotion
  * @param highlightStart UTF-16 char index where the current sentence begins
  * @param highlightEnd UTF-16 char index where the current sentence ends (exclusive)
  * @param onTapWord optional — invoked with char index of the word the user tapped (for "start TTS from here")
+ * @param onLayout optional — emits the text layout each time it changes; reader uses it to auto-scroll
+ *                the highlighted sentence into view.
  */
 @Composable
 fun SentenceHighlight(
@@ -38,6 +40,7 @@ fun SentenceHighlight(
     highlightEnd: Int,
     modifier: Modifier = Modifier,
     onTapWord: ((Int) -> Unit)? = null,
+    onLayout: ((TextLayoutResult) -> Unit)? = null,
 ) {
     val brass = MaterialTheme.colorScheme.primary
     val onSurface = MaterialTheme.colorScheme.onSurface
@@ -73,7 +76,10 @@ fun SentenceHighlight(
         text = annotated,
         style = MaterialTheme.typography.bodyLarge,
         color = onSurface,
-        onTextLayout = { layout = it },
+        onTextLayout = {
+            layout = it
+            onLayout?.invoke(it)
+        },
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 4.dp)

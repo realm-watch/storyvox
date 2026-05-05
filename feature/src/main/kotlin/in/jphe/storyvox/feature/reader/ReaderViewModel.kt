@@ -6,7 +6,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import `in`.jphe.storyvox.feature.api.PlaybackControllerUi
+import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.UiPlaybackState
+import `in`.jphe.storyvox.feature.api.UiSleepTimerMode
 import `in`.jphe.storyvox.feature.api.VoiceProviderUi
 import `in`.jphe.storyvox.ui.component.ReaderView
 import javax.inject.Inject
@@ -15,6 +17,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 @Immutable
 data class ReaderUiState(
@@ -27,6 +30,7 @@ data class ReaderUiState(
 class ReaderViewModel @Inject constructor(
     private val playback: PlaybackControllerUi,
     private val voices: VoiceProviderUi,
+    private val settings: SettingsRepositoryUi,
     @Suppress("UnusedPrivateProperty") savedState: SavedStateHandle,
 ) : ViewModel() {
 
@@ -52,6 +56,25 @@ class ReaderViewModel @Inject constructor(
     fun skipBack() = playback.skipBack()
     fun nextChapter() = playback.nextChapter()
     fun previousChapter() = playback.previousChapter()
-    fun setSpeed(speed: Float) = playback.setSpeed(speed)
+
+    fun setSpeed(speed: Float) {
+        playback.setSpeed(speed)
+    }
+
+    fun persistSpeed(speed: Float) {
+        viewModelScope.launch { settings.setDefaultSpeed(speed) }
+    }
+
+    fun setPitch(pitch: Float) {
+        playback.setPitch(pitch)
+    }
+
+    fun persistPitch(pitch: Float) {
+        viewModelScope.launch { settings.setDefaultPitch(pitch) }
+    }
+
     fun setVoice(voiceId: String) = playback.setVoice(voiceId)
+
+    fun startSleepTimer(mode: UiSleepTimerMode) = playback.startSleepTimer(mode)
+    fun cancelSleepTimer() = playback.cancelSleepTimer()
 }

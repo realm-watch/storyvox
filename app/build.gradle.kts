@@ -100,6 +100,9 @@ dependencies {
     // WorkManager
     implementation(libs.androidx.work.runtime.ktx)
 
+    // DataStore (settings persistence)
+    implementation(libs.androidx.datastore.preferences)
+
     coreLibraryDesugaring(libs.android.desugar.jdk.libs)
 
     testImplementation(libs.junit)
