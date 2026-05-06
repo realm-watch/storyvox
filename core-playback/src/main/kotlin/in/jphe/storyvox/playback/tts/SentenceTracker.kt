@@ -82,12 +82,17 @@ class SentenceTracker(
     }
 
     private companion object {
-        /** Floor below which a sentence couldn't have been spoken aloud — even
-         *  at max 3.0× speed and a tiny utterance, real audio takes longer than
-         *  this. Sub-floor onStart→onStart gaps mean the engine is dry-running. */
-        const val SPEED_RUNNER_FLOOR_MS = 250L
-        /** Number of consecutive sub-floor gaps before we flag dry-run. Tolerates
-         *  one or two transients without false-positive on quirky engines. */
-        const val SPEED_RUNNER_TRIGGER = 3
+        /** Floor below which a sentence couldn't have been spoken aloud at all.
+         *  Originally 250ms when we didn't trust upstream VoxSherpa's callback
+         *  semantics; tightened to 50ms now that the v2.6.1 fork surfaces real
+         *  dry-runs via callback.error() instead of silent success. The remaining
+         *  guard is a defensive net for system-default TTS engines a user might
+         *  fall back to via the gate's "Continue without it" bypass. */
+        const val SPEED_RUNNER_FLOOR_MS = 50L
+        /** Number of consecutive sub-floor gaps before we flag dry-run. Higher
+         *  than the original 3 because some engines fire onStart for queued
+         *  utterances back-to-back even when audio plays sequentially — using
+         *  onStart→onStart deltas is inherently approximate. */
+        const val SPEED_RUNNER_TRIGGER = 10
     }
 }

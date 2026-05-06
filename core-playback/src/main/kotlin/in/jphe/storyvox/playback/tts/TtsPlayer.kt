@@ -200,6 +200,13 @@ class TtsPlayer @AssistedInject constructor(
                 // surface the error in state, and pause. The engine is
                 // wedged at this point — `resume()` will rebuild it from
                 // scratch before re-queueing.
+                //
+                // This callback fires on the TTS binder thread; invalidateState()
+                // must run on the main thread (SimpleBasePlayer enforces this),
+                // so we hop via scope which is Dispatchers.Main. Without the
+                // hop, the IllegalStateException it throws propagates back as
+                // a Binder transport error and kills the speak queue mid-stream
+                // — which is exactly the "audio dies after a moment" symptom.
                 tts?.stop()
                 _observableState.update {
                     it.copy(
@@ -210,7 +217,7 @@ class TtsPlayer @AssistedInject constructor(
                         ),
                     )
                 }
-                invalidateState()
+                scope.launch { invalidateState() }
             },
         )
         this.tracker = tracker
