@@ -40,7 +40,7 @@ object StoryvoxRoutes {
     fun reader(fictionId: String, chapterId: String) = "reader/$fictionId/$chapterId"
     fun audiobook(fictionId: String, chapterId: String) = "audiobook/$fictionId/$chapterId"
 
-    private val HOME_ROUTES = setOf(LIBRARY, FOLLOWS, BROWSE)
+    private val HOME_ROUTES = setOf(LIBRARY, FOLLOWS, BROWSE, SETTINGS)
     fun isHome(route: String?) = route in HOME_ROUTES
 }
 
@@ -61,6 +61,7 @@ fun StoryvoxNavHost(
                     selected = when (currentRoute) {
                         StoryvoxRoutes.FOLLOWS -> HomeTab.Follows
                         StoryvoxRoutes.BROWSE -> HomeTab.Browse
+                        StoryvoxRoutes.SETTINGS -> HomeTab.Settings
                         else -> HomeTab.Library
                     },
                     onSelect = { tab ->
@@ -68,6 +69,7 @@ fun StoryvoxNavHost(
                             HomeTab.Library -> StoryvoxRoutes.LIBRARY
                             HomeTab.Follows -> StoryvoxRoutes.FOLLOWS
                             HomeTab.Browse -> StoryvoxRoutes.BROWSE
+                            HomeTab.Settings -> StoryvoxRoutes.SETTINGS
                         }
                         if (target != currentRoute) {
                             navController.navigate(target) {
@@ -90,7 +92,6 @@ fun StoryvoxNavHost(
                 LibraryScreen(
                     onOpenFiction = { id -> navController.navigate(StoryvoxRoutes.fictionDetail(id)) },
                     onOpenReader = { f, c -> navController.navigate(StoryvoxRoutes.reader(f, c)) },
-                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
                 )
             }
             composable(StoryvoxRoutes.FOLLOWS) {
