@@ -24,6 +24,7 @@ import `in`.jphe.storyvox.source.royalroad.net.RoyalRoadCookieJar
 import `in`.jphe.storyvox.source.royalroad.parser.BrowseParser
 import `in`.jphe.storyvox.source.royalroad.parser.ChapterParser
 import `in`.jphe.storyvox.source.royalroad.parser.FictionDetailParser
+import `in`.jphe.storyvox.source.royalroad.parser.FollowsParser
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration.Companion.seconds
@@ -104,7 +105,23 @@ class RoyalRoadSource @Inject internal constructor(
                 message = "HTTP ${outcome.code}: ${outcome.message}",
             )
         }
-    override suspend fun followsList(page: Int): FictionResult<ListPage<FictionSummary>> = unimplemented()
+    override suspend fun followsList(page: Int): FictionResult<ListPage<FictionSummary>> =
+        when (val outcome = fetcher.fetchHtml("${RoyalRoadIds.BASE_URL}/profile/me/follows")) {
+            is FetchOutcome.Body -> when (val res = FollowsParser.parse(outcome.html, outcome.finalUrl)) {
+                is FollowsParser.FollowsResult.Ok -> FictionResult.Success(res.items)
+                FollowsParser.FollowsResult.NotAuthenticated -> FictionResult.AuthRequired(
+                    message = "Sign in to Royal Road to view your follows",
+                )
+            }
+            FetchOutcome.NotFound -> FictionResult.NotFound("Follows page not found")
+            is FetchOutcome.CloudflareChallenge -> FictionResult.Cloudflare(outcome.url)
+            is FetchOutcome.RateLimited -> FictionResult.RateLimited(retryAfter = outcome.retryAfterSec.seconds)
+            is FetchOutcome.HttpError -> when (outcome.code) {
+                401, 403 -> FictionResult.AuthRequired(message = "Sign in to Royal Road to view your follows")
+                else -> FictionResult.NetworkError(message = "HTTP ${outcome.code}: ${outcome.message}")
+            }
+        }
+
     override suspend fun setFollowed(fictionId: String, followed: Boolean): FictionResult<Unit> = unimplemented()
     override suspend fun genres(): FictionResult<List<String>> = FictionResult.Success(KnownTagSlugs)
 

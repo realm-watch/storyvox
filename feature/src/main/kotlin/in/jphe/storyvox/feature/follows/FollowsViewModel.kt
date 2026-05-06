@@ -34,6 +34,12 @@ class FollowsViewModel @Inject constructor(
     private val _events = Channel<FollowsUiEvent>(Channel.BUFFERED)
     val events = _events.receiveAsFlow()
 
+    init {
+        // Lazy refresh on tab visit — pulls the user's RR follows list into
+        // the local DB. Silent on failure (unauthed users keep an empty tab).
+        viewModelScope.launch { repo.refreshFollows() }
+    }
+
     val uiState: StateFlow<FollowsUiState> = repo.follows
         .map { FollowsUiState(follows = it, isLoading = false) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FollowsUiState())

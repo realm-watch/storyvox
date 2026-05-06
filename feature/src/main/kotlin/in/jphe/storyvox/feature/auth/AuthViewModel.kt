@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import `in`.jphe.storyvox.data.auth.SessionHydrator
 import `in`.jphe.storyvox.data.repository.AuthRepository
+import `in`.jphe.storyvox.data.repository.FictionRepository
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +32,7 @@ class AuthViewModel @Inject constructor(
     private val auth: AuthRepository,
     private val hydrator: SessionHydrator,
     private val settings: SettingsRepositoryUi,
+    private val fictionRepo: FictionRepository,
 ) : ViewModel() {
 
     private val _captureState = MutableStateFlow<CaptureState>(CaptureState.Idle)
@@ -51,6 +53,10 @@ class AuthViewModel @Inject constructor(
             hydrator.hydrate(cookies)
             settings.signIn()
             _captureState.value = CaptureState.Captured
+            // Fire-and-forget: pull the user's RR follows into the local DB
+            // so the Follows tab populates without an extra user action.
+            // Failures are silent — the Follows tab will retry on next visit.
+            runCatching { fictionRepo.refreshRemoteFollows() }
         }
     }
 }

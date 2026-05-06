@@ -48,6 +48,12 @@ interface FictionRepositoryUi {
     suspend fun setDownloadMode(fictionId: String, mode: DownloadMode)
     suspend fun follow(fictionId: String, follow: Boolean)
     suspend fun markAllCaughtUp()
+    /**
+     * Best-effort refresh of the user's source-side follows list. No-op if
+     * the user isn't signed in. Caller doesn't await the result — the local
+     * `follows` Flow will emit when the DB is upserted.
+     */
+    suspend fun refreshFollows()
 }
 
 interface BrowseRepositoryUi {

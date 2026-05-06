@@ -160,6 +160,12 @@ private class RealFictionRepositoryUi(
     override suspend fun markAllCaughtUp() {
         // No-op for v1 — chapter-level "read" tracking lands when the reader is wired.
     }
+
+    override suspend fun refreshFollows() {
+        // Best-effort — failures are silent. AuthRequired returns when unauthed,
+        // which the UI treats as "stay with whatever's in the local DB".
+        runCatching { repo.refreshRemoteFollows() }
+    }
 }
 
 private fun DownloadMode.toData(): `in`.jphe.storyvox.data.db.entity.DownloadMode = when (this) {

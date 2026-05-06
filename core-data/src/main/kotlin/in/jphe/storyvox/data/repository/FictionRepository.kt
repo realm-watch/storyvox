@@ -41,6 +41,14 @@ interface FictionRepository {
     /** Force a detail-page refresh, upserting the cached row. */
     suspend fun refreshDetail(id: String): FictionResult<Unit>
 
+    /**
+     * Re-fetch the user's source-side follows list and reconcile against the
+     * local DB: rows that appear remotely get `followedRemotely = true`, rows
+     * that previously had it but are absent get cleared. Requires an
+     * authenticated session; returns [FictionResult.AuthRequired] if not.
+     */
+    suspend fun refreshRemoteFollows(): FictionResult<Unit>
+
     suspend fun addToLibrary(id: String, mode: DownloadMode? = null)
     suspend fun removeFromLibrary(id: String)
     suspend fun setDownloadMode(id: String, mode: DownloadMode?)
@@ -96,6 +104,46 @@ class FictionRepositoryImpl @Inject constructor(
         when (val result = source.fictionDetail(id)) {
             is FictionResult.Success -> {
                 upsertDetail(result.value)
+                FictionResult.Success(Unit)
+            }
+            is FictionResult.Failure -> result
+        }
+    }
+
+    override suspend fun refreshRemoteFollows(): FictionResult<Unit> = withContext(Dispatchers.IO) {
+        when (val result = source.followsList(page = 1)) {
+            is FictionResult.Success -> {
+                val now = System.currentTimeMillis()
+                val incoming = result.value.items
+                val incomingIds = incoming.map { it.id }.toSet()
+
+                // Upsert each follow, preserving prior fields (the follows
+                // page is row-shape only — author/status/rating come from
+                // detail-page refresh later) and flipping followedRemotely.
+                incoming.forEach { summary ->
+                    val existing = fictionDao.get(summary.id)
+                    val merged = if (existing != null) {
+                        existing.copy(
+                            // Refresh whatever the rows do carry without
+                            // clobbering richer detail-page fields.
+                            title = summary.title.ifBlank { existing.title },
+                            coverUrl = summary.coverUrl ?: existing.coverUrl,
+                            tags = summary.tags.ifEmpty { existing.tags },
+                            followedRemotely = true,
+                        )
+                    } else {
+                        summary.toEntity(now).copy(followedRemotely = true)
+                    }
+                    fictionDao.upsert(merged)
+                }
+
+                // Clear followedRemotely on rows that aren't in the latest
+                // list (user unfollowed remotely on the website).
+                val previously = fictionDao.followsSnapshot().map { it.id }.toSet()
+                (previously - incomingIds).forEach { gone ->
+                    fictionDao.setFollowedRemote(gone, false)
+                }
+
                 FictionResult.Success(Unit)
             }
             is FictionResult.Failure -> result
