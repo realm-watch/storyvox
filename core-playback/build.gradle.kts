@@ -48,10 +48,6 @@ dependencies {
     // OkHttp + okio power VoiceManager's voice-model downloads, with
     // redirect-following + streaming writes into context.filesDir/voices/{id}/.
     implementation(libs.okhttp)
-    // Tar + bzip2 decompression for the k2-fsa sherpa-onnx-tts-models
-    // archives (vits-piper-*.tar.bz2). Apache Commons Compress is the
-    // smallest pure-JVM lib that handles both formats; ~500KB on classpath.
-    implementation("org.apache.commons:commons-compress:1.27.1")
 
     // Persistent voice settings (active voice id, installed voice ids).
     implementation(libs.androidx.datastore.preferences)

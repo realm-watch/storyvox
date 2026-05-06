@@ -138,7 +138,7 @@ private fun StoryvoxNavHostContent(
                 ),
             ) {
                 HybridReaderScreen(
-                    onPickVoice = { navController.navigate(StoryvoxRoutes.SETTINGS_VOICE) },
+                    onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
                 )
             }
 
@@ -150,7 +150,7 @@ private fun StoryvoxNavHostContent(
                 ),
             ) {
                 HybridReaderScreen(
-                    onPickVoice = { navController.navigate(StoryvoxRoutes.SETTINGS_VOICE) },
+                    onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
                 )
             }
 

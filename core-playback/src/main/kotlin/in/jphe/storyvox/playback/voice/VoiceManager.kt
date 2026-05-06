@@ -119,17 +119,16 @@ class VoiceManager @Inject constructor(
                 }
                 val voiceDir = voiceDirFor(voiceId).also { it.mkdirs() }
                 try {
-                    val tarball = File(voiceDir, "voice.tar.bz2")
                     downloadFile(
-                        url = piper.tarballUrl,
-                        target = tarball,
+                        url = piper.onnxUrl,
+                        target = File(voiceDir, "model.onnx"),
                         knownTotalBytes = entry.sizeBytes,
                     ) { bytesRead, total -> emit(DownloadProgress.Downloading(bytesRead, total)) }
-                    // Extract model.onnx + tokens.txt to voiceDir root,
-                    // flattening the upstream `vits-piper-{voiceKey}/`
-                    // directory the tarball wraps everything in.
-                    extractPiperTarball(tarball, voiceDir)
-                    tarball.delete()
+                    downloadFile(
+                        url = piper.tokensUrl,
+                        target = File(voiceDir, "tokens.txt"),
+                        knownTotalBytes = 0L,
+                    ) { _, _ -> /* tokens file is small (~1KB) — no per-byte tick */ }
                 } catch (t: Throwable) {
                     voiceDir.deleteRecursively()
                     emit(DownloadProgress.Failed(t.message ?: t::class.java.simpleName))
@@ -204,47 +203,6 @@ class VoiceManager @Inject constructor(
                         onProgress(read, totalBytes)
                     }
                     sink.flush()
-                }
-            }
-        }
-    }
-
-    /**
-     * Unpack a k2-fsa sherpa-onnx-tts-models tarball, flattening the
-     * upstream `vits-piper-{voiceKey}/` wrapping directory so files land
-     * at `voiceDir/{model.onnx, tokens.txt, ...}` directly.
-     *
-     * Skips espeak-ng-data and MODEL_CARD — the espeak data already
-     * ships in storyvox's app assets, and the model card is human-readable
-     * docs storyvox doesn't need at runtime. Saves ~9MB of disk per voice.
-     */
-    private fun extractPiperTarball(tarball: File, voiceDir: File) {
-        java.io.FileInputStream(tarball).use { fis ->
-            org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream(fis).use { bz ->
-                org.apache.commons.compress.archivers.tar.TarArchiveInputStream(bz).use { tar ->
-                    val buf = ByteArray(64 * 1024)
-                    while (true) {
-                        val entry = tar.nextEntry ?: break
-                        if (!tar.canReadEntryData(entry)) continue
-                        if (entry.isDirectory) continue
-                        // Strip the `vits-piper-{voiceKey}/` wrapper; only
-                        // keep model.onnx + tokens.txt at voiceDir root.
-                        val name = entry.name.substringAfter('/', missingDelimiterValue = entry.name)
-                        if (name.startsWith("espeak-ng-data")) continue
-                        if (name == "MODEL_CARD") continue
-                        if (!name.endsWith(".onnx") && name != "tokens.txt") continue
-                        // Normalize name: any *.onnx becomes model.onnx so
-                        // EnginePlayer can hand a fixed path to VoiceEngine.
-                        val outName = if (name.endsWith(".onnx")) "model.onnx" else name
-                        val outFile = File(voiceDir, outName)
-                        outFile.outputStream().use { os ->
-                            while (true) {
-                                val n = tar.read(buf)
-                                if (n == -1) break
-                                os.write(buf, 0, n)
-                            }
-                        }
-                    }
                 }
             }
         }

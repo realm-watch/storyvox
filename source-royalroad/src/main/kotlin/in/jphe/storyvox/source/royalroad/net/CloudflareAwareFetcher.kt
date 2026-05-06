@@ -1,5 +1,7 @@
 package `in`.jphe.storyvox.source.royalroad.net
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.Response
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -25,9 +27,13 @@ internal sealed interface FetchOutcome {
 internal class CloudflareAwareFetcher @Inject constructor(
     private val client: RateLimitedClient,
 ) {
-    suspend fun fetchHtml(url: String): FetchOutcome {
-        return client.get(url).use { resp ->
-            classify(resp)
+    suspend fun fetchHtml(url: String): FetchOutcome = withContext(Dispatchers.IO) {
+        try {
+            client.get(url).use { resp -> classify(resp) }
+        } catch (e: java.net.SocketTimeoutException) {
+            FetchOutcome.HttpError(0, "Network timeout: ${e.message}")
+        } catch (e: java.io.IOException) {
+            FetchOutcome.HttpError(0, "Network error: ${e.message}")
         }
     }
 

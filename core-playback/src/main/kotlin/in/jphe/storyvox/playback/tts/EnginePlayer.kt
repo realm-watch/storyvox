@@ -206,7 +206,7 @@ class EnginePlayer @AssistedInject constructor(
             EngineType.Piper -> {
                 val voiceDir = voiceManager.voiceDirFor(active.id)
                 val onnx = File(voiceDir, "model.onnx").absolutePath
-                val tokens = File(voiceDir, "tokens.json").absolutePath
+                val tokens = File(voiceDir, "tokens.txt").absolutePath
                 VoiceEngine.getInstance().loadModel(context, onnx, tokens) ?: "Error: load returned null"
             }
             is EngineType.Kokoro -> {

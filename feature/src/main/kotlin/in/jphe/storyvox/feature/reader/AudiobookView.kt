@@ -49,6 +49,7 @@ import `in`.jphe.storyvox.feature.api.UiPlaybackState
 import `in`.jphe.storyvox.feature.api.UiSleepTimerMode
 import `in`.jphe.storyvox.ui.component.BrassProgressTrack
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
+import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 import kotlinx.coroutines.launch
 
@@ -88,14 +89,35 @@ fun AudiobookView(
                     Icon(Icons.Outlined.MoreVert, contentDescription = "Player options")
                 }
             }
-            FictionCoverThumb(
-                coverUrl = state.coverUrl,
-                title = state.fictionTitle,
-                authorInitial = state.fictionTitle.firstOrNull()?.uppercaseChar() ?: '?',
-                modifier = Modifier.size(width = 220.dp, height = 330.dp),
+            // While the chapter body + voice model are still loading we don't
+            // have a cover URL or chapter title yet — show the brass arcane
+            // sigil placeholder instead of a "?" thumb. As soon as state
+            // fills in we swap to the real cover.
+            val isLoading = state.chapterTitle.isBlank() && state.coverUrl.isNullOrBlank()
+            if (isLoading) {
+                MagicSkeletonTile(
+                    modifier = Modifier.size(width = 220.dp, height = 330.dp),
+                    shape = MaterialTheme.shapes.large,
+                    glyphSize = 96.dp,
+                )
+            } else {
+                FictionCoverThumb(
+                    coverUrl = state.coverUrl,
+                    title = state.fictionTitle,
+                    authorInitial = state.fictionTitle.firstOrNull()?.uppercaseChar() ?: '?',
+                    modifier = Modifier.size(width = 220.dp, height = 330.dp),
+                )
+            }
+            Text(
+                if (state.fictionTitle.isBlank()) "Conjuring your chapter…" else state.fictionTitle,
+                style = MaterialTheme.typography.titleLarge,
+                color = if (state.fictionTitle.isBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
             )
-            Text(state.fictionTitle, style = MaterialTheme.typography.titleLarge)
-            Text(state.chapterTitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                if (state.chapterTitle.isBlank()) "Loading voice + chapter text" else state.chapterTitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Spacer(Modifier.height(spacing.xs))
             BrassProgressTrack(
                 positionMs = state.positionMs,
