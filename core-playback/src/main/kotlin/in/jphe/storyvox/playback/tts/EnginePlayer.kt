@@ -202,46 +202,14 @@ class EnginePlayer @AssistedInject constructor(
             return
         }
 
-        val loadResult: String = when (active.engineType) {
-            EngineType.Piper -> {
-                val voiceDir = voiceManager.voiceDirFor(active.id)
-                val onnx = File(voiceDir, "model.onnx").absolutePath
-                val tokens = File(voiceDir, "tokens.txt").absolutePath
-                VoiceEngine.getInstance().loadModel(context, onnx, tokens) ?: "Error: load returned null"
-            }
-            is EngineType.Kokoro -> {
-                // All 53 Kokoro speakers share a single ~168MB multi-speaker
-                // model that VoiceManager downloads once into a shared dir.
-                // Selecting a Kokoro speaker just sets the active speaker id
-                // before generating; the loaded engine instance is reused.
-                val sharedDir = voiceManager.kokoroSharedDir()
-                val onnx = File(sharedDir, "model.int8.onnx").absolutePath
-                val tokens = File(sharedDir, "tokens.txt").absolutePath
-                val voicesBin = File(sharedDir, "voices.bin").absolutePath
-                KokoroEngine.getInstance().setActiveSpeakerId(
-                    (active.engineType as EngineType.Kokoro).speakerId,
-                )
-                KokoroEngine.getInstance().loadModel(context, onnx, tokens, voicesBin)
-                    ?: "Error: load returned null"
-            }
-        }
-        if (loadResult != "Success") {
-            _observableState.update {
-                it.copy(
-                    isPlaying = false,
-                    error = PlaybackError.ChapterFetchFailed("Voice load failed: $loadResult"),
-                )
-            }
-            return
-        }
-        activeEngineType = active.engineType
-
+        // Surface the chapter + isPlaying=true BEFORE the model loads so the
+        // UI's "warming up" state (sentenceEnd == 0 && isPlaying) shows the
+        // brass spinner immediately. Sherpa-onnx Kokoro init can take 30+s
+        // on modest hardware; without this the screen sits blank that long.
         val text = chapter.text
         sentences = chunker.chunk(text)
-
         currentSentenceIndex = sentences.indexOfFirst { charOffset <= it.endChar }
             .takeIf { it >= 0 } ?: 0
-
         _observableState.update {
             it.copy(
                 currentFictionId = fictionId,
@@ -252,6 +220,54 @@ class EnginePlayer @AssistedInject constructor(
                 chapterTitle = chapter.title,
                 coverUri = chapter.coverUrl,
                 durationEstimateMs = estimateDurationMs(text),
+                currentSentenceRange = null,
+                error = null,
+            )
+        }
+        invalidateState()
+
+        val loadResult: String = withContext(Dispatchers.IO) {
+            when (active.engineType) {
+                EngineType.Piper -> {
+                    val voiceDir = voiceManager.voiceDirFor(active.id)
+                    val onnx = File(voiceDir, "model.onnx").absolutePath
+                    val tokens = File(voiceDir, "tokens.txt").absolutePath
+                    VoiceEngine.getInstance().loadModel(context, onnx, tokens) ?: "Error: load returned null"
+                }
+                is EngineType.Kokoro -> {
+                    // All 53 Kokoro speakers share a single ~168MB multi-speaker
+                    // model. Switching speakers reuses the loaded engine; first
+                    // load takes 30+s as sherpa-onnx builds the onnxruntime
+                    // session and runs a warm-up generate.
+                    val sharedDir = voiceManager.kokoroSharedDir()
+                    val onnx = File(sharedDir, "model.int8.onnx").absolutePath
+                    val tokens = File(sharedDir, "tokens.txt").absolutePath
+                    val voicesBin = File(sharedDir, "voices.bin").absolutePath
+                    KokoroEngine.getInstance().setActiveSpeakerId(
+                        (active.engineType as EngineType.Kokoro).speakerId,
+                    )
+                    KokoroEngine.getInstance().loadModel(context, onnx, tokens, voicesBin)
+                        ?: "Error: load returned null"
+                }
+            }
+        }
+        if (loadResult != "Success") {
+            _observableState.update {
+                it.copy(
+                    isPlaying = false,
+                    error = PlaybackError.ChapterFetchFailed("Voice load failed: $loadResult"),
+                )
+            }
+            invalidateState()
+            return
+        }
+        activeEngineType = active.engineType
+
+        // (state was already pushed above so the spinner could show during
+        // model load — refresh durationEstimate now that the active engine
+        // type is known but otherwise leave state alone.)
+        _observableState.update {
+            it.copy(
                 error = null,
             )
         }
