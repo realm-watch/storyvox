@@ -80,6 +80,14 @@ dependencies {
     // GitHub redirects). FileProvider lives in androidx.core.
     implementation(libs.okhttp)
 
+    // Direct in-process synthesis. The :engine-lib AAR from jphein's
+    // VoxSherpa fork brings KokoroEngine/VoiceEngine/Sonic into our process
+    // and pulls sherpa-onnx (the actual ML inference) as a transitive dep.
+    // Lets storyvox bypass TextToSpeech.speak() and manage its own
+    // AudioTrack with a fat buffer for smooth pipelined playback.
+    implementation("com.github.jphein.VoxSherpa-TTS:engine-lib:v2.7.2")
+    implementation("com.github.k2-fsa:sherpa-onnx:1.12.26")
+
     // Media3 — session, player base classes
     implementation(libs.androidx.media3.session)
     implementation(libs.androidx.media3.common)
