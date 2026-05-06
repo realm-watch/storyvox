@@ -417,9 +417,14 @@ private class RealPlaybackControllerUi(
             anchorWallMs = nowMs
         }
         val baseMs = if (charsPerSec > 0f) ((charOffset / charsPerSec) * 1000f).toLong() else 0L
-        val elapsedMs = if (isPlaying) (nowMs - anchorWallMs).coerceAtLeast(0L) else 0L
-        val positionMs = (baseMs + elapsedMs).coerceAtMost(durationEstimateMs.coerceAtLeast(baseMs))
         val sentence = currentSentenceRange
+        // Freeze wall-time interpolation while the voice is warming up — i.e.
+        // user hit play but no sentence audio has started yet. Otherwise the
+        // scrubber slides forward during a 5-15s engine load even though no
+        // audio has actually played.
+        val warmingUp = isPlaying && sentence == null
+        val elapsedMs = if (isPlaying && !warmingUp) (nowMs - anchorWallMs).coerceAtLeast(0L) else 0L
+        val positionMs = (baseMs + elapsedMs).coerceAtMost(durationEstimateMs.coerceAtLeast(baseMs))
         return UiPlaybackState(
             fictionId = currentFictionId,
             chapterId = currentChapterId,

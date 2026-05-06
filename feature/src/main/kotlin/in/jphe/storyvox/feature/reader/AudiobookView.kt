@@ -142,6 +142,7 @@ fun AudiobookView(
                 durationMs = state.durationMs,
                 onSeekTo = onSeekTo,
                 modifier = Modifier.fillMaxWidth(),
+                loading = warmingUp,
             )
             if (state.sleepTimerRemainingMs != null) {
                 SleepTimerCountdownChip(remainingMs = state.sleepTimerRemainingMs, onCancel = onCancelSleepTimer)

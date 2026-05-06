@@ -1,5 +1,11 @@
 package `in`.jphe.storyvox.ui.component
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.positionChange
@@ -34,6 +40,10 @@ import kotlin.math.roundToLong
  * @param positionMs current playback position
  * @param durationMs total chapter duration
  * @param onSeekTo invoked on scrub end with the requested ms
+ * @param loading when true, the thumb pulses (alpha + radius) to signal
+ *   that audio isn't actively playing right now even though [isPlaying] may
+ *   be true (e.g. voice warming up). Position is the caller's responsibility
+ *   to keep stable in that state — this only controls the thumb animation.
  */
 @Composable
 fun BrassProgressTrack(
@@ -41,6 +51,7 @@ fun BrassProgressTrack(
     durationMs: Long,
     onSeekTo: (Long) -> Unit,
     modifier: Modifier = Modifier,
+    loading: Boolean = false,
 ) {
     val rail = MaterialTheme.colorScheme.outlineVariant
     val fill = MaterialTheme.colorScheme.primary
@@ -49,6 +60,30 @@ fun BrassProgressTrack(
     var scrubFraction by remember { mutableFloatStateOf(-1f) }
     val displayed = if (scrubFraction >= 0f) scrubFraction
     else if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
+
+    // Brass thumb pulse while audio isn't flowing. Two channels: alpha (so
+    // the thumb glows softer-then-brighter) and radius (a subtle 8→11dp
+    // breath). At 1100ms it's fast enough to feel alive but slow enough not
+    // to look like a fault indicator.
+    val pulse = rememberInfiniteTransition(label = "thumb-pulse")
+    val pulseAlpha by pulse.animateFloat(
+        initialValue = 0.55f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1100, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "alpha",
+    )
+    val pulseRadiusBoost by pulse.animateFloat(
+        initialValue = 0f,
+        targetValue = 3f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1100, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "radius",
+    )
 
     Box(
         modifier = modifier.semantics {
@@ -87,8 +122,26 @@ fun BrassProgressTrack(
                     drawRect(rail, topLeft = Offset(0f, railY - railH / 2f), size = Size(size.width, railH))
                     drawRect(fill, topLeft = Offset(0f, railY - railH / 2f), size = Size(size.width * displayed, railH))
                     val thumbX = size.width * displayed
-                    drawCircle(fill, radius = 8.dp.toPx(), center = Offset(thumbX, railY))
-                    drawCircle(rail, radius = 8.dp.toPx(), center = Offset(thumbX, railY), style = Stroke(width = 1.dp.toPx()))
+                    val baseRadius = 8.dp.toPx()
+                    if (loading) {
+                        // Soft brass halo that breathes with the pulse; sits behind
+                        // the solid thumb so the user reads "alive, not stuck".
+                        drawCircle(
+                            color = fill,
+                            radius = baseRadius + pulseRadiusBoost.dp.toPx() + 4.dp.toPx(),
+                            center = Offset(thumbX, railY),
+                            alpha = (pulseAlpha - 0.4f).coerceAtLeast(0f) * 0.5f,
+                        )
+                        drawCircle(
+                            color = fill,
+                            radius = baseRadius + pulseRadiusBoost.dp.toPx(),
+                            center = Offset(thumbX, railY),
+                            alpha = pulseAlpha,
+                        )
+                    } else {
+                        drawCircle(fill, radius = baseRadius, center = Offset(thumbX, railY))
+                    }
+                    drawCircle(rail, radius = baseRadius, center = Offset(thumbX, railY), style = Stroke(width = 1.dp.toPx()))
                 },
         )
         Row(
