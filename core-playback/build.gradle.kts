@@ -58,7 +58,11 @@ dependencies {
     // and pulls sherpa-onnx (the actual ML inference) as a transitive dep.
     // Lets storyvox bypass TextToSpeech.speak() and manage its own
     // AudioTrack with a fat buffer for smooth pipelined playback.
-    implementation("com.github.jphein.VoxSherpa-TTS:engine-lib:v2.7.3")
+    // JitPack publishes our fork's `engine-lib` Gradle module as the
+    // single-module path `com.github.jphein:VoxSherpa-TTS:vX.Y.Z` (it
+    // collapses multi-module configs to one root coordinate). The actual
+    // AAR file at this URL is engine-lib's release artifact.
+    implementation("com.github.jphein:VoxSherpa-TTS:v2.7.3")
     implementation("com.github.k2-fsa:sherpa-onnx:1.12.26")
 
     // Media3 — session, player base classes
