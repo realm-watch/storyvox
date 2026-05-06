@@ -1,7 +1,9 @@
 package `in`.jphe.storyvox.source.royalroad.di
 
+import `in`.jphe.storyvox.data.auth.SessionHydrator
 import `in`.jphe.storyvox.data.source.FictionSource
 import `in`.jphe.storyvox.source.royalroad.RoyalRoadSource
+import `in`.jphe.storyvox.source.royalroad.auth.RoyalRoadSessionHydrator
 import `in`.jphe.storyvox.source.royalroad.model.RoyalRoadIds
 import `in`.jphe.storyvox.source.royalroad.net.RateLimitedClient
 import `in`.jphe.storyvox.source.royalroad.net.RoyalRoadCookieJar
@@ -49,4 +51,8 @@ internal abstract class RoyalRoadBindings {
     @Binds
     @Singleton
     abstract fun bindFictionSource(impl: RoyalRoadSource): FictionSource
+
+    @Binds
+    @Singleton
+    abstract fun bindSessionHydrator(impl: RoyalRoadSessionHydrator): SessionHydrator
 }

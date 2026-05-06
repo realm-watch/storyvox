@@ -4,8 +4,11 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import `in`.jphe.storyvox.feature.api.BrowseFilter
 import `in`.jphe.storyvox.feature.api.BrowseRepositoryUi
 import `in`.jphe.storyvox.feature.api.UiFiction
+import `in`.jphe.storyvox.feature.api.UiSearchOrder
+import `in`.jphe.storyvox.feature.api.UiSortDirection
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -29,6 +32,8 @@ data class BrowseUiState(
     val query: String = "",
     val items: List<UiFiction> = emptyList(),
     val isLoading: Boolean = true,
+    val filter: BrowseFilter = BrowseFilter(),
+    val isFilterActive: Boolean = false,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
@@ -40,18 +45,29 @@ class BrowseViewModel @Inject constructor(
     private val _tab = MutableStateFlow(BrowseTab.Popular)
     private val _query = MutableStateFlow("")
     private val _isLoading = MutableStateFlow(true)
+    private val _filter = MutableStateFlow(BrowseFilter())
     val query: StateFlow<String> = _query.asStateFlow()
 
-    private val itemsFlow = combine(_tab, _query.debounce(300)) { tab, q -> tab to q }
-        .flatMapLatest { (tab, q) ->
-            // Empty search query resolves instantly — not a loading state.
-            val isEmptySearch = tab == BrowseTab.Search && q.isBlank()
+    private val itemsFlow = combine(
+        _tab,
+        _query.debounce(300),
+        _filter,
+    ) { tab, q, filter -> Triple(tab, q, filter) }
+        .flatMapLatest { (tab, q, filter) ->
+            val isFilterActive = filter.isActive()
+            val isEmptySearch = tab == BrowseTab.Search && q.isBlank() && !isFilterActive
             if (!isEmptySearch) _isLoading.value = true
-            when (tab) {
-                BrowseTab.Popular -> repo.popular()
-                BrowseTab.NewReleases -> repo.newReleases()
-                BrowseTab.BestRated -> repo.bestRated()
-                BrowseTab.Search -> if (q.isBlank()) flowOf(emptyList()) else repo.search(q)
+            when {
+                // When filters are set, route everything through `filtered`. The search tab
+                // also folds its query field into the filter so users can refine a search.
+                isFilterActive -> repo.filtered(
+                    if (tab == BrowseTab.Search && q.isNotBlank()) filter.copy(term = q) else filter,
+                )
+                tab == BrowseTab.Popular -> repo.popular()
+                tab == BrowseTab.NewReleases -> repo.newReleases()
+                tab == BrowseTab.BestRated -> repo.bestRated()
+                tab == BrowseTab.Search -> if (q.isBlank()) flowOf(emptyList()) else repo.search(q)
+                else -> flowOf(emptyList())
             }.onEach { _isLoading.value = false }
         }.onStart { _isLoading.value = true }
 
@@ -60,10 +76,33 @@ class BrowseViewModel @Inject constructor(
         _query,
         itemsFlow,
         _isLoading,
-    ) { tab, q, items, loading ->
-        BrowseUiState(tab = tab, query = q, items = items, isLoading = loading)
+        _filter,
+    ) { tab, q, items, loading, filter ->
+        BrowseUiState(
+            tab = tab,
+            query = q,
+            items = items,
+            isLoading = loading,
+            filter = filter,
+            isFilterActive = filter.isActive(),
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BrowseUiState())
 
     fun selectTab(tab: BrowseTab) { _tab.value = tab }
     fun setQuery(q: String) { _query.value = q }
+    fun setFilter(filter: BrowseFilter) { _filter.value = filter }
+    fun resetFilter() { _filter.value = BrowseFilter() }
 }
+
+private fun BrowseFilter.isActive(): Boolean =
+    tagsInclude.isNotEmpty() ||
+        tagsExclude.isNotEmpty() ||
+        statuses.isNotEmpty() ||
+        warningsRequire.isNotEmpty() ||
+        warningsExclude.isNotEmpty() ||
+        type != `in`.jphe.storyvox.feature.api.UiFictionType.All ||
+        minPages != null || maxPages != null ||
+        minRating != null || maxRating != null ||
+        orderBy != UiSearchOrder.Popularity ||
+        direction != UiSortDirection.Desc
+

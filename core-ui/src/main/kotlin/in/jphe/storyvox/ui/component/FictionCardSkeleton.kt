@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -14,7 +13,8 @@ import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
 /**
  * Skeleton placeholder shaped like a [FictionCoverThumb] + title + author stack.
- * Used by BrowseScreen during the rate-limited fetch so the row doesn't feel blank.
+ * Sized by the caller's modifier so it can flow into either a fixed-size strip
+ * or an adaptive grid cell without clobbering width.
  */
 @Composable
 fun FictionCardSkeleton(
@@ -22,7 +22,7 @@ fun FictionCardSkeleton(
 ) {
     val spacing = LocalSpacing.current
     Column(
-        modifier = modifier.size(width = 140.dp, height = 240.dp),
+        modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(spacing.xs),
     ) {
         SkeletonBlock(

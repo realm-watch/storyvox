@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -28,14 +29,16 @@ import `in`.jphe.storyvox.ui.theme.LocalSpacing
 @Composable
 fun SettingsScreen(
     onOpenVoicePicker: () -> Unit,
+    onOpenSignIn: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val spacing = LocalSpacing.current
     val s = state.settings ?: return
 
+    Scaffold { padding ->
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(spacing.md),
+        modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         SectionHeader("TTS engine")
@@ -93,10 +96,20 @@ fun SettingsScreen(
         if (s.isSignedIn) {
             BrassButton(label = "Sign out", onClick = viewModel::signOut, variant = BrassButtonVariant.Secondary)
         } else {
-            BrassButton(label = "Sign in", onClick = viewModel::signIn, variant = BrassButtonVariant.Primary)
+            BrassButton(
+                label = "Sign in",
+                onClick = onOpenSignIn,
+                variant = BrassButtonVariant.Primary,
+            )
+            Text(
+                "Sign-in unlocks Premium chapters and your Follows list. Anonymous browsing works for all public chapters.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         Box(modifier = Modifier.fillMaxWidth().padding(top = spacing.lg))
+    }
     }
 }
 

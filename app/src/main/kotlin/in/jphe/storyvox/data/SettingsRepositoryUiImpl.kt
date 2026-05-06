@@ -10,6 +10,8 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
+import `in`.jphe.storyvox.data.auth.SessionHydrator
+import `in`.jphe.storyvox.data.repository.AuthRepository
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiSettings
@@ -33,6 +35,8 @@ private object Keys {
 @Singleton
 class SettingsRepositoryUiImpl @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val auth: AuthRepository,
+    private val hydrator: SessionHydrator,
 ) : SettingsRepositoryUi {
 
     private val store = context.settingsDataStore
@@ -79,10 +83,19 @@ class SettingsRepositoryUiImpl @Inject constructor(
     }
 
     override suspend fun signIn() {
+        // Just flips the persisted UI flag; the cookie capture is owned by
+        // AuthViewModel (it writes to AuthRepository + SessionHydrator and
+        // calls signIn() here last). Keeping signIn idempotent so callers
+        // can flip it without side effects on the auth store.
         store.edit { it[Keys.SIGNED_IN] = true }
     }
 
     override suspend fun signOut() {
+        // Tear down all three stores: the encrypted cookie header in
+        // AuthRepository, the live OkHttp jar via SessionHydrator, and the
+        // DataStore flag that drives the Settings UI.
+        auth.clearSession()
+        hydrator.clear()
         store.edit { it[Keys.SIGNED_IN] = false }
     }
 }

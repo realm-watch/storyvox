@@ -14,6 +14,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
+import `in`.jphe.storyvox.auth.AuthWebViewScreen
 import `in`.jphe.storyvox.feature.browse.BrowseScreen
 import `in`.jphe.storyvox.feature.fiction.FictionDetailScreen
 import `in`.jphe.storyvox.feature.follows.FollowsScreen
@@ -139,6 +140,7 @@ fun StoryvoxNavHost(
             composable(StoryvoxRoutes.SETTINGS) {
                 SettingsScreen(
                     onOpenVoicePicker = { navController.navigate(StoryvoxRoutes.SETTINGS_VOICE) },
+                    onOpenSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
                 )
             }
             composable(StoryvoxRoutes.SETTINGS_VOICE) {
@@ -147,19 +149,12 @@ fun StoryvoxNavHost(
                 )
             }
             composable(StoryvoxRoutes.AUTH_WEBVIEW) {
-                Placeholder("WebView login (wiring in progress)")
+                AuthWebViewScreen(
+                    onSignedIn = { navController.popBackStack() },
+                    onCancelled = { navController.popBackStack() },
+                )
             }
         }
-    }
-}
-
-@Composable
-private fun Placeholder(label: String) {
-    androidx.compose.foundation.layout.Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = androidx.compose.ui.Alignment.Center,
-    ) {
-        androidx.compose.material3.Text(text = label)
     }
 }
 

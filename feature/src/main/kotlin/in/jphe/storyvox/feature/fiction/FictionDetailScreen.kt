@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
@@ -37,6 +39,7 @@ import `in`.jphe.storyvox.ui.component.ChapterCard
 import `in`.jphe.storyvox.ui.component.ChapterCardState
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
 import `in`.jphe.storyvox.ui.component.FictionDetailSkeleton
+import `in`.jphe.storyvox.ui.layout.isAtLeastTablet
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
 @Composable
@@ -46,6 +49,7 @@ fun FictionDetailScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val spacing = LocalSpacing.current
+    val twoColumn = isAtLeastTablet()
 
     androidx.compose.runtime.LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
@@ -57,6 +61,44 @@ fun FictionDetailScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         if (fiction == null) {
             FictionDetailSkeleton(modifier = Modifier.fillMaxSize())
+        } else if (twoColumn) {
+            // Wide layout: cover + meta + synopsis on the left, scrollable chapter list
+            // on the right. Bottom bar still floats over both columns.
+            Row(
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(0.42f)
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(bottom = 96.dp),
+                ) {
+                    Hero(fiction)
+                    Synopsis(fiction.synopsis)
+                }
+                LazyColumn(
+                    modifier = Modifier.weight(0.58f).fillMaxSize(),
+                    contentPadding = PaddingValues(top = spacing.md, bottom = 96.dp),
+                ) {
+                    items(state.chapters) { ch ->
+                        ChapterCard(
+                            state = ch.toCardState(currentId = null),
+                            onClick = { viewModel.listen(ch.id) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = spacing.md, vertical = spacing.xxs),
+                        )
+                    }
+                }
+            }
+
+            BottomBar(
+                isInLibrary = state.isInLibrary,
+                onFollow = { viewModel.toggleFollow(!state.isInLibrary) },
+                onListen = { state.chapters.firstOrNull()?.id?.let(viewModel::listen) },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -78,9 +120,7 @@ fun FictionDetailScreen(
             BottomBar(
                 isInLibrary = state.isInLibrary,
                 onFollow = { viewModel.toggleFollow(!state.isInLibrary) },
-                onListen = {
-                    state.chapters.firstOrNull()?.id?.let(viewModel::listen)
-                },
+                onListen = { state.chapters.firstOrNull()?.id?.let(viewModel::listen) },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }

@@ -1,6 +1,7 @@
 package `in`.jphe.storyvox.source.royalroad.auth
 
 import android.annotation.SuppressLint
+import android.graphics.Bitmap
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -43,10 +44,22 @@ fun RoyalRoadAuthWebView(
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
                 webViewClient = object : WebViewClient() {
+                    // Cloudflare can set its cookies at the very start of the page
+                    // (before onPageFinished fires for the post-login redirect).
+                    // Watch both lifecycle hooks so we don't miss the identity
+                    // cookie in tight redirect chains.
+                    override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                        super.onPageStarted(view, url, favicon)
+                        tryCapture()
+                    }
+
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
-                        url ?: return
-                        val cookies = readCookiesFor(RoyalRoadIds.BASE_URL)
+                        tryCapture()
+                    }
+
+                    private fun tryCapture() {
+                        val cookies = readAllRoyalRoadCookies()
                         if (cookies.containsKey(IDENTITY_COOKIE)) {
                             capturedHandler.deliver(cookies)
                         }
@@ -70,15 +83,23 @@ fun RoyalRoadAuthWebView(
 
 private const val IDENTITY_COOKIE = ".AspNetCore.Identity.Application"
 
-private fun readCookiesFor(url: String): Map<String, String> {
-    val raw = CookieManager.getInstance().getCookie(url) ?: return emptyMap()
-    return raw.split(";")
-        .mapNotNull { entry ->
+/**
+ * Walk both `https://www.royalroad.com` and `https://royalroad.com` cookie
+ * sets. Some cookies (Cloudflare's __cf_bm, identity cookie) get attached to
+ * the bare domain; others to www. The merge keeps every name=value pair the
+ * server has handed us so far.
+ */
+private fun readAllRoyalRoadCookies(): Map<String, String> {
+    val merged = LinkedHashMap<String, String>()
+    listOf(RoyalRoadIds.BASE_URL, "https://royalroad.com").forEach { url ->
+        val raw = CookieManager.getInstance().getCookie(url) ?: return@forEach
+        raw.split(";").forEach { entry ->
             val trimmed = entry.trim()
             val eq = trimmed.indexOf('=')
-            if (eq <= 0) null else trimmed.substring(0, eq) to trimmed.substring(eq + 1)
+            if (eq > 0) merged[trimmed.substring(0, eq)] = trimmed.substring(eq + 1)
         }
-        .toMap()
+    }
+    return merged
 }
 
 data class SessionCookies(val cookies: Map<String, String>)

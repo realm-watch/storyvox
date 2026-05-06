@@ -13,13 +13,22 @@ import `in`.jphe.storyvox.data.VoiceProviderUiImpl
 import `in`.jphe.storyvox.data.repository.ChapterRepository
 import `in`.jphe.storyvox.data.repository.FictionRepository
 import `in`.jphe.storyvox.data.source.WebViewFetcher
+import `in`.jphe.storyvox.data.source.model.ContentWarning
 import `in`.jphe.storyvox.data.source.model.FictionResult
 import `in`.jphe.storyvox.data.source.model.FictionStatus
 import `in`.jphe.storyvox.data.source.model.FictionSummary
+import `in`.jphe.storyvox.data.source.model.FictionType
 import `in`.jphe.storyvox.data.source.model.SearchOrder
 import `in`.jphe.storyvox.data.source.model.SearchQuery
+import `in`.jphe.storyvox.data.source.model.SortDirection
+import `in`.jphe.storyvox.feature.api.BrowseFilter
 import `in`.jphe.storyvox.feature.api.BrowseRepositoryUi
 import `in`.jphe.storyvox.feature.api.DownloadMode
+import `in`.jphe.storyvox.feature.api.UiContentWarning
+import `in`.jphe.storyvox.feature.api.UiFictionStatus
+import `in`.jphe.storyvox.feature.api.UiFictionType
+import `in`.jphe.storyvox.feature.api.UiSearchOrder
+import `in`.jphe.storyvox.feature.api.UiSortDirection
 import `in`.jphe.storyvox.feature.api.FictionRepositoryUi
 import `in`.jphe.storyvox.feature.api.PlaybackControllerUi
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
@@ -186,12 +195,18 @@ private class RealBrowseRepositoryUi(
 
     override fun popular(): Flow<List<UiFiction>> = fetch { repo.browsePopular(page = 1) }
     override fun newReleases(): Flow<List<UiFiction>> = fetch { repo.browseLatest(page = 1) }
-    override fun bestRated(): Flow<List<UiFiction>> = fetch { repo.browseLatest(page = 1) } // RR has no /best-rated equivalent in our v1 source; falling back to latest until byGenre fronts a "Best Rated" pill
+    override fun bestRated(): Flow<List<UiFiction>> = fetch {
+        repo.search(SearchQuery(orderBy = SearchOrder.RATING, direction = SortDirection.DESC))
+    }
     override fun search(query: String): Flow<List<UiFiction>> {
         if (query.isBlank()) return flowOf(emptyList())
         return fetch {
             repo.search(SearchQuery(term = query, orderBy = SearchOrder.RELEVANCE, page = 1))
         }
+    }
+
+    override fun filtered(filter: BrowseFilter): Flow<List<UiFiction>> = fetch {
+        repo.search(filter.toSearchQuery())
     }
 
     private inline fun fetch(crossinline call: suspend () -> FictionResult<`in`.jphe.storyvox.data.source.model.ListPage<FictionSummary>>): Flow<List<UiFiction>> =
@@ -204,6 +219,62 @@ private class RealBrowseRepositoryUi(
                 }
             }
         }
+}
+
+private fun BrowseFilter.toSearchQuery(): SearchQuery = SearchQuery(
+    term = term,
+    tags = tagsInclude,
+    excludeTags = tagsExclude,
+    statuses = statuses.map { it.toData() }.toSet(),
+    requireWarnings = warningsRequire.map { it.toData() }.toSet(),
+    excludeWarnings = warningsExclude.map { it.toData() }.toSet(),
+    minPages = minPages,
+    maxPages = maxPages,
+    minRating = minRating,
+    maxRating = maxRating,
+    type = type.toData(),
+    orderBy = orderBy.toData(),
+    direction = direction.toData(),
+)
+
+private fun UiFictionStatus.toData(): FictionStatus = when (this) {
+    UiFictionStatus.Ongoing -> FictionStatus.ONGOING
+    UiFictionStatus.Completed -> FictionStatus.COMPLETED
+    UiFictionStatus.Hiatus -> FictionStatus.HIATUS
+    UiFictionStatus.Stub -> FictionStatus.STUB
+    UiFictionStatus.Dropped -> FictionStatus.DROPPED
+}
+
+private fun UiFictionType.toData(): FictionType = when (this) {
+    UiFictionType.All -> FictionType.ALL
+    UiFictionType.Original -> FictionType.ORIGINAL
+    UiFictionType.FanFiction -> FictionType.FAN_FICTION
+}
+
+private fun UiContentWarning.toData(): ContentWarning = when (this) {
+    UiContentWarning.Profanity -> ContentWarning.PROFANITY
+    UiContentWarning.SexualContent -> ContentWarning.SEXUAL_CONTENT
+    UiContentWarning.GraphicViolence -> ContentWarning.GRAPHIC_VIOLENCE
+    UiContentWarning.SensitiveContent -> ContentWarning.SENSITIVE_CONTENT
+    UiContentWarning.AiAssisted -> ContentWarning.AI_ASSISTED
+    UiContentWarning.AiGenerated -> ContentWarning.AI_GENERATED
+}
+
+private fun UiSearchOrder.toData(): SearchOrder = when (this) {
+    UiSearchOrder.Relevance -> SearchOrder.RELEVANCE
+    UiSearchOrder.Popularity -> SearchOrder.POPULARITY
+    UiSearchOrder.Rating -> SearchOrder.RATING
+    UiSearchOrder.LastUpdate -> SearchOrder.LAST_UPDATE
+    UiSearchOrder.ReleaseDate -> SearchOrder.RELEASE_DATE
+    UiSearchOrder.Followers -> SearchOrder.FOLLOWERS
+    UiSearchOrder.Length -> SearchOrder.LENGTH
+    UiSearchOrder.Views -> SearchOrder.VIEWS
+    UiSearchOrder.Title -> SearchOrder.TITLE
+}
+
+private fun UiSortDirection.toData(): SortDirection = when (this) {
+    UiSortDirection.Asc -> SortDirection.ASC
+    UiSortDirection.Desc -> SortDirection.DESC
 }
 
 private fun toUiFiction(s: FictionSummary): UiFiction = UiFiction(

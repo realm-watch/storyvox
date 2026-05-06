@@ -51,11 +51,43 @@ interface FictionRepositoryUi {
 }
 
 interface BrowseRepositoryUi {
+    /** Curated tabs — implemented as preset filters under the hood. */
     fun popular(): Flow<List<UiFiction>>
     fun newReleases(): Flow<List<UiFiction>>
     fun bestRated(): Flow<List<UiFiction>>
+    /** Plain-text search keeps the legacy entry point for the search tab field. */
     fun search(query: String): Flow<List<UiFiction>>
+    /** Full filtered search — encodes every Royal Road filter we surface in the UI. */
+    fun filtered(filter: BrowseFilter): Flow<List<UiFiction>>
 }
+
+/**
+ * UI-side filter spec that mirrors the Royal Road `/fictions/search` form.
+ * Lives in feature/api so the bottom sheet and ViewModel can hold and mutate
+ * it without taking a dep on `core-data`. The app-module adapter maps it onto
+ * `SearchQuery` at the boundary.
+ */
+data class BrowseFilter(
+    val term: String = "",
+    val tagsInclude: Set<String> = emptySet(),
+    val tagsExclude: Set<String> = emptySet(),
+    val statuses: Set<UiFictionStatus> = emptySet(),
+    val type: UiFictionType = UiFictionType.All,
+    val warningsRequire: Set<UiContentWarning> = emptySet(),
+    val warningsExclude: Set<UiContentWarning> = emptySet(),
+    val minPages: Int? = null,
+    val maxPages: Int? = null,
+    val minRating: Float? = null,
+    val maxRating: Float? = null,
+    val orderBy: UiSearchOrder = UiSearchOrder.Popularity,
+    val direction: UiSortDirection = UiSortDirection.Desc,
+)
+
+enum class UiFictionStatus { Ongoing, Completed, Hiatus, Stub, Dropped }
+enum class UiFictionType { All, Original, FanFiction }
+enum class UiContentWarning { Profanity, SexualContent, GraphicViolence, SensitiveContent, AiAssisted, AiGenerated }
+enum class UiSearchOrder { Relevance, Popularity, Rating, LastUpdate, ReleaseDate, Followers, Length, Views, Title }
+enum class UiSortDirection { Asc, Desc }
 
 data class UiPlaybackState(
     val fictionId: String?,

@@ -2,11 +2,16 @@ package `in`.jphe.storyvox.source.royalroad
 
 import `in`.jphe.storyvox.data.source.FictionSource
 import `in`.jphe.storyvox.data.source.model.ChapterContent
+import `in`.jphe.storyvox.data.source.model.ContentWarning
 import `in`.jphe.storyvox.data.source.model.FictionDetail
 import `in`.jphe.storyvox.data.source.model.FictionResult
+import `in`.jphe.storyvox.data.source.model.FictionStatus
 import `in`.jphe.storyvox.data.source.model.FictionSummary
+import `in`.jphe.storyvox.data.source.model.FictionType
 import `in`.jphe.storyvox.data.source.model.ListPage
+import `in`.jphe.storyvox.data.source.model.SearchOrder
 import `in`.jphe.storyvox.data.source.model.SearchQuery
+import `in`.jphe.storyvox.data.source.model.SortDirection
 import `in`.jphe.storyvox.data.source.model.ChapterInfo
 import `in`.jphe.storyvox.source.royalroad.model.RoyalRoadIds
 import `in`.jphe.storyvox.source.royalroad.model.browseUrl
@@ -22,6 +27,7 @@ import `in`.jphe.storyvox.source.royalroad.parser.FictionDetailParser
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration.Companion.seconds
+import okhttp3.HttpUrl.Companion.toHttpUrl
 
 /**
  * v1 stub. The full RoyalRoadSource impl (with parsers, search, browse, follows)
@@ -58,11 +64,8 @@ class RoyalRoadSource @Inject internal constructor(
             page,
         )
 
-    override suspend fun search(query: SearchQuery): FictionResult<ListPage<FictionSummary>> {
-        val q = java.net.URLEncoder.encode(query.term, "UTF-8")
-        val url = "${RoyalRoadIds.BASE_URL}/fictions/search?title=$q" + if (query.page > 1) "&page=${query.page}" else ""
-        return fetchBrowsePage(url, query.page)
-    }
+    override suspend fun search(query: SearchQuery): FictionResult<ListPage<FictionSummary>> =
+        fetchBrowsePage(buildSearchUrl(query), query.page)
 
     override suspend fun fictionDetail(fictionId: String): FictionResult<FictionDetail> =
         when (val outcome = fetcher.fetchHtml(fictionUrl(fictionId))) {
@@ -126,6 +129,41 @@ class RoyalRoadSource @Inject internal constructor(
             cause = NotImplementedError("RoyalRoadSource v1 stub"),
         )
 
+    /**
+     * Build `/fictions/search` URL from a SearchQuery, encoding all RR-supported
+     * filter parameters. Empty/default fields are omitted so the URL stays clean.
+     *
+     * Multi-value params (`tagsAdd`, `tagsRemove`, `status`) are repeated once
+     * per element — RR's TomSelect form posts them that way.
+     */
+    private fun buildSearchUrl(query: SearchQuery): String {
+        val builder = "${RoyalRoadIds.BASE_URL}/fictions/search".toHttpUrl().newBuilder()
+        if (query.term.isNotBlank()) builder.addQueryParameter("title", query.term)
+        // Genres + extra tags both go into tagsAdd — RR doesn't distinguish on the wire.
+        (query.genres + query.tags).forEach { builder.addQueryParameter("tagsAdd", it) }
+        query.excludeTags.forEach { builder.addQueryParameter("tagsRemove", it) }
+        query.statuses.forEach { builder.addQueryParameter("status", it.toRrStatus()) }
+        query.requireWarnings.forEach { builder.addQueryParameter("warning", it.toRrSlug()) }
+        // RR's form has no separate "exclude warning" param; the negative chip uses the
+        // `warningsRemove` field. We map it that way and let RR ignore it if unsupported.
+        query.excludeWarnings.forEach { builder.addQueryParameter("warningsRemove", it.toRrSlug()) }
+        query.minPages?.let { builder.addQueryParameter("minPages", it.toString()) }
+        query.maxPages?.let { builder.addQueryParameter("maxPages", it.toString()) }
+        query.minRating?.let { builder.addQueryParameter("minRating", it.toString()) }
+        query.maxRating?.let { builder.addQueryParameter("maxRating", it.toString()) }
+        if (query.type != FictionType.ALL) {
+            builder.addQueryParameter("type", query.type.toRrSlug())
+        }
+        if (query.orderBy != SearchOrder.RELEVANCE) {
+            builder.addQueryParameter("orderBy", query.orderBy.toRrSlug())
+        }
+        if (query.direction != SortDirection.DESC) {
+            builder.addQueryParameter("dir", "asc")
+        }
+        if (query.page > 1) builder.addQueryParameter("page", query.page.toString())
+        return builder.build().toString()
+    }
+
     private companion object {
         /** RR's tag slug taxonomy — surfaces something for the genre picker until the live impl lands. */
         val KnownTagSlugs = listOf(
@@ -140,4 +178,40 @@ class RoyalRoadSource @Inject internal constructor(
             "magical_realism", "contemporary", "satire", "tutorial", "xuanhuan",
         )
     }
+}
+
+private fun FictionStatus.toRrStatus(): String = when (this) {
+    FictionStatus.ONGOING -> "ONGOING"
+    FictionStatus.COMPLETED -> "COMPLETED"
+    FictionStatus.HIATUS -> "HIATUS"
+    FictionStatus.STUB -> "STUB"
+    FictionStatus.DROPPED -> "DROPPED"
+}
+
+private fun ContentWarning.toRrSlug(): String = when (this) {
+    ContentWarning.PROFANITY -> "profanity"
+    ContentWarning.SEXUAL_CONTENT -> "sexuality"
+    ContentWarning.GRAPHIC_VIOLENCE -> "graphic_violence"
+    ContentWarning.SENSITIVE_CONTENT -> "sensitive"
+    ContentWarning.AI_ASSISTED -> "ai_assisted"
+    ContentWarning.AI_GENERATED -> "ai_generated"
+}
+
+private fun FictionType.toRrSlug(): String = when (this) {
+    FictionType.ALL -> "ALL"
+    FictionType.ORIGINAL -> "original"
+    FictionType.FAN_FICTION -> "fanfiction"
+}
+
+private fun SearchOrder.toRrSlug(): String = when (this) {
+    SearchOrder.RELEVANCE -> "relevance"
+    SearchOrder.POPULARITY -> "popularity"
+    SearchOrder.RATING -> "rating"
+    SearchOrder.LAST_UPDATE -> "last_update"
+    SearchOrder.RELEASE_DATE -> "release_date"
+    SearchOrder.FOLLOWERS -> "followers"
+    SearchOrder.LENGTH -> "length"
+    SearchOrder.VIEWS -> "views"
+    SearchOrder.TITLE -> "title"
+    SearchOrder.AUTHOR -> "author"
 }
