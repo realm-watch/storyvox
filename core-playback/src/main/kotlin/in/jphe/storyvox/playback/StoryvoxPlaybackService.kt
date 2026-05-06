@@ -11,6 +11,7 @@ import androidx.media3.session.CacheBitmapLoader
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.media3.session.MediaStyleNotificationHelper
 import androidx.media3.session.SimpleBitmapLoader
 import dagger.hilt.android.AndroidEntryPoint
 import `in`.jphe.storyvox.playback.tts.TtsPlayer
@@ -76,6 +77,13 @@ class StoryvoxPlaybackService : MediaSessionService() {
         wearBridge.start()
     }
 
+    /** Placeholder posted once to satisfy Android's 5-sec FG deadline. After
+     * Media3's [DefaultMediaNotificationProvider] takes over (when the player
+     * reports a media item + isPlaying state), we stop touching the
+     * notification — the same NOTIFICATION_ID gets re-targeted by Media3's
+     * `startForeground(...)` calls and our placeholder dissolves. */
+    private var placeholderPosted = false
+
     /**
      * Android requires a foreground service started via `startForegroundService()` to
      * call `startForeground()` within 5 seconds, or the OS kills the app with
@@ -84,25 +92,35 @@ class StoryvoxPlaybackService : MediaSessionService() {
      * once the player is actually playing — but storyvox waits for an HTTP fetch +
      * DB write before play, which can easily exceed 5 s on a cold first listen.
      *
-     * Fix: post a tiny placeholder notification *immediately* on every start command.
-     * Media3 replaces it with the real MediaStyle notification when playback begins.
+     * We post the placeholder only ONCE (on first start), then defer entirely to
+     * Media3. If we re-posted on every onStartCommand, the placeholder would
+     * overwrite the MediaStyle notification because both share NOTIFICATION_ID.
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val placeholder = NotificationCompat.Builder(this, CHANNEL_PLAYBACK)
-            .setSmallIcon(R.drawable.ic_storyvox_notif)
-            .setContentTitle("storyvox")
-            .setContentText("Loading…")
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(true)
-            .build()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID,
-                placeholder,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, placeholder)
+        if (!placeholderPosted) {
+            // Use a MediaStyle-shaped placeholder so Media3's
+            // DefaultMediaNotificationProvider replaces it cleanly when the
+            // player actually starts. A plain notification can fail to be
+            // re-targeted if the system has already memoized it as
+            // user-supplied chrome.
+            val placeholder = NotificationCompat.Builder(this, CHANNEL_PLAYBACK)
+                .setSmallIcon(R.drawable.ic_storyvox_notif)
+                .setContentTitle("storyvox")
+                .setContentText("Loading…")
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setOngoing(true)
+                .setStyle(MediaStyleNotificationHelper.MediaStyle(session))
+                .build()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    placeholder,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, placeholder)
+            }
+            placeholderPosted = true
         }
         return super.onStartCommand(intent, flags, startId)
     }

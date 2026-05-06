@@ -106,7 +106,11 @@ class RoyalRoadSource @Inject internal constructor(
             )
         }
     override suspend fun followsList(page: Int): FictionResult<ListPage<FictionSummary>> =
-        when (val outcome = fetcher.fetchHtml("${RoyalRoadIds.BASE_URL}/profile/me/follows")) {
+        // Royal Road's actual endpoint for the logged-in user's follows is
+        // `/my/follows` (verified live 2026-05-05). Unauthed → 302 to
+        // /account/login?ReturnUrl=/my/follows, which FollowsParser detects
+        // and surfaces as AuthRequired.
+        when (val outcome = fetcher.fetchHtml("${RoyalRoadIds.BASE_URL}/my/follows" + if (page > 1) "?page=$page" else "")) {
             is FetchOutcome.Body -> when (val res = FollowsParser.parse(outcome.html, outcome.finalUrl)) {
                 is FollowsParser.FollowsResult.Ok -> FictionResult.Success(res.items)
                 FollowsParser.FollowsResult.NotAuthenticated -> FictionResult.AuthRequired(

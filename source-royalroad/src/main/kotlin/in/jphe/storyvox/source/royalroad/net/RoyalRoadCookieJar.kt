@@ -28,7 +28,7 @@ internal class RoyalRoadCookieJar @Inject constructor() : CookieJar {
         val key = url.topPrivateDomain() ?: url.host
         val bucket = store[key] ?: return emptyList()
         val now = System.currentTimeMillis()
-        return bucket.values.filter { it.expiresAt > now && (it.matches(url)) }
+        return bucket.values.filter { it.expiresAt > now && it.matches(url) }
     }
 
     /** Hydrate from a captured cookie set (e.g. WebView post-login). */
