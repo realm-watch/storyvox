@@ -210,13 +210,19 @@ class EnginePlayer @AssistedInject constructor(
                 VoiceEngine.getInstance().loadModel(context, onnx, tokens) ?: "Error: load returned null"
             }
             is EngineType.Kokoro -> {
-                // Shared Kokoro model bundling is punted to a future task —
-                // the catalog only carries speaker IDs, not on-disk model
-                // paths. Until that lands, refuse to play Kokoro voices.
-                _observableState.update {
-                    it.copy(isPlaying = false, error = PlaybackError.EngineUnavailable)
-                }
-                return
+                // All 53 Kokoro speakers share a single ~168MB multi-speaker
+                // model that VoiceManager downloads once into a shared dir.
+                // Selecting a Kokoro speaker just sets the active speaker id
+                // before generating; the loaded engine instance is reused.
+                val sharedDir = voiceManager.kokoroSharedDir()
+                val onnx = File(sharedDir, "model.int8.onnx").absolutePath
+                val tokens = File(sharedDir, "tokens.txt").absolutePath
+                val voicesBin = File(sharedDir, "voices.bin").absolutePath
+                KokoroEngine.getInstance().setActiveSpeakerId(
+                    (active.engineType as EngineType.Kokoro).speakerId,
+                )
+                KokoroEngine.getInstance().loadModel(context, onnx, tokens, voicesBin)
+                    ?: "Error: load returned null"
             }
         }
         if (loadResult != "Success") {

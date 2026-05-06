@@ -105,9 +105,42 @@ class VoiceManager @Inject constructor(
 
         when (entry.engineType) {
             is EngineType.Kokoro -> {
-                // Kokoro speakers don't carry per-voice payload — selecting
-                // one is just persisting the speaker id. Mark installed and
-                // emit Done.
+                // Kokoro speakers all share one ~168MB multi-speaker model
+                // (model.int8.onnx + tokens.txt + voices.bin). The first
+                // Kokoro pick downloads it; every subsequent one just flips
+                // the active speaker id with no additional payload.
+                val sharedDir = kokoroSharedDir()
+                val onnxFile = File(sharedDir, "model.int8.onnx")
+                val tokensFile = File(sharedDir, "tokens.txt")
+                val voicesFile = File(sharedDir, "voices.bin")
+                if (!onnxFile.exists() || !voicesFile.exists() || !tokensFile.exists()) {
+                    sharedDir.mkdirs()
+                    try {
+                        downloadFile(
+                            url = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/kokoro-model.onnx",
+                            target = onnxFile,
+                            knownTotalBytes = 114_299_010L,
+                        ) { read, total -> emit(DownloadProgress.Downloading(read, 168_090_841L)) }
+                        downloadFile(
+                            url = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/kokoro-voices.bin",
+                            target = voicesFile,
+                            knownTotalBytes = 53_790_720L,
+                        ) { read, total ->
+                            // Continue progress where the model left off so the bar keeps moving.
+                            emit(DownloadProgress.Downloading(114_299_010L + read, 168_090_841L))
+                        }
+                        downloadFile(
+                            url = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/kokoro-tokens.txt",
+                            target = tokensFile,
+                            knownTotalBytes = 0L,
+                        ) { _, _ -> }
+                    } catch (t: Throwable) {
+                        // Don't wipe the whole shared dir on failure — keep partial files
+                        // so a retry can resume. (downloadFile re-writes the target.)
+                        emit(DownloadProgress.Failed(t.message ?: t::class.java.simpleName))
+                        return@flow
+                    }
+                }
                 markInstalled(voiceId)
                 emit(DownloadProgress.Done)
             }
@@ -167,6 +200,9 @@ class VoiceManager @Inject constructor(
      * isn't used (returns the path anyway — never created).
      */
     fun voiceDirFor(voiceId: String): File = File(File(context.filesDir, "voices"), voiceId)
+
+    /** Shared Kokoro multi-speaker model dir (one install per device, used by all 53 speakers). */
+    fun kokoroSharedDir(): File = File(context.filesDir, "voices/_kokoro_shared")
 
     // ----- internals -----
 
