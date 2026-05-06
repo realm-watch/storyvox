@@ -4,10 +4,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Bookmarks
 import androidx.compose.material.icons.outlined.Explore
+import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -22,6 +24,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 
 @Immutable
 enum class HomeTab(val label: String, val filled: ImageVector, val outlined: ImageVector) {
+    Playing("Playing", Icons.Filled.Headphones, Icons.Outlined.Headphones),
     Library("Library", Icons.Filled.AutoStories, Icons.Outlined.AutoStories),
     Follows("Follows", Icons.Filled.Bookmarks, Icons.Outlined.Bookmarks),
     Browse("Browse", Icons.Filled.Explore, Icons.Outlined.Explore),
