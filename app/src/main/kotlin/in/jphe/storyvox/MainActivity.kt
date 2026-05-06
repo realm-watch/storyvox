@@ -10,27 +10,34 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.rememberNavController
 import dagger.hilt.android.AndroidEntryPoint
 import `in`.jphe.storyvox.ui.theme.LibraryNocturneTheme
 import `in`.jphe.storyvox.navigation.DeepLinkResolver
 import `in`.jphe.storyvox.navigation.StoryvoxNavHost
+import kotlinx.coroutines.flow.MutableStateFlow
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
+    /**
+     * Hot stream of incoming intents. Cold-start intent is seeded in
+     * [onCreate]; subsequent intents (e.g. notification taps via
+     * `MediaSession.setSessionActivity`) update via [onNewIntent].
+     * The Compose layer collects this and runs the deep-link resolver.
+     */
+    private val intentFlow = MutableStateFlow<Intent?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val initialIntent = intent
+        intentFlow.value = intent
         setContent {
             LibraryNocturneTheme {
                 val navController = rememberNavController()
-                var pendingIntent by remember { mutableStateOf<Intent?>(initialIntent) }
+                val pending by intentFlow.collectAsState()
 
                 val notificationPermissionLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.RequestPermission(),
@@ -40,12 +47,13 @@ class MainActivity : ComponentActivity() {
                     maybeRequestNotificationPermission(notificationPermissionLauncher::launch)
                 }
 
-                LaunchedEffect(pendingIntent) {
-                    pendingIntent?.let { i ->
+                LaunchedEffect(pending) {
+                    pending?.let { i ->
                         DeepLinkResolver.resolve(i)?.let { route ->
                             navController.navigate(route)
                         }
-                        pendingIntent = null
+                        // Clear so re-emission of the same intent doesn't re-navigate.
+                        intentFlow.value = null
                     }
                 }
 
@@ -72,7 +80,6 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        // Intent picked up on next composition via setContent state.
-        // For deep-link-after-launch we'd hoist a SharedFlow; v1 only handles cold-start deep links.
+        intentFlow.value = intent
     }
 }

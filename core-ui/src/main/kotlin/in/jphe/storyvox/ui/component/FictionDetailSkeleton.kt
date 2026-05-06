@@ -29,7 +29,7 @@ fun FictionDetailSkeleton(
             modifier = Modifier.fillMaxWidth().padding(spacing.md),
             horizontalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
-            SkeletonBlock(
+            MagicSkeletonTile(
                 modifier = Modifier.size(width = 120.dp, height = 180.dp),
                 shape = MaterialTheme.shapes.medium,
             )

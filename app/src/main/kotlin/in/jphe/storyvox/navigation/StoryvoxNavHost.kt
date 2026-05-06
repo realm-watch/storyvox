@@ -161,7 +161,19 @@ fun StoryvoxNavHost(
 object DeepLinkResolver {
     private val FICTION_PATH = Regex("^/fiction/(\\d+)(/.*)?$")
 
+    /** Extras the playback notification's tap intent carries — see
+     *  [in.jphe.storyvox.playback.StoryvoxPlaybackService] session activity. */
+    const val EXTRA_OPEN_READER_FICTION_ID = "storyvox.open_reader.fiction_id"
+    const val EXTRA_OPEN_READER_CHAPTER_ID = "storyvox.open_reader.chapter_id"
+
     fun resolve(intent: Intent): String? {
+        // Notification tap → reader for the currently-playing chapter.
+        val rf = intent.getStringExtra(EXTRA_OPEN_READER_FICTION_ID)
+        val rc = intent.getStringExtra(EXTRA_OPEN_READER_CHAPTER_ID)
+        if (!rf.isNullOrBlank() && !rc.isNullOrBlank()) {
+            return StoryvoxRoutes.reader(rf, rc)
+        }
+        // Open-with deep link from royalroad.com.
         if (intent.action != Intent.ACTION_VIEW) return null
         val data: Uri = intent.data ?: return null
         if (data.scheme != "https") return null

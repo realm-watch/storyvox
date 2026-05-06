@@ -188,6 +188,23 @@ class TtsPlayer @AssistedInject constructor(
                 _observableState.update { it.copy(error = PlaybackError.TtsSpeakFailed(uid, code)) }
             },
             parseIndex = chunker::parseSentenceIndex,
+            onSpeedRunnerDetected = {
+                // VoxSherpa silent-speed-run recovery. Stop the queue,
+                // surface the error in state so the UI can show a hint, and
+                // pause. User taps play to resume from the same charOffset
+                // with a fresh speak queue.
+                tts?.stop()
+                _observableState.update {
+                    it.copy(
+                        isPlaying = false,
+                        error = PlaybackError.TtsSpeakFailed(
+                            utteranceId = "speed-runner",
+                            errorCode = -2,
+                        ),
+                    )
+                }
+                invalidateState()
+            },
         )
         tts.setOnUtteranceProgressListener(tracker)
         tts.setSpeechRate(currentSpeed)

@@ -126,7 +126,54 @@ class RoyalRoadSource @Inject internal constructor(
             }
         }
 
-    override suspend fun setFollowed(fictionId: String, followed: Boolean): FictionResult<Unit> = unimplemented()
+    override suspend fun setFollowed(fictionId: String, followed: Boolean): FictionResult<Unit> {
+        // Two requests:
+        // 1. GET the fiction page to harvest a fresh __RequestVerificationToken
+        //    (RR's antiforgery cookie + token pair is per-session-per-page).
+        // 2. POST /fictions/setbookmark/{id} with type=follow&mark=True|False
+        //    and the token in the form body. Auth cookies attach automatically
+        //    from the OkHttp jar.
+        val pageHtml = when (val outcome = fetcher.fetchHtml(fictionUrl(fictionId))) {
+            is FetchOutcome.Body -> outcome.html
+            FetchOutcome.NotFound -> return FictionResult.NotFound("Fiction $fictionId not found")
+            is FetchOutcome.CloudflareChallenge -> return FictionResult.Cloudflare(outcome.url)
+            is FetchOutcome.RateLimited -> return FictionResult.RateLimited(retryAfter = outcome.retryAfterSec.seconds)
+            is FetchOutcome.HttpError -> return FictionResult.NetworkError(message = "HTTP ${outcome.code}: ${outcome.message}")
+        }
+        val token = extractCsrfToken(pageHtml)
+            ?: return FictionResult.AuthRequired(message = "Sign in to follow fictions")
+
+        val body = okhttp3.FormBody.Builder()
+            .add("type", "follow")
+            .add("mark", if (followed) "True" else "False")
+            .add("__RequestVerificationToken", token)
+            .build()
+
+        return runCatching {
+            client.post(
+                "${RoyalRoadIds.BASE_URL}/fictions/setbookmark/$fictionId",
+                body,
+                extraHeaders = mapOf("Referer" to fictionUrl(fictionId)),
+            ).use { resp ->
+                when {
+                    resp.code == 401 || resp.code == 403 ->
+                        FictionResult.AuthRequired(message = "Sign in to follow fictions")
+                    resp.isSuccessful || resp.isRedirect ->
+                        FictionResult.Success(Unit)
+                    else ->
+                        FictionResult.NetworkError(message = "HTTP ${resp.code}: ${resp.message}")
+                }
+            }
+        }.getOrElse { FictionResult.NetworkError(message = "POST failed: ${it.message}", cause = it) }
+    }
+
+    /** Pulls the CSRF token from the bookmark-form hidden input on the fiction page. */
+    private fun extractCsrfToken(html: String): String? {
+        val doc = org.jsoup.Jsoup.parse(html)
+        return doc.selectFirst("input[name=__RequestVerificationToken]")
+            ?.attr("value")
+            ?.takeIf { it.isNotBlank() }
+    }
     override suspend fun genres(): FictionResult<List<String>> = FictionResult.Success(KnownTagSlugs)
 
     private suspend fun fetchBrowsePage(url: String, page: Int): FictionResult<ListPage<FictionSummary>> =

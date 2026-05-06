@@ -108,7 +108,9 @@ fun BrowseScreen(
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Text(fiction.title, style = MaterialTheme.typography.titleSmall, maxLines = 2)
-                        Text(fiction.author, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        if (fiction.author.isNotBlank()) {
+                            Text(fiction.author, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        }
                     }
                 }
             }

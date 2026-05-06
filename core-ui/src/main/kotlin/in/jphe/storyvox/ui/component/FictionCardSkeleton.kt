@@ -25,7 +25,10 @@ fun FictionCardSkeleton(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(spacing.xs),
     ) {
-        SkeletonBlock(
+        // Cover slot gets the magical brass sigil — reads as "we're conjuring
+        // a fiction" rather than the generic alpha-pulse rectangle that users
+        // mistake for empty content.
+        MagicSkeletonTile(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f),

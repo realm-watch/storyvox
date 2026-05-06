@@ -2,10 +2,17 @@ package `in`.jphe.storyvox.playback
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.app.TaskStackBuilder
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CacheBitmapLoader
 import androidx.media3.session.DefaultMediaNotificationProvider
@@ -53,6 +60,11 @@ class StoryvoxPlaybackService : MediaSessionService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
+    /** Reflects the current session-activity intent so it can be refreshed
+     *  whenever fictionId/chapterId changes — notification tap then opens the
+     *  correct reader, not whatever was playing the moment the service started. */
+    private var sessionActivityJob: Job? = null
+
     override fun onCreate() {
         super.onCreate()
         ensureNotificationChannel()
@@ -63,6 +75,7 @@ class StoryvoxPlaybackService : MediaSessionService() {
         session = MediaSession.Builder(this, player)
             .setCallback(StoryvoxSessionCallback(controller, scope))
             .setBitmapLoader(CacheBitmapLoader(SimpleBitmapLoader()))
+            .setSessionActivity(buildSessionActivity(null, null))
             .build()
         mediaSessionLocator.token = session.token
 
@@ -75,6 +88,45 @@ class StoryvoxPlaybackService : MediaSessionService() {
         )
 
         wearBridge.start()
+
+        // Refresh the session activity intent whenever the playing chapter
+        // changes so notification taps open the right reader.
+        sessionActivityJob = scope.launch {
+            controller.state
+                .map { it.currentFictionId to it.currentChapterId }
+                .distinctUntilChanged()
+                .collect { (fid, cid) ->
+                    session.setSessionActivity(buildSessionActivity(fid, cid))
+                }
+        }
+    }
+
+    /**
+     * Builds the PendingIntent that fires when the user taps the playback
+     * notification (or the lock-screen tile). We launch [MAIN_ACTIVITY] with
+     * extras that [in.jphe.storyvox.navigation.DeepLinkResolver] reads to
+     * navigate straight to the reader for the playing chapter. With a null
+     * fiction/chapter id (e.g. before playback starts) we still launch
+     * MainActivity — the user lands on Library which is the right default.
+     */
+    private fun buildSessionActivity(fictionId: String?, chapterId: String?): PendingIntent {
+        val launchIntent = Intent().apply {
+            component = ComponentName(packageName, MAIN_ACTIVITY)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            if (!fictionId.isNullOrBlank() && !chapterId.isNullOrBlank()) {
+                putExtra(EXTRA_OPEN_READER_FICTION_ID, fictionId)
+                putExtra(EXTRA_OPEN_READER_CHAPTER_ID, chapterId)
+            }
+        }
+        // FLAG_UPDATE_CURRENT so the new fictionId/chapterId actually overwrite
+        // any previous intent extras (PendingIntent equality ignores extras by
+        // default — without UPDATE_CURRENT we'd keep firing the original chapter).
+        return TaskStackBuilder.create(this)
+            .addNextIntent(launchIntent)
+            .getPendingIntent(
+                /* requestCode = */ 0,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )!!
     }
 
     /** Placeholder posted once to satisfy Android's 5-sec FG deadline. After
@@ -169,5 +221,11 @@ class StoryvoxPlaybackService : MediaSessionService() {
     companion object {
         const val CHANNEL_PLAYBACK = "playback"
         const val NOTIFICATION_ID = 1042
+        /** FQN of the launcher Activity. Hardcoded so :core-playback doesn't
+         *  need a dependency on :app. Mirrors the manifest entry. */
+        private const val MAIN_ACTIVITY = "in.jphe.storyvox.MainActivity"
+        /** Mirrors [in.jphe.storyvox.navigation.DeepLinkResolver.EXTRA_OPEN_READER_FICTION_ID]. */
+        private const val EXTRA_OPEN_READER_FICTION_ID = "storyvox.open_reader.fiction_id"
+        private const val EXTRA_OPEN_READER_CHAPTER_ID = "storyvox.open_reader.chapter_id"
     }
 }
