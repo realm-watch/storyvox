@@ -65,11 +65,15 @@ class VoiceManager @Inject constructor(
     val availableVoices: List<UiVoiceInfo>
         get() = VoiceCatalog.voices.map { it.toUiVoiceInfo(installed = false) }
 
-    /** Hot Flow of installed voices, derived from the DataStore-backed installed-id set. */
+    /** Hot Flow of installed voices, derived from the DataStore-backed installed-id set.
+     *  All 53 Kokoro speakers report installed once the shared model has been
+     *  downloaded — they all share one set of files, the speaker id is just
+     *  metadata baked into a generate() call. */
     val installedVoices: Flow<List<UiVoiceInfo>> = store.data.map { prefs ->
         val installedIds = prefs[VoiceKeys.INSTALLED_IDS].orEmpty()
+        val kokoroReady = isKokoroSharedModelInstalled()
         VoiceCatalog.voices
-            .filter { it.id in installedIds }
+            .filter { it.id in installedIds || (it.engineType is EngineType.Kokoro && kokoroReady) }
             .map { it.toUiVoiceInfo(installed = true) }
     }
 
@@ -77,7 +81,17 @@ class VoiceManager @Inject constructor(
     val activeVoice: Flow<UiVoiceInfo?> = store.data.map { prefs ->
         val activeId = prefs[VoiceKeys.ACTIVE_ID] ?: return@map null
         val installed = prefs[VoiceKeys.INSTALLED_IDS].orEmpty()
-        VoiceCatalog.byId(activeId)?.toUiVoiceInfo(installed = activeId in installed)
+        val entry = VoiceCatalog.byId(activeId) ?: return@map null
+        val isInstalled = activeId in installed ||
+            (entry.engineType is EngineType.Kokoro && isKokoroSharedModelInstalled())
+        entry.toUiVoiceInfo(installed = isInstalled)
+    }
+
+    private fun isKokoroSharedModelInstalled(): Boolean {
+        val dir = kokoroSharedDir()
+        return File(dir, "model.int8.onnx").exists() &&
+            File(dir, "voices.bin").exists() &&
+            File(dir, "tokens.txt").exists()
     }
 
     sealed interface DownloadProgress {
