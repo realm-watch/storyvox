@@ -21,7 +21,7 @@ import androidx.media3.session.MediaSessionService
 import androidx.media3.session.MediaStyleNotificationHelper
 import androidx.media3.session.SimpleBitmapLoader
 import dagger.hilt.android.AndroidEntryPoint
-import `in`.jphe.storyvox.playback.tts.TtsPlayer
+import `in`.jphe.storyvox.playback.tts.EnginePlayer
 import `in`.jphe.storyvox.playback.wear.PhoneWearBridge
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -30,7 +30,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 
 /**
- * The MediaSessionService that hosts our [TtsPlayer] and surfaces the audiobook to
+ * The MediaSessionService that hosts our [EnginePlayer] and surfaces the audiobook to
  * every Android-side controller: the notification shade, the lock screen, Bluetooth
  * media buttons, Wear, and Auto.
  *
@@ -39,7 +39,7 @@ import kotlinx.coroutines.cancel
  *    `MediaStyleNotificationHelper.MediaStyle` notification, derives transport
  *    actions from `Player.Commands`, and re-issues on every state change.
  *  - [CacheBitmapLoader] over [SimpleBitmapLoader] resolves the `artworkUri` set
- *    by [TtsPlayer] in its [androidx.media3.common.MediaMetadata] and caches the
+ *    by [EnginePlayer] in its [androidx.media3.common.MediaMetadata] and caches the
  *    decoded bitmap — that bitmap is used as the notification's large icon and as
  *    the lock-screen background.
  *
@@ -51,12 +51,12 @@ import kotlinx.coroutines.cancel
 class StoryvoxPlaybackService : MediaSessionService() {
 
     @Inject lateinit var controller: DefaultPlaybackController
-    @Inject lateinit var ttsPlayerFactory: TtsPlayer.Factory
+    @Inject lateinit var enginePlayerFactory: EnginePlayer.Factory
     @Inject lateinit var wearBridge: PhoneWearBridge
     @Inject lateinit var mediaSessionLocator: MediaSessionLocator
 
     private lateinit var session: MediaSession
-    private lateinit var player: TtsPlayer
+    private lateinit var player: EnginePlayer
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -69,7 +69,7 @@ class StoryvoxPlaybackService : MediaSessionService() {
         super.onCreate()
         ensureNotificationChannel()
 
-        player = ttsPlayerFactory.create(applicationContext)
+        player = enginePlayerFactory.create(applicationContext)
         controller.bindPlayer(player)
 
         session = MediaSession.Builder(this, player)
@@ -195,7 +195,7 @@ class StoryvoxPlaybackService : MediaSessionService() {
         wearBridge.stop()
         controller.unbindPlayer()
         session.release()
-        player.releaseTts()
+        player.releaseEngine()
         scope.cancel()
         super.onDestroy()
     }

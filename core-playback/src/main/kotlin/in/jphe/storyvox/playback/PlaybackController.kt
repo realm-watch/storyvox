@@ -1,7 +1,7 @@
 package `in`.jphe.storyvox.playback
 
+import `in`.jphe.storyvox.playback.tts.EnginePlayer
 import `in`.jphe.storyvox.playback.tts.SentenceChunker
-import `in`.jphe.storyvox.playback.tts.TtsPlayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -41,13 +41,13 @@ interface PlaybackController {
 
 /**
  * The single source of truth for playback. Wires together:
- * - the [TtsPlayer] (which actually speaks),
+ * - the [EnginePlayer] (which actually speaks — VoxSherpa engine path),
  * - the chapter repository (to fetch text and resolve next/prev),
  * - the position repository (to persist resume points),
  * - the sleep timer.
  *
  * Service-bound: lives in [SingletonComponent] so all callers share state.
- * The [TtsPlayer] is created and lifecycle-managed by [StoryvoxPlaybackService] —
+ * The [EnginePlayer] is created and lifecycle-managed by [StoryvoxPlaybackService] —
  * the service injects this controller and calls [bindPlayer] / [unbindPlayer]
  * during its lifecycle. Until a player is bound, transport calls are no-ops.
  */
@@ -65,7 +65,7 @@ class DefaultPlaybackController @Inject constructor(
     private val _events = MutableSharedFlow<PlaybackUiEvent>(extraBufferCapacity = 8)
     override val events: SharedFlow<PlaybackUiEvent> = _events.asSharedFlow()
 
-    private var player: TtsPlayer? = null
+    private var player: EnginePlayer? = null
 
     init {
         scope.launch {
@@ -75,7 +75,7 @@ class DefaultPlaybackController @Inject constructor(
         }
     }
 
-    fun bindPlayer(p: TtsPlayer) {
+    fun bindPlayer(p: EnginePlayer) {
         player = p
         scope.launch {
             p.observableState.collect { update ->

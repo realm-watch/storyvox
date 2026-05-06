@@ -30,7 +30,7 @@ import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
 @Composable
 fun SettingsScreen(
-    onOpenVoicePicker: () -> Unit,
+    onOpenVoiceLibrary: () -> Unit,
     onOpenSignIn: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
@@ -53,7 +53,7 @@ fun SettingsScreen(
             onInstall = viewModel::installVoxSherpa,
             onDismissProgress = viewModel::dismissInstallProgress,
         )
-        BrassButton(label = "Default voice…", onClick = onOpenVoicePicker, variant = BrassButtonVariant.Text)
+        BrassButton(label = "Voice library", onClick = onOpenVoiceLibrary, variant = BrassButtonVariant.Text)
 
         Divider()
         SectionHeader("Reading")

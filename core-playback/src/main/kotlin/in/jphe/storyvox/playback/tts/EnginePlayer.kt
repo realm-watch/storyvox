@@ -13,6 +13,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.util.UnstableApi
+import com.CodeBySonu.VoxSherpa.KokoroEngine
 import com.CodeBySonu.VoxSherpa.VoiceEngine
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
@@ -29,6 +30,9 @@ import `in`.jphe.storyvox.playback.PlaybackUiEvent
 import `in`.jphe.storyvox.playback.SPEED_BASELINE_CHARS_PER_SECOND
 import `in`.jphe.storyvox.playback.SentenceRange
 import `in`.jphe.storyvox.playback.SleepTimer
+import `in`.jphe.storyvox.playback.voice.EngineType
+import `in`.jphe.storyvox.playback.voice.VoiceManager
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -82,6 +86,7 @@ class EnginePlayer @AssistedInject constructor(
     private val chapterRepo: ChapterRepository,
     private val positionRepo: PlaybackPositionRepository,
     private val sleepTimer: SleepTimer,
+    private val voiceManager: VoiceManager,
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
 
     @AssistedFactory
@@ -96,6 +101,11 @@ class EnginePlayer @AssistedInject constructor(
     private var currentSentenceIndex: Int = 0
     private var currentSpeed: Float = 1.0f
     private var currentPitch: Float = 1.0f
+
+    /** Engine type for the currently-loaded voice. Set in [loadAndPlay]
+     *  after a successful model load; read by the producer in
+     *  [startPlaybackPipeline] to decide which engine drives generation. */
+    private var activeEngineType: EngineType? = null
 
     /** AudioTrack for the active chapter. Recreated on play/seek/sample-rate change. */
     private var audioTrack: AudioTrack? = null
@@ -183,6 +193,43 @@ class EnginePlayer @AssistedInject constructor(
             }
             return
         }
+
+        val active = voiceManager.activeVoice.first()
+        if (active == null) {
+            _observableState.update {
+                it.copy(isPlaying = false, error = PlaybackError.EngineUnavailable)
+            }
+            return
+        }
+
+        val loadResult: String = when (active.engineType) {
+            EngineType.Piper -> {
+                val voiceDir = voiceManager.voiceDirFor(active.id)
+                val onnx = File(voiceDir, "model.onnx").absolutePath
+                val tokens = File(voiceDir, "tokens.json").absolutePath
+                VoiceEngine.getInstance().loadModel(context, onnx, tokens) ?: "Error: load returned null"
+            }
+            is EngineType.Kokoro -> {
+                // Shared Kokoro model bundling is punted to a future task —
+                // the catalog only carries speaker IDs, not on-disk model
+                // paths. Until that lands, refuse to play Kokoro voices.
+                _observableState.update {
+                    it.copy(isPlaying = false, error = PlaybackError.EngineUnavailable)
+                }
+                return
+            }
+        }
+        if (loadResult != "Success") {
+            _observableState.update {
+                it.copy(
+                    isPlaying = false,
+                    error = PlaybackError.ChapterFetchFailed("Voice load failed: $loadResult"),
+                )
+            }
+            return
+        }
+        activeEngineType = active.engineType
+
         val text = chapter.text
         sentences = chunker.chunk(text)
 
@@ -217,8 +264,11 @@ class EnginePlayer @AssistedInject constructor(
         // Make sure any previous run is fully stopped.
         stopPlaybackPipeline()
 
-        val engine = VoiceEngine.getInstance()
-        val sampleRate = engine.sampleRate.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
+        val engineType = activeEngineType
+        val sampleRate = when (engineType) {
+            is EngineType.Kokoro -> KokoroEngine.getInstance().sampleRate
+            else -> VoiceEngine.getInstance().sampleRate
+        }.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
         audioTrack = createAudioTrack(sampleRate).also { it.play() }
 
         val queue = Channel<SentencePcm>(QUEUE_CAPACITY)
@@ -228,8 +278,12 @@ class EnginePlayer @AssistedInject constructor(
             try {
                 for (i in currentSentenceIndex until sentences.size) {
                     val s = sentences[i]
-                    val pcm = engine.generateAudioPCM(s.text, currentSpeed, currentPitch)
-                        ?: continue // skip silently; defensive
+                    val pcm = when (engineType) {
+                        is EngineType.Kokoro -> KokoroEngine.getInstance()
+                            .generateAudioPCM(s.text, currentSpeed, currentPitch)
+                        else -> VoiceEngine.getInstance()
+                            .generateAudioPCM(s.text, currentSpeed, currentPitch)
+                    } ?: continue // skip silently; defensive
                     queue.send(
                         SentencePcm(
                             sentenceIndex = i,

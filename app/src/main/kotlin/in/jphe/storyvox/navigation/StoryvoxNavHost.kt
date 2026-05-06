@@ -16,13 +16,14 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
 import `in`.jphe.storyvox.auth.AuthWebViewScreen
 import `in`.jphe.storyvox.feature.browse.BrowseScreen
-import `in`.jphe.storyvox.feature.engine.EngineGate
+import `in`.jphe.storyvox.feature.engine.VoicePickerGate
 import `in`.jphe.storyvox.feature.fiction.FictionDetailScreen
 import `in`.jphe.storyvox.feature.follows.FollowsScreen
 import `in`.jphe.storyvox.feature.library.LibraryScreen
 import `in`.jphe.storyvox.feature.reader.HybridReaderScreen
 import `in`.jphe.storyvox.feature.settings.SettingsScreen
 import `in`.jphe.storyvox.feature.settings.VoicePickerScreen
+import `in`.jphe.storyvox.feature.voicelibrary.VoiceLibraryScreen
 import `in`.jphe.storyvox.ui.component.BottomTabBar
 import `in`.jphe.storyvox.ui.component.HomeTab
 
@@ -35,6 +36,7 @@ object StoryvoxRoutes {
     const val AUDIOBOOK = "audiobook/{fictionId}/{chapterId}"
     const val SETTINGS = "settings"
     const val SETTINGS_VOICE = "settings/voice"
+    const val VOICE_LIBRARY = "settings/voices"
     const val AUTH_WEBVIEW = "auth/webview"
 
     fun fictionDetail(fictionId: String) = "fiction/$fictionId"
@@ -50,7 +52,9 @@ fun StoryvoxNavHost(
     navController: NavHostController,
     modifier: Modifier = Modifier,
 ) {
-    EngineGate {
+    VoicePickerGate(
+        onOpenVoiceLibrary = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
+    ) {
         StoryvoxNavHostContent(navController, modifier)
     }
 }
@@ -152,13 +156,18 @@ private fun StoryvoxNavHostContent(
 
             composable(StoryvoxRoutes.SETTINGS) {
                 SettingsScreen(
-                    onOpenVoicePicker = { navController.navigate(StoryvoxRoutes.SETTINGS_VOICE) },
+                    onOpenVoiceLibrary = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
                     onOpenSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
                 )
             }
             composable(StoryvoxRoutes.SETTINGS_VOICE) {
                 VoicePickerScreen(
                     onPicked = { navController.popBackStack() },
+                )
+            }
+            composable(StoryvoxRoutes.VOICE_LIBRARY) {
+                VoiceLibraryScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(StoryvoxRoutes.AUTH_WEBVIEW) {
