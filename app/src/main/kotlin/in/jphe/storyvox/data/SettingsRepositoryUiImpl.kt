@@ -15,6 +15,8 @@ import `in`.jphe.storyvox.data.repository.AuthRepository
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiSettings
+import `in`.jphe.storyvox.feature.api.UiSigil
+import `in`.jphe.storyvox.sigil.Sigil
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
@@ -52,6 +54,18 @@ class SettingsRepositoryUiImpl @Inject constructor(
             downloadOnWifiOnly = prefs[Keys.DOWNLOAD_WIFI_ONLY] ?: true,
             pollIntervalHours = prefs[Keys.POLL_INTERVAL_HOURS] ?: 6,
             isSignedIn = prefs[Keys.SIGNED_IN] ?: false,
+            sigil = Sigil.current.let {
+                UiSigil(
+                    name = it.name,
+                    realm = it.realm,
+                    hash = it.hash,
+                    branch = it.branch,
+                    dirty = it.dirty,
+                    built = it.built,
+                    repo = it.repo,
+                    versionName = it.versionName,
+                )
+            },
         )
     }
 

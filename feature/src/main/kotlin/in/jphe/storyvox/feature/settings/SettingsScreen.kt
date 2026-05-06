@@ -108,6 +108,31 @@ fun SettingsScreen(
             )
         }
 
+        Divider()
+        SectionHeader("About")
+        // Realm-sigil version. The "name" field is a deterministic
+        // adjective+noun drawn from the fantasy realm word list, keyed on
+        // the build's git hash. Same hash → same name across rebuilds.
+        Text(
+            text = "storyvox v${s.sigil.versionName}",
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Text(
+            text = s.sigil.name,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Text(
+            text = buildString {
+                append(s.sigil.branch)
+                if (s.sigil.dirty) append(" · dirty")
+                append(" · built ")
+                append(s.sigil.built.take(10)) // YYYY-MM-DD only
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
         Box(modifier = Modifier.fillMaxWidth().padding(top = spacing.lg))
     }
     }

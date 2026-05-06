@@ -164,7 +164,40 @@ data class UiSettings(
     val downloadOnWifiOnly: Boolean,
     val pollIntervalHours: Int,
     val isSignedIn: Boolean,
+    val sigil: UiSigil = UiSigil.UNKNOWN,
 )
+
+/**
+ * Realm-sigil version metadata captured at build time. Surfaced in the
+ * Settings → About row. A "fantasy"-realm sigil reads as e.g.
+ * "Blazing Crown · ef6a4cf3".
+ */
+data class UiSigil(
+    val name: String,
+    val realm: String,
+    val hash: String,
+    val branch: String,
+    val dirty: Boolean,
+    val built: String,
+    val repo: String,
+    val versionName: String,
+) {
+    val commitUrl: String
+        get() = if (hash != "dev" && repo.isNotBlank()) "$repo/commit/$hash" else ""
+
+    companion object {
+        val UNKNOWN = UiSigil(
+            name = "Unsigned · dev",
+            realm = "fantasy",
+            hash = "dev",
+            branch = "unknown",
+            dirty = false,
+            built = "unknown",
+            repo = "",
+            versionName = "0.0.0",
+        )
+    }
+}
 
 enum class ThemeOverride { System, Dark, Light }
 

@@ -6,6 +6,25 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+/**
+ * Realm-sigil git provenance — captured at configure time so BuildConfig
+ * can carry hash/branch/dirty/built fields. Failures fall back to "dev"
+ * so non-git checkouts (CI artifact downloads, source tarballs) still build.
+ */
+fun gitOutput(vararg args: String): String = runCatching {
+    val proc = ProcessBuilder("git", *args)
+        .directory(rootDir)
+        .redirectErrorStream(true)
+        .start()
+    proc.inputStream.bufferedReader().readText().trim().also { proc.waitFor() }
+}.getOrDefault("dev")
+
+val gitHash: String = gitOutput("rev-parse", "--short=8", "HEAD")
+val gitBranch: String = gitOutput("rev-parse", "--abbrev-ref", "HEAD")
+val gitDirty: Boolean = gitOutput("status", "--porcelain").isNotEmpty()
+val buildTime: String = gitOutput("log", "-1", "--format=%cI", "HEAD")
+    .ifBlank { "dev" }
+
 android {
     namespace = "in.jphe.storyvox"
     compileSdk = 35
@@ -15,10 +34,23 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "0.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
+
+        // Realm-sigil fields — see app/sigil/Sigil.kt for the name generator.
+        // Realm "fantasy" matches Library Nocturne aesthetic and RR's primary genre.
+        buildConfigField("String", "SIGIL_REALM", "\"fantasy\"")
+        buildConfigField("String", "SIGIL_HASH", "\"$gitHash\"")
+        buildConfigField("String", "SIGIL_BRANCH", "\"$gitBranch\"")
+        buildConfigField("boolean", "SIGIL_DIRTY", "$gitDirty")
+        buildConfigField("String", "SIGIL_BUILT", "\"$buildTime\"")
+        buildConfigField(
+            "String",
+            "SIGIL_REPO",
+            "\"https://github.com/jphein/storyvox\"",
+        )
     }
 
     buildTypes {
