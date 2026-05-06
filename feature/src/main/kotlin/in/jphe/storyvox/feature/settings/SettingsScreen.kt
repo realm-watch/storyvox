@@ -60,7 +60,10 @@ fun SettingsScreen(
         Slider(
             value = s.defaultPitch,
             onValueChange = viewModel::setPitch,
-            valueRange = 0.5f..2.0f,
+            // Narration-friendly band — matches the in-context pitch slider
+            // in AudiobookView. Beyond ±15% TTS sounds robotic.
+            valueRange = 0.85f..1.15f,
+            steps = 29, // 0.01 per step
         )
         Text("Pitch ${"%.2f".format(s.defaultPitch)}×", style = MaterialTheme.typography.bodySmall)
 

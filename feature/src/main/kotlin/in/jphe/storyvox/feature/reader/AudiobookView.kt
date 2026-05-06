@@ -265,7 +265,7 @@ private fun PlayerOptionsSheet(
             onValueChange = onSetSpeed,
             onValueChangeFinished = { onPersistSpeed(state.speed) },
             valueRange = 0.5f..3.0f,
-            steps = 9,
+            steps = 49, // 0.05× per step
         )
 
         SheetHeader("Pitch", "${"%.2f".format(state.pitch)}")
@@ -273,8 +273,9 @@ private fun PlayerOptionsSheet(
             value = state.pitch,
             onValueChange = onSetPitch,
             onValueChangeFinished = { onPersistPitch(state.pitch) },
-            valueRange = 0.5f..2.0f,
-            steps = 5,
+            // Narration-friendly band: anything beyond ±15% sounds robotic.
+            valueRange = 0.85f..1.15f,
+            steps = 29, // 0.01 per step
         )
 
         SheetHeader("Sleep timer", null)
