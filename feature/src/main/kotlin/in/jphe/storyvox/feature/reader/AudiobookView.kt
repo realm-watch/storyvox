@@ -50,6 +50,7 @@ import `in`.jphe.storyvox.feature.api.UiSleepTimerMode
 import `in`.jphe.storyvox.ui.component.BrassProgressTrack
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
 import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
+import `in`.jphe.storyvox.ui.component.MagicSpinner
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 import kotlinx.coroutines.launch
 
@@ -93,20 +94,33 @@ fun AudiobookView(
             // have a cover URL or chapter title yet — show the brass arcane
             // sigil placeholder instead of a "?" thumb. As soon as state
             // fills in we swap to the real cover.
-            val isLoading = state.chapterTitle.isBlank() && state.coverUrl.isNullOrBlank()
-            if (isLoading) {
+            val coverLoading = state.chapterTitle.isBlank() && state.coverUrl.isNullOrBlank()
+            // "Warming up" = chapter loaded, user has hit play, but the TTS
+            // engine hasn't produced the first sentence yet (no sentence
+            // range emitted). Sherpa-onnx model load + first synth can take
+            // 5-15s on modest hardware.
+            val warmingUp = state.isPlaying && state.sentenceEnd == 0
+            if (coverLoading) {
                 MagicSkeletonTile(
                     modifier = Modifier.size(width = 220.dp, height = 330.dp),
                     shape = MaterialTheme.shapes.large,
                     glyphSize = 96.dp,
                 )
             } else {
-                FictionCoverThumb(
-                    coverUrl = state.coverUrl,
-                    title = state.fictionTitle,
-                    authorInitial = state.fictionTitle.firstOrNull()?.uppercaseChar() ?: '?',
-                    modifier = Modifier.size(width = 220.dp, height = 330.dp),
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    FictionCoverThumb(
+                        coverUrl = state.coverUrl,
+                        title = state.fictionTitle,
+                        authorInitial = state.fictionTitle.firstOrNull()?.uppercaseChar() ?: '?',
+                        modifier = Modifier.size(width = 220.dp, height = 330.dp),
+                    )
+                    // Subtle brass sigil ring orbiting the cover while the
+                    // engine is producing the first sentence's audio. Fades
+                    // out as soon as audio actually starts (sentenceEnd > 0).
+                    if (warmingUp) {
+                        MagicSpinner(modifier = Modifier.size(width = 240.dp, height = 350.dp))
+                    }
+                }
             }
             Text(
                 if (state.fictionTitle.isBlank()) "Conjuring your chapter…" else state.fictionTitle,
@@ -114,9 +128,13 @@ fun AudiobookView(
                 color = if (state.fictionTitle.isBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                if (state.chapterTitle.isBlank()) "Loading voice + chapter text" else state.chapterTitle,
+                when {
+                    state.chapterTitle.isBlank() -> "Loading voice + chapter text"
+                    warmingUp -> "Voice waking up…"
+                    else -> state.chapterTitle
+                },
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (warmingUp) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(spacing.xs))
             BrassProgressTrack(
@@ -140,19 +158,30 @@ fun AudiobookView(
                 IconButton(onClick = onSkipBack) {
                     Icon(Icons.Filled.FastRewind, contentDescription = "Skip back 30 seconds", modifier = Modifier.size(32.dp))
                 }
-                FilledIconButton(
-                    onClick = onPlayPause,
-                    modifier = Modifier.size(72.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                    ),
-                ) {
-                    Icon(
-                        imageVector = if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (state.isPlaying) "Pause" else "Play",
-                        modifier = Modifier.size(40.dp),
-                    )
+                // "Warming up" = user has hit play and chapter has loaded, but
+                // the TTS engine hasn't produced the first sentence yet (no
+                // sentence range emitted). Sherpa-onnx model load + first
+                // synth can take 5-15s on modest hardware; without this
+                // indicator the play button looks dead during that gap.
+                val warmingUp = state.isPlaying && state.sentenceEnd == 0
+                Box(contentAlignment = Alignment.Center) {
+                    if (warmingUp) {
+                        MagicSpinner(modifier = Modifier.size(96.dp))
+                    }
+                    FilledIconButton(
+                        onClick = onPlayPause,
+                        modifier = Modifier.size(72.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        ),
+                    ) {
+                        Icon(
+                            imageVector = if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (state.isPlaying) "Pause" else "Play",
+                            modifier = Modifier.size(40.dp),
+                        )
+                    }
                 }
                 IconButton(onClick = onSkipForward) {
                     Icon(Icons.Filled.FastForward, contentDescription = "Skip forward 30 seconds", modifier = Modifier.size(32.dp))
