@@ -8,22 +8,22 @@ plugins {
 
 /**
  * Realm-sigil git provenance — captured at configure time so BuildConfig
- * can carry hash/branch/dirty/built fields. Failures fall back to "dev"
- * so non-git checkouts (CI artifact downloads, source tarballs) still build.
+ * can carry hash/branch/dirty/built fields. Uses [providers.exec] which is
+ * configuration-cache-compatible, unlike a raw [ProcessBuilder]. Failures
+ * fall back to "dev" so non-git checkouts (source tarballs) still build.
  */
 fun gitOutput(vararg args: String): String = runCatching {
-    val proc = ProcessBuilder("git", *args)
-        .directory(rootDir)
-        .redirectErrorStream(true)
-        .start()
-    proc.inputStream.bufferedReader().readText().trim().also { proc.waitFor() }
+    val output = providers.exec {
+        commandLine("git", *args)
+        workingDir = rootDir
+    }
+    output.standardOutput.asText.get().trim()
 }.getOrDefault("dev")
 
-val gitHash: String = gitOutput("rev-parse", "--short=8", "HEAD")
-val gitBranch: String = gitOutput("rev-parse", "--abbrev-ref", "HEAD")
+val gitHash: String = gitOutput("rev-parse", "--short=8", "HEAD").ifBlank { "dev" }
+val gitBranch: String = gitOutput("rev-parse", "--abbrev-ref", "HEAD").ifBlank { "unknown" }
 val gitDirty: Boolean = gitOutput("status", "--porcelain").isNotEmpty()
-val buildTime: String = gitOutput("log", "-1", "--format=%cI", "HEAD")
-    .ifBlank { "dev" }
+val buildTime: String = gitOutput("log", "-1", "--format=%cI", "HEAD").ifBlank { "dev" }
 
 android {
     namespace = "in.jphe.storyvox"
