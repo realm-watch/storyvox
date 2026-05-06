@@ -29,6 +29,23 @@ android {
             // until/unless upstream merges it.
             "\"https://github.com/jphein/VoxSherpa-TTS/releases\"",
         )
+        buildConfigField(
+            "String",
+            "VOXSHERPA_LATEST_API",
+            // GitHub API endpoint the in-app installer hits to discover the
+            // latest release's APK asset URL. Kept in BuildConfig so the
+            // installer doesn't need to reach into the same constants from
+            // multiple modules.
+            "\"https://api.github.com/repos/jphein/VoxSherpa-TTS/releases/latest\"",
+        )
+        buildConfigField(
+            "String",
+            "VOXSHERPA_MIN_VERSION",
+            // Minimum acceptable VoxSherpa versionName. Anything below this
+            // (including upstream's "2.6") triggers the install/update gate
+            // because the dry-run fix is mandatory for storyvox.
+            "\"2.6.1\"",
+        )
     }
 
     buildFeatures {
@@ -58,6 +75,10 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
+
+    // OkHttp powers the in-app VoxSherpa installer (download APK, follow
+    // GitHub redirects). FileProvider lives in androidx.core.
+    implementation(libs.okhttp)
 
     // Media3 — session, player base classes
     implementation(libs.androidx.media3.session)

@@ -16,6 +16,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
 import `in`.jphe.storyvox.auth.AuthWebViewScreen
 import `in`.jphe.storyvox.feature.browse.BrowseScreen
+import `in`.jphe.storyvox.feature.engine.EngineGate
 import `in`.jphe.storyvox.feature.fiction.FictionDetailScreen
 import `in`.jphe.storyvox.feature.follows.FollowsScreen
 import `in`.jphe.storyvox.feature.library.LibraryScreen
@@ -48,6 +49,16 @@ object StoryvoxRoutes {
 fun StoryvoxNavHost(
     navController: NavHostController,
     modifier: Modifier = Modifier,
+) {
+    EngineGate {
+        StoryvoxNavHostContent(navController, modifier)
+    }
+}
+
+@Composable
+private fun StoryvoxNavHostContent(
+    navController: NavHostController,
+    modifier: Modifier,
 ) {
     val currentEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentEntry?.destination?.route

@@ -153,6 +153,44 @@ interface VoiceProviderUi {
     /** Returns true if VoxSherpa is installed. */
     val isVoxSherpaInstalled: Flow<Boolean>
     fun openVoxSherpaInstall()
+
+    /**
+     * Snapshot of the VoxSherpa engine's presence + version on this device,
+     * compared against the version storyvox requires. Used by the first-launch
+     * gate to decide whether to render the normal app or the install sheet.
+     */
+    fun engineState(): UiEngineState
+
+    /**
+     * Downloads the latest VoxSherpa fork APK from GitHub Releases into the
+     * app's cache and launches Android's package-installer activity. Each
+     * step emits a [UiEngineInstallProgress] so the UI can render a progress
+     * bar; the user still confirms the install in the OS dialog.
+     */
+    fun downloadAndInstallEngine(): Flow<UiEngineInstallProgress>
+
+    /**
+     * Launches Android's uninstall flow for the existing VoxSherpa, used
+     * when the installed copy is signed with a different key than the fork
+     * APK we'd download (signature mismatches block in-place upgrade).
+     * After the user uninstalls, the gate re-evaluates and presents the
+     * fresh-install path.
+     */
+    fun uninstallExistingEngine()
+}
+
+data class UiEngineState(
+    val installed: Boolean,
+    val installedVersionName: String?,
+    /** True iff installed AND version >= the version storyvox needs. */
+    val isUpToDate: Boolean,
+)
+
+sealed interface UiEngineInstallProgress {
+    data object Resolving : UiEngineInstallProgress
+    data class Downloading(val bytesRead: Long, val totalBytes: Long) : UiEngineInstallProgress
+    data object LaunchingInstaller : UiEngineInstallProgress
+    data class Failed(val reason: String) : UiEngineInstallProgress
 }
 
 data class UiSettings(

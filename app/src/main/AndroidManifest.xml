@@ -9,6 +9,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!--
+      In-app VoxSherpa installer: storyvox downloads the fork APK from GitHub
+      Releases and launches Android's package-installer UI. The user still
+      confirms the install (Android won't let a non-system app install
+      silently), but they don't have to leave storyvox to find the file.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!--
       Android 11+ package visibility: without these, queryIntentServices(TTS_SERVICE)
@@ -66,6 +73,22 @@
                 android:name="androidx.work.WorkManagerInitializer"
                 android:value="androidx.startup"
                 tools:node="remove" />
+        </provider>
+
+        <!--
+          FileProvider for the in-app VoxSherpa installer: exposes the
+          downloaded APK in cacheDir/installs/ to Android's package-installer
+          activity via a content:// URI (raw file:// URIs have been blocked
+          for installs since N).
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.installs"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths_installs" />
         </provider>
 
     </application>

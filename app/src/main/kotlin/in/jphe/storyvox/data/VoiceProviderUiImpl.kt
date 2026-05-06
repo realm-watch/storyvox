@@ -6,8 +6,11 @@ import android.net.Uri
 import android.speech.tts.TextToSpeech
 import androidx.core.net.toUri
 import dagger.hilt.android.qualifiers.ApplicationContext
+import `in`.jphe.storyvox.feature.api.UiEngineInstallProgress
+import `in`.jphe.storyvox.feature.api.UiEngineState
 import `in`.jphe.storyvox.feature.api.UiVoice
 import `in`.jphe.storyvox.feature.api.VoiceProviderUi
+import `in`.jphe.storyvox.playback.tts.VoxSherpaInstaller
 import `in`.jphe.storyvox.playback.tts.VoxSherpaTtsEngine
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -19,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.launch
 
@@ -26,6 +30,7 @@ import kotlinx.coroutines.launch
 class VoiceProviderUiImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val engine: VoxSherpaTtsEngine,
+    private val installer: VoxSherpaInstaller,
 ) : VoiceProviderUi {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -77,6 +82,31 @@ class VoiceProviderUiImpl @Inject constructor(
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         runCatching { context.startActivity(intent) }
+    }
+
+    override fun engineState(): UiEngineState {
+        val s = installer.engineState()
+        return UiEngineState(
+            installed = s.installed,
+            installedVersionName = s.installedVersionName,
+            isUpToDate = s.isUpToDate,
+        )
+    }
+
+    override fun downloadAndInstallEngine(): Flow<UiEngineInstallProgress> =
+        installer.downloadAndInstall().map { p ->
+            when (p) {
+                VoxSherpaInstaller.Progress.Resolving -> UiEngineInstallProgress.Resolving
+                is VoxSherpaInstaller.Progress.Downloading ->
+                    UiEngineInstallProgress.Downloading(p.bytesRead, p.totalBytes)
+                VoxSherpaInstaller.Progress.LaunchingInstaller ->
+                    UiEngineInstallProgress.LaunchingInstaller
+                is VoxSherpaInstaller.Progress.Failed -> UiEngineInstallProgress.Failed(p.reason)
+            }
+        }
+
+    override fun uninstallExistingEngine() {
+        installer.launchUninstallExisting()
     }
 
     private fun humanize(name: String): String {

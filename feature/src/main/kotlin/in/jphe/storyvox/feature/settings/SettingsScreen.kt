@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Divider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -22,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import `in`.jphe.storyvox.feature.api.ThemeOverride
+import `in`.jphe.storyvox.feature.api.UiEngineInstallProgress
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
@@ -42,15 +44,15 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         SectionHeader("TTS engine")
-        if (!state.isVoxSherpaInstalled) {
-            Text(
-                "VoxSherpa is not installed. Install it for the best Library Nocturne voices.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            BrassButton(label = "Install VoxSherpa", onClick = viewModel::installVoxSherpa, variant = BrassButtonVariant.Secondary)
-        } else {
-            Text("Engine: ${s.ttsEngine}", style = MaterialTheme.typography.bodyMedium)
-        }
+        EngineSection(
+            installed = state.isVoxSherpaInstalled,
+            isUpToDate = state.isEngineUpToDate,
+            installedVersion = state.installedEngineVersion,
+            engineLabel = s.ttsEngine,
+            progress = state.installProgress,
+            onInstall = viewModel::installVoxSherpa,
+            onDismissProgress = viewModel::dismissInstallProgress,
+        )
         BrassButton(label = "Default voice…", onClick = onOpenVoicePicker, variant = BrassButtonVariant.Text)
 
         Divider()
@@ -141,4 +143,105 @@ fun SettingsScreen(
 @Composable
 private fun SectionHeader(label: String) {
     Text(label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+}
+
+/**
+ * Three states bundled into one composable so the order of buttons + status
+ * lines stays consistent regardless of which condition the user is in:
+ *  - missing → "Download voice engine" CTA (primary)
+ *  - present but stale → "Update voice engine" CTA (primary)
+ *  - present and up-to-date → engine label + version line, no button
+ *
+ * While [progress] is non-null we render a progress bar in place of the CTA.
+ */
+@Composable
+private fun EngineSection(
+    installed: Boolean,
+    isUpToDate: Boolean,
+    installedVersion: String?,
+    engineLabel: String,
+    progress: UiEngineInstallProgress?,
+    onInstall: () -> Unit,
+    onDismissProgress: () -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    when {
+        !installed -> Text(
+            "VoxSherpa is not installed. Storyvox uses it for the offline Library Nocturne voices.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        !isUpToDate -> Text(
+            "VoxSherpa $installedVersion is installed, but storyvox needs the dry-run-fix build. Update to keep playback reliable.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        else -> Text(
+            "Engine: $engineLabel · v$installedVersion",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+
+    if (progress != null) {
+        InstallProgressRow(progress, onDismiss = onDismissProgress)
+    } else if (!installed) {
+        BrassButton(
+            label = "Download voice engine",
+            onClick = onInstall,
+            variant = BrassButtonVariant.Primary,
+        )
+    } else if (!isUpToDate) {
+        BrassButton(
+            label = "Update voice engine",
+            onClick = onInstall,
+            variant = BrassButtonVariant.Primary,
+        )
+    }
+}
+
+@Composable
+private fun InstallProgressRow(
+    progress: UiEngineInstallProgress,
+    onDismiss: () -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    when (progress) {
+        UiEngineInstallProgress.Resolving -> {
+            Text("Finding latest VoxSherpa release…", style = MaterialTheme.typography.bodySmall)
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
+        is UiEngineInstallProgress.Downloading -> {
+            val pct = if (progress.totalBytes > 0L) {
+                (progress.bytesRead.toFloat() / progress.totalBytes).coerceIn(0f, 1f)
+            } else 0f
+            val mb = progress.bytesRead / 1_000_000
+            val totalMb = progress.totalBytes / 1_000_000
+            Text(
+                "Downloading… ${mb} MB / ${totalMb} MB",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (progress.totalBytes > 0L) {
+                LinearProgressIndicator(
+                    progress = { pct },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+        }
+        UiEngineInstallProgress.LaunchingInstaller -> {
+            Text(
+                "Confirm the install in the Android dialog. You can return to storyvox after.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            BrassButton(label = "Done", onClick = onDismiss, variant = BrassButtonVariant.Text)
+        }
+        is UiEngineInstallProgress.Failed -> {
+            Text(
+                progress.reason,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+            BrassButton(label = "Dismiss", onClick = onDismiss, variant = BrassButtonVariant.Text)
+        }
+    }
 }
