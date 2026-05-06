@@ -301,7 +301,7 @@ private fun toUiFiction(s: FictionSummary): UiFiction = UiFiction(
  *
  * `startListening` is the cold-start path. The chapter body almost certainly
  * isn't downloaded on the first tap, so we (1) start the foreground media
- * service so [TtsPlayer] binds to the controller, (2) queue a download with
+ * service so the [EnginePlayer] binds to the controller, (2) queue a download with
  * `requireUnmetered = false` so it actually runs on cell, (3) await the first
  * non-null body emission from `chapters.observeChapter(chapterId)`, then
  * (4) call `controller.play(...)` which kicks the TTS engine.
@@ -346,7 +346,7 @@ private class RealPlaybackControllerUi(
     override fun pause() = controller.pause()
     override fun seekTo(ms: Long) {
         // UI thinks in milliseconds; the controller indexes by char offset.
-        // Reverse the same baseline conversion TtsPlayer uses for content position.
+        // Reverse the same baseline conversion EnginePlayer uses for content position.
         val s = controller.state.value
         val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * s.speed
         val charOffset = ((ms / 1000.0) * charsPerSec).toInt().coerceAtLeast(0)

@@ -15,37 +15,6 @@ android {
         minSdk = 26
 
         consumerProguardFiles("consumer-rules.pro")
-
-        buildConfigField(
-            "String",
-            "VOXSHERPA_PACKAGE",
-            "\"com.CodeBySonu.VoxSherpa\"",
-        )
-        buildConfigField(
-            "String",
-            "VOXSHERPA_RELEASES_URL",
-            // Point at JP's fork — same package id as upstream
-            // (com.CodeBySonu.VoxSherpa) plus the dry-run fix from PR #15
-            // until/unless upstream merges it.
-            "\"https://github.com/jphein/VoxSherpa-TTS/releases\"",
-        )
-        buildConfigField(
-            "String",
-            "VOXSHERPA_LATEST_API",
-            // GitHub API endpoint the in-app installer hits to discover the
-            // latest release's APK asset URL. Kept in BuildConfig so the
-            // installer doesn't need to reach into the same constants from
-            // multiple modules.
-            "\"https://api.github.com/repos/jphein/VoxSherpa-TTS/releases/latest\"",
-        )
-        buildConfigField(
-            "String",
-            "VOXSHERPA_MIN_VERSION",
-            // Minimum acceptable VoxSherpa versionName. Anything below this
-            // (including upstream's "2.6") triggers the install/update gate
-            // because the dry-run fix is mandatory for storyvox.
-            "\"2.6.1\"",
-        )
     }
 
     buildFeatures {
@@ -76,8 +45,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
 
-    // OkHttp powers the in-app VoxSherpa installer (download APK, follow
-    // GitHub redirects). FileProvider lives in androidx.core.
+    // OkHttp + okio power VoiceManager's voice-model downloads from
+    // huggingface (rhasspy/piper-voices), with redirect-following + streaming
+    // writes into context.filesDir/voices/{id}/.
     implementation(libs.okhttp)
 
     // Persistent voice settings (active voice id, installed voice ids).

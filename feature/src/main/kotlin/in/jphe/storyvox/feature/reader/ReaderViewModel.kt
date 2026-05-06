@@ -9,7 +9,6 @@ import `in`.jphe.storyvox.feature.api.PlaybackControllerUi
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.UiPlaybackState
 import `in`.jphe.storyvox.feature.api.UiSleepTimerMode
-import `in`.jphe.storyvox.feature.api.VoiceProviderUi
 import `in`.jphe.storyvox.ui.component.ReaderView
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,7 +28,6 @@ data class ReaderUiState(
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
     private val playback: PlaybackControllerUi,
-    private val voices: VoiceProviderUi,
     private val settings: SettingsRepositoryUi,
     @Suppress("UnusedPrivateProperty") savedState: SavedStateHandle,
 ) : ViewModel() {

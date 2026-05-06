@@ -1,47 +1,37 @@
 package `in`.jphe.storyvox.data
 
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import android.speech.tts.TextToSpeech
-import androidx.core.net.toUri
 import dagger.hilt.android.qualifiers.ApplicationContext
-import `in`.jphe.storyvox.feature.api.UiEngineInstallProgress
-import `in`.jphe.storyvox.feature.api.UiEngineState
 import `in`.jphe.storyvox.feature.api.UiVoice
 import `in`.jphe.storyvox.feature.api.VoiceProviderUi
-import `in`.jphe.storyvox.playback.tts.VoxSherpaInstaller
-import `in`.jphe.storyvox.playback.tts.VoxSherpaTtsEngine
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.launch
 
+/**
+ * Legacy voice surface for SettingsViewModel + the legacy VoicePickerScreen +
+ * ReaderViewModel. v0.4.0 introduced [in.jphe.storyvox.playback.voice.VoiceManager]
+ * as the canonical source for voice install/select/download — those flows go
+ * through it directly. This impl backs the framework-TTS-based "list voices the
+ * OS knows about + preview them" affordance only.
+ */
 @Singleton
 class VoiceProviderUiImpl @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val engine: VoxSherpaTtsEngine,
-    private val installer: VoxSherpaInstaller,
 ) : VoiceProviderUi {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    /**
-     * Snapshots the engine's voice list once on first subscription and reuses it.
-     * We boot a throwaway [TextToSpeech] (preferring VoxSherpa), read `voices`,
-     * shut it down. Cheap enough; revisit if the user can install voices at runtime.
-     */
     override val installedVoices: Flow<List<UiVoice>> = flow {
-        val tts = engine.initialize() ?: run {
+        val tts = bootTts() ?: run {
             emit(emptyList())
             return@flow
         }
@@ -51,7 +41,7 @@ class VoiceProviderUiImpl @Inject constructor(
                 UiVoice(
                     id = it.name,
                     label = humanize(it.name),
-                    engine = if (engine.isVoxSherpaInstalled()) "VoxSherpa" else "System TTS",
+                    engine = "System TTS",
                     locale = it.locale.toLanguageTag(),
                 )
             }
@@ -60,58 +50,32 @@ class VoiceProviderUiImpl @Inject constructor(
         emit(mapped)
     }.shareIn(scope, SharingStarted.WhileSubscribed(5_000), replay = 1)
 
-    private val _voxSherpaInstalled = MutableStateFlow(engine.isVoxSherpaInstalled())
-    override val isVoxSherpaInstalled: Flow<Boolean> = _voxSherpaInstalled.asStateFlow()
-
     override fun previewVoice(voice: UiVoice) {
         scope.launch {
-            val tts = engine.initialize() ?: return@launch
+            val tts = bootTts() ?: return@launch
             runCatching {
                 tts.voices?.firstOrNull { it.name == voice.id }?.let { tts.voice = it }
                 tts.speak(PREVIEW_TEXT, TextToSpeech.QUEUE_FLUSH, null, "preview-${voice.id}")
             }
-            // Let the utterance play; shut down after a short delay.
+            // Let the utterance play, then release.
             kotlinx.coroutines.delay(4_000L)
             runCatching { tts.shutdown() }
         }
     }
 
-    override fun openVoxSherpaInstall() {
-        val uri: Uri = engine.installUrl.toUri()
-        val intent = Intent(Intent.ACTION_VIEW, uri).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        runCatching { context.startActivity(intent) }
-    }
-
-    override fun engineState(): UiEngineState {
-        val s = installer.engineState()
-        return UiEngineState(
-            installed = s.installed,
-            installedVersionName = s.installedVersionName,
-            isUpToDate = s.isUpToDate,
-        )
-    }
-
-    override fun downloadAndInstallEngine(): Flow<UiEngineInstallProgress> =
-        installer.downloadAndInstall().map { p ->
-            when (p) {
-                VoxSherpaInstaller.Progress.Resolving -> UiEngineInstallProgress.Resolving
-                is VoxSherpaInstaller.Progress.Downloading ->
-                    UiEngineInstallProgress.Downloading(p.bytesRead, p.totalBytes)
-                VoxSherpaInstaller.Progress.LaunchingInstaller ->
-                    UiEngineInstallProgress.LaunchingInstaller
-                is VoxSherpaInstaller.Progress.Failed -> UiEngineInstallProgress.Failed(p.reason)
+    /** Boot a one-shot Android [TextToSpeech] tied to whatever engine the OS picks. */
+    private suspend fun bootTts(): TextToSpeech? = kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+        var tts: TextToSpeech? = null
+        tts = TextToSpeech(context) { status ->
+            if (cont.isCompleted) return@TextToSpeech
+            if (status == TextToSpeech.SUCCESS) cont.resume(tts) {} else {
+                runCatching { tts?.shutdown() }
+                cont.resume(null) {}
             }
         }
-
-    override fun uninstallExistingEngine() {
-        installer.launchUninstallExisting()
     }
 
     private fun humanize(name: String): String {
-        // Voice names look like "en-US-AvaNeural" or "en_us_x_iol_local". Trim and
-        // hand back the most readable trailing token.
         val cleaned = name.replace('_', '-').split('-').filter { it.isNotBlank() }
         return cleaned.lastOrNull()?.replaceFirstChar { it.titlecase() } ?: name
     }
