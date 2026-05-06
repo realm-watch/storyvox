@@ -32,8 +32,11 @@ import `in`.jphe.storyvox.feature.api.UiFollow
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
+import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
+import `in`.jphe.storyvox.ui.component.SkeletonBlock
 import `in`.jphe.storyvox.ui.layout.isAtLeastTablet
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.grid.items as gridItems
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -68,28 +71,85 @@ fun FollowsScreen(
                     titleContentColor = MaterialTheme.colorScheme.onSurface,
                 ),
             )
-            if (multiColumn) {
-                // Tablet/foldable: row-cards laid out in 2+ adaptive columns so a
-                // long follow list fills the screen instead of a thin centered strip.
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 320.dp),
-                    contentPadding = PaddingValues(spacing.md),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                    verticalArrangement = Arrangement.spacedBy(spacing.sm),
-                ) {
-                    gridItems(state.follows, key = { it.fiction.id }) { follow ->
-                        FollowCard(follow = follow, onClick = { viewModel.open(follow.fiction.id) })
+            when {
+                state.isRefreshing && state.follows.isEmpty() -> FollowsSkeletons(multiColumn)
+                multiColumn -> {
+                    // Tablet/foldable: row-cards laid out in 2+ adaptive columns so a
+                    // long follow list fills the screen instead of a thin centered strip.
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 320.dp),
+                        contentPadding = PaddingValues(spacing.md),
+                        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                    ) {
+                        gridItems(state.follows, key = { it.fiction.id }) { follow ->
+                            FollowCard(follow = follow, onClick = { viewModel.open(follow.fiction.id) })
+                        }
                     }
                 }
-            } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(spacing.md),
-                    verticalArrangement = Arrangement.spacedBy(spacing.sm),
-                ) {
-                    items(state.follows, key = { it.fiction.id }) { follow ->
-                        FollowCard(follow = follow, onClick = { viewModel.open(follow.fiction.id) })
+                else -> {
+                    LazyColumn(
+                        contentPadding = PaddingValues(spacing.md),
+                        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                    ) {
+                        items(state.follows, key = { it.fiction.id }) { follow ->
+                            FollowCard(follow = follow, onClick = { viewModel.open(follow.fiction.id) })
+                        }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Magical loading state for the Follows tab — five rows of brass-sigil
+ * placeholders that match the FollowCard layout (small cover thumb +
+ * title bar + author bar). The sigil rotates on each cover slot.
+ */
+@Composable
+private fun FollowsSkeletons(multiColumn: Boolean) {
+    val spacing = LocalSpacing.current
+    if (multiColumn) {
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 320.dp),
+            contentPadding = PaddingValues(spacing.md),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            gridItems(List(6) { it }) { FollowCardSkeleton() }
+        }
+    } else {
+        LazyColumn(
+            contentPadding = PaddingValues(spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            items(List(6) { it }) { FollowCardSkeleton() }
+        }
+    }
+}
+
+@Composable
+private fun FollowCardSkeleton() {
+    val spacing = LocalSpacing.current
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        Row(
+            modifier = Modifier.padding(spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            MagicSkeletonTile(
+                modifier = Modifier.size(width = 56.dp, height = 84.dp),
+                shape = MaterialTheme.shapes.medium,
+                glyphSize = 36.dp,
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                SkeletonBlock(modifier = Modifier.fillMaxWidth(0.85f).height(16.dp))
+                SkeletonBlock(modifier = Modifier.fillMaxWidth(0.6f).height(12.dp).padding(top = spacing.xxs))
             }
         }
     }

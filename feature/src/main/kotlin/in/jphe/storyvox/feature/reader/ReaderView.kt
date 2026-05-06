@@ -179,14 +179,21 @@ private fun EmptyChapterPlaceholder() {
         modifier = Modifier.fillMaxWidth().padding(top = spacing.xl),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            "Loading chapter…",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        // Magical brass sigil while the chapter body is being fetched + parsed.
+        `in`.jphe.storyvox.ui.component.MagicSkeletonTile(
+            modifier = Modifier.size(width = 200.dp, height = 280.dp),
+            shape = MaterialTheme.shapes.medium,
+            glyphSize = 96.dp,
         )
-        Spacer(Modifier.height(spacing.sm))
+        Spacer(Modifier.height(spacing.lg))
         Text(
-            "The text appears here as VoxSherpa reads it aloud.",
+            "Conjuring the chapter…",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(Modifier.height(spacing.xs))
+        Text(
+            "The text will appear here as VoxSherpa reads it aloud.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
