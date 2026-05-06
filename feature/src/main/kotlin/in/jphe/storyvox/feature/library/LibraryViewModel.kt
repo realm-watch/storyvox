@@ -61,7 +61,10 @@ class LibraryViewModel @Inject constructor(
 
     fun resume() {
         val entry = uiState.value.resume ?: return
-        playback.play()
+        // Cold-start: the controller may have nothing loaded (fresh app launch),
+        // in which case `play()` is a no-op. `startListening` queues the chapter
+        // download and kicks the TTS engine, which is what we actually want.
+        playback.startListening(entry.fiction.id, entry.chapter.id, entry.charOffset)
         viewModelScope.launch {
             _events.send(LibraryUiEvent.OpenReader(entry.fiction.id, entry.chapter.id))
         }

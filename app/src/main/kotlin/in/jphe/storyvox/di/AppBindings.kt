@@ -374,7 +374,7 @@ private class RealPlaybackControllerUi(
 
     override fun cancelSleepTimer() = controller.cancelSleepTimer()
 
-    override fun startListening(fictionId: String, chapterId: String) {
+    override fun startListening(fictionId: String, chapterId: String, charOffset: Int) {
         // Start the service synchronously while we still have the click's foreground
         // attribution. Calling startForegroundService from inside scope.launch (even on
         // Dispatchers.Main.immediate) lost the FG attribution on Android 12+ and threw
@@ -389,7 +389,7 @@ private class RealPlaybackControllerUi(
             chapters.queueChapterDownload(fictionId, chapterId, requireUnmetered = false)
             // Wait for the first non-null body to land in the DB.
             chapters.observeChapter(chapterId).filterNotNull().first()
-            controller.play(fictionId, chapterId, charOffset = 0)
+            controller.play(fictionId, chapterId, charOffset = charOffset)
         }
     }
 

@@ -72,6 +72,8 @@ class TtsPlayer @AssistedInject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var tts: TextToSpeech? = null
     private var initJob: Job? = null
+    /** Held as a field so we can re-attach it after a TTS engine rebuild. */
+    private var tracker: SentenceTracker? = null
 
     private var sentences: List<Sentence> = emptyList()
     private var currentSentenceIndex: Int = 0
@@ -190,9 +192,9 @@ class TtsPlayer @AssistedInject constructor(
             parseIndex = chunker::parseSentenceIndex,
             onSpeedRunnerDetected = {
                 // VoxSherpa silent-speed-run recovery. Stop the queue,
-                // surface the error in state so the UI can show a hint, and
-                // pause. User taps play to resume from the same charOffset
-                // with a fresh speak queue.
+                // surface the error in state, and pause. The engine is
+                // wedged at this point — `resume()` will rebuild it from
+                // scratch before re-queueing.
                 tts?.stop()
                 _observableState.update {
                     it.copy(
@@ -206,6 +208,7 @@ class TtsPlayer @AssistedInject constructor(
                 invalidateState()
             },
         )
+        this.tracker = tracker
         tts.setOnUtteranceProgressListener(tracker)
         tts.setSpeechRate(currentSpeed)
         tts.setPitch(currentPitch)
@@ -249,9 +252,45 @@ class TtsPlayer @AssistedInject constructor(
 
     fun resume() {
         if (sentences.isEmpty()) return
-        _observableState.update { it.copy(isPlaying = true) }
-        speakFromIndex(currentSentenceIndex)
-        invalidateState()
+        val priorError = _observableState.value.error
+        val wasDryRun = priorError is PlaybackError.TtsSpeakFailed &&
+            priorError.utteranceId == "speed-runner"
+        _observableState.update { it.copy(isPlaying = true, error = null) }
+        if (wasDryRun) {
+            // VoxSherpa was wedged — onStart/onDone fired without audio. Just
+            // calling speak() again hits the same wedged AudioTrack. Shut down
+            // the TextToSpeech instance and bind a fresh one before queueing.
+            scope.launch {
+                rebuildTtsEngine()
+                speakFromIndex(currentSentenceIndex)
+                invalidateState()
+            }
+        } else {
+            speakFromIndex(currentSentenceIndex)
+            invalidateState()
+        }
+    }
+
+    /**
+     * Tear down the current [TextToSpeech] instance and bind a fresh one. Re-attaches
+     * the existing [SentenceTracker] and re-applies speed/pitch/voice so the engine
+     * is in the same logical state, just with a fresh AudioTrack underneath.
+     */
+    private suspend fun rebuildTtsEngine() {
+        tts?.shutdown()
+        tts = null
+        val fresh = engine.initialize() ?: run {
+            _uiEvents.tryEmit(PlaybackUiEvent.EngineMissing(engine.installUrl))
+            _observableState.update { it.copy(error = PlaybackError.EngineUnavailable) }
+            return
+        }
+        tts = fresh
+        tracker?.let { fresh.setOnUtteranceProgressListener(it) }
+        fresh.setSpeechRate(currentSpeed)
+        fresh.setPitch(currentPitch)
+        currentVoiceId?.let { id ->
+            fresh.voices?.firstOrNull { it.name == id }?.let { fresh.voice = it }
+        }
     }
 
     fun seekToCharOffset(offset: Int) {

@@ -135,7 +135,7 @@ interface PlaybackControllerUi {
     fun setSpeed(speed: Float)
     fun setPitch(pitch: Float)
     fun setVoice(voiceId: String)
-    fun startListening(fictionId: String, chapterId: String)
+    fun startListening(fictionId: String, chapterId: String, charOffset: Int = 0)
     fun startSleepTimer(mode: UiSleepTimerMode)
     fun cancelSleepTimer()
 }

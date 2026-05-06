@@ -1,6 +1,8 @@
 package `in`.jphe.storyvox.ui.component
 
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -58,20 +60,26 @@ fun BrassProgressTrack(
                 .fillMaxWidth()
                 .height(40.dp)
                 .pointerInput(durationMs) {
-                    detectHorizontalDragGestures(
-                        onDragStart = { offset ->
-                            scrubFraction = (offset.x / size.width).coerceIn(0f, 1f)
-                        },
-                        onHorizontalDrag = { change, _ ->
-                            scrubFraction = (change.position.x / size.width).coerceIn(0f, 1f)
-                        },
-                        onDragEnd = {
-                            val target = (scrubFraction * durationMs).roundToLong()
-                            scrubFraction = -1f
-                            onSeekTo(target)
-                        },
-                        onDragCancel = { scrubFraction = -1f },
-                    )
+                    // Hand-rolled gesture so a single tap also seeks. The built-in
+                    // detectHorizontalDragGestures only fires after enough drag
+                    // distance, swallowing taps and tiny drags — which is what JP
+                    // ran into where the seek bar felt unresponsive.
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        scrubFraction = (down.position.x / size.width).coerceIn(0f, 1f)
+                        var lastFraction = scrubFraction
+                        while (true) {
+                            val ev = awaitPointerEvent()
+                            val change = ev.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) break
+                            lastFraction = (change.position.x / size.width).coerceIn(0f, 1f)
+                            scrubFraction = lastFraction
+                            if (change.positionChange().x != 0f) change.consume()
+                        }
+                        val target = (lastFraction * durationMs).roundToLong()
+                        scrubFraction = -1f
+                        onSeekTo(target)
+                    }
                 }
                 .drawBehind {
                     val railY = size.height / 2f
