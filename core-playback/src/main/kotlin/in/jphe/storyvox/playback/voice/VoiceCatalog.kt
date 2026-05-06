@@ -1,472 +1,409 @@
 package `in`.jphe.storyvox.playback.voice
 
 /**
- * Voice catalog: all English Piper voices from rhasspy/piper-voices on
- * huggingface (37 entries) plus all 53 Kokoro speakers from the multi-lang
- * v1.0 model.
+ * Voice catalog backed by k2-fsa's pre-baked sherpa-onnx-tts-models tarballs
+ * (which carry sample_rate metadata sherpa-onnx needs) plus all 53 Kokoro
+ * speakers from the multi-lang v1.0 model.
  *
- * Piper URL pattern (rhasspy/piper-voices):
- *   .../resolve/main/{family}/{lang_country}/{voice}/{quality}/{voice}.onnx
- *   .../resolve/main/{family}/{lang_country}/{voice}/{quality}/{voice}.onnx.json
+ * Piper tarballs unpack to: model.onnx + tokens.txt + espeak-ng-data/ + MODEL_CARD.
+ * VoiceManager downloads + extracts to context.filesDir/voices/{voiceId}/.
  *
- * Kokoro speakers don't have per-voice download URLs — they're indices into
- * the shared kokoro-multi-lang-v1_0 model. The shared model install flow is
- * v0.4.x work; until then Kokoro entries surface with sizeBytes=0 and
- * playback through them returns PlaybackError.EngineUnavailable.
- *
- * Generated; do not hand-edit. Re-run scripts/regen-voice-catalog.py if the
- * upstream voices.json or KokoroVoiceHelper changes.
+ * Generated; do not hand-edit. Re-run scripts/regen-voice-catalog.py to
+ * refresh from the upstream k2-fsa tts-models release manifest.
  */
 object VoiceCatalog {
 
     val voices: List<CatalogEntry> = listOf(
-        // ----- Piper voices (English; full rhasspy/piper-voices catalog) -----
+        // ----- Piper voices (k2-fsa sherpa-onnx-tts-models, English) -----
         CatalogEntry(
             id = "piper_alan_en_GB_low",
             displayName = "Alan (Low)",
             language = "en_GB",
-            sizeBytes = 63104526L,
+            sizeBytes = 67086942L,
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/low/en_GB-alan-low.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/low/en_GB-alan-low.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-alan-low.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_alan_en_GB_medium",
             displayName = "Alan (Medium)",
             language = "en_GB",
-            sizeBytes = 63201294L,
+            sizeBytes = 67220121L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium/en_GB-alan-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium/en_GB-alan-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-alan-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_alba_en_GB_medium",
             displayName = "Alba (Medium)",
             language = "en_GB",
-            sizeBytes = 63201294L,
+            sizeBytes = 67212349L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alba/medium/en_GB-alba-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alba/medium/en_GB-alba-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-alba-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_aru_en_GB_medium",
             displayName = "Aru (Medium)",
             language = "en_GB",
-            sizeBytes = 76754097L,
+            sizeBytes = 80309222L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/aru/medium/en_GB-aru-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/aru/medium/en_GB-aru-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-aru-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_cori_en_GB_medium",
             displayName = "Cori (Medium)",
             language = "en_GB",
-            sizeBytes = 63531379L,
+            sizeBytes = 67257412L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/cori/medium/en_GB-cori-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/cori/medium/en_GB-cori-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-cori-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_cori_en_GB_high",
             displayName = "Cori (High)",
             language = "en_GB",
-            sizeBytes = 114219352L,
+            sizeBytes = 115574061L,
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/cori/high/en_GB-cori-high.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/cori/high/en_GB-cori-high.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-cori-high.tar.bz2"),
+        ),
+        CatalogEntry(
+            id = "piper_dii_en_GB_high",
+            displayName = "Dii (High)",
+            language = "en_GB",
+            sizeBytes = 67229442L,
+            qualityLevel = QualityLevel.High,
+            engineType = EngineType.Piper,
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-dii-high.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_jenny_dioco_en_GB_medium",
             displayName = "Jenny Dioco (Medium)",
             language = "en_GB",
-            sizeBytes = 63201294L,
+            sizeBytes = 67225842L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/jenny_dioco/medium/en_GB-jenny_dioco-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/jenny_dioco/medium/en_GB-jenny_dioco-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-jenny_dioco-medium.tar.bz2"),
+        ),
+        CatalogEntry(
+            id = "piper_miro_en_GB_high",
+            displayName = "Miro (High)",
+            language = "en_GB",
+            sizeBytes = 67194499L,
+            qualityLevel = QualityLevel.High,
+            engineType = EngineType.Piper,
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-miro-high.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_northern_english_male_en_GB_medium",
             displayName = "Northern English Male (Medium)",
             language = "en_GB",
-            sizeBytes = 63201294L,
+            sizeBytes = 67210490L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/northern_english_male/medium/en_GB-northern_english_male-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/northern_english_male/medium/en_GB-northern_english_male-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-northern_english_male-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_semaine_en_GB_medium",
             displayName = "Semaine (Medium)",
             language = "en_GB",
-            sizeBytes = 76737711L,
+            sizeBytes = 80241918L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/semaine/medium/en_GB-semaine-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/semaine/medium/en_GB-semaine-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-semaine-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_southern_english_female_en_GB_low",
             displayName = "Southern English Female (Low)",
             language = "en_GB",
-            sizeBytes = 63104526L,
+            sizeBytes = 67073626L,
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/southern_english_female/low/en_GB-southern_english_female-low.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/southern_english_female/low/en_GB-southern_english_female-low.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-southern_english_female-low.tar.bz2"),
+        ),
+        CatalogEntry(
+            id = "piper_southern_english_female_en_GB_medium",
+            displayName = "Southern English Female (Medium)",
+            language = "en_GB",
+            sizeBytes = 80275090L,
+            qualityLevel = QualityLevel.Medium,
+            engineType = EngineType.Piper,
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-southern_english_female-medium.tar.bz2"),
+        ),
+        CatalogEntry(
+            id = "piper_southern_english_male_en_GB_medium",
+            displayName = "Southern English Male (Medium)",
+            language = "en_GB",
+            sizeBytes = 80299212L,
+            qualityLevel = QualityLevel.Medium,
+            engineType = EngineType.Piper,
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-southern_english_male-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_vctk_en_GB_medium",
             displayName = "Vctk (Medium)",
             language = "en_GB",
-            sizeBytes = 76952753L,
+            sizeBytes = 80488085L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/vctk/medium/en_GB-vctk-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/vctk/medium/en_GB-vctk-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-vctk-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_amy_en_US_low",
             displayName = "Amy (Low)",
             language = "en_US",
-            sizeBytes = 63104526L,
+            sizeBytes = 67095344L,
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/low/en_US-amy-low.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/low/en_US-amy-low.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-amy-low.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_amy_en_US_medium",
             displayName = "Amy (Medium)",
             language = "en_US",
-            sizeBytes = 63201294L,
+            sizeBytes = 67223746L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-amy-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_arctic_en_US_medium",
             displayName = "Arctic (Medium)",
             language = "en_US",
-            sizeBytes = 76766385L,
+            sizeBytes = 80255511L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/arctic/medium/en_US-arctic-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/arctic/medium/en_US-arctic-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-arctic-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_bryce_en_US_medium",
             displayName = "Bryce (Medium)",
             language = "en_US",
-            sizeBytes = 63531379L,
+            sizeBytes = 67278133L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/bryce/medium/en_US-bryce-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/bryce/medium/en_US-bryce-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-bryce-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_danny_en_US_low",
             displayName = "Danny (Low)",
             language = "en_US",
-            sizeBytes = 63104526L,
+            sizeBytes = 67107780L,
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/danny/low/en_US-danny-low.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/danny/low/en_US-danny-low.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-danny-low.tar.bz2"),
+        ),
+        CatalogEntry(
+            id = "piper_glados_en_US_high",
+            displayName = "Glados (High)",
+            language = "en_US",
+            sizeBytes = 115586982L,
+            qualityLevel = QualityLevel.High,
+            engineType = EngineType.Piper,
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-glados-high.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_hfc_female_en_US_medium",
             displayName = "Hfc Female (Medium)",
             language = "en_US",
-            sizeBytes = 63201294L,
+            sizeBytes = 67228166L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/hfc_female/medium/en_US-hfc_female-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/hfc_female/medium/en_US-hfc_female-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-hfc_female-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_hfc_male_en_US_medium",
             displayName = "Hfc Male (Medium)",
             language = "en_US",
-            sizeBytes = 63201294L,
+            sizeBytes = 67214049L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/hfc_male/medium/en_US-hfc_male-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/hfc_male/medium/en_US-hfc_male-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-hfc_male-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_joe_en_US_medium",
             displayName = "Joe (Medium)",
             language = "en_US",
-            sizeBytes = 63201294L,
+            sizeBytes = 67169394L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/joe/medium/en_US-joe-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/joe/medium/en_US-joe-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-joe-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_john_en_US_medium",
             displayName = "John (Medium)",
             language = "en_US",
-            sizeBytes = 63531379L,
+            sizeBytes = 67249181L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/john/medium/en_US-john-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/john/medium/en_US-john-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-john-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_kathleen_en_US_low",
             displayName = "Kathleen (Low)",
             language = "en_US",
-            sizeBytes = 63104526L,
+            sizeBytes = 67118360L,
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/kathleen/low/en_US-kathleen-low.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/kathleen/low/en_US-kathleen-low.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-kathleen-low.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_kristin_en_US_medium",
             displayName = "Kristin (Medium)",
             language = "en_US",
-            sizeBytes = 63531379L,
+            sizeBytes = 67259230L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/kristin/medium/en_US-kristin-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/kristin/medium/en_US-kristin-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-kristin-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_kusal_en_US_medium",
             displayName = "Kusal (Medium)",
             language = "en_US",
-            sizeBytes = 63201294L,
+            sizeBytes = 67219292L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/kusal/medium/en_US-kusal-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/kusal/medium/en_US-kusal-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-kusal-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_l2arctic_en_US_medium",
             displayName = "L2Arctic (Medium)",
             language = "en_US",
-            sizeBytes = 76778673L,
+            sizeBytes = 80314104L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/l2arctic/medium/en_US-l2arctic-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/l2arctic/medium/en_US-l2arctic-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-l2arctic-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_lessac_en_US_low",
             displayName = "Lessac (Low)",
             language = "en_US",
-            sizeBytes = 63201294L,
+            sizeBytes = 67097098L,
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/low/en_US-lessac-low.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/low/en_US-lessac-low.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-lessac-low.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_lessac_en_US_medium",
             displayName = "Lessac (Medium)",
             language = "en_US",
-            sizeBytes = 63201294L,
+            sizeBytes = 67230653L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-lessac-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_lessac_en_US_high",
             displayName = "Lessac (High)",
             language = "en_US",
-            sizeBytes = 113895201L,
+            sizeBytes = 115545841L,
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/high/en_US-lessac-high.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/high/en_US-lessac-high.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-lessac-high.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_libritts_en_US_high",
             displayName = "Libritts (High)",
             language = "en_US",
-            sizeBytes = 136673811L,
+            sizeBytes = 131033598L,
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/libritts/high/en_US-libritts-high.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/libritts/high/en_US-libritts-high.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-libritts-high.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_libritts_r_en_US_medium",
             displayName = "Libritts R (Medium)",
             language = "en_US",
-            sizeBytes = 78580914L,
+            sizeBytes = 82038311L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/libritts_r/medium/en_US-libritts_r-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/libritts_r/medium/en_US-libritts_r-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-libritts_r-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_ljspeech_en_US_medium",
             displayName = "Ljspeech (Medium)",
             language = "en_US",
-            sizeBytes = 63531379L,
+            sizeBytes = 67169893L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-ljspeech-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_ljspeech_en_US_high",
             displayName = "Ljspeech (High)",
             language = "en_US",
-            sizeBytes = 114199011L,
+            sizeBytes = 115817679L,
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/high/en_US-ljspeech-high.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/high/en_US-ljspeech-high.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-ljspeech-high.tar.bz2"),
+        ),
+        CatalogEntry(
+            id = "piper_miro_en_US_high",
+            displayName = "Miro (High)",
+            language = "en_US",
+            sizeBytes = 67198472L,
+            qualityLevel = QualityLevel.High,
+            engineType = EngineType.Piper,
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-miro-high.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_norman_en_US_medium",
             displayName = "Norman (Medium)",
             language = "en_US",
-            sizeBytes = 63531379L,
+            sizeBytes = 67203672L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/norman/medium/en_US-norman-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/norman/medium/en_US-norman-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-norman-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_reza_ibrahim_en_US_medium",
             displayName = "Reza Ibrahim (Medium)",
             language = "en_US",
-            sizeBytes = 63511038L,
+            sizeBytes = 67214755L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/reza_ibrahim/medium/en_US-reza_ibrahim-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/reza_ibrahim/medium/en_US-reza_ibrahim-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-reza_ibrahim-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_ryan_en_US_low",
             displayName = "Ryan (Low)",
             language = "en_US",
-            sizeBytes = 63104526L,
+            sizeBytes = 67100179L,
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/low/en_US-ryan-low.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/low/en_US-ryan-low.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-ryan-low.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_ryan_en_US_medium",
             displayName = "Ryan (Medium)",
             language = "en_US",
-            sizeBytes = 63201294L,
+            sizeBytes = 67213100L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-ryan-medium.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_ryan_en_US_high",
             displayName = "Ryan (High)",
             language = "en_US",
-            sizeBytes = 120786792L,
+            sizeBytes = 115630708L,
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/high/en_US-ryan-high.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/high/en_US-ryan-high.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-ryan-high.tar.bz2"),
         ),
         CatalogEntry(
             id = "piper_sam_en_US_medium",
             displayName = "Sam (Medium)",
             language = "en_US",
-            sizeBytes = 62950044L,
+            sizeBytes = 67249919L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/sam/medium/en_US-sam-medium.onnx",
-                tokensUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/sam/medium/en_US-sam-medium.onnx.json",
-            ),
+            piper = PiperPaths(tarballUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-sam-medium.tar.bz2"),
         ),
 
-        // ----- Kokoro speakers (53 from kokoro-multi-lang-v1_0, no per-voice download) -----
+        // ----- Kokoro speakers (all 53 from kokoro-multi-lang-v1_0) -----
         CatalogEntry(
             id = "kokoro_alloy_en_US_0",
             displayName = "🇺🇸 Alloy (English Female)",
@@ -950,8 +887,8 @@ object VoiceCatalog {
 }
 
 /**
- * Catalog entry — adds provisioning fields ([piper] URLs) on top of the
- * UI-facing [UiVoiceInfo] shape. [VoiceManager] projects this into
+ * Catalog entry — adds provisioning fields (Piper tarball URL) on top of
+ * the UI-facing [UiVoiceInfo] shape. [VoiceManager] projects this into
  * [UiVoiceInfo] for callers, hiding the URLs from the UI layer.
  */
 data class CatalogEntry(
@@ -965,5 +902,7 @@ data class CatalogEntry(
     val piper: PiperPaths?,
 )
 
-data class PiperPaths(val onnxUrl: String, val tokensUrl: String)
+/** Piper download config — k2-fsa packages each voice as a tarball
+ *  containing model.onnx + tokens.txt + espeak-ng-data + MODEL_CARD. */
+data class PiperPaths(val tarballUrl: String)
 
