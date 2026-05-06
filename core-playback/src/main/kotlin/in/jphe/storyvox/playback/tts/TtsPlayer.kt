@@ -181,11 +181,11 @@ class TtsPlayer @AssistedInject constructor(
                 _observableState.update {
                     it.copy(currentSentenceRange = range, charOffset = range.startCharInChapter)
                 }
-                // Save position on every sentence boundary so a process kill
-                // (force stop, low-memory cull, or unclean app exit) loses at
-                // most one sentence of progress. Pause-only saves left the
-                // resume offset stale whenever the user just walked away.
-                scope.launch { persistPosition() }
+                // (per-sentence persistPosition removed — was triggering
+                // Compose recomposition + Room I/O on every sentence which
+                // appeared to add audible delay between utterances on lower-
+                // end hardware. Position still persists on pause and on
+                // releaseTts; we'll add a coarser timer-based save later.)
             },
             onChapterDone = {
                 sleepTimer.signalChapterEnd()
@@ -430,4 +430,5 @@ class TtsPlayer @AssistedInject constructor(
         tts = null
         scope.cancel()
     }
+
 }
