@@ -53,7 +53,7 @@ VoxSherpa is GPL-3.0 and ships as a separate APK. **storyvox depends on having i
 storyvox is currently distributed by sideloading. The CI builds debug APKs on every `main` push; tagged releases (`v0.x.x`) attach a signed APK to the GitHub release.
 
 1. Download the latest `storyvox-debug.apk` from the [Releases page](https://github.com/jphein/storyvox/releases).
-2. Install [VoxSherpa-TTS](https://github.com/CodeBySonu95/VoxSherpa-TTS/releases) (separate APK).
+2. Install [VoxSherpa-TTS](https://github.com/jphein/VoxSherpa-TTS/releases) (separate APK; this is JP's fork with a dry-run-detection fix on top of upstream).
 3. On your Android device, enable **Install unknown apps** for whatever browser/file manager you used.
 4. Open the APK to install.
 5. Launch storyvox. You'll be asked for notification permission (used for the lock-screen tile during playback).
@@ -159,4 +159,4 @@ Each commit message preserves who did what — `git log` reads as a team retro.
 
 ## License
 
-`LICENSE` is currently a placeholder. A proper open-source license will be applied before public release.
+storyvox is licensed under the [GNU General Public License v3.0](LICENSE) — same as VoxSherpa. You're free to use, modify, and redistribute under those terms.

@@ -24,7 +24,10 @@ android {
         buildConfigField(
             "String",
             "VOXSHERPA_RELEASES_URL",
-            "\"https://github.com/CodeBySonu95/VoxSherpa-TTS/releases\"",
+            // Point at JP's fork — same package id as upstream
+            // (com.CodeBySonu.VoxSherpa) plus the dry-run fix from PR #15
+            // until/unless upstream merges it.
+            "\"https://github.com/jphein/VoxSherpa-TTS/releases\"",
         )
     }
 
