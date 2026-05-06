@@ -16,6 +16,13 @@
       silently), but they don't have to leave storyvox to find the file.
     -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!--
+      Lets ACTION_UNINSTALL_PACKAGE and ACTION_DELETE be triggered against
+      VoxSherpa from inside storyvox so the user can clear an upstream-signed
+      build before installing the differently-signed fork. Android still
+      shows the user a confirmation dialog; this just allows us to launch it.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
 
     <!--
       Android 11+ package visibility: without these, queryIntentServices(TTS_SERVICE)

@@ -15,9 +15,12 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -59,9 +62,18 @@ fun EngineGate(
     val progress by vm.progress.collectAsStateWithLifecycle()
     val bypassed by vm.bypassed.collectAsStateWithLifecycle()
 
-    // Re-probe whenever this composable re-enters composition (e.g., user
-    // returns from the install dialog). State is cheap to compute.
-    LaunchedEffect(Unit) { vm.refresh() }
+    // Re-probe on every lifecycle resume — the user may have just come back
+    // from the OS uninstall/install dialog, in which case PackageInfo has
+    // changed under us. LaunchedEffect(Unit) alone doesn't cover this:
+    // recomposition doesn't re-run keyed effects.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) vm.refresh()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     if (bypassed || (state.installed && state.isUpToDate)) {
         content()

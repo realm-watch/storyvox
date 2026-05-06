@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.util.Log
 import androidx.core.content.FileProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
 import `in`.jphe.storyvox.playback.BuildConfig
@@ -163,11 +164,44 @@ class VoxSherpaInstaller @Inject constructor(
      * installed and we need them to remove it before our fork (signed with
      * a different keystore) can replace it. Android surfaces the standard
      * uninstall UI; we have no callback, the gate just re-probes on resume.
+     *
+     * Returns true if an activity was launched, false otherwise. The gate
+     * uses this to fall back to a "go to Settings → Apps" instruction if
+     * the system uninstall flow can't be reached directly.
      */
-    fun launchUninstallExisting() {
-        val intent = Intent(Intent.ACTION_DELETE, Uri.parse("package:${BuildConfig.VOXSHERPA_PACKAGE}"))
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { context.startActivity(intent) }
+    fun launchUninstallExisting(): Boolean {
+        val pkg = BuildConfig.VOXSHERPA_PACKAGE
+        Log.i("VoxSherpaInstaller", "launchUninstallExisting() pkg=$pkg")
+        // ACTION_UNINSTALL_PACKAGE is more explicit than ACTION_DELETE and
+        // resolves more reliably across OEMs. It's marked deprecated since
+        // API 29 in favour of PackageInstaller.uninstall(), but the latter
+        // returns the result silently to a PendingIntent we'd have to
+        // plumb back; the user-facing UI is the same dialog either way.
+        @Suppress("DEPRECATION")
+        val primary = Intent(Intent.ACTION_UNINSTALL_PACKAGE, Uri.fromParts("package", pkg, null))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (tryStart(primary)) return true
+
+        // Fallback: ACTION_DELETE with the same URI. Older OEM ROMs handle
+        // this when ACTION_UNINSTALL_PACKAGE doesn't resolve.
+        val fallback = Intent(Intent.ACTION_DELETE, Uri.fromParts("package", pkg, null))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (tryStart(fallback)) return true
+
+        // Last resort: open the system app-info screen so the user can hit
+        // Uninstall manually.
+        val appInfo = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            .setData(Uri.fromParts("package", pkg, null))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return tryStart(appInfo)
+    }
+
+    private fun tryStart(intent: Intent): Boolean = try {
+        context.startActivity(intent)
+        true
+    } catch (e: Exception) {
+        Log.w("VoxSherpaInstaller", "startActivity ${intent.action} failed: ${e.message}")
+        false
     }
 
     private fun launchInstallIntent(apk: File) {
