@@ -96,6 +96,7 @@ fun StoryvoxNavHost(
             composable(StoryvoxRoutes.FOLLOWS) {
                 FollowsScreen(
                     onOpenFiction = { id -> navController.navigate(StoryvoxRoutes.fictionDetail(id)) },
+                    onOpenSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
                 )
             }
             composable(StoryvoxRoutes.BROWSE) {

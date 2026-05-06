@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import `in`.jphe.storyvox.feature.api.FictionRepositoryUi
+import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.UiFollow
 import javax.inject.Inject
 import kotlinx.coroutines.channels.Channel
@@ -12,6 +13,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -20,6 +23,7 @@ import kotlinx.coroutines.launch
 data class FollowsUiState(
     val follows: List<UiFollow> = emptyList(),
     val isRefreshing: Boolean = true,
+    val isSignedIn: Boolean = false,
 )
 
 sealed interface FollowsUiEvent {
@@ -30,6 +34,7 @@ sealed interface FollowsUiEvent {
 @HiltViewModel
 class FollowsViewModel @Inject constructor(
     private val repo: FictionRepositoryUi,
+    settings: SettingsRepositoryUi,
 ) : ViewModel() {
 
     private val _events = Channel<FollowsUiEvent>(Channel.BUFFERED)
@@ -41,9 +46,12 @@ class FollowsViewModel @Inject constructor(
      *  can't infer "loading" from absence of data alone. */
     private val refreshing = MutableStateFlow(true)
 
+    private val signedIn = settings.settings.map { it.isSignedIn }.distinctUntilChanged()
+
     init {
         // Lazy refresh on tab visit — pulls the user's RR follows list into
-        // the local DB. Silent on failure (unauthed users keep an empty tab).
+        // the local DB. Silent on failure (unauthed users keep an empty tab,
+        // and the screen renders a sign-in CTA instead).
         viewModelScope.launch {
             try {
                 repo.refreshFollows()
@@ -53,9 +61,10 @@ class FollowsViewModel @Inject constructor(
         }
     }
 
-    val uiState: StateFlow<FollowsUiState> = combine(repo.follows, refreshing) { list, busy ->
-        FollowsUiState(follows = list, isRefreshing = busy)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FollowsUiState())
+    val uiState: StateFlow<FollowsUiState> =
+        combine(repo.follows, refreshing, signedIn) { list, busy, authed ->
+            FollowsUiState(follows = list, isRefreshing = busy, isSignedIn = authed)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FollowsUiState())
 
     fun open(fictionId: String) {
         viewModelScope.launch { _events.send(FollowsUiEvent.OpenFiction(fictionId)) }

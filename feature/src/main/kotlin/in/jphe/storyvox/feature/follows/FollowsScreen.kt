@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -36,6 +37,7 @@ import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
 import `in`.jphe.storyvox.ui.component.SkeletonBlock
 import `in`.jphe.storyvox.ui.layout.isAtLeastTablet
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.grid.items as gridItems
 
@@ -43,6 +45,7 @@ import androidx.compose.foundation.lazy.grid.items as gridItems
 @Composable
 fun FollowsScreen(
     onOpenFiction: (String) -> Unit,
+    onOpenSignIn: () -> Unit,
     viewModel: FollowsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -60,11 +63,13 @@ fun FollowsScreen(
             TopAppBar(
                 title = { Text("Follows", style = MaterialTheme.typography.titleLarge) },
                 actions = {
-                    BrassButton(
-                        label = "Mark all caught up",
-                        onClick = viewModel::markAllCaughtUp,
-                        variant = BrassButtonVariant.Text,
-                    )
+                    if (state.isSignedIn && state.follows.isNotEmpty()) {
+                        BrassButton(
+                            label = "Mark all caught up",
+                            onClick = viewModel::markAllCaughtUp,
+                            variant = BrassButtonVariant.Text,
+                        )
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
@@ -72,7 +77,15 @@ fun FollowsScreen(
                 ),
             )
             when {
+                // Brass-sigil skeletons while the network refresh is in flight
+                // and we have no cached follows to show yet.
                 state.isRefreshing && state.follows.isEmpty() -> FollowsSkeletons(multiColumn)
+                // Unauthed: show the sign-in CTA. Cookies are device-local, so
+                // a fresh install on a new device lands here even if the user
+                // is signed in elsewhere.
+                !state.isSignedIn -> SignedOutEmpty(onOpenSignIn)
+                // Signed in but list is empty (user follows nothing on RR yet).
+                state.follows.isEmpty() -> SignedInEmpty()
                 multiColumn -> {
                     // Tablet/foldable: row-cards laid out in 2+ adaptive columns so a
                     // long follow list fills the screen instead of a thin centered strip.
@@ -99,6 +112,76 @@ fun FollowsScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * Empty state shown when the user has no Royal Road session on this device.
+ * The brass sigil keeps the realm aesthetic; the CTA jumps to the WebView
+ * sign-in flow which captures cookies into the encrypted store.
+ */
+@Composable
+private fun SignedOutEmpty(onOpenSignIn: () -> Unit) {
+    val spacing = LocalSpacing.current
+    Column(
+        modifier = Modifier.fillMaxSize().padding(spacing.lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        MagicSkeletonTile(
+            modifier = Modifier.size(width = 160.dp, height = 220.dp),
+            shape = MaterialTheme.shapes.medium,
+            glyphSize = 80.dp,
+        )
+        Spacer(Modifier.height(spacing.lg))
+        Text(
+            "Sign in to see your follows",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(spacing.xs))
+        Text(
+            "Your Royal Road session lives on this device. Sign in here to pull in the fictions you follow.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(spacing.lg))
+        BrassButton(
+            label = "Sign in to Royal Road",
+            onClick = onOpenSignIn,
+            variant = BrassButtonVariant.Primary,
+        )
+    }
+}
+
+/**
+ * Empty state shown when the user IS signed in but has zero follows on RR.
+ * No CTA — directing them to Browse is the obvious next step but the bottom
+ * nav already does that.
+ */
+@Composable
+private fun SignedInEmpty() {
+    val spacing = LocalSpacing.current
+    Column(
+        modifier = Modifier.fillMaxSize().padding(spacing.lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            "No follows yet",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(spacing.xs))
+        Text(
+            "Find a fiction in Browse and tap the follow icon to add it here.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 
