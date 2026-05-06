@@ -28,6 +28,7 @@ import `in`.jphe.storyvox.ui.component.BottomTabBar
 import `in`.jphe.storyvox.ui.component.HomeTab
 
 object StoryvoxRoutes {
+    const val PLAYING = "playing"
     const val LIBRARY = "library"
     const val FOLLOWS = "follows"
     const val BROWSE = "browse"
@@ -43,7 +44,7 @@ object StoryvoxRoutes {
     fun reader(fictionId: String, chapterId: String) = "reader/$fictionId/$chapterId"
     fun audiobook(fictionId: String, chapterId: String) = "audiobook/$fictionId/$chapterId"
 
-    private val HOME_ROUTES = setOf(LIBRARY, FOLLOWS, BROWSE, SETTINGS)
+    private val HOME_ROUTES = setOf(PLAYING, LIBRARY, FOLLOWS, BROWSE, SETTINGS)
     fun isHome(route: String?) = route in HOME_ROUTES
 }
 
@@ -74,6 +75,7 @@ private fun StoryvoxNavHostContent(
             if (showBottomBar) {
                 BottomTabBar(
                     selected = when (currentRoute) {
+                        StoryvoxRoutes.PLAYING -> HomeTab.Playing
                         StoryvoxRoutes.FOLLOWS -> HomeTab.Follows
                         StoryvoxRoutes.BROWSE -> HomeTab.Browse
                         StoryvoxRoutes.SETTINGS -> HomeTab.Settings
@@ -81,6 +83,7 @@ private fun StoryvoxNavHostContent(
                     },
                     onSelect = { tab ->
                         val target = when (tab) {
+                            HomeTab.Playing -> StoryvoxRoutes.PLAYING
                             HomeTab.Library -> StoryvoxRoutes.LIBRARY
                             HomeTab.Follows -> StoryvoxRoutes.FOLLOWS
                             HomeTab.Browse -> StoryvoxRoutes.BROWSE
@@ -103,6 +106,11 @@ private fun StoryvoxNavHostContent(
             startDestination = StoryvoxRoutes.LIBRARY,
             modifier = Modifier.padding(padding),
         ) {
+            composable(StoryvoxRoutes.PLAYING) {
+                HybridReaderScreen(
+                    onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
+                )
+            }
             composable(StoryvoxRoutes.LIBRARY) {
                 LibraryScreen(
                     onOpenFiction = { id -> navController.navigate(StoryvoxRoutes.fictionDetail(id)) },
