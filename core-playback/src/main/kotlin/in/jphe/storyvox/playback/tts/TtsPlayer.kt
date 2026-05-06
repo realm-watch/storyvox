@@ -181,6 +181,11 @@ class TtsPlayer @AssistedInject constructor(
                 _observableState.update {
                     it.copy(currentSentenceRange = range, charOffset = range.startCharInChapter)
                 }
+                // Save position on every sentence boundary so a process kill
+                // (force stop, low-memory cull, or unclean app exit) loses at
+                // most one sentence of progress. Pause-only saves left the
+                // resume offset stale whenever the user just walked away.
+                scope.launch { persistPosition() }
             },
             onChapterDone = {
                 sleepTimer.signalChapterEnd()
@@ -260,9 +265,13 @@ class TtsPlayer @AssistedInject constructor(
             // VoxSherpa was wedged — onStart/onDone fired without audio. Just
             // calling speak() again hits the same wedged AudioTrack. Shut down
             // the TextToSpeech instance and bind a fresh one before queueing.
+            // Re-check isPlaying after the (suspending) rebuild — if the user
+            // tapped pause during the ~1s init we shouldn't speak afterwards.
             scope.launch {
                 rebuildTtsEngine()
-                speakFromIndex(currentSentenceIndex)
+                if (_observableState.value.isPlaying) {
+                    speakFromIndex(currentSentenceIndex)
+                }
                 invalidateState()
             }
         } else {
@@ -405,6 +414,11 @@ class TtsPlayer @AssistedInject constructor(
     }
 
     fun releaseTts() {
+        // Final position save before tearing the scope down. Use runBlocking
+        // because scope.cancel() below would cancel any launched persist call;
+        // the write itself goes through Room (Dispatchers.IO inside the dao)
+        // so the main-thread block is just the await.
+        kotlinx.coroutines.runBlocking { persistPosition() }
         tts?.shutdown()
         tts = null
         scope.cancel()
