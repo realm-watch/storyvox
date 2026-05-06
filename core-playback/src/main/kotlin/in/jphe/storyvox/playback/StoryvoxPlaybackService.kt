@@ -129,52 +129,83 @@ class StoryvoxPlaybackService : MediaSessionService() {
             )!!
     }
 
-    /** Placeholder posted once to satisfy Android's 5-sec FG deadline. After
-     * Media3's [DefaultMediaNotificationProvider] takes over (when the player
-     * reports a media item + isPlaying state), we stop touching the
-     * notification — the same NOTIFICATION_ID gets re-targeted by Media3's
-     * `startForeground(...)` calls and our placeholder dissolves. */
+    /** Placeholder posted to satisfy Android's 5-sec foreground deadline.
+     * It re-renders dynamically as PlaybackState changes so the user never
+     * sees a stale "Loading…" — the title tracks the chapter, the content
+     * text tracks book/state, and tap routes to the reader for whatever's
+     * currently playing. Once Media3's [DefaultMediaNotificationProvider]
+     * has its first state to work with, it takes over the same
+     * NOTIFICATION_ID with a richer MediaStyle layout. */
     private var placeholderPosted = false
+    private var placeholderUpdaterJob: Job? = null
 
     /**
      * Android requires a foreground service started via `startForegroundService()` to
      * call `startForeground()` within 5 seconds, or the OS kills the app with
      * `ForegroundServiceDidNotStartInTimeException`. Media3's
      * [DefaultMediaNotificationProvider] only posts the real MediaStyle notification
-     * once the player is actually playing — but storyvox waits for an HTTP fetch +
-     * DB write before play, which can easily exceed 5 s on a cold first listen.
+     * once the player has a media item — but storyvox loads a sherpa-onnx model
+     * and queues a chapter download before that, which can easily exceed 5s on a
+     * cold first listen.
      *
-     * We post the placeholder only ONCE (on first start), then defer entirely to
-     * Media3. If we re-posted on every onStartCommand, the placeholder would
-     * overwrite the MediaStyle notification because both share NOTIFICATION_ID.
+     * We post a placeholder once, then keep updating it from controller.state
+     * until Media3 takes over (Media3's calls share NOTIFICATION_ID and replace
+     * ours in-place). The placeholder always carries the right
+     * [PendingIntent] for tap-to-reader so the notification is functional even
+     * during the seconds before Media3 has a chance to render its UI.
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (!placeholderPosted) {
-            // Use a MediaStyle-shaped placeholder so Media3's
-            // DefaultMediaNotificationProvider replaces it cleanly when the
-            // player actually starts. A plain notification can fail to be
-            // re-targeted if the system has already memoized it as
-            // user-supplied chrome.
-            val placeholder = NotificationCompat.Builder(this, CHANNEL_PLAYBACK)
-                .setSmallIcon(R.drawable.ic_storyvox_notif)
-                .setContentTitle("storyvox")
-                .setContentText("Loading…")
-                .setPriority(NotificationCompat.PRIORITY_LOW)
-                .setOngoing(true)
-                .setStyle(MediaStyleNotificationHelper.MediaStyle(session))
-                .build()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                startForeground(
-                    NOTIFICATION_ID,
-                    placeholder,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
-                )
-            } else {
-                startForeground(NOTIFICATION_ID, placeholder)
-            }
+            postPlaceholder("storyvox", "Starting…", null, null)
             placeholderPosted = true
+            // Keep the placeholder fresh until Media3 takes over. Once a
+            // chapter is loaded, the placeholder shows the real title +
+            // content intent. Media3 will replace this entirely with its
+            // MediaStyle layout once it has state to render.
+            placeholderUpdaterJob = scope.launch {
+                controller.state
+                    .map { Triple(it.bookTitle, it.chapterTitle, it.currentFictionId to it.currentChapterId) }
+                    .distinctUntilChanged()
+                    .collect { (book, chapter, ids) ->
+                        val title = chapter?.takeIf { it.isNotBlank() } ?: "storyvox"
+                        val content = book?.takeIf { it.isNotBlank() } ?: "Loading…"
+                        postPlaceholder(title, content, ids.first, ids.second)
+                    }
+            }
         }
         return super.onStartCommand(intent, flags, startId)
+    }
+
+    /**
+     * Build + (re-)post the placeholder notification. Always carries a
+     * MediaStyle session binding so transport buttons render, plus a
+     * tap-intent into MainActivity with the extras [DeepLinkResolver] uses
+     * to land the user on the reader for the playing chapter.
+     */
+    private fun postPlaceholder(
+        title: String,
+        content: String,
+        fictionId: String?,
+        chapterId: String?,
+    ) {
+        val notif = NotificationCompat.Builder(this, CHANNEL_PLAYBACK)
+            .setSmallIcon(R.drawable.ic_storyvox_notif)
+            .setContentTitle(title)
+            .setContentText(content)
+            .setContentIntent(buildSessionActivity(fictionId, chapterId))
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .setStyle(MediaStyleNotificationHelper.MediaStyle(session))
+            .build()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                notif,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notif)
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession = session
