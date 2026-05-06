@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.rememberNavController
 import dagger.hilt.android.AndroidEntryPoint
@@ -19,6 +20,7 @@ import `in`.jphe.storyvox.ui.theme.LibraryNocturneTheme
 import `in`.jphe.storyvox.navigation.DeepLinkResolver
 import `in`.jphe.storyvox.navigation.StoryvoxNavHost
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -49,10 +51,16 @@ class MainActivity : ComponentActivity() {
 
                 LaunchedEffect(pending) {
                     pending?.let { i ->
+                        // Wait until StoryvoxNavHost has attached its graph + pushed
+                        // the start destination — otherwise navigate() throws
+                        // "Navigation graph has not been set". This is a race on
+                        // cold-start from a notification tap, where the LaunchedEffect
+                        // body runs before NavHost finishes composing.
+                        snapshotFlow { navController.currentBackStackEntry }
+                            .first { it != null }
                         DeepLinkResolver.resolve(i)?.let { route ->
                             navController.navigate(route)
                         }
-                        // Clear so re-emission of the same intent doesn't re-navigate.
                         intentFlow.value = null
                     }
                 }
