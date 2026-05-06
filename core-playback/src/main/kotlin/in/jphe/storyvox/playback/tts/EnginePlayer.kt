@@ -6,6 +6,7 @@ import android.media.AudioFormat as AndroidAudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Looper
+import android.os.Process as AndroidProcess
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaMetadata
@@ -151,7 +152,12 @@ class EnginePlayer @AssistedInject constructor(
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
-                    .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
+                    // CONTENT_TYPE_MUSIC, not _SPEECH — see createAudioTrack().
+                    // Mirrors the AudioTrack-level fix; otherwise the
+                    // MediaSession descriptor still advertises speech to
+                    // AudioFlinger and Samsung's session-metadata routing
+                    // can apply speech-DSP independently of the AudioTrack.
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                     .build(),
             )
             .setPlaybackParameters(PlaybackParameters(currentSpeed, currentPitch))
@@ -291,12 +297,22 @@ class EnginePlayer @AssistedInject constructor(
             is EngineType.Kokoro -> KokoroEngine.getInstance().sampleRate
             else -> VoiceEngine.getInstance().sampleRate
         }.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
-        audioTrack = createAudioTrack(sampleRate).also { it.play() }
+        // Don't call play() yet. Calling play() on an empty buffer makes
+        // AudioFlinger remove the track on BUFFER TIMEOUT and reattach it
+        // when data finally arrives — the reattach glitch is audible on
+        // Tab A7 Lite. Playback starts inside playbackJob right before the
+        // first write, so the buffer is never empty in PLAYING state.
+        audioTrack = createAudioTrack(sampleRate)
 
         val queue = Channel<SentencePcm>(QUEUE_CAPACITY)
         pcmQueue = queue
 
         generationJob = ioScope.launch {
+            // Inference is CPU-heavy on modest hardware (Tab A7 Lite); without
+            // an audio-priority bump the producer can lag the AudioTrack drain
+            // and we underrun. VoxSherpa standalone does the same on its
+            // generator thread.
+            AndroidProcess.setThreadPriority(AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO)
             try {
                 for (i in currentSentenceIndex until sentences.size) {
                     val s = sentences[i]
@@ -322,12 +338,26 @@ class EnginePlayer @AssistedInject constructor(
         }
 
         playbackJob = ioScope.launch {
+            // Critical: keep the AudioTrack.write() loop above ordinary IO
+            // priority. Without this, Dispatchers.IO can preempt the writer
+            // long enough for the AudioTrack buffer to drain → underrun →
+            // auto-restart → audible click/fuzz on top of the speech.
+            // logcat signature: "AudioTrack: restartIfDisabled ... disabled
+            // due to previous underrun, restarting".
+            AndroidProcess.setThreadPriority(AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO)
             try {
+                var firstSentence = true
                 for (item in queue) {
-                    // Surface the new sentence range BEFORE writing — write blocks
-                    // for the duration of the previous sentence's buffer drain,
-                    // so this is the last opportunity the UI gets to update.
-                    withContext(Dispatchers.Main) {
+                    // Channel iteration suspends when empty; on resume the
+                    // coroutine may be on a different IO pool thread, so
+                    // re-apply URGENT_AUDIO each iteration as cheap insurance.
+                    AndroidProcess.setThreadPriority(AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO)
+
+                    // Surface the new sentence range BEFORE writing. Fire-and-
+                    // forget on Main — `withContext` would suspend this worker
+                    // and risk it resuming on a different IO thread without
+                    // URGENT_AUDIO priority, reintroducing underrun fuzz.
+                    scope.launch {
                         currentSentenceIndex = item.sentenceIndex
                         _observableState.update {
                             it.copy(
@@ -337,6 +367,15 @@ class EnginePlayer @AssistedInject constructor(
                         }
                     }
                     val track = audioTrack ?: break
+
+                    // Start AudioTrack on the first iteration, only once we
+                    // have real data ready to feed it. See createAudioTrack
+                    // comment for the empty-buffer / reattach reasoning.
+                    if (firstSentence) {
+                        track.play()
+                        firstSentence = false
+                    }
+
                     var written = 0
                     while (written < item.pcm.size) {
                         val n = track.write(item.pcm, written, item.pcm.size - written)
@@ -384,7 +423,12 @@ class EnginePlayer @AssistedInject constructor(
             .setAudioAttributes(
                 AndroidAudioAttributes.Builder()
                     .setUsage(AndroidAudioAttributes.USAGE_MEDIA)
-                    .setContentType(AndroidAudioAttributes.CONTENT_TYPE_SPEECH)
+                    // CONTENT_TYPE_MUSIC, not _SPEECH: on Samsung tablets the
+                    // speech content-type triggers a telephony-style DSP path
+                    // (bandlimiting + noise reduction) that makes TTS sound
+                    // old and scratchy. VoxSherpa standalone uses STREAM_MUSIC
+                    // (the music path) and sounds clean — match that here.
+                    .setContentType(AndroidAudioAttributes.CONTENT_TYPE_MUSIC)
                     .build(),
             )
             .setAudioFormat(
@@ -527,7 +571,10 @@ class EnginePlayer @AssistedInject constructor(
          *  sentence's PCM (~50–500KB). At 4 slots × ~250KB avg = ~1MB peak —
          *  fine on Android. Higher capacity gives more pre-render headroom but
          *  costs memory and slows seek-flush. */
-        const val QUEUE_CAPACITY = 4
+        // 8 sentences of cushion; with ~2s/sentence playback that gives the
+        // generator ~16s of headroom before the queue runs dry on a slow
+        // sentence. Was 4 — too tight on Tab A7 Lite for variable-length text.
+        const val QUEUE_CAPACITY = 8
 
         /** Fallback when the engine reports a non-positive sample rate (model
          *  not loaded yet). Piper voices are 22050Hz; Kokoro is 24000Hz. */
