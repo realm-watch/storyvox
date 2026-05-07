@@ -2,6 +2,7 @@ package `in`.jphe.storyvox.di
 
 import android.content.Context
 import android.content.Intent
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import dagger.Module
 import dagger.Provides
@@ -479,28 +480,40 @@ private class RealPlaybackControllerUi(
         }
     }
 
-    /** Anchor state for position interpolation between sentence-boundary updates. */
+    /**
+     * Anchor state for position interpolation between sentence-boundary
+     * updates. `anchorElapsedMs` is in the [SystemClock.elapsedRealtime]
+     * time base — see [tickWhilePlaying].
+     */
     private var anchorChapterId: String? = null
     private var anchorCharOffset: Int = 0
-    private var anchorWallMs: Long = 0L
+    private var anchorElapsedMs: Long = 0L
 
     /**
-     * Wall-clock source driving position interpolation between sentence
+     * Monotonic-clock source driving position interpolation between sentence
      * boundaries. Two regimes, gated by `isPlaying`:
      *
      *  - **Playing**: tick at 250 ms (the original cadence). Emits an
      *    immediate tick on play-resume so the slider snaps forward without
      *    waiting on the first delay window.
      *  - **Paused**: tick is suppressed *but* every upstream state emission
-     *    re-emits a fresh `System.currentTimeMillis()`. Required because
-     *    `PlaybackState.toUi` re-anchors `anchorWallMs = nowMs` whenever the
-     *    engine reports a new `charOffset` (seek, chapter switch). If the
-     *    anchor were stuck at the pause-time tick, a seek-while-paused
+     *    re-emits a fresh [SystemClock.elapsedRealtime]. Required because
+     *    `PlaybackState.toUi` re-anchors `anchorElapsedMs = nowMs` whenever
+     *    the engine reports a new `charOffset` (seek, chapter switch). If
+     *    the anchor were stuck at the pause-time tick, a seek-while-paused
      *    followed by play would interpret all the paused wall-time as
      *    elapsed playback time and lurch the scrubber forward (Copilot's
-     *    PR #21 review). Emitting on each upstream change keeps the
-     *    anchor's wall time fresh while still skipping the 4 Hz allocation
-     *    storm of an unconditional ticker.
+     *    PR #21 review). Emitting on each upstream change keeps the anchor
+     *    fresh while still skipping the 4 Hz allocation storm of an
+     *    unconditional ticker.
+     *
+     * Time base: [SystemClock.elapsedRealtime] is monotonic and counts
+     * milliseconds since boot, including deep sleep. Unlike
+     * [System.currentTimeMillis], it cannot jump backwards or forwards from
+     * NTP corrections / user time changes, so a corrected wall clock can
+     * never make the scrubber jitter, leap, or freeze. Both the tick source
+     * and [anchorElapsedMs] use this time base so the subtraction in
+     * [PlaybackState.toUi] stays consistent.
      *
      * Net effect for an open-but-idle reader (paused, no seeks): one tick on
      * the play→pause transition, then quiet until the user does something.
@@ -511,12 +524,12 @@ private class RealPlaybackControllerUi(
             .distinctUntilChanged()
             .flatMapLatest { playing ->
                 if (playing) flow {
-                    emit(System.currentTimeMillis())
+                    emit(SystemClock.elapsedRealtime())
                     while (true) {
                         kotlinx.coroutines.delay(250L)
-                        emit(System.currentTimeMillis())
+                        emit(SystemClock.elapsedRealtime())
                     }
-                } else stateFlow.map { System.currentTimeMillis() }
+                } else stateFlow.map { SystemClock.elapsedRealtime() }
             }
 
     private fun PlaybackState.toUi(nowMs: Long): UiPlaybackState {
@@ -527,7 +540,7 @@ private class RealPlaybackControllerUi(
         if (currentChapterId != anchorChapterId || charOffset != anchorCharOffset) {
             anchorChapterId = currentChapterId
             anchorCharOffset = charOffset
-            anchorWallMs = nowMs
+            anchorElapsedMs = nowMs
         }
         val baseMs = if (charsPerSec > 0f) ((charOffset / charsPerSec) * 1000f).toLong() else 0L
         val sentence = currentSentenceRange
@@ -536,7 +549,7 @@ private class RealPlaybackControllerUi(
         // scrubber slides forward during a 5-15s engine load even though no
         // audio has actually played.
         val warmingUp = isPlaying && sentence == null
-        val elapsedMs = if (isPlaying && !warmingUp) (nowMs - anchorWallMs).coerceAtLeast(0L) else 0L
+        val elapsedMs = if (isPlaying && !warmingUp) (nowMs - anchorElapsedMs).coerceAtLeast(0L) else 0L
         val positionMs = (baseMs + elapsedMs).coerceAtMost(durationEstimateMs.coerceAtLeast(baseMs))
         return UiPlaybackState(
             fictionId = currentFictionId,
