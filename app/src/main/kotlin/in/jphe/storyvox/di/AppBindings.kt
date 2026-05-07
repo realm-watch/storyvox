@@ -458,27 +458,38 @@ private class RealPlaybackControllerUi(
     private var anchorWallMs: Long = 0L
 
     /**
-     * Wall-clock ticker driving the position-interpolation between sentence
-     * boundaries. Gated by `isPlaying`: when paused the upstream state alone
-     * carries enough information for the UI to render a still scrubber, so
-     * we stop allocating UiPlaybackState 4×/sec for screens that are merely
-     * open and idle (e.g. user paused on the reader, walked away). Resuming
-     * playback emits an immediate tick so the slider snaps forward without
-     * waiting up to 250 ms for the first delay window.
+     * Wall-clock source driving position interpolation between sentence
+     * boundaries. Two regimes, gated by `isPlaying`:
+     *
+     *  - **Playing**: tick at 250 ms (the original cadence). Emits an
+     *    immediate tick on play-resume so the slider snaps forward without
+     *    waiting on the first delay window.
+     *  - **Paused**: tick is suppressed *but* every upstream state emission
+     *    re-emits a fresh `System.currentTimeMillis()`. Required because
+     *    `PlaybackState.toUi` re-anchors `anchorWallMs = nowMs` whenever the
+     *    engine reports a new `charOffset` (seek, chapter switch). If the
+     *    anchor were stuck at the pause-time tick, a seek-while-paused
+     *    followed by play would interpret all the paused wall-time as
+     *    elapsed playback time and lurch the scrubber forward (Copilot's
+     *    PR #21 review). Emitting on each upstream change keeps the
+     *    anchor's wall time fresh while still skipping the 4 Hz allocation
+     *    storm of an unconditional ticker.
+     *
+     * Net effect for an open-but-idle reader (paused, no seeks): one tick on
+     * the play→pause transition, then quiet until the user does something.
      */
     private fun tickWhilePlaying(stateFlow: Flow<PlaybackState>): Flow<Long> =
         stateFlow
             .map { it.isPlaying }
             .distinctUntilChanged()
             .flatMapLatest { playing ->
-                if (!playing) flowOf(System.currentTimeMillis())
-                else flow {
+                if (playing) flow {
                     emit(System.currentTimeMillis())
                     while (true) {
                         kotlinx.coroutines.delay(250L)
                         emit(System.currentTimeMillis())
                     }
-                }
+                } else stateFlow.map { System.currentTimeMillis() }
             }
 
     private fun PlaybackState.toUi(nowMs: Long): UiPlaybackState {
