@@ -14,10 +14,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -40,6 +45,7 @@ fun LibraryScreen(
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val addByUrlState by viewModel.addByUrlState.collectAsStateWithLifecycle()
     val spacing = LocalSpacing.current
 
     androidx.compose.runtime.LaunchedEffect(viewModel) {
@@ -51,56 +57,74 @@ fun LibraryScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().padding(top = spacing.md)) {
-        if (!state.isLoading && state.fictions.isEmpty() && state.resume == null) {
-            EmptyLibrary()
-            return@Box
-        }
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 140.dp),
-            contentPadding = PaddingValues(spacing.md),
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            verticalArrangement = Arrangement.spacedBy(spacing.md),
-        ) {
-            state.resume?.let { resume ->
-                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                    ResumeCard(resume, onResume = viewModel::resume)
-                }
+    Scaffold(
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = viewModel::showAddByUrl,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = "Add fiction by URL")
             }
-            itemsIndexed(state.fictions, key = { _, item -> item.id }) { index, fiction ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .animateItem()
-                        .cascadeReveal(index = index, key = fiction.id),
-                    horizontalAlignment = Alignment.Start,
-                    verticalArrangement = Arrangement.spacedBy(spacing.xs),
+        },
+    ) { scaffoldPadding ->
+        Box(modifier = Modifier.fillMaxSize().padding(scaffoldPadding).padding(top = spacing.md)) {
+            if (!state.isLoading && state.fictions.isEmpty() && state.resume == null) {
+                EmptyLibrary()
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 140.dp),
+                    contentPadding = PaddingValues(spacing.md),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                    verticalArrangement = Arrangement.spacedBy(spacing.md),
                 ) {
-                    FictionCoverThumb(
-                        coverUrl = fiction.coverUrl,
-                        title = fiction.title,
-                        authorInitial = fiction.author.firstOrNull()?.uppercaseChar() ?: '?',
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { viewModel.openFiction(fiction.id) },
-                    )
-                    Text(
-                        fiction.title,
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 2,
-                    )
-                    if (fiction.author.isNotBlank()) {
-                        Text(
-                            fiction.author,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                        )
+                    state.resume?.let { resume ->
+                        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                            ResumeCard(resume, onResume = viewModel::resume)
+                        }
+                    }
+                    itemsIndexed(state.fictions, key = { _, item -> item.id }) { index, fiction ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .animateItem()
+                                .cascadeReveal(index = index, key = fiction.id),
+                            horizontalAlignment = Alignment.Start,
+                            verticalArrangement = Arrangement.spacedBy(spacing.xs),
+                        ) {
+                            FictionCoverThumb(
+                                coverUrl = fiction.coverUrl,
+                                title = fiction.title,
+                                authorInitial = fiction.author.firstOrNull()?.uppercaseChar() ?: '?',
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { viewModel.openFiction(fiction.id) },
+                            )
+                            Text(
+                                fiction.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                maxLines = 2,
+                            )
+                            if (fiction.author.isNotBlank()) {
+                                Text(
+                                    fiction.author,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
     }
+
+    AddByUrlSheet(
+        state = addByUrlState,
+        onSubmit = viewModel::submitAddByUrl,
+        onDismiss = viewModel::dismissAddByUrl,
+    )
 }
 
 @Composable

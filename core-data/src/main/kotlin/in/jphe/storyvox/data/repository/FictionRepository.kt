@@ -7,6 +7,7 @@ import `in`.jphe.storyvox.data.db.entity.ChapterDownloadState
 import `in`.jphe.storyvox.data.db.entity.DownloadMode
 import `in`.jphe.storyvox.data.db.entity.Fiction
 import `in`.jphe.storyvox.data.source.FictionSource
+import `in`.jphe.storyvox.data.source.UrlRouter
 import `in`.jphe.storyvox.data.source.model.ChapterInfo
 import `in`.jphe.storyvox.data.source.model.FictionDetail
 import `in`.jphe.storyvox.data.source.model.FictionResult
@@ -55,6 +56,33 @@ interface FictionRepository {
     suspend fun setPinnedVoice(id: String, voiceId: String?, locale: String?)
 
     suspend fun setFollowedRemote(id: String, followed: Boolean): FictionResult<Unit>
+
+    /**
+     * Resolve a pasted URL (or short form like `owner/repo`) to a fiction,
+     * persist a stub row, and refresh its detail. Returns the resolved
+     * `fictionId` on success so the UI can navigate to the detail screen.
+     *
+     * Recognised-but-unsupported sources (GitHub today) return
+     * [AddByUrlResult.UnsupportedSource] so the UI can surface a
+     * "coming soon" message without the user thinking they pasted
+     * something invalid.
+     */
+    suspend fun addByUrl(url: String): AddByUrlResult
+}
+
+/** Outcome of [FictionRepository.addByUrl]. */
+sealed class AddByUrlResult {
+    /** URL parsed, source supported, detail fetched + persisted. */
+    data class Success(val fictionId: String) : AddByUrlResult()
+
+    /** No source's URL pattern matched the input. */
+    data object UnrecognizedUrl : AddByUrlResult()
+
+    /** Pattern matched a known source that is wired but not yet implemented. */
+    data class UnsupportedSource(val sourceId: String) : AddByUrlResult()
+
+    /** Source-layer failure (network, 404, auth, rate limit, Cloudflare, ...). */
+    data class SourceFailure(val failure: FictionResult.Failure) : AddByUrlResult()
 }
 
 @Singleton
@@ -207,6 +235,39 @@ class FictionRepositoryImpl @Inject constructor(
                 is FictionResult.Failure -> r
             }
         }
+
+    override suspend fun addByUrl(url: String): AddByUrlResult = withContext(Dispatchers.IO) {
+        val match = UrlRouter.route(url) ?: return@withContext AddByUrlResult.UnrecognizedUrl
+        val src = sources[match.sourceId]
+            ?: return@withContext AddByUrlResult.UnsupportedSource(match.sourceId)
+
+        // Pre-write a stub row carrying sourceId so refreshDetail (and any
+        // subsequent setFollowedRemote / ChapterDownloadWorker) can route
+        // to the right source even before the detail fetch completes. The
+        // upsert only seeds fields we know from the URL; richer fields are
+        // filled in by upsertDetail on success.
+        val now = System.currentTimeMillis()
+        if (fictionDao.get(match.fictionId) == null) {
+            fictionDao.upsert(
+                Fiction(
+                    id = match.fictionId,
+                    sourceId = match.sourceId,
+                    title = "",
+                    author = "",
+                    firstSeenAt = now,
+                    metadataFetchedAt = now,
+                ),
+            )
+        }
+
+        when (val r = src.fictionDetail(match.fictionId)) {
+            is FictionResult.Success -> {
+                upsertDetail(r.value)
+                AddByUrlResult.Success(match.fictionId)
+            }
+            is FictionResult.Failure -> AddByUrlResult.SourceFailure(r)
+        }
+    }
 
     // ─── helpers ──────────────────────────────────────────────────────────
 

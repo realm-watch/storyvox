@@ -11,10 +11,13 @@ import `in`.jphe.storyvox.data.source.model.FictionSummary
 import `in`.jphe.storyvox.feature.api.DownloadMode
 import `in`.jphe.storyvox.feature.api.FictionRepositoryUi
 import `in`.jphe.storyvox.feature.api.PlaybackControllerUi
+import `in`.jphe.storyvox.feature.api.UiAddByUrlResult
 import javax.inject.Inject
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -33,6 +36,19 @@ sealed interface LibraryUiEvent {
     data class OpenReader(val fictionId: String, val chapterId: String) : LibraryUiEvent
 }
 
+/** State for the paste-URL bottom sheet. */
+@Immutable
+sealed interface AddByUrlSheetState {
+    /** Sheet hidden. */
+    data object Hidden : AddByUrlSheetState
+
+    /** Sheet shown, accepting input. [error] non-null after a failed submission. */
+    data class Open(val error: String? = null) : AddByUrlSheetState
+
+    /** Submission in flight (network call to the source). */
+    data object Submitting : AddByUrlSheetState
+}
+
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
     fictionRepo: FictionRepository,
@@ -43,6 +59,9 @@ class LibraryViewModel @Inject constructor(
 
     private val _events = Channel<LibraryUiEvent>(Channel.BUFFERED)
     val events = _events.receiveAsFlow()
+
+    private val _addByUrlState = MutableStateFlow<AddByUrlSheetState>(AddByUrlSheetState.Hidden)
+    val addByUrlState: StateFlow<AddByUrlSheetState> = _addByUrlState.asStateFlow()
 
     val uiState: StateFlow<LibraryUiState> = combine(
         fictionRepo.observeLibrary(),
@@ -72,5 +91,41 @@ class LibraryViewModel @Inject constructor(
 
     fun setDownloadMode(fictionId: String, mode: DownloadMode) {
         viewModelScope.launch { uiRepo.setDownloadMode(fictionId, mode) }
+    }
+
+    fun showAddByUrl() {
+        _addByUrlState.value = AddByUrlSheetState.Open()
+    }
+
+    fun dismissAddByUrl() {
+        _addByUrlState.value = AddByUrlSheetState.Hidden
+    }
+
+    fun submitAddByUrl(url: String) {
+        if (_addByUrlState.value === AddByUrlSheetState.Submitting) return
+        _addByUrlState.value = AddByUrlSheetState.Submitting
+        viewModelScope.launch {
+            when (val result = uiRepo.addByUrl(url)) {
+                is UiAddByUrlResult.Success -> {
+                    _addByUrlState.value = AddByUrlSheetState.Hidden
+                    _events.send(LibraryUiEvent.OpenFiction(result.fictionId))
+                }
+                UiAddByUrlResult.UnrecognizedUrl -> {
+                    _addByUrlState.value = AddByUrlSheetState.Open(
+                        error = "That URL doesn't look like a Royal Road or GitHub address.",
+                    )
+                }
+                is UiAddByUrlResult.UnsupportedSource -> {
+                    _addByUrlState.value = AddByUrlSheetState.Open(
+                        error = "${result.sourceId.replaceFirstChar { it.uppercase() }} support is coming soon.",
+                    )
+                }
+                is UiAddByUrlResult.Error -> {
+                    _addByUrlState.value = AddByUrlSheetState.Open(
+                        error = result.message.ifBlank { "Could not load that fiction. Try again." },
+                    )
+                }
+            }
+        }
     }
 }
