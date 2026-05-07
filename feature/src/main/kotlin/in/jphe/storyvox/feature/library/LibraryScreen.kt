@@ -35,8 +35,11 @@ import `in`.jphe.storyvox.data.repository.ContinueListeningEntry
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
+import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
 import `in`.jphe.storyvox.ui.component.cascadeReveal
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.text.style.TextAlign
 
 @Composable
 fun LibraryScreen(
@@ -188,25 +191,35 @@ private fun ResumeCard(entry: ContinueListeningEntry, onResume: () -> Unit) {
 @Composable
 private fun EmptyLibrary() {
     val spacing = LocalSpacing.current
-    Box(
+    // Same brass-realm rhythm as FollowsScreen.SignedOutEmpty and the
+    // ErrorBlock FullScreen treatment — sigil tile, titleMedium primary
+    // headline, bodyMedium body. No CTA: Browse is one tap away in the
+    // bottom nav and Add-by-URL is on the FAB above. Empty state's job
+    // is to acknowledge and invite, not duplicate navigation.
+    Column(
         modifier = Modifier.fillMaxSize().padding(spacing.lg),
-        contentAlignment = Alignment.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(spacing.xs),
-        ) {
-            Text(
-                "Your library is empty",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                "Open Browse to add fictions",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        MagicSkeletonTile(
+            modifier = Modifier.size(width = 160.dp, height = 220.dp),
+            shape = MaterialTheme.shapes.medium,
+            glyphSize = 80.dp,
+        )
+        Spacer(Modifier.height(spacing.lg))
+        Text(
+            "Your library is empty",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(spacing.xs))
+        Text(
+            "Browse Royal Road or paste a fiction URL with the + button to start collecting.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 
