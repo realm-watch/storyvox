@@ -86,13 +86,15 @@ fun SentenceHighlight(
             .fillMaxWidth()
             .padding(horizontal = 4.dp)
             // Tap-to-seek: convert the tap position into a UTF-16 offset via
-            // the captured TextLayoutResult and forward to onTapWord. We key
-            // the pointerInput on the lambda's identity so it doesn't get
-            // re-installed on every recomposition (the layout it reads is
-            // captured by reference inside the closure).
+            // the captured TextLayoutResult and forward to onTapWord. The
+            // pointerInput is keyed on `text` AND `onTapWord` so a chapter
+            // switch (which changes both text content and length) re-installs
+            // the gesture handler with the fresh closure — otherwise tap
+            // offsets would be clamped against the previous chapter's length
+            // and produce wrong seek positions.
             .then(
                 if (onTapWord != null) {
-                    Modifier.pointerInput(onTapWord) {
+                    Modifier.pointerInput(onTapWord, text) {
                         detectTapGestures { tap ->
                             val l = layout ?: return@detectTapGestures
                             val charIndex = l.getOffsetForPosition(tap)

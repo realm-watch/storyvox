@@ -147,15 +147,29 @@ class EnginePlayer @AssistedInject constructor(
         scope.launch {
             voiceManager.activeVoice.collect { active ->
                 val newId = active?.id ?: return@collect
-                if (newId == loadedVoiceId) return@collect
+                if (newId == loadedVoiceId) {
+                    // No-op flip — typically the user re-activated the same
+                    // voice, or DataStore re-emitted the persisted value. If
+                    // a previous flip had armed [voiceReloadPending] for a
+                    // different id and the user has now flipped *back* to
+                    // the loaded voice before resuming, clear the pending
+                    // flag so we don't force a needless model reload (a
+                    // 30 s Kokoro warm-up) on the next [resume].
+                    voiceReloadPending = false
+                    return@collect
+                }
                 val s = _observableState.value
                 val fictionId = s.currentFictionId
                 val chapterId = s.currentChapterId
                 if (fictionId == null || chapterId == null) return@collect
                 if (s.isPlaying) {
-                    // Live swap. loadAndPlay will tear down the current
-                    // pipeline (including the queue full of old-voice PCM)
-                    // and rebuild from the current char offset.
+                    // Live swap. Tear down the current pipeline FIRST so the
+                    // old generator can't keep pushing old-voice PCM into
+                    // the (about-to-be-replaced) queue while loadAndPlay
+                    // sits in loadModel for ~30 s on Kokoro. Without this,
+                    // the user hears 5–10 s of stale audio before silence
+                    // and finally the new voice.
+                    stopPlaybackPipeline()
                     loadAndPlay(fictionId, chapterId, s.charOffset)
                 } else {
                     voiceReloadPending = true
@@ -417,9 +431,15 @@ class EnginePlayer @AssistedInject constructor(
             AndroidProcess.setThreadPriority(AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO)
             try {
                 for (i in currentSentenceIndex until sentences.size) {
+                    // Re-apply URGENT_AUDIO each iteration: engineMutex.withLock
+                    // and runInterruptible (below) are suspension points, and
+                    // Dispatchers.IO can resume us on a different worker thread
+                    // that's at default priority.
+                    AndroidProcess.setThreadPriority(AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO)
                     if (!pipelineRunning.get()) return@launch
                     val s = sentences[i]
                     val pcm = engineMutex.withLock {
+                        AndroidProcess.setThreadPriority(AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO)
                         if (!pipelineRunning.get()) return@withLock null
                         when (engineType) {
                             is EngineType.Kokoro -> KokoroEngine.getInstance()
@@ -507,6 +527,14 @@ class EnginePlayer @AssistedInject constructor(
                     }
                 }
             } finally {
+                // Release the AudioTrack from the same thread that owns
+                // its write() loop. Doing this from the main thread (as
+                // [stopPlaybackPipeline] used to) raced with whatever
+                // write() was in flight and could JNI-crash. Now release
+                // happens *after* the write loop has definitely exited.
+                runCatching { track.pause() }
+                runCatching { track.flush() }
+                runCatching { track.release() }
                 if (naturalEnd && pipelineRunning.get()) {
                     scope.launch {
                         sleepTimer.signalChapterEnd()
@@ -521,33 +549,43 @@ class EnginePlayer @AssistedInject constructor(
     }
 
     private fun stopPlaybackPipeline() {
-        // Order matters. We must (1) signal the consumer to stop AND (2)
-        // unblock any in-flight track.write() before (3) joining and (4)
-        // releasing the AudioTrack. Releasing while the consumer's still
-        // inside write() is undefined behavior in JNI land — segfault risk.
+        // Shutdown handshake:
+        //  1. Signal stop via the run flag.
+        //  2. Pause + flush the AudioTrack so any currently-blocked
+        //     write() returns immediately (ring buffer has space again).
+        //  3. Cancel the producer coroutine; runInterruptible turns the
+        //     thread interrupt into a CancellationException for blocked
+        //     queue.put() calls.
+        //  4. Interrupt + join the consumer thread (so a queue.take()
+        //     blocked on an empty queue wakes up).
+        //  5. The consumer's own finally block does the AudioTrack
+        //     release — *not* main thread — so we can't race a write().
+        //     If join times out we still don't release ourselves; the
+        //     consumer will finish its current write and clean up
+        //     whenever it gets there.
         pipelineRunning.set(false)
-        generationJob?.cancel()
-        generationJob = null
 
         val track = audioTrack
         audioTrack = null
         track?.let {
-            // pause + flush together: pause stops AudioFlinger from pulling,
-            // flush drops queued data, and the side effect is that any
-            // currently-blocked write() returns immediately because the
-            // ring buffer has space again.
             runCatching { it.pause() }
             runCatching { it.flush() }
         }
+
+        generationJob?.cancel()
+        generationJob = null
 
         val t = consumerThread
         consumerThread = null
         if (t != null && t !== Thread.currentThread()) {
             t.interrupt()
-            try { t.join(500) } catch (_: InterruptedException) {}
+            // 2 s upper bound — plenty for a paused+flushed track to
+            // finish its current write iteration. If we somehow exceed
+            // this the consumer keeps living until it's done; the OLD
+            // track's release is its responsibility.
+            try { t.join(2_000) } catch (_: InterruptedException) {}
         }
 
-        track?.let { runCatching { it.release() } }
         pcmQueue = null
     }
 
