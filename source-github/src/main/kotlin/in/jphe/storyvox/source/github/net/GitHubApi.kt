@@ -1,0 +1,153 @@
+package `in`.jphe.storyvox.source.github.net
+
+import `in`.jphe.storyvox.source.github.di.GitHubHttp
+import `in`.jphe.storyvox.source.github.model.GhCompareResponse
+import `in`.jphe.storyvox.source.github.model.GhContent
+import `in`.jphe.storyvox.source.github.model.GhRepo
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.decodeFromStream
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import java.io.IOException
+import javax.inject.Inject
+import javax.inject.Singleton
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+
+/**
+ * Outcome of a GitHub REST call. Mirrors core-data's `FictionResult`
+ * variants but stays internal to the source module so we can shape the
+ * GitHub-specific error space (rate-limit headers, 404 vs 403, etc.)
+ * before mapping to the cross-source contract.
+ *
+ * 60 req/hr unauthenticated rate limit is plenty with caching at the
+ * repository layer (spec: GitHub source design, line 50). Auth/PAT
+ * support is deferred — when it lands the mapping stays the same, just
+ * pass an Authorization header on the way in.
+ */
+internal sealed class GitHubApiResult<out T> {
+    data class Success<T>(val value: T, val etag: String?) : GitHubApiResult<T>()
+    data class NotFound(val message: String) : GitHubApiResult<Nothing>()
+    data class RateLimited(val retryAfterSeconds: Long?) : GitHubApiResult<Nothing>()
+    data class HttpError(val code: Int, val message: String) : GitHubApiResult<Nothing>()
+    data class NetworkError(val cause: Throwable) : GitHubApiResult<Nothing>()
+    data class ParseError(val cause: Throwable) : GitHubApiResult<Nothing>()
+}
+
+/**
+ * Thin client over the public GitHub v3 REST API. Endpoints used by
+ * the source layer:
+ *  - `getRepo` — existence check + repo metadata (default branch,
+ *    description, topics, archived status).
+ *  - `getContent` — single-file fetch for `book.toml` /
+ *    `storyvox.json` manifests. Files come back base64-encoded.
+ *  - `compareCommits` — base...head SHA polling for new chapters.
+ *
+ * All calls are `suspend`, dispatched to [Dispatchers.IO], and never
+ * throw on HTTP/network errors — they return a [GitHubApiResult]
+ * variant the caller can branch on. Programmer errors (deserialization
+ * faults from genuinely malformed JSON) come back as `ParseError`.
+ */
+@Singleton
+internal class GitHubApi @Inject constructor(
+    @GitHubHttp private val httpClient: OkHttpClient,
+) {
+    suspend fun getRepo(owner: String, repo: String): GitHubApiResult<GhRepo> =
+        get("$BASE_URL/repos/${owner.lowercase()}/${repo.lowercase()}")
+
+    suspend fun getContent(
+        owner: String,
+        repo: String,
+        path: String,
+        ref: String? = null,
+    ): GitHubApiResult<GhContent> {
+        val refParam = if (ref != null) "?ref=$ref" else ""
+        val cleanPath = path.trimStart('/')
+        return get("$BASE_URL/repos/${owner.lowercase()}/${repo.lowercase()}/contents/$cleanPath$refParam")
+    }
+
+    suspend fun compareCommits(
+        owner: String,
+        repo: String,
+        base: String,
+        head: String,
+    ): GitHubApiResult<GhCompareResponse> =
+        get("$BASE_URL/repos/${owner.lowercase()}/${repo.lowercase()}/compare/$base...$head")
+
+    private suspend inline fun <reified T> get(url: String): GitHubApiResult<T> =
+        withContext(Dispatchers.IO) {
+            val req = Request.Builder()
+                .url(url)
+                .header("Accept", "application/vnd.github+json")
+                .header("X-GitHub-Api-Version", API_VERSION)
+                .header("User-Agent", USER_AGENT)
+                .build()
+            val response = try {
+                httpClient.newCall(req).await()
+            } catch (e: IOException) {
+                return@withContext GitHubApiResult.NetworkError(e)
+            }
+            response.use { r -> mapResponse<T>(r) }
+        }
+
+    @OptIn(ExperimentalSerializationApi::class)
+    private inline fun <reified T> mapResponse(r: Response): GitHubApiResult<T> {
+        if (r.isSuccessful) {
+            val body = r.body ?: return GitHubApiResult.NetworkError(
+                IOException("Empty response body"),
+            )
+            return try {
+                val parsed = GitHubJson.decodeFromStream<T>(body.byteStream())
+                GitHubApiResult.Success(parsed, etag = r.header("ETag"))
+            } catch (e: SerializationException) {
+                GitHubApiResult.ParseError(e)
+            }
+        }
+        return when (r.code) {
+            404 -> GitHubApiResult.NotFound(r.message.ifBlank { "Not found" })
+            403, 429 -> {
+                // Both signal rate-limit on GitHub: 403 with the
+                // X-RateLimit-Remaining header at zero is the canonical
+                // "you're throttled" response on the public API.
+                val resetEpoch = r.header("X-RateLimit-Reset")?.toLongOrNull()
+                val retryAfter = r.header("Retry-After")?.toLongOrNull()
+                    ?: resetEpoch?.let { it - System.currentTimeMillis() / 1000 }
+                GitHubApiResult.RateLimited(retryAfter)
+            }
+            else -> GitHubApiResult.HttpError(r.code, r.message)
+        }
+    }
+
+    companion object {
+        const val BASE_URL: String = "https://api.github.com"
+        const val API_VERSION: String = "2022-11-28"
+        // Generic UA — GitHub requires *something* in User-Agent for
+        // unauthenticated REST calls. App version travels in BuildConfig
+        // when we need it; for now identifying as the project is enough.
+        const val USER_AGENT: String = "storyvox/0.4 (+https://github.com/jphein/storyvox)"
+    }
+}
+
+/** Suspending bridge over OkHttp's enqueue → callback API. */
+private suspend fun Call.await(): Response = suspendCancellableCoroutine { cont ->
+    enqueue(object : Callback {
+        override fun onResponse(call: Call, response: Response) {
+            cont.resume(response)
+        }
+
+        override fun onFailure(call: Call, e: IOException) {
+            if (cont.isCancelled) return
+            cont.resumeWithException(e)
+        }
+    })
+    cont.invokeOnCancellation {
+        runCatching { cancel() }
+    }
+}
