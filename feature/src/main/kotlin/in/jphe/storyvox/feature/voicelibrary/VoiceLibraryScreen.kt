@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -44,6 +45,7 @@ import `in`.jphe.storyvox.playback.voice.UiVoiceInfo
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
+import `in`.jphe.storyvox.ui.component.cascadeReveal
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
 @Composable
@@ -89,7 +91,7 @@ fun VoiceLibraryScreen(
         ) {
             if (featured.isNotEmpty()) {
                 item { SectionHeader("⭐ Featured", count = featured.size) }
-                items(featured, key = { "f-${it.id}" }) { voice ->
+                itemsIndexed(featured, key = { _, item -> "f-${item.id}" }) { index, voice ->
                     val downloading = state.currentDownload
                     val rowProgress = if (downloading?.voiceId == voice.id) downloading.progress ?: -1f else null
                     VoiceRow(
@@ -98,6 +100,9 @@ fun VoiceLibraryScreen(
                         downloadingProgress = rowProgress,
                         onTap = { if (downloading == null || voice.isInstalled) viewModel.onRowTapped(voice) },
                         onLongPress = if (voice.isInstalled) ({ viewModel.requestDelete(voice) }) else null,
+                        modifier = Modifier
+                            .animateItem()
+                            .cascadeReveal(index = index, key = voice.id),
                     )
                 }
                 item { Spacer(modifier = Modifier.height(spacing.md)) }
@@ -114,13 +119,16 @@ fun VoiceLibraryScreen(
                     )
                 }
             } else {
-                items(installed, key = { "i-${it.id}" }) { voice ->
+                itemsIndexed(installed, key = { _, item -> "i-${item.id}" }) { index, voice ->
                     VoiceRow(
                         voice = voice,
                         isActive = voice.id == state.activeVoiceId,
                         downloadingProgress = null,
                         onTap = { viewModel.onRowTapped(voice) },
                         onLongPress = { viewModel.requestDelete(voice) },
+                        modifier = Modifier
+                            .animateItem()
+                            .cascadeReveal(index = index, key = voice.id),
                     )
                 }
             }
@@ -133,7 +141,7 @@ fun VoiceLibraryScreen(
                 if (available.any { it.engineType is EngineType.Kokoro }) {
                     item { KokoroBundleNote() }
                 }
-                items(available, key = { "a-${it.id}" }) { voice ->
+                itemsIndexed(available, key = { _, item -> "a-${item.id}" }) { index, voice ->
                     val downloading = state.currentDownload
                     val rowProgress = if (downloading?.voiceId == voice.id) downloading.progress ?: -1f else null
                     VoiceRow(
@@ -142,6 +150,9 @@ fun VoiceLibraryScreen(
                         downloadingProgress = rowProgress,
                         onTap = { if (downloading == null) viewModel.onRowTapped(voice) },
                         onLongPress = null,
+                        modifier = Modifier
+                            .animateItem()
+                            .cascadeReveal(index = index, key = voice.id),
                     )
                 }
             }
@@ -223,6 +234,7 @@ private fun VoiceRow(
     downloadingProgress: Float?,
     onTap: () -> Unit,
     onLongPress: (() -> Unit)?,
+    modifier: Modifier = Modifier,
 ) {
     val spacing = LocalSpacing.current
     val brass = MaterialTheme.colorScheme.primary
@@ -236,7 +248,7 @@ private fun VoiceRow(
     val isAvailable = !voice.isInstalled
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(containerColor)
