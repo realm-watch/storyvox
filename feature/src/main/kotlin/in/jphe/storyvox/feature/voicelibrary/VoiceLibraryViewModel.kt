@@ -8,6 +8,7 @@ import `in`.jphe.storyvox.playback.voice.UiVoiceInfo
 import `in`.jphe.storyvox.playback.voice.VoiceCatalog
 import `in`.jphe.storyvox.playback.voice.VoiceManager
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -110,6 +111,11 @@ class VoiceLibraryViewModel @Inject constructor(
                         }
                     }
                 }
+            } catch (ce: CancellationException) {
+                // User-driven cancel via cancelDownload(). Don't surface as
+                // an error — the row already disappears via the finally
+                // block. Re-throw so structured concurrency unwinds cleanly.
+                throw ce
             } catch (t: Throwable) {
                 _error.value = t.message ?: "Download failed"
             } finally {
