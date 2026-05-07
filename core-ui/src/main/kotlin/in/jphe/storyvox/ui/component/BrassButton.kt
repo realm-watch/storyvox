@@ -26,14 +26,22 @@ fun BrassButton(
 ) {
     val padding = PaddingValues(horizontal = 24.dp, vertical = 12.dp)
     val sem = Modifier.semantics { role = Role.Button }
+    // Disabled colors stay in the brass family rather than falling through to
+    // M3's default `onSurface * 0.12 / 0.38`, which renders as cool grey and
+    // breaks the brass aesthetic during reachable disabled flows (e.g.,
+    // VoicePickerGate during voice download).
+    val brass = MaterialTheme.colorScheme.primary
+    val onBrass = MaterialTheme.colorScheme.onPrimary
     when (variant) {
         BrassButtonVariant.Primary -> Button(
             onClick = onClick,
             enabled = enabled,
             modifier = modifier.then(sem),
             colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                containerColor = brass,
+                contentColor = onBrass,
+                disabledContainerColor = brass.copy(alpha = 0.12f),
+                disabledContentColor = onBrass.copy(alpha = 0.38f),
             ),
             shape = MaterialTheme.shapes.medium,
             contentPadding = padding,
@@ -44,7 +52,8 @@ fun BrassButton(
             enabled = enabled,
             modifier = modifier.then(sem),
             colors = ButtonDefaults.outlinedButtonColors(
-                contentColor = MaterialTheme.colorScheme.primary,
+                contentColor = brass,
+                disabledContentColor = brass.copy(alpha = 0.38f),
             ),
             shape = MaterialTheme.shapes.medium,
             contentPadding = padding,
@@ -55,7 +64,8 @@ fun BrassButton(
             enabled = enabled,
             modifier = modifier.then(sem),
             colors = ButtonDefaults.textButtonColors(
-                contentColor = MaterialTheme.colorScheme.primary,
+                contentColor = brass,
+                disabledContentColor = brass.copy(alpha = 0.38f),
             ),
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
         ) { Text(label, style = MaterialTheme.typography.labelLarge) }
