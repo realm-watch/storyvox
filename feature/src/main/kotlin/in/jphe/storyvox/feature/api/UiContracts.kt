@@ -57,14 +57,41 @@ interface FictionRepositoryUi {
 }
 
 interface BrowseRepositoryUi {
-    /** Curated tabs — implemented as preset filters under the hood. */
-    fun popular(): Flow<List<UiFiction>>
-    fun newReleases(): Flow<List<UiFiction>>
-    fun bestRated(): Flow<List<UiFiction>>
-    /** Plain-text search keeps the legacy entry point for the search tab field. */
-    fun search(query: String): Flow<List<UiFiction>>
-    /** Full filtered search — encodes every Royal Road filter we surface in the UI. */
-    fun filtered(filter: BrowseFilter): Flow<List<UiFiction>>
+    /** Build a paginator for the given browse source. Callers consume
+     *  `items` / `isLoading` / `isAppending` / `hasMore` as Flows and call
+     *  `loadNext()` on initial composition + on near-end scroll. */
+    fun paginator(source: BrowseSource): BrowsePaginator
+}
+
+/** What kind of listing the paginator should fetch. The repository
+ *  adapter maps each variant onto a Royal Road call. */
+sealed interface BrowseSource {
+    data object Popular : BrowseSource
+    data object NewReleases : BrowseSource
+    data object BestRated : BrowseSource
+    data class Search(val query: String) : BrowseSource
+    data class Filtered(val filter: BrowseFilter) : BrowseSource
+}
+
+/** A page-by-page accumulating cursor over a remote fiction listing.
+ *  `loadNext()` is idempotent under concurrent calls — guarded by a
+ *  mutex so the LazyGrid's near-end LaunchedEffect can fire freely. */
+interface BrowsePaginator {
+    val items: Flow<List<UiFiction>>
+    /** True only on the very first page fetch (drives the skeleton grid). */
+    val isLoading: Flow<Boolean>
+    /** True while a subsequent page is being appended (drives the
+     *  spinner footer below the existing grid). */
+    val isAppending: Flow<Boolean>
+    /** False once the source returned `hasNext = false`; the grid then
+     *  shows an "end of list" footer. */
+    val hasMore: Flow<Boolean>
+    val error: Flow<String?>
+
+    suspend fun loadNext()
+    /** Reset to page 1 (caller should follow with [loadNext]). Wired up
+     *  for future pull-to-refresh; not used in v1 of the feature. */
+    suspend fun refresh()
 }
 
 /**
