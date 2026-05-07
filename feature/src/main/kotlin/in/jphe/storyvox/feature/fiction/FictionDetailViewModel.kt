@@ -26,6 +26,12 @@ data class FictionDetailUiState(
     val isInLibrary: Boolean = false,
     val downloadMode: DownloadMode = DownloadMode.Lazy,
     val isLoading: Boolean = true,
+    /** Set when the first-subscription `refreshDetail` failed and we have
+     *  no cached row to show. Cleared on the next successful refresh.
+     *  When [fiction] is non-null this is a tail/refresh error — the
+     *  screen should keep showing the cached data and surface the error
+     *  as a snackbar / banner rather than blocking the page. */
+    val error: String? = null,
 )
 
 sealed interface FictionDetailUiEvent {
@@ -50,12 +56,17 @@ class FictionDetailViewModel @Inject constructor(
         repo.fictionById(fictionId),
         repo.chaptersFor(fictionId),
         repo.library,
-    ) { fiction, chapters, library ->
+        repo.fictionLoadError(fictionId),
+    ) { fiction, chapters, library, error ->
         FictionDetailUiState(
             fiction = fiction,
             chapters = chapters,
             isInLibrary = library.any { it.id == fictionId },
-            isLoading = fiction == null,
+            // Stop showing the spinner once we either have a cached row
+            // OR the refresh has failed — otherwise a Cloudflare/network
+            // error leaves the user on a permanent spinner with no signal.
+            isLoading = fiction == null && error == null,
+            error = error,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FictionDetailUiState())
 

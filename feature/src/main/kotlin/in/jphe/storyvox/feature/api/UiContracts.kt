@@ -44,6 +44,15 @@ interface FictionRepositoryUi {
     val library: Flow<List<UiFiction>>
     val follows: Flow<List<UiFollow>>
     fun fictionById(id: String): Flow<UiFiction?>
+    /**
+     * Mirrors [fictionById]'s underlying first-subscription refresh — emits
+     * the error message of the most recent `refreshDetail(id)` attempt, or
+     * null on success / not-yet-attempted. Lets screens distinguish
+     * "still loading" (fiction == null, error == null) from "refresh failed
+     * and we have no cache" (fiction == null, error != null). Cleared on
+     * the next successful refresh.
+     */
+    fun fictionLoadError(id: String): Flow<String?>
     fun chaptersFor(fictionId: String): Flow<List<UiChapter>>
     suspend fun setDownloadMode(fictionId: String, mode: DownloadMode)
     suspend fun follow(fictionId: String, follow: Boolean)
