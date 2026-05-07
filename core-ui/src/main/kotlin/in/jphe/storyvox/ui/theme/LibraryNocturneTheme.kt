@@ -6,6 +6,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.Color
 
 private val DarkColors = darkColorScheme(
     primary = BrassRamp.Brass500,
@@ -94,7 +95,10 @@ private val LightColors = lightColorScheme(
     errorContainer = StatusTokens.ErrorContainerLight,
     onErrorContainer = StatusTokens.OnErrorContainerLight,
 
-    scrim = SurfaceTokens.OnSurfaceDark,
+    // Scrim is the dim layer behind modals (ModalBottomSheet, dialogs).
+    // It needs to be DARK in light mode so the modal can attenuate the
+    // background; a near-cream value renders as "no perceptible dim".
+    scrim = Color.Black,
 )
 
 /**
