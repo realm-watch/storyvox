@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import `in`.jphe.storyvox.playback.voice.UiVoiceInfo
+import `in`.jphe.storyvox.playback.voice.VoiceCatalog
 import `in`.jphe.storyvox.playback.voice.VoiceManager
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -19,6 +20,10 @@ import kotlinx.coroutines.launch
 
 @Immutable
 data class VoiceLibraryUiState(
+    /** Hand-picked best-of-catalog voices, shown above all other sections.
+     *  Always 3 entries (sourced from [VoiceCatalog.featuredIds]); each
+     *  carries its own installed flag so the row reflects current state. */
+    val featured: List<UiVoiceInfo> = emptyList(),
     val installed: List<UiVoiceInfo> = emptyList(),
     val available: List<UiVoiceInfo> = emptyList(),
     val activeVoiceId: String? = null,
@@ -52,12 +57,21 @@ class VoiceLibraryViewModel @Inject constructor(
         _currentDownload.asStateFlow(),
         combine(_pendingDelete.asStateFlow(), _error.asStateFlow()) { d, e -> d to e },
     ) { installed, available, active, downloading, (pending, error) ->
-        // Available list excludes anything already installed so the two
-        // sections never present the same voice twice.
         val installedIds = installed.mapTo(mutableSetOf()) { it.id }
+        // Featured voices use the live installed flag so the row's CTA
+        // ("Activate" vs "Download") matches reality. We pull the entry from
+        // the installed list when present, otherwise from the catalog.
+        val featured = VoiceCatalog.featuredIds.mapNotNull { id ->
+            installed.firstOrNull { it.id == id }
+                ?: available.firstOrNull { it.id == id }
+        }
+        val featuredIdSet = featured.mapTo(mutableSetOf()) { it.id }
+        // Installed and Available exclude featured rows so the same voice
+        // doesn't appear in two sections at once.
         VoiceLibraryUiState(
-            installed = installed,
-            available = available.filterNot { it.id in installedIds },
+            featured = featured,
+            installed = installed.filterNot { it.id in featuredIdSet },
+            available = available.filterNot { it.id in installedIds || it.id in featuredIdSet },
             activeVoiceId = active?.id,
             currentDownload = downloading,
             pendingDelete = pending,

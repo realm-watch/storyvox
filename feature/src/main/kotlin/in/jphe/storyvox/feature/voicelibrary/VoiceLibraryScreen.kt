@@ -68,9 +68,10 @@ fun VoiceLibraryScreen(
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
+        val featured = state.featured
         val installed = state.installed
         val available = state.available
-        val isEmpty = installed.isEmpty() && available.isEmpty()
+        val isEmpty = featured.isEmpty() && installed.isEmpty() && available.isEmpty()
 
         if (isEmpty) {
             EmptyState(modifier = Modifier.padding(padding).fillMaxSize().padding(spacing.md))
@@ -85,6 +86,22 @@ fun VoiceLibraryScreen(
             verticalArrangement = Arrangement.spacedBy(spacing.xs),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = spacing.md),
         ) {
+            if (featured.isNotEmpty()) {
+                item { SectionHeader("⭐ Featured", count = featured.size) }
+                items(featured, key = { "f-${it.id}" }) { voice ->
+                    val downloading = state.currentDownload
+                    val rowProgress = if (downloading?.voiceId == voice.id) downloading.progress ?: -1f else null
+                    VoiceRow(
+                        voice = voice,
+                        isActive = voice.id == state.activeVoiceId,
+                        downloadingProgress = rowProgress,
+                        onTap = { if (downloading == null || voice.isInstalled) viewModel.onRowTapped(voice) },
+                        onLongPress = if (voice.isInstalled) ({ viewModel.requestDelete(voice) }) else null,
+                    )
+                }
+                item { Spacer(modifier = Modifier.height(spacing.md)) }
+            }
+
             item { SectionHeader("Installed", count = installed.size) }
             if (installed.isEmpty()) {
                 item {

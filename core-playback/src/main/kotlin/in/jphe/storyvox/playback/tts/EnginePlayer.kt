@@ -1,7 +1,6 @@
 package `in`.jphe.storyvox.playback.tts
 
 import android.content.Context
-import android.media.AudioAttributes as AndroidAudioAttributes
 import android.media.AudioFormat as AndroidAudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
@@ -316,12 +315,19 @@ class EnginePlayer @AssistedInject constructor(
             try {
                 for (i in currentSentenceIndex until sentences.size) {
                     val s = sentences[i]
-                    val pcm = when (engineType) {
+                    val raw = when (engineType) {
                         is EngineType.Kokoro -> KokoroEngine.getInstance()
                             .generateAudioPCM(s.text, currentSpeed, currentPitch)
                         else -> VoiceEngine.getInstance()
                             .generateAudioPCM(s.text, currentSpeed, currentPitch)
                     } ?: continue // skip silently; defensive
+                    // Neural TTS engines compress the natural inter-sentence
+                    // pause down to almost nothing — append silence sized to
+                    // the terminal punctuation so a period actually sounds
+                    // like a beat-and-then-next-sentence rather than a wall
+                    // of words crashing together.
+                    val pauseMs = trailingPauseMs(s.text) / currentSpeed.coerceAtLeast(0.5f)
+                    val pcm = appendSilence(raw, pauseMs.toInt(), sampleRate)
                     queue.send(
                         SentencePcm(
                             sentenceIndex = i,
@@ -410,37 +416,33 @@ class EnginePlayer @AssistedInject constructor(
     }
 
     /** Build an AudioTrack with a fat buffer so we can pre-feed enough audio
-     *  to keep playback continuous while the next sentence is being generated. */
+     *  to keep playback continuous while the next sentence is being generated.
+     *
+     *  Uses the **legacy** [AudioTrack] constructor on purpose. The modern
+     *  [AudioTrack.Builder] path with `USAGE_MEDIA + CONTENT_TYPE_MUSIC`
+     *  routes through Android's AudioAttributes pipeline, which on Samsung
+     *  tablets feeds the OEM SoundAlive / Dolby Atmos post-processing chain.
+     *  Those effects are tuned for music and produce audible fuzz/distortion
+     *  on 22050/24000Hz mono speech PCM (notably on Galaxy Tab A7 Lite).
+     *  VoxSherpa standalone uses the same legacy `STREAM_MUSIC` constructor
+     *  and sounds clean on identical hardware — we mirror it exactly here. */
+    @Suppress("DEPRECATION")
     private fun createAudioTrack(sampleRate: Int): AudioTrack {
         val channelMask = AndroidAudioFormat.CHANNEL_OUT_MONO
         val encoding = AndroidAudioFormat.ENCODING_PCM_16BIT
         val minBuf = AudioTrack.getMinBufferSize(sampleRate, channelMask, encoding)
         // Aim for ~2 seconds at this rate; clamp to at least 4× the system
         // minimum so AudioFlinger doesn't reject us.
-        val target = sampleRate * 2 * 2 // 2 channels-worth, but mono so this is generous
+        val target = sampleRate * 2 * 2 // mono 16-bit ⇒ 2 bytes/sample × sampleRate × 2s
         val bufferSize = maxOf(target, minBuf * 4)
-        return AudioTrack.Builder()
-            .setAudioAttributes(
-                AndroidAudioAttributes.Builder()
-                    .setUsage(AndroidAudioAttributes.USAGE_MEDIA)
-                    // CONTENT_TYPE_MUSIC, not _SPEECH: on Samsung tablets the
-                    // speech content-type triggers a telephony-style DSP path
-                    // (bandlimiting + noise reduction) that makes TTS sound
-                    // old and scratchy. VoxSherpa standalone uses STREAM_MUSIC
-                    // (the music path) and sounds clean — match that here.
-                    .setContentType(AndroidAudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build(),
-            )
-            .setAudioFormat(
-                AndroidAudioFormat.Builder()
-                    .setSampleRate(sampleRate)
-                    .setChannelMask(channelMask)
-                    .setEncoding(encoding)
-                    .build(),
-            )
-            .setBufferSizeInBytes(bufferSize)
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .build()
+        return AudioTrack(
+            AudioManager.STREAM_MUSIC,
+            sampleRate,
+            channelMask,
+            encoding,
+            bufferSize,
+            AudioTrack.MODE_STREAM,
+        )
     }
 
     fun pauseTts() {
@@ -564,6 +566,35 @@ class EnginePlayer @AssistedInject constructor(
         stopPlaybackPipeline()
         scope.cancel()
         ioScope.cancel()
+    }
+
+    /**
+     * Length of trailing silence to splice onto a sentence's PCM, picked
+     * by the punctuation it ends with. Neural TTS engines barely breathe
+     * between sentences; without these padding gaps the listener hears one
+     * continuous block of speech. Values are tuned to match audiobook-style
+     * cadence at 1.0× speed; the producer scales them down at higher speeds
+     * so a 2× listener doesn't sit through 700ms gaps.
+     */
+    private fun trailingPauseMs(sentenceText: String): Int {
+        val tail = sentenceText.trimEnd().lastOrNull() ?: return 60
+        return when (tail) {
+            '.', '!', '?', '…' -> 350
+            ';', ':' -> 200
+            ',', '—' -> 120
+            else -> 60
+        }
+    }
+
+    private fun appendSilence(pcm: ByteArray, durationMs: Int, sampleRate: Int): ByteArray {
+        if (durationMs <= 0) return pcm
+        // 16-bit signed PCM = 2 bytes per sample, mono = 1 channel.
+        val silenceBytes = (sampleRate.toLong() * durationMs / 1000L).toInt() * 2
+        if (silenceBytes <= 0) return pcm
+        val out = ByteArray(pcm.size + silenceBytes)
+        System.arraycopy(pcm, 0, out, 0, pcm.size)
+        // ByteArray default-init is zero — that's silence in signed PCM.
+        return out
     }
 
     private companion object {

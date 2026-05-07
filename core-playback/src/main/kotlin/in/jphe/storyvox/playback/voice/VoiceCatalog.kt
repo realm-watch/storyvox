@@ -3,6 +3,16 @@ package `in`.jphe.storyvox.playback.voice
 object VoiceCatalog {
     val voices: List<CatalogEntry> = piperEntries() + kokoroEntries()
     fun byId(id: String): CatalogEntry? = voices.firstOrNull { it.id == id }
+
+    /** The three voices we hand-picked as the strongest starters. Surfaced
+     *  on the first-launch picker AND highlighted in the Voice Library
+     *  under a "Featured" section so newcomers don't have to scroll the
+     *  90-voice catalog hunting for the good ones. */
+    val featuredIds: List<String> = listOf(
+        "piper_lessac_en_US_high_int8",
+        "piper_ryan_en_US_high_int8",
+        "piper_amy_en_US_medium_int8",
+    )
     private fun piperEntries(): List<CatalogEntry> = listOf(
         CatalogEntry(
             id = "piper_lessac_en_US_high_int8",
