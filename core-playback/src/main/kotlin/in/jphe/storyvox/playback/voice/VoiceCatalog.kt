@@ -219,6 +219,18 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
+            id = "piper_sweetbbak_amy_en_GB_high",
+            displayName = "Sweetbbak Amy (High)",
+            language = "en_GB",
+            sizeBytes = 114199142L,
+            qualityLevel = QualityLevel.High,
+            engineType = EngineType.Piper,
+            piper = PiperPaths(
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-sweetbbak-amy.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-sweetbbak-amy.tokens.txt",
+            ),
+        ),
+        CatalogEntry(
             id = "piper_vctk_en_GB_medium_int8",
             displayName = "Vctk (Medium)",
             language = "en_GB",
@@ -280,7 +292,7 @@ object VoiceCatalog {
         ),
         CatalogEntry(
             id = "piper_glados_en_US_high_int8",
-            displayName = "Glados (High)",
+            displayName = "GLaDOS (High)",
             language = "en_US",
             sizeBytes = 113800584L,
             qualityLevel = QualityLevel.High,
@@ -288,6 +300,18 @@ object VoiceCatalog {
             piper = PiperPaths(
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-glados-high.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-glados-high.tokens.txt",
+            ),
+        ),
+        CatalogEntry(
+            id = "piper_glados_en_US_medium",
+            displayName = "GLaDOS (Medium)",
+            language = "en_US",
+            sizeBytes = 63511169L,
+            qualityLevel = QualityLevel.Medium,
+            engineType = EngineType.Piper,
+            piper = PiperPaths(
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-glados.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-glados.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -528,30 +552,6 @@ object VoiceCatalog {
             piper = PiperPaths(
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-sam-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-sam-medium.tokens.txt",
-            ),
-        ),
-        CatalogEntry(
-            id = "piper_glados_en_US_medium",
-            displayName = "GLaDOS",
-            language = "en_US",
-            sizeBytes = 63511169L,
-            qualityLevel = QualityLevel.Medium,
-            engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-glados.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-glados.tokens.txt",
-            ),
-        ),
-        CatalogEntry(
-            id = "piper_sweetbbak_amy_en_GB",
-            displayName = "Sweetbbak Amy",
-            language = "en_GB",
-            sizeBytes = 114199142L,
-            qualityLevel = QualityLevel.High,
-            engineType = EngineType.Piper,
-            piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-sweetbbak-amy.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-sweetbbak-amy.tokens.txt",
             ),
         ),
     )
