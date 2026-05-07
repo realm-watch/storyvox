@@ -140,10 +140,13 @@ private fun Hero(fiction: UiFiction) {
             authorInitial = fiction.author.firstOrNull()?.uppercaseChar() ?: '?',
             modifier = Modifier.size(width = 120.dp, height = 180.dp),
         )
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(spacing.xxs),
+        ) {
             Text(fiction.title, style = MaterialTheme.typography.headlineSmall, maxLines = 3)
             Text(fiction.author, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(spacing.xs))
+            Spacer(Modifier.height(spacing.xxs))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(spacing.xxs)) {
                 Icon(Icons.Filled.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                 Text("%.1f".format(fiction.rating), style = MaterialTheme.typography.labelMedium)
@@ -160,7 +163,10 @@ private fun Hero(fiction: UiFiction) {
 private fun Synopsis(text: String) {
     val spacing = LocalSpacing.current
     var expanded by remember { mutableStateOf(false) }
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.md, vertical = spacing.xs)) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.md, vertical = spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+    ) {
         Text(
             text,
             style = MaterialTheme.typography.bodyMedium,
