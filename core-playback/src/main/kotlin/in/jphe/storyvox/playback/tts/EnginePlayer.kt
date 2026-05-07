@@ -345,6 +345,22 @@ class EnginePlayer @AssistedInject constructor(
             // logcat signature: "AudioTrack: restartIfDisabled ... disabled
             // due to previous underrun, restarting".
             AndroidProcess.setThreadPriority(AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO)
+            // === DEBUG INSTRUMENTATION (audio-fuzz investigation) ===
+            // Tap the exact PCM bytes we hand to AudioTrack.write() so we
+            // can pull them to desktop and decide whether the fuzz is in
+            // the bytes (pre-AudioTrack: engine/inference) or added by
+            // AudioFlinger/hardware after write(). Captures the FIRST
+            // sentence of this pipeline run, ~one file per startPlaybackPipeline().
+            // To disable: set DEBUG_DUMP_PCM = false below.
+            // File lands at: /sdcard/Android/data/in.jphe.storyvox.debug/cache/storyvox-debug.pcm
+            val debugDumpFile: File? = if (DEBUG_DUMP_PCM) {
+                runCatching {
+                    val dir = context.externalCacheDir ?: context.cacheDir
+                    File(dir, "storyvox-debug.pcm").also { if (it.exists()) it.delete() }
+                }.getOrNull()
+            } else null
+            var debugDumped = false
+            // === END DEBUG INSTRUMENTATION ===
             try {
                 var firstSentence = true
                 for (item in queue) {
@@ -409,38 +425,35 @@ class EnginePlayer @AssistedInject constructor(
         audioTrack = null
     }
 
-    /** Build an AudioTrack with a fat buffer so we can pre-feed enough audio
-     *  to keep playback continuous while the next sentence is being generated. */
+    /**
+     * Build an AudioTrack matching VoxSherpa standalone byte-for-byte —
+     * deprecated `STREAM_MUSIC` constructor with `minBufferSize`, no
+     * `AudioAttributes` Builder. This is a deliberate diagnostic: VoxSherpa
+     * sounds clean on Tab A7 Lite with this exact configuration; storyvox
+     * was fuzzy with the modern `AudioTrack.Builder` even after fixing
+     * `CONTENT_TYPE_SPEECH`. The Builder API may attach additional routing
+     * metadata that AudioFlinger uses to pick a different output stream
+     * (DEEP_BUFFER offload vs NORMAL), and on Samsung MTK SoCs that picks a
+     * different post-processing chain. Going bare-metal eliminates the
+     * variable.
+     *
+     * The smaller buffer (minBufferSize, not 2s) is fine because URGENT_AUDIO
+     * priority on the writer keeps it ahead of drain — VoxSherpa proves this
+     * on the same hardware.
+     */
     private fun createAudioTrack(sampleRate: Int): AudioTrack {
         val channelMask = AndroidAudioFormat.CHANNEL_OUT_MONO
         val encoding = AndroidAudioFormat.ENCODING_PCM_16BIT
         val minBuf = AudioTrack.getMinBufferSize(sampleRate, channelMask, encoding)
-        // Aim for ~2 seconds at this rate; clamp to at least 4× the system
-        // minimum so AudioFlinger doesn't reject us.
-        val target = sampleRate * 2 * 2 // 2 channels-worth, but mono so this is generous
-        val bufferSize = maxOf(target, minBuf * 4)
-        return AudioTrack.Builder()
-            .setAudioAttributes(
-                AndroidAudioAttributes.Builder()
-                    .setUsage(AndroidAudioAttributes.USAGE_MEDIA)
-                    // CONTENT_TYPE_MUSIC, not _SPEECH: on Samsung tablets the
-                    // speech content-type triggers a telephony-style DSP path
-                    // (bandlimiting + noise reduction) that makes TTS sound
-                    // old and scratchy. VoxSherpa standalone uses STREAM_MUSIC
-                    // (the music path) and sounds clean — match that here.
-                    .setContentType(AndroidAudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build(),
-            )
-            .setAudioFormat(
-                AndroidAudioFormat.Builder()
-                    .setSampleRate(sampleRate)
-                    .setChannelMask(channelMask)
-                    .setEncoding(encoding)
-                    .build(),
-            )
-            .setBufferSizeInBytes(bufferSize)
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .build()
+        @Suppress("DEPRECATION")
+        return AudioTrack(
+            AudioManager.STREAM_MUSIC,
+            sampleRate,
+            channelMask,
+            encoding,
+            minBuf,
+            AudioTrack.MODE_STREAM,
+        )
     }
 
     fun pauseTts() {
