@@ -36,7 +36,11 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -119,10 +123,24 @@ fun BrowseScreen(
                         lastVisible >= total - 6
                     }
                 }
-                LaunchedEffect(nearEnd, state.isAppending, state.isLoading) {
-                    if (nearEnd && !state.isAppending && !state.isLoading) {
-                        viewModel.loadMore()
-                    }
+                // rememberUpdatedState pins the latest state snapshot so
+                // the long-lived collector below reads current values
+                // without restarting on every state change.
+                val currentState by rememberUpdatedState(state)
+                // Edge-trigger on nearEnd: distinctUntilChanged means we
+                // only fire on a transition false→true. Without this a
+                // failed page (no items added, isAppending flips back
+                // false while nearEnd stays true) would tight-loop the
+                // network. User must scroll back+forward to retry — the
+                // safe default.
+                LaunchedEffect(gridState) {
+                    snapshotFlow { nearEnd }
+                        .distinctUntilChanged()
+                        .filter { it }
+                        .collect {
+                            val s = currentState
+                            if (!s.isAppending && !s.isLoading) viewModel.loadMore()
+                        }
                 }
                 LazyVerticalGrid(
                     state = gridState,

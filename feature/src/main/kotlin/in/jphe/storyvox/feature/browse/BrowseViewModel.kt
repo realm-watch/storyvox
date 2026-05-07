@@ -18,13 +18,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -45,17 +45,28 @@ data class BrowseUiState(
     val isFilterActive: Boolean = false,
 )
 
+/** Typed view of a paginator's four state flows. Lifted into its own
+ *  type so the outer `combine` doesn't need positional `vals[i]` casts —
+ *  Copilot called the indexing form fragile and was right. */
+private data class PaginatorView(
+    val items: List<UiFiction>,
+    val isLoading: Boolean,
+    val isAppending: Boolean,
+    val hasMore: Boolean,
+)
+
 /**
  * Browse screen ViewModel. Each (tab, debounced query, filter) tuple
- * resolves to a [BrowseSource], which the repository hands a fresh
- * [BrowsePaginator] for. The paginator accumulates pages on `loadNext()`
- * calls; the screen calls [loadMore] when the user nears the end of the
- * grid.
+ * resolves to a [BrowseSource]; the repository hands a fresh
+ * [BrowsePaginator] for it. The paginator accumulates pages on
+ * `loadNext()` calls; the screen calls [loadMore] when the user nears
+ * the end of the grid.
  *
  * `flatMapLatest` drops the previous paginator's flows when the tuple
  * changes (tab switch, new search, filter applied) — old paginator
- * objects become unreferenced and GC'd; their state never leaks to the
- * new view.
+ * objects become unreferenced and GC'd. The initial-load coroutine is
+ * driven by `collectLatest` on the same paginator StateFlow so it's
+ * cancelled cleanly when the tuple changes mid-fetch.
  */
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
@@ -75,16 +86,26 @@ class BrowseViewModel @Inject constructor(
         _tab,
         _query.debounce(300),
         _filter,
-    ) { tab, q, filter -> Triple(tab, q, filter) }
+    ) { tab, q, filter -> resolveSource(tab, q, filter) }
         .distinctUntilChanged()
-        .map { (tab, q, filter) -> resolveSource(tab, q, filter)?.let(repo::paginator) }
-        .onEach { p -> p?.let { viewModelScope.launch { it.loadNext() } } }
+        .map { source -> source?.let(repo::paginator) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    init {
+        // Kick off the initial page whenever a fresh paginator lands.
+        // `collectLatest` cancels the inner suspend if the tuple shifts
+        // mid-fetch (e.g. user types more in the search box) — without
+        // this guarantee an unreferenced paginator could keep hammering
+        // the network after its UI is gone.
+        viewModelScope.launch {
+            paginator.collectLatest { p -> p?.loadNext() }
+        }
+    }
 
     val uiState: StateFlow<BrowseUiState> = paginator.flatMapLatest { p ->
         if (p == null) {
-            // Empty-search/no-filter case: surface a quiet idle state so
-            // the screen renders the SearchHint instead of a skeleton.
+            // Empty-search/no-filter: surface a quiet idle state so the
+            // screen renders SearchHint rather than the skeleton grid.
             combine(_tab, _query, _filter) { tab, q, filter ->
                 BrowseUiState(
                     tab = tab,
@@ -98,30 +119,26 @@ class BrowseViewModel @Inject constructor(
                 )
             }
         } else {
-            combine(
+            // Two-step combine: first collapse the paginator's four
+            // flows into a typed [PaginatorView], then merge with the
+            // tab/query/filter trio. Keeps each combine within the
+            // 5-arg comfort zone and avoids positional `vals[i]` casts.
+            val paginatorView = combine(
                 p.items,
                 p.isLoading,
                 p.isAppending,
                 p.hasMore,
-                _tab,
-                _query,
-                _filter,
-            ) { vals ->
-                @Suppress("UNCHECKED_CAST")
-                val items = vals[0] as List<UiFiction>
-                val loading = vals[1] as Boolean
-                val appending = vals[2] as Boolean
-                val more = vals[3] as Boolean
-                val tab = vals[4] as BrowseTab
-                val q = vals[5] as String
-                val filter = vals[6] as BrowseFilter
+            ) { items, loading, appending, more ->
+                PaginatorView(items, loading, appending, more)
+            }
+            combine(paginatorView, _tab, _query, _filter) { view, tab, q, filter ->
                 BrowseUiState(
                     tab = tab,
                     query = q,
-                    items = items,
-                    isLoading = loading,
-                    isAppending = appending,
-                    hasMore = more,
+                    items = view.items,
+                    isLoading = view.isLoading,
+                    isAppending = view.isAppending,
+                    hasMore = view.hasMore,
                     filter = filter,
                     isFilterActive = filter.isActive(),
                 )
