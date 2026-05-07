@@ -457,13 +457,29 @@ private class RealPlaybackControllerUi(
     private var anchorCharOffset: Int = 0
     private var anchorWallMs: Long = 0L
 
-    private fun tickWhilePlaying(stateFlow: Flow<PlaybackState>): Flow<Long> = flow {
-        emit(System.currentTimeMillis())
-        while (true) {
-            kotlinx.coroutines.delay(250L)
-            emit(System.currentTimeMillis())
-        }
-    }
+    /**
+     * Wall-clock ticker driving the position-interpolation between sentence
+     * boundaries. Gated by `isPlaying`: when paused the upstream state alone
+     * carries enough information for the UI to render a still scrubber, so
+     * we stop allocating UiPlaybackState 4×/sec for screens that are merely
+     * open and idle (e.g. user paused on the reader, walked away). Resuming
+     * playback emits an immediate tick so the slider snaps forward without
+     * waiting up to 250 ms for the first delay window.
+     */
+    private fun tickWhilePlaying(stateFlow: Flow<PlaybackState>): Flow<Long> =
+        stateFlow
+            .map { it.isPlaying }
+            .distinctUntilChanged()
+            .flatMapLatest { playing ->
+                if (!playing) flowOf(System.currentTimeMillis())
+                else flow {
+                    emit(System.currentTimeMillis())
+                    while (true) {
+                        kotlinx.coroutines.delay(250L)
+                        emit(System.currentTimeMillis())
+                    }
+                }
+            }
 
     private fun PlaybackState.toUi(nowMs: Long): UiPlaybackState {
         val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * speed
