@@ -10,8 +10,28 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ChapterDao {
 
-    @Query("SELECT * FROM chapter WHERE fictionId = :fictionId ORDER BY `index` ASC")
-    fun observeByFiction(fictionId: String): Flow<List<Chapter>>
+    /**
+     * Slim chapter-info feed for FictionDetail and the public chapter list.
+     *
+     * Both consumers ([FictionRepositoryImpl.observeFiction] and
+     * [ChapterRepositoryImpl.observeChaptersFor]) immediately map the rows
+     * through [Chapter.toInfo], discarding the multi-MB `htmlBody` /
+     * `plainBody` blobs. By projecting only the `ChapterInfo` columns at
+     * the SQL level we avoid reading those text columns off disk on every
+     * emission. Each emission already fires whenever any single chapter
+     * row changes (downloadState flip during a queued download, body
+     * write on completion, userMarkedRead toggle) — for a fiction with
+     * 500+ chapters that's a lot of throwaway body bytes.
+     */
+    @Query(
+        """
+        SELECT id, sourceChapterId, `index`, title, publishedAt, wordCount
+          FROM chapter
+         WHERE fictionId = :fictionId
+         ORDER BY `index` ASC
+        """,
+    )
+    fun observeChapterInfosByFiction(fictionId: String): Flow<List<ChapterInfoRow>>
 
     @Query("SELECT * FROM chapter WHERE id = :id")
     fun observe(id: String): Flow<Chapter?>
@@ -159,6 +179,21 @@ interface ChapterDao {
 data class ChapterDownloadStateRow(
     val id: String,
     val downloadState: ChapterDownloadState,
+)
+
+/**
+ * Slim chapter-info row backing [ChapterDao.observeChapterInfosByFiction].
+ * Mirrors the [`in`.jphe.storyvox.data.source.model.ChapterInfo] field set
+ * directly so the repository mapper is a 1:1 copy and no body-text columns
+ * are ever read off disk for the FictionDetail / chapter-list feeds.
+ */
+data class ChapterInfoRow(
+    val id: String,
+    val sourceChapterId: String,
+    val index: Int,
+    val title: String,
+    val publishedAt: Long?,
+    val wordCount: Int?,
 )
 
 /** Joined chapter+fiction projection for the playback layer. */
