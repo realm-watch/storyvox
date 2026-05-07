@@ -37,6 +37,8 @@ import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.ChapterCard
 import `in`.jphe.storyvox.ui.component.ChapterCardState
+import `in`.jphe.storyvox.ui.component.ErrorBlock
+import `in`.jphe.storyvox.ui.component.ErrorPlacement
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
 import `in`.jphe.storyvox.ui.component.FictionDetailSkeleton
 import `in`.jphe.storyvox.ui.layout.isAtLeastTablet
@@ -59,7 +61,18 @@ fun FictionDetailScreen(
 
     val fiction = state.fiction
     Box(modifier = Modifier.fillMaxSize()) {
-        if (fiction == null) {
+        if (fiction == null && state.error != null) {
+            // First-load failure with no cached fiction. No retry button —
+            // backing out and re-entering re-subscribes to fictionById,
+            // which triggers the underlying refreshDetail. Surfacing this
+            // path inside the error message keeps users from getting stuck.
+            ErrorBlock(
+                title = "Couldn't load this fiction",
+                message = state.error ?: "We couldn't reach Royal Road. Go back and try again in a moment.",
+                onRetry = null,
+                placement = ErrorPlacement.FullScreen,
+            )
+        } else if (fiction == null) {
             FictionDetailSkeleton(modifier = Modifier.fillMaxSize())
         } else if (twoColumn) {
             // Wide layout: cover + meta + synopsis on the left, scrollable chapter list
@@ -74,6 +87,14 @@ fun FictionDetailScreen(
                         .verticalScroll(rememberScrollState())
                         .padding(bottom = 96.dp),
                 ) {
+                    if (state.error != null) {
+                        ErrorBlock(
+                            title = "Couldn't refresh",
+                            message = state.error ?: "We couldn't reach Royal Road.",
+                            onRetry = null,
+                            placement = ErrorPlacement.Banner,
+                        )
+                    }
                     Hero(fiction)
                     Synopsis(fiction.synopsis)
                 }
@@ -104,6 +125,16 @@ fun FictionDetailScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 96.dp),
             ) {
+                if (state.error != null) {
+                    item {
+                        ErrorBlock(
+                            title = "Couldn't refresh",
+                            message = state.error ?: "We couldn't reach Royal Road.",
+                            onRetry = null,
+                            placement = ErrorPlacement.Banner,
+                        )
+                    }
+                }
                 item { Hero(fiction) }
                 item { Synopsis(fiction.synopsis) }
                 items(state.chapters) { ch ->
