@@ -235,14 +235,23 @@ class VoiceManager @Inject constructor(
                         ) { _, _ -> }
                     } catch (ce: CancellationException) {
                         // Caller cancelled (collector dropped, ViewModel
-                        // cancelled the job). Keep partial files for resume,
-                        // and re-throw so structured concurrency sees the
-                        // cancel — emitting Failed here would race with the
-                        // cancel and surface a phantom error in the UI.
+                        // cancelled the job). Re-throw so structured
+                        // concurrency sees the cancel — emitting Failed
+                        // here would race with the cancel and surface a
+                        // phantom error in the UI. Don't wipe the shared
+                        // dir: any sibling file that finished before the
+                        // cancel (e.g. the 325 MB model.onnx when the user
+                        // cancelled mid voices.bin) survives the outer
+                        // `if (!exists())` checks above on retry, so only
+                        // the still-incomplete target is re-fetched. The
+                        // mid-flight file itself is rewritten from byte 0
+                        // — `downloadFile()` doesn't do HTTP Range — but
+                        // the completed sibling is the big saving.
                         throw ce
                     } catch (t: Throwable) {
-                        // Don't wipe the whole shared dir on failure — keep partial files
-                        // so a retry can resume. (downloadFile re-writes the target.)
+                        // Don't wipe the shared dir on real failure for the
+                        // same reason: any completed sibling shouldn't be
+                        // re-downloaded just because a later step failed.
                         emit(DownloadProgress.Failed(t.message ?: t::class.java.simpleName))
                         return@flow
                     }
@@ -269,10 +278,14 @@ class VoiceManager @Inject constructor(
                         knownTotalBytes = 0L,
                     ) { _, _ -> /* tokens file is small (~1KB) — no per-byte tick */ }
                 } catch (ce: CancellationException) {
-                    // User-driven cancel. Preserve partial files so the
-                    // user can re-tap Download and pick up where they left
-                    // off (downloadFile rewrites the target on the next
-                    // run). Re-throw to honour structured concurrency.
+                    // User-driven cancel. Re-throw to honour structured
+                    // concurrency — emitting Failed would surface a
+                    // phantom error toast for what was a deliberate
+                    // cancel. Skipping the deleteRecursively here is
+                    // a no-op net of bytes (downloadFile rewrites the
+                    // target from byte 0 on retry — no HTTP Range), but
+                    // it keeps the cancel path side-effect-free, which
+                    // matches the Kokoro branch's shape.
                     throw ce
                 } catch (t: Throwable) {
                     voiceDir.deleteRecursively()
