@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
@@ -30,6 +30,7 @@ import `in`.jphe.storyvox.data.repository.ContinueListeningEntry
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
+import `in`.jphe.storyvox.ui.component.cascadeReveal
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
 @Composable
@@ -66,9 +67,12 @@ fun LibraryScreen(
                     ResumeCard(resume, onResume = viewModel::resume)
                 }
             }
-            items(state.fictions, key = { it.id }) { fiction ->
+            itemsIndexed(state.fictions, key = { _, item -> item.id }) { index, fiction ->
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .animateItem()
+                        .cascadeReveal(index = index, key = fiction.id),
                     horizontalAlignment = Alignment.Start,
                     verticalArrangement = Arrangement.spacedBy(spacing.xs),
                 ) {

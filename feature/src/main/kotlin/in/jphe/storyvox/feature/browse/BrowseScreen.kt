@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
@@ -48,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import `in`.jphe.storyvox.feature.api.BrowseFilter
+import `in`.jphe.storyvox.ui.component.cascadeReveal
 import `in`.jphe.storyvox.ui.component.FictionCardSkeleton
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
@@ -150,10 +152,12 @@ fun BrowseScreen(
                     horizontalArrangement = Arrangement.spacedBy(spacing.sm),
                     verticalArrangement = Arrangement.spacedBy(spacing.md),
                 ) {
-                    items(state.items, key = { it.id }) { fiction ->
+                    itemsIndexed(state.items, key = { _, item -> item.id }) { index, fiction ->
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .animateItem()
+                                .cascadeReveal(index = index, key = fiction.id)
                                 .clickable { onOpenFiction(fiction.id) },
                             verticalArrangement = Arrangement.spacedBy(spacing.xs),
                         ) {
