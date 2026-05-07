@@ -1,5 +1,6 @@
 package `in`.jphe.storyvox.playback
 
+import androidx.annotation.VisibleForTesting
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,8 +27,17 @@ class SleepTimer @Inject constructor(
     private val volumeRamp: VolumeRamp,
     private val pauseAction: PauseAction,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var job: Job? = null
+
+    @VisibleForTesting
+    internal constructor(
+        volumeRamp: VolumeRamp,
+        pauseAction: PauseAction,
+        scope: CoroutineScope,
+    ) : this(volumeRamp, pauseAction) {
+        this.scope = scope
+    }
 
     private val _remainingMs = MutableStateFlow<Long?>(null)
     val remainingMs: StateFlow<Long?> = _remainingMs.asStateFlow()
