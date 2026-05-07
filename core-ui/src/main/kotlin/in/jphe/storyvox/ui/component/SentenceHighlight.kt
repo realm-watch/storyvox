@@ -19,9 +19,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import `in`.jphe.storyvox.ui.theme.LocalMotion
 
@@ -50,20 +48,35 @@ fun SentenceHighlight(
 
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
 
-    val annotated: AnnotatedString = remember(text, highlightStart, highlightEnd, onSurface, brass) {
-        buildAnnotatedString {
-            if (highlightStart in 0..text.length && highlightEnd in highlightStart..text.length) {
-                if (highlightStart > 0) append(text.substring(0, highlightStart))
-                withStyle(
-                    SpanStyle(
-                        color = onSurface,
-                        fontWeight = FontWeight.Medium,
+    // Build the highlighted AnnotatedString without copying the chapter body.
+    // The previous shape was three `text.substring(...)` calls per sentence
+    // change (pre-highlight prefix, highlighted span, post-highlight tail) —
+    // that's two ~10-50KB allocations every ~3 s while playback runs, just
+    // to throw the substrings into a freshly built AnnotatedString.
+    //
+    // Instead, hold a single shared `AnnotatedString` over the full text
+    // (memoized by `text` alone — the chapter body changes only on chapter
+    // switch) and overlay the highlight span via the public AnnotatedString
+    // constructor's `spanStyles` list. That constructor takes the SpanStyle
+    // ranges by reference; no character copying happens on a sentence change.
+    val baseAnnotated: AnnotatedString = remember(text) { AnnotatedString(text) }
+    val annotated: AnnotatedString = remember(baseAnnotated, highlightStart, highlightEnd, onSurface) {
+        if (highlightEnd > highlightStart &&
+            highlightStart in 0..text.length &&
+            highlightEnd in highlightStart..text.length
+        ) {
+            AnnotatedString(
+                text = text,
+                spanStyles = listOf(
+                    AnnotatedString.Range(
+                        item = SpanStyle(color = onSurface, fontWeight = FontWeight.Medium),
+                        start = highlightStart,
+                        end = highlightEnd,
                     ),
-                ) { append(text.substring(highlightStart, highlightEnd)) }
-                if (highlightEnd < text.length) append(text.substring(highlightEnd))
-            } else {
-                append(text)
-            }
+                ),
+            )
+        } else {
+            baseAnnotated
         }
     }
 
