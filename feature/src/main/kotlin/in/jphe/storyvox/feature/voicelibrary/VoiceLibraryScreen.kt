@@ -260,7 +260,7 @@ private fun VoiceRow(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             voice.displayName,
-                            style = MaterialTheme.typography.bodyLarge,
+                            style = MaterialTheme.typography.titleMedium,
                             color = if (isAvailable && downloadingProgress == null) {
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             } else MaterialTheme.colorScheme.onSurface,
