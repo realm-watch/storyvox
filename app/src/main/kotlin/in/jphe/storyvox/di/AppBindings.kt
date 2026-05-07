@@ -457,13 +457,40 @@ private class RealPlaybackControllerUi(
     private var anchorCharOffset: Int = 0
     private var anchorWallMs: Long = 0L
 
-    private fun tickWhilePlaying(stateFlow: Flow<PlaybackState>): Flow<Long> = flow {
-        emit(System.currentTimeMillis())
-        while (true) {
-            kotlinx.coroutines.delay(250L)
-            emit(System.currentTimeMillis())
-        }
-    }
+    /**
+     * Wall-clock source driving position interpolation between sentence
+     * boundaries. Two regimes, gated by `isPlaying`:
+     *
+     *  - **Playing**: tick at 250 ms (the original cadence). Emits an
+     *    immediate tick on play-resume so the slider snaps forward without
+     *    waiting on the first delay window.
+     *  - **Paused**: tick is suppressed *but* every upstream state emission
+     *    re-emits a fresh `System.currentTimeMillis()`. Required because
+     *    `PlaybackState.toUi` re-anchors `anchorWallMs = nowMs` whenever the
+     *    engine reports a new `charOffset` (seek, chapter switch). If the
+     *    anchor were stuck at the pause-time tick, a seek-while-paused
+     *    followed by play would interpret all the paused wall-time as
+     *    elapsed playback time and lurch the scrubber forward (Copilot's
+     *    PR #21 review). Emitting on each upstream change keeps the
+     *    anchor's wall time fresh while still skipping the 4 Hz allocation
+     *    storm of an unconditional ticker.
+     *
+     * Net effect for an open-but-idle reader (paused, no seeks): one tick on
+     * the play→pause transition, then quiet until the user does something.
+     */
+    private fun tickWhilePlaying(stateFlow: Flow<PlaybackState>): Flow<Long> =
+        stateFlow
+            .map { it.isPlaying }
+            .distinctUntilChanged()
+            .flatMapLatest { playing ->
+                if (playing) flow {
+                    emit(System.currentTimeMillis())
+                    while (true) {
+                        kotlinx.coroutines.delay(250L)
+                        emit(System.currentTimeMillis())
+                    }
+                } else stateFlow.map { System.currentTimeMillis() }
+            }
 
     private fun PlaybackState.toUi(nowMs: Long): UiPlaybackState {
         val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * speed
