@@ -66,6 +66,12 @@ Build sequence (each step ships value on its own):
 
 ## Backlog
 
+- **Try `AudioTrack.Builder` + `AudioAttributes`**: `EnginePlayer.create-`
+  `AudioTrack` currently uses the six-arg `AudioTrack(STREAM_MUSIC, …)` ctor
+  to match VoxSherpa standalone exactly while we hunted issue #6. The
+  Builder form is the modern API and would let us set `USAGE_MEDIA` /
+  `CONTENT_TYPE_MUSIC` / `CONTENT_TYPE_SPEECH` cleanly. Once we're confident
+  the fuzz is gone on Tab A7 Lite, swap and A/B for any audible difference.
 - **Voice picker UI**: pull from a curated list of Piper voices, download on
   demand, cache in app storage. Replaces the placeholder "use whatever
   VoxSherpa happened to install" model.
