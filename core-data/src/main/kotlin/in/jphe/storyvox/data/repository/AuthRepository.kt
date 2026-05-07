@@ -53,12 +53,19 @@ interface AuthRepository {
 class AuthRepositoryImpl @Inject constructor(
     private val dao: AuthDao,
     private val prefs: SharedPreferences,
-    private val source: FictionSource,
+    private val sources: Map<String, @JvmSuppressWildcards FictionSource>,
 ) : AuthRepository {
 
     private val state = MutableStateFlow<SessionState>(SessionState.Anonymous)
     override val sessionState: StateFlow<SessionState> = state.asStateFlow()
 
+    // Auth is per-source. Today only one source binds a SessionHydrator
+    // (RoyalRoad), so we pin to the only bound FictionSource. When GitHub
+    // source lands with its own auth flow, this becomes a per-call lookup
+    // — the cookie store is already keyed `cookie:$sourceId` so the data
+    // layer doesn't need migration.
+    private val source: FictionSource = sources.values.singleOrNull()
+        ?: error("AuthRepository: expected exactly one FictionSource bound, got ${sources.keys}")
     private val sourceId: String get() = source.id
     private val cookieKey: String get() = "cookie:$sourceId"
 

@@ -59,10 +59,25 @@ interface FictionRepository {
 
 @Singleton
 class FictionRepositoryImpl @Inject constructor(
-    private val source: FictionSource,
+    private val sources: Map<String, @JvmSuppressWildcards FictionSource>,
     private val fictionDao: FictionDao,
     private val chapterDao: ChapterDao,
 ) : FictionRepository {
+
+    /**
+     * Resolves a [FictionSource] by [sourceId]. When [sourceId] is null or
+     * not bound, falls back to the only source in the map — preserves
+     * single-source behaviour today and short-circuits the catalog calls
+     * (browse, search, genres) that don't yet have a per-source UX. Errors
+     * if multiple sources are bound and the key is missing/unknown — that's
+     * a programming bug we want to catch loudly when GitHub source lands.
+     */
+    private fun sourceFor(sourceId: String?): FictionSource =
+        sourceId?.let { sources[it] }
+            ?: sources.values.singleOrNull()
+            ?: error("No FictionSource for id=$sourceId; bound: ${sources.keys}")
+
+    private val source: FictionSource get() = sourceFor(null)
 
     override fun observeLibrary(): Flow<List<FictionSummary>> =
         fictionDao.observeLibrary().map { rows -> rows.map { it.toSummary() } }
@@ -101,7 +116,13 @@ class FictionRepositoryImpl @Inject constructor(
     override suspend fun genres(): FictionResult<List<String>> = source.genres()
 
     override suspend fun refreshDetail(id: String): FictionResult<Unit> = withContext(Dispatchers.IO) {
-        when (val result = source.fictionDetail(id)) {
+        // Look up the persisted row to route to the correct source. Falls
+        // back to the default source when the row is absent (first-add flow:
+        // addToLibrary → refreshDetail before the row exists). Future
+        // multi-source addByUrl pre-writes a stub row with sourceId so this
+        // path always finds it.
+        val src = sourceFor(fictionDao.get(id)?.sourceId)
+        when (val result = src.fictionDetail(id)) {
             is FictionResult.Success -> {
                 upsertDetail(result.value)
                 FictionResult.Success(Unit)
@@ -177,7 +198,8 @@ class FictionRepositoryImpl @Inject constructor(
 
     override suspend fun setFollowedRemote(id: String, followed: Boolean): FictionResult<Unit> =
         withContext(Dispatchers.IO) {
-            when (val r = source.setFollowed(id, followed)) {
+            val src = sourceFor(fictionDao.get(id)?.sourceId)
+            when (val r = src.setFollowed(id, followed)) {
                 is FictionResult.Success -> {
                     fictionDao.setFollowedRemote(id, followed)
                     FictionResult.Success(Unit)
