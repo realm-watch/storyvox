@@ -41,11 +41,17 @@ data class BrowseUiState(
     val isAppending: Boolean = false,
     /** False once the upstream returned `hasNext = false`. */
     val hasMore: Boolean = true,
+    /** Last fetch error from the paginator, if any. Cleared on the next
+     *  successful page. The screen surfaces this as an error state when
+     *  [items] is empty (no prior data to fall back on) and as a snackbar
+     *  / footer hint when [items] is non-empty (a tail-page failed but
+     *  earlier pages are still useful). */
+    val error: String? = null,
     val filter: BrowseFilter = BrowseFilter(),
     val isFilterActive: Boolean = false,
 )
 
-/** Typed view of a paginator's four state flows. Lifted into its own
+/** Typed view of a paginator's five state flows. Lifted into its own
  *  type so the outer `combine` doesn't need positional `vals[i]` casts —
  *  Copilot called the indexing form fragile and was right. */
 private data class PaginatorView(
@@ -53,6 +59,7 @@ private data class PaginatorView(
     val isLoading: Boolean,
     val isAppending: Boolean,
     val hasMore: Boolean,
+    val error: String?,
 )
 
 /**
@@ -114,12 +121,13 @@ class BrowseViewModel @Inject constructor(
                     isLoading = false,
                     isAppending = false,
                     hasMore = false,
+                    error = null,
                     filter = filter,
                     isFilterActive = filter.isActive(),
                 )
             }
         } else {
-            // Two-step combine: first collapse the paginator's four
+            // Two-step combine: first collapse the paginator's five
             // flows into a typed [PaginatorView], then merge with the
             // tab/query/filter trio. Keeps each combine within the
             // 5-arg comfort zone and avoids positional `vals[i]` casts.
@@ -128,8 +136,9 @@ class BrowseViewModel @Inject constructor(
                 p.isLoading,
                 p.isAppending,
                 p.hasMore,
-            ) { items, loading, appending, more ->
-                PaginatorView(items, loading, appending, more)
+                p.error,
+            ) { items, loading, appending, more, error ->
+                PaginatorView(items, loading, appending, more, error)
             }
             combine(paginatorView, _tab, _query, _filter) { view, tab, q, filter ->
                 BrowseUiState(
@@ -139,6 +148,7 @@ class BrowseViewModel @Inject constructor(
                     isLoading = view.isLoading,
                     isAppending = view.isAppending,
                     hasMore = view.hasMore,
+                    error = view.error,
                     filter = filter,
                     isFilterActive = filter.isActive(),
                 )
