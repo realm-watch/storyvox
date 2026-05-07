@@ -53,11 +53,43 @@ android {
         )
     }
 
+    signingConfigs {
+        // Repo-checked-in keystore so every environment (CI runners, each
+        // contributor's machine) signs the APK with the SAME certificate.
+        // Without this each cold environment generates a fresh keystore →
+        // "App not installed: package conflicts" when a CI APK lands over
+        // a locally-built one (or v0.4.13 over v0.4.12 if the runner cache
+        // rotated).
+        //
+        // SECURITY TRADE-OFF (acknowledged): committing the private key
+        // means anyone can sign an APK with the same applicationId and
+        // Android will accept it as an upgrade. For storyvox today this
+        // is an acceptable trade-off — distribution is sideload-only via
+        // GitHub Releases, the audience is the developer, and the APKs
+        // aren't going through any signed-update channel that this would
+        // compromise. Before storyvox is distributed to users at scale
+        // (Play Store, F-Droid, anything that relies on signature
+        // continuity for security guarantees) the release flavor will
+        // need its own keystore stored in CI secrets — see issue tracker.
+        getByName("debug") {
+            storeFile = file("storyvox-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
-            applicationIdSuffix = ".debug"
-            versionNameSuffix = "-debug"
+            // No applicationIdSuffix / versionNameSuffix: the build is
+            // marketed and tested as the real app. The label "debug"
+            // here is just AGP-internal terminology for "debuggable,
+            // non-minified, signed with the dev cert" — there's no
+            // separate release flavor being shipped, and forcing
+            // ".debug" / "-debug" into the package id and version
+            // string was just visual noise on a sideload-only app.
+            signingConfig = signingConfigs.getByName("debug")
         }
         release {
             isMinifyEnabled = false

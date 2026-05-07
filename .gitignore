@@ -34,6 +34,10 @@ Thumbs.db
 *.jks
 *.keystore
 keystore.properties
+# …except the debug-only keystore used for sideload installs. Stable
+# cert across CI + dev machines so APKs install over each other
+# without "package conflicts" errors. No security value, intentional.
+!app/storyvox-debug.keystore
 
 # storyvox-local
 .superpowers/
