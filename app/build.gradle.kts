@@ -54,13 +54,23 @@ android {
     }
 
     signingConfigs {
-        // Repo-checked-in debug keystore so every environment (CI runners,
-        // each contributor's machine) signs the debug APK with the SAME
-        // certificate. Without this Android refuses to install a CI-built
-        // APK over a locally-built one (same package id, different
-        // signature → "App not installed: package conflicts with an
-        // existing package by the same name"). The keystore is intentionally
-        // committed because it's debug-only and has zero security value.
+        // Repo-checked-in keystore so every environment (CI runners, each
+        // contributor's machine) signs the APK with the SAME certificate.
+        // Without this each cold environment generates a fresh keystore →
+        // "App not installed: package conflicts" when a CI APK lands over
+        // a locally-built one (or v0.4.13 over v0.4.12 if the runner cache
+        // rotated).
+        //
+        // SECURITY TRADE-OFF (acknowledged): committing the private key
+        // means anyone can sign an APK with the same applicationId and
+        // Android will accept it as an upgrade. For storyvox today this
+        // is an acceptable trade-off — distribution is sideload-only via
+        // GitHub Releases, the audience is the developer, and the APKs
+        // aren't going through any signed-update channel that this would
+        // compromise. Before storyvox is distributed to users at scale
+        // (Play Store, F-Droid, anything that relies on signature
+        // continuity for security guarantees) the release flavor will
+        // need its own keystore stored in CI secrets — see issue tracker.
         getByName("debug") {
             storeFile = file("storyvox-debug.keystore")
             storePassword = "android"
