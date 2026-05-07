@@ -123,20 +123,28 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     override suspend fun verifyOrExpire(): SessionState = withContext(Dispatchers.IO) {
-        if (cookieHeader() == null) {
+        // Capture the cookie up front. Re-reading from prefs after the
+        // network call would race with a concurrent clearSession() and
+        // the prior `cookieHeader()!!` would crash on the resulting null.
+        val cookie = cookieHeader() ?: run {
             state.value = SessionState.Anonymous
             return@withContext state.value
         }
         when (val result = source.followsList(page = 1)) {
             is FictionResult.Success -> {
                 dao.touchVerified(sourceId, System.currentTimeMillis())
-                // Keep current state; refresh expiresAt from latest row.
-                val row = dao.get(sourceId)
-                state.value = SessionState.Authenticated(
-                    cookieHeader = cookieHeader()!!,
-                    expiresAt = row?.expiresAt,
-                    userDisplayName = row?.userDisplayName,
-                )
+                // If the session was cleared mid-flight, don't reinstate it.
+                if (cookieHeader() == null) {
+                    state.value = SessionState.Anonymous
+                } else {
+                    // Keep current state; refresh expiresAt from latest row.
+                    val row = dao.get(sourceId)
+                    state.value = SessionState.Authenticated(
+                        cookieHeader = cookie,
+                        expiresAt = row?.expiresAt,
+                        userDisplayName = row?.userDisplayName,
+                    )
+                }
             }
             is FictionResult.AuthRequired -> state.value = SessionState.Expired
             is FictionResult.Failure -> {
