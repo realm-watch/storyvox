@@ -1,11 +1,8 @@
 package `in`.jphe.storyvox.data.db.dao
 
 import androidx.room.Dao
-import androidx.room.Embedded
 import androidx.room.Query
 import androidx.room.Upsert
-import `in`.jphe.storyvox.data.db.entity.Chapter
-import `in`.jphe.storyvox.data.db.entity.Fiction
 import `in`.jphe.storyvox.data.db.entity.PlaybackPosition
 import kotlinx.coroutines.flow.Flow
 
@@ -47,12 +44,21 @@ interface PlaybackDao {
     suspend fun recent(limit: Int): List<RecentPlaybackRow>
 
     /**
-     * Joined "Continue listening" projection — Aurora flows this directly into
-     * the Library tile.
+     * Most-recent "Continue listening" projection — Aurora flows this directly
+     * into the Library tile.
      *
-     * The SELECT explicitly aliases every column with the `f_` / `c_` prefix
-     * that [ContinueListeningRow] expects via `@Embedded(prefix = ...)`. Room
-     * will not infer prefixes from `t.*`.
+     * Only the topmost row is needed and only the FictionSummary + ChapterInfo
+     * fields ever leave the repository ([Fiction.toSummary] / [Chapter.toInfo]),
+     * so we both:
+     *  - push `LIMIT 1` into SQL so the join collapses from O(library size)
+     *    per emission to O(1), and a position-save tick no longer rebuilds
+     *    and re-emits an entire library's worth of joined rows;
+     *  - select a slim projection ([ContinueListeningRow]) covering only the
+     *    columns the Resume tile actually renders. The full `chapter` row
+     *    contains `htmlBody` / `plainBody` text blobs that are multi-MB on
+     *    long chapters — those columns were being read off disk on every
+     *    emission and discarded by the mapper. Skipping them removes that
+     *    per-tick I/O.
      */
     @Query(
         """
@@ -61,45 +67,18 @@ interface PlaybackDao {
             f.sourceId            AS f_sourceId,
             f.title               AS f_title,
             f.author              AS f_author,
-            f.authorId            AS f_authorId,
             f.coverUrl            AS f_coverUrl,
             f.description         AS f_description,
-            f.genres              AS f_genres,
             f.tags                AS f_tags,
             f.status              AS f_status,
             f.chapterCount        AS f_chapterCount,
-            f.wordCount           AS f_wordCount,
             f.rating              AS f_rating,
-            f.views               AS f_views,
-            f.followers           AS f_followers,
-            f.lastUpdatedAt       AS f_lastUpdatedAt,
-            f.firstSeenAt         AS f_firstSeenAt,
-            f.metadataFetchedAt   AS f_metadataFetchedAt,
-            f.inLibrary           AS f_inLibrary,
-            f.addedToLibraryAt    AS f_addedToLibraryAt,
-            f.followedRemotely    AS f_followedRemotely,
-            f.downloadMode        AS f_downloadMode,
-            f.pinnedVoiceId       AS f_pinnedVoiceId,
-            f.pinnedVoiceLocale   AS f_pinnedVoiceLocale,
-            f.notesEverSeen       AS f_notesEverSeen,
             c.id                  AS c_id,
-            c.fictionId           AS c_fictionId,
             c.sourceChapterId     AS c_sourceChapterId,
             c.`index`             AS c_index,
             c.title               AS c_title,
             c.publishedAt         AS c_publishedAt,
             c.wordCount           AS c_wordCount,
-            c.htmlBody            AS c_htmlBody,
-            c.plainBody           AS c_plainBody,
-            c.bodyFetchedAt       AS c_bodyFetchedAt,
-            c.bodyChecksum        AS c_bodyChecksum,
-            c.downloadState       AS c_downloadState,
-            c.lastDownloadAttemptAt AS c_lastDownloadAttemptAt,
-            c.lastDownloadError   AS c_lastDownloadError,
-            c.notesAuthor         AS c_notesAuthor,
-            c.notesAuthorPosition AS c_notesAuthorPosition,
-            c.userMarkedRead      AS c_userMarkedRead,
-            c.firstReadAt         AS c_firstReadAt,
             p.charOffset          AS charOffset,
             p.playbackSpeed       AS playbackSpeed,
             p.updatedAt           AS updatedAt
@@ -108,14 +87,36 @@ interface PlaybackDao {
           JOIN chapter c ON c.id = p.chapterId
          WHERE f.inLibrary = 1
          ORDER BY p.updatedAt DESC
+         LIMIT 1
         """,
     )
-    fun observeContinueListening(): Flow<List<ContinueListeningRow>>
+    fun observeMostRecentContinueListening(): Flow<ContinueListeningRow?>
 }
 
+/**
+ * Slim "Continue listening" join row — every column listed here is rendered
+ * by the Resume tile or is needed to reconstruct a [FictionSummary] /
+ * [ChapterInfo] for the public [ContinueListeningEntry]. Mirrors only the
+ * non-blob fields of [Fiction] / [Chapter]; full bodies/genres/etc. stay in
+ * the database.
+ */
 data class ContinueListeningRow(
-    @Embedded(prefix = "f_") val fiction: Fiction,
-    @Embedded(prefix = "c_") val chapter: Chapter,
+    val f_id: String,
+    val f_sourceId: String,
+    val f_title: String,
+    val f_author: String,
+    val f_coverUrl: String?,
+    val f_description: String?,
+    val f_tags: List<String>,
+    val f_status: `in`.jphe.storyvox.data.source.model.FictionStatus,
+    val f_chapterCount: Int,
+    val f_rating: Float?,
+    val c_id: String,
+    val c_sourceChapterId: String,
+    val c_index: Int,
+    val c_title: String,
+    val c_publishedAt: Long?,
+    val c_wordCount: Int?,
     val charOffset: Int,
     val playbackSpeed: Float,
     val updatedAt: Long,

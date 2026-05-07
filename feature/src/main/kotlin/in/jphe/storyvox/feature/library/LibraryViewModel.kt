@@ -46,10 +46,10 @@ class LibraryViewModel @Inject constructor(
 
     val uiState: StateFlow<LibraryUiState> = combine(
         fictionRepo.observeLibrary(),
-        positionRepo.observeContinueListening(),
-    ) { library, recents ->
+        positionRepo.observeMostRecentContinueListening(),
+    ) { library, resume ->
         LibraryUiState(
-            resume = recents.firstOrNull(),
+            resume = resume,
             fictions = library,
             isLoading = false,
         )

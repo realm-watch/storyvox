@@ -17,8 +17,12 @@ interface PlaybackPositionRepository {
 
     fun observePosition(fictionId: String): Flow<PlaybackPosition?>
 
-    /** Joined "Continue listening" feed for the Library tab. */
-    fun observeContinueListening(): Flow<List<ContinueListeningEntry>>
+    /**
+     * Topmost "Continue listening" entry for the Library tab. The DAO layer
+     * applies `LIMIT 1` so we never re-emit a library-sized list when only
+     * the head row is consumed by the Library tile.
+     */
+    fun observeMostRecentContinueListening(): Flow<ContinueListeningEntry?>
 
     suspend fun savePosition(
         fictionId: String,
@@ -69,8 +73,8 @@ class PlaybackPositionRepositoryImpl @Inject constructor(
     override fun observePosition(fictionId: String): Flow<PlaybackPosition?> =
         dao.observe(fictionId)
 
-    override fun observeContinueListening(): Flow<List<ContinueListeningEntry>> =
-        dao.observeContinueListening().map { rows -> rows.map(ContinueListeningRow::toEntry) }
+    override fun observeMostRecentContinueListening(): Flow<ContinueListeningEntry?> =
+        dao.observeMostRecentContinueListening().map { row -> row?.toEntry() }
 
     override suspend fun savePosition(
         fictionId: String,
@@ -137,9 +141,33 @@ private fun RecentPlaybackRow.toRecentItem(): RecentItem = RecentItem(
     coverUrl = coverUrl,
 )
 
+/**
+ * Map the slim DAO row directly to the public projection. Equivalent to the
+ * old `fiction.toSummary()` / `chapter.toInfo()` pair, but without forcing
+ * the DAO to materialize the full [Fiction] + [Chapter] entities (which
+ * carry multi-MB body text on the chapter side).
+ */
 private fun ContinueListeningRow.toEntry(): ContinueListeningEntry = ContinueListeningEntry(
-    fiction = fiction.toSummary(),
-    chapter = chapter.toInfo(),
+    fiction = FictionSummary(
+        id = f_id,
+        sourceId = f_sourceId,
+        title = f_title,
+        author = f_author,
+        coverUrl = f_coverUrl,
+        description = f_description,
+        tags = f_tags,
+        status = f_status,
+        chapterCount = f_chapterCount,
+        rating = f_rating,
+    ),
+    chapter = ChapterInfo(
+        id = c_id,
+        sourceChapterId = c_sourceChapterId,
+        index = c_index,
+        title = c_title,
+        publishedAt = c_publishedAt,
+        wordCount = c_wordCount,
+    ),
     charOffset = charOffset,
     playbackSpeed = playbackSpeed,
     updatedAt = updatedAt,
