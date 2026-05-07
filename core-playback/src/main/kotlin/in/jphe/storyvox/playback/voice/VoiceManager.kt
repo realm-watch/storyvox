@@ -12,6 +12,7 @@ import java.io.File
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -232,6 +233,13 @@ class VoiceManager @Inject constructor(
                             target = tokensFile,
                             knownTotalBytes = 0L,
                         ) { _, _ -> }
+                    } catch (ce: CancellationException) {
+                        // Caller cancelled (collector dropped, ViewModel
+                        // cancelled the job). Keep partial files for resume,
+                        // and re-throw so structured concurrency sees the
+                        // cancel — emitting Failed here would race with the
+                        // cancel and surface a phantom error in the UI.
+                        throw ce
                     } catch (t: Throwable) {
                         // Don't wipe the whole shared dir on failure — keep partial files
                         // so a retry can resume. (downloadFile re-writes the target.)
@@ -260,6 +268,12 @@ class VoiceManager @Inject constructor(
                         target = File(voiceDir, "tokens.txt"),
                         knownTotalBytes = 0L,
                     ) { _, _ -> /* tokens file is small (~1KB) — no per-byte tick */ }
+                } catch (ce: CancellationException) {
+                    // User-driven cancel. Preserve partial files so the
+                    // user can re-tap Download and pick up where they left
+                    // off (downloadFile rewrites the target on the next
+                    // run). Re-throw to honour structured concurrency.
+                    throw ce
                 } catch (t: Throwable) {
                     voiceDir.deleteRecursively()
                     emit(DownloadProgress.Failed(t.message ?: t::class.java.simpleName))
