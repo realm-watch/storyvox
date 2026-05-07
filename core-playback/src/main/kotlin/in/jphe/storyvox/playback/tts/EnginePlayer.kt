@@ -30,6 +30,7 @@ import `in`.jphe.storyvox.playback.PlaybackUiEvent
 import `in`.jphe.storyvox.playback.SPEED_BASELINE_CHARS_PER_SECOND
 import `in`.jphe.storyvox.playback.SentenceRange
 import `in`.jphe.storyvox.playback.SleepTimer
+import `in`.jphe.storyvox.playback.TtsVolumeRamp
 import `in`.jphe.storyvox.playback.voice.EngineType
 import `in`.jphe.storyvox.playback.voice.VoiceManager
 import java.io.File
@@ -90,6 +91,7 @@ class EnginePlayer @AssistedInject constructor(
     private val positionRepo: PlaybackPositionRepository,
     private val sleepTimer: SleepTimer,
     private val voiceManager: VoiceManager,
+    private val volumeRamp: TtsVolumeRamp,
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
 
     @AssistedFactory
@@ -518,12 +520,22 @@ class EnginePlayer @AssistedInject constructor(
                     }
 
                     if (firstSentence) {
+                        runCatching { track.setVolume(volumeRamp.current) }
                         runCatching { track.play() }
                         firstSentence = false
                     }
 
+                    // Apply the SleepTimer fade-out ramp to the live track.
+                    // Polled per write iteration; AudioTrack.setVolume is a
+                    // cheap JNI call and only fires when the value changes.
+                    var lastVol = -1f
                     var written = 0
                     while (written < item.pcm.size && pipelineRunning.get()) {
+                        val v = volumeRamp.current
+                        if (v != lastVol) {
+                            runCatching { track.setVolume(v) }
+                            lastVol = v
+                        }
                         val n = track.write(item.pcm, written, item.pcm.size - written)
                         if (n < 0) break // error code from AudioTrack
                         written += n
@@ -532,6 +544,11 @@ class EnginePlayer @AssistedInject constructor(
                     // buffer (no per-sentence allocation).
                     var remaining = item.trailingSilenceBytes
                     while (remaining > 0 && pipelineRunning.get()) {
+                        val v = volumeRamp.current
+                        if (v != lastVol) {
+                            runCatching { track.setVolume(v) }
+                            lastVol = v
+                        }
                         val chunk = remaining.coerceAtMost(SILENCE_CHUNK.size)
                         val n = track.write(SILENCE_CHUNK, 0, chunk)
                         if (n < 0) break
@@ -741,9 +758,9 @@ class EnginePlayer @AssistedInject constructor(
         // we use whichever model VoiceEngine.loadModel was last called with.
     }
 
-    fun setTtsVolume(@Suppress("UNUSED_PARAMETER") v: Float) {
-        // TODO: route through AudioTrack.setVolume; defer until EnginePlayer
-        // is the default path.
+    fun setTtsVolume(v: Float) {
+        volumeRamp.set(v)
+        runCatching { audioTrack?.setVolume(v.coerceIn(0f, 1f)) }
     }
 
     private fun estimateDurationMs(text: String): Long {
