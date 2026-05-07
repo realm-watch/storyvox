@@ -50,6 +50,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun seekTo(ms: Long) = playback.seekTo(ms)
+    fun seekToChar(charOffset: Int) = playback.seekToChar(charOffset)
     fun skipForward() = playback.skipForward()
     fun skipBack() = playback.skipBack()
     fun nextChapter() = playback.nextChapter()

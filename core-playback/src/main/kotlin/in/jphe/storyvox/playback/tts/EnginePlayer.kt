@@ -1,7 +1,6 @@
 package `in`.jphe.storyvox.playback.tts
 
 import android.content.Context
-import android.media.AudioAttributes as AndroidAudioAttributes
 import android.media.AudioFormat as AndroidAudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
@@ -34,12 +33,13 @@ import `in`.jphe.storyvox.playback.SleepTimer
 import `in`.jphe.storyvox.playback.voice.EngineType
 import `in`.jphe.storyvox.playback.voice.VoiceManager
 import java.io.File
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -50,6 +50,9 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -69,13 +72,12 @@ import kotlinx.coroutines.withContext
  *  - **Producer** ([generationJob]): walks the sentence list from
  *    [currentSentenceIndex], calls [VoiceEngine.generateAudioPCM] for each,
  *    pushes the resulting PCM byte[] onto [pcmQueue] together with the
- *    sentence range. Suspends if the queue is full (back-pressure).
- *  - **Consumer** ([playbackJob]): pulls from [pcmQueue], writes PCM to the
- *    AudioTrack via [AudioTrack.write] (blocking write — returns when the
- *    AudioTrack accepts the bytes; usually fast because the AudioTrack's
- *    own buffer absorbs them). Before writing, schedules a frame-position
- *    callback that fires when the framework actually starts playing this
- *    sentence — that's when we surface `currentSentenceRange` to the UI.
+ *    sentence range. Blocks on [java.util.concurrent.LinkedBlockingQueue.put]
+ *    if the queue is full (back-pressure).
+ *  - **Consumer** ([consumerThread]): pulls from [pcmQueue], writes PCM to
+ *    the AudioTrack via [AudioTrack.write] (blocking write — returns when
+ *    the AudioTrack accepts the bytes). Before writing, fires a
+ *    `scope.launch` to Main that surfaces the new sentence range to the UI.
  *
  * Pause/seek tear down the AudioTrack and re-create on resume; cheaper than
  * trying to keep state coherent across a `pause()` call.
@@ -108,20 +110,115 @@ class EnginePlayer @AssistedInject constructor(
      *  [startPlaybackPipeline] to decide which engine drives generation. */
     private var activeEngineType: EngineType? = null
 
+    /** Voice id whose model is currently loaded. Used by the active-voice
+     *  watcher (see [observeActiveVoice]) to decide whether a DataStore
+     *  emission represents a real change worth reloading for, and by
+     *  [resume] to detect a "voice changed while paused" situation that
+     *  needs a full reload before playback can continue with the new model. */
+    private var loadedVoiceId: String? = null
+
+    /** Flagged when the user picks a different voice while playback is
+     *  paused. The flag tells [resume] to route through [loadAndPlay] for
+     *  a fresh model load instead of restarting the existing pipeline. */
+    private var voiceReloadPending: Boolean = false
+
+    init {
+        observeActiveVoice()
+    }
+
+    /**
+     * Watches [VoiceManager.activeVoice] and reacts to user-driven voice
+     * changes. The catalog of cases:
+     *
+     *  - Active voice changes mid-playback → reload the engine and resume
+     *    from the current char offset so the listener hears the new voice
+     *    immediately (issue #8).
+     *  - Active voice changes while paused → flag a pending reload and stop
+     *    the existing pipeline; the next [resume] call will do a full
+     *    [loadAndPlay] with the new voice.
+     *  - Active voice changes before any chapter is loaded → no-op; the
+     *    next [loadAndPlay] reads activeVoice itself.
+     *
+     *  De-dup: we track [loadedVoiceId] so re-emissions of the same id
+     *  (e.g. after [setActive] writes the same value, or first-launch
+     *  hydration) are filtered out.
+     */
+    private fun observeActiveVoice() {
+        scope.launch {
+            voiceManager.activeVoice.collect { active ->
+                val newId = active?.id ?: return@collect
+                if (newId == loadedVoiceId) {
+                    // No-op flip — typically the user re-activated the same
+                    // voice, or DataStore re-emitted the persisted value. If
+                    // a previous flip had armed [voiceReloadPending] for a
+                    // different id and the user has now flipped *back* to
+                    // the loaded voice before resuming, clear the pending
+                    // flag so we don't force a needless model reload (a
+                    // 30 s Kokoro warm-up) on the next [resume].
+                    voiceReloadPending = false
+                    return@collect
+                }
+                val s = _observableState.value
+                val fictionId = s.currentFictionId
+                val chapterId = s.currentChapterId
+                if (fictionId == null || chapterId == null) return@collect
+                if (s.isPlaying) {
+                    // Live swap. Tear down the current pipeline FIRST so the
+                    // old generator can't keep pushing old-voice PCM into
+                    // the (about-to-be-replaced) queue while loadAndPlay
+                    // sits in loadModel for ~30 s on Kokoro. Without this,
+                    // the user hears 5–10 s of stale audio before silence
+                    // and finally the new voice.
+                    stopPlaybackPipeline()
+                    loadAndPlay(fictionId, chapterId, s.charOffset)
+                } else {
+                    voiceReloadPending = true
+                    stopPlaybackPipeline()
+                    activeEngineType = null
+                }
+            }
+        }
+    }
+
     /** AudioTrack for the active chapter. Recreated on play/seek/sample-rate change. */
     private var audioTrack: AudioTrack? = null
 
     /** Producer-consumer plumbing. PCM is tagged with its sentence so the
-     *  consumer knows what range to surface when playback actually reaches it. */
+     *  consumer knows what range to surface when playback actually reaches it.
+     *  [trailingSilenceBytes] is appended **after** [pcm] is written so the
+     *  consumer can spool zeros out of a shared buffer instead of every
+     *  sentence carrying a freshly-allocated copy of pcm + silence (issue #3). */
     private data class SentencePcm(
         val sentenceIndex: Int,
         val pcm: ByteArray,
+        val trailingSilenceBytes: Int,
         val range: SentenceRange,
     )
 
-    private var pcmQueue: Channel<SentencePcm>? = null
+    private var pcmQueue: LinkedBlockingQueue<SentencePcm>? = null
     private var generationJob: Job? = null
-    private var playbackJob: Job? = null
+
+    /** Dedicated playback thread. The agent that gets URGENT_AUDIO and never
+     *  yields back to a coroutine pool — see the comment on [startPlaybackPipeline]
+     *  for why this can't be a coroutine. */
+    private var consumerThread: Thread? = null
+
+    /** Per-pipeline run flag. Flipped to false by [stopPlaybackPipeline]; the
+     *  consumer checks it inside both the inter-sentence and intra-sentence
+     *  loops so it can bail out of long [AudioTrack.write] sequences without
+     *  waiting for the buffer to drain. */
+    private val pipelineRunning = AtomicBoolean(false)
+
+    /** Serializes [VoiceEngine.generateAudioPCM] / [KokoroEngine.generateAudioPCM]
+     *  calls. The VoxSherpa engines are process-singletons and the underlying
+     *  Sonic/onnxruntime state isn't safe across concurrent threads. Every
+     *  pipeline-restart event ([setSpeed], [setPitch], [seekToCharOffset],
+     *  voice swap) cancels the old generator coroutine, but cancellation only
+     *  fires at suspension points — a JNI call already in flight runs to
+     *  completion. Without this mutex, the new pipeline's generator can call
+     *  the engine *while the old one is still inside it*, corrupting the
+     *  internal state and producing garbled PCM. */
+    private val engineMutex = Mutex()
 
     private val _observableState = MutableStateFlow(PlaybackState())
     val observableState: StateFlow<PlaybackState> = _observableState.asStateFlow()
@@ -246,7 +343,7 @@ class EnginePlayer @AssistedInject constructor(
                     // load takes 30+s as sherpa-onnx builds the onnxruntime
                     // session and runs a warm-up generate.
                     val sharedDir = voiceManager.kokoroSharedDir()
-                    val onnx = File(sharedDir, "model.int8.onnx").absolutePath
+                    val onnx = File(sharedDir, "model.onnx").absolutePath
                     val tokens = File(sharedDir, "tokens.txt").absolutePath
                     val voicesBin = File(sharedDir, "voices.bin").absolutePath
                     KokoroEngine.getInstance().setActiveSpeakerId(
@@ -268,6 +365,8 @@ class EnginePlayer @AssistedInject constructor(
             return
         }
         activeEngineType = active.engineType
+        loadedVoiceId = active.id
+        voiceReloadPending = false
 
         // (state was already pushed above so the spinner could show during
         // model load — refresh durationEstimate now that the active engine
@@ -282,10 +381,30 @@ class EnginePlayer @AssistedInject constructor(
     }
 
     /**
-     * Spin up the producer/consumer pair. The generation worker walks the
-     * sentence list from currentSentenceIndex onward, pushing PCM onto a
-     * buffered channel; the playback worker pulls and writes to AudioTrack.
-     * Pre-fetching is implicit via the channel's capacity — generation runs
+     * Spin up the producer/consumer pair. Mirrors VoxSherpa standalone's
+     * playback shape exactly because deviating from it has measurably
+     * fuzzy output on Tab A7 Lite (issue #6):
+     *
+     *  - **Consumer = pinned [Thread]**, not a coroutine. `Process.set-`
+     *    `ThreadPriority(URGENT_AUDIO)` is per-OS-thread; coroutines on
+     *    [Dispatchers.IO] migrate threads on every suspend, so any priority
+     *    bump leaks across resumptions. A dedicated thread keeps URGENT_AUDIO
+     *    for the entire pipeline lifetime.
+     *  - **Queue = [LinkedBlockingQueue]**, not [kotlinx.coroutines.channels.Channel].
+     *    `take()` blocks the OS thread directly, no coroutine state-machine
+     *    overhead, no risk of dispatcher work-stealing introducing scheduling
+     *    jitter between sentences.
+     *  - **Buffer = [AudioTrack.getMinBufferSize]** (set in [createAudioTrack]).
+     *    Larger buffers route through AudioFlinger's deep-buffer mixer, which
+     *    on Samsung tablets uses a different sample-rate-conversion path than
+     *    the fast-track mixer used for `minBufferSize` tracks. Empirically the
+     *    deep-buffer path adds the residual fuzz that survives the legacy
+     *    `STREAM_MUSIC` constructor swap.
+     *  - **[engineMutex] around `generateAudioPCM`** so a stop-then-start
+     *    sequence (slider drag, voice swap, seek) never has two threads
+     *    inside the singleton VoxSherpa engine at once.
+     *
+     * Pre-fetching is implicit via the queue's capacity — generation runs
      * ahead of playback by however many slots are free.
      */
     private fun startPlaybackPipeline() {
@@ -297,15 +416,12 @@ class EnginePlayer @AssistedInject constructor(
             is EngineType.Kokoro -> KokoroEngine.getInstance().sampleRate
             else -> VoiceEngine.getInstance().sampleRate
         }.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
-        // Don't call play() yet. Calling play() on an empty buffer makes
-        // AudioFlinger remove the track on BUFFER TIMEOUT and reattach it
-        // when data finally arrives — the reattach glitch is audible on
-        // Tab A7 Lite. Playback starts inside playbackJob right before the
-        // first write, so the buffer is never empty in PLAYING state.
-        audioTrack = createAudioTrack(sampleRate)
+        val track = createAudioTrack(sampleRate)
+        audioTrack = track
 
-        val queue = Channel<SentencePcm>(QUEUE_CAPACITY)
+        val queue = LinkedBlockingQueue<SentencePcm>(QUEUE_CAPACITY)
         pcmQueue = queue
+        pipelineRunning.set(true)
 
         generationJob = ioScope.launch {
             // Inference is CPU-heavy on modest hardware (Tab A7 Lite); without
@@ -315,64 +431,70 @@ class EnginePlayer @AssistedInject constructor(
             AndroidProcess.setThreadPriority(AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO)
             try {
                 for (i in currentSentenceIndex until sentences.size) {
+                    // Re-apply URGENT_AUDIO each iteration: engineMutex.withLock
+                    // and runInterruptible (below) are suspension points, and
+                    // Dispatchers.IO can resume us on a different worker thread
+                    // that's at default priority.
+                    AndroidProcess.setThreadPriority(AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO)
+                    if (!pipelineRunning.get()) return@launch
                     val s = sentences[i]
-                    val pcm = when (engineType) {
-                        is EngineType.Kokoro -> KokoroEngine.getInstance()
-                            .generateAudioPCM(s.text, currentSpeed, currentPitch)
-                        else -> VoiceEngine.getInstance()
-                            .generateAudioPCM(s.text, currentSpeed, currentPitch)
-                    } ?: continue // skip silently; defensive
-                    queue.send(
-                        SentencePcm(
-                            sentenceIndex = i,
-                            pcm = pcm,
-                            range = SentenceRange(s.index, s.startChar, s.endChar),
-                        ),
+                    val pcm = engineMutex.withLock {
+                        AndroidProcess.setThreadPriority(AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO)
+                        if (!pipelineRunning.get()) return@withLock null
+                        when (engineType) {
+                            is EngineType.Kokoro -> KokoroEngine.getInstance()
+                                .generateAudioPCM(s.text, currentSpeed, currentPitch)
+                            else -> VoiceEngine.getInstance()
+                                .generateAudioPCM(s.text, currentSpeed, currentPitch)
+                        }
+                    } ?: continue
+                    // Neural TTS engines compress the natural inter-sentence
+                    // pause down to almost nothing — instruct the consumer
+                    // to spool N zero-bytes of silence after this sentence,
+                    // sized by the sentence's terminal punctuation. We don't
+                    // splice the silence into a fresh ByteArray here because
+                    // each sentence's PCM is already 50–500 KB and a copy
+                    // per sentence is avoidable GC pressure.
+                    val pauseMs = trailingPauseMs(s.text) / currentSpeed.coerceAtLeast(0.5f)
+                    val silenceBytes = silenceBytesFor(pauseMs.toInt(), sampleRate)
+                    val item = SentencePcm(
+                        sentenceIndex = i,
+                        pcm = pcm,
+                        trailingSilenceBytes = silenceBytes,
+                        range = SentenceRange(s.index, s.startChar, s.endChar),
                     )
+                    // runInterruptible turns Thread.interrupt (sent by
+                    // stopPlaybackPipeline → cancel) into a coroutine
+                    // CancellationException, so a blocked put() doesn't
+                    // wedge the producer when shutdown races a full queue.
+                    runInterruptible { queue.put(item) }
                 }
+                // Natural end — let the consumer finish draining and then
+                // run the chapter-done handler.
+                runInterruptible { queue.put(NATURAL_END_PILL) }
             } catch (_: Throwable) {
-                // Channel closed (consumer cancelled) or engine fault — just stop.
-            } finally {
-                queue.close()
+                // Cancelled or engine fault — silent. The consumer is shut
+                // down by stopPlaybackPipeline directly, no pill needed.
             }
         }
 
-        playbackJob = ioScope.launch {
-            // Critical: keep the AudioTrack.write() loop above ordinary IO
-            // priority. Without this, Dispatchers.IO can preempt the writer
-            // long enough for the AudioTrack buffer to drain → underrun →
-            // auto-restart → audible click/fuzz on top of the speech.
-            // logcat signature: "AudioTrack: restartIfDisabled ... disabled
-            // due to previous underrun, restarting".
+        consumerThread = Thread({
             AndroidProcess.setThreadPriority(AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO)
-            // === DEBUG INSTRUMENTATION (audio-fuzz investigation) ===
-            // Tap the exact PCM bytes we hand to AudioTrack.write() so we
-            // can pull them to desktop and decide whether the fuzz is in
-            // the bytes (pre-AudioTrack: engine/inference) or added by
-            // AudioFlinger/hardware after write(). Captures the FIRST
-            // sentence of this pipeline run, ~one file per startPlaybackPipeline().
-            // To disable: set DEBUG_DUMP_PCM = false below.
-            // File lands at: /sdcard/Android/data/in.jphe.storyvox.debug/cache/storyvox-debug.pcm
-            val debugDumpFile: File? = if (DEBUG_DUMP_PCM) {
-                runCatching {
-                    val dir = context.externalCacheDir ?: context.cacheDir
-                    File(dir, "storyvox-debug.pcm").also { if (it.exists()) it.delete() }
-                }.getOrNull()
-            } else null
-            var debugDumped = false
-            // === END DEBUG INSTRUMENTATION ===
+            var naturalEnd = false
+            var firstSentence = true
             try {
-                var firstSentence = true
-                for (item in queue) {
-                    // Channel iteration suspends when empty; on resume the
-                    // coroutine may be on a different IO pool thread, so
-                    // re-apply URGENT_AUDIO each iteration as cheap insurance.
-                    AndroidProcess.setThreadPriority(AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO)
+                while (pipelineRunning.get()) {
+                    val item = try {
+                        queue.take()
+                    } catch (_: InterruptedException) {
+                        break
+                    }
+                    if (item === NATURAL_END_PILL) { naturalEnd = true; break }
 
-                    // Surface the new sentence range BEFORE writing. Fire-and-
-                    // forget on Main — `withContext` would suspend this worker
-                    // and risk it resuming on a different IO thread without
-                    // URGENT_AUDIO priority, reintroducing underrun fuzz.
+                    // Surface the new sentence range BEFORE writing. Fire-
+                    // and-forget on Main — withContext would force this
+                    // thread to coordinate with the coroutine dispatcher,
+                    // which is the whole reason we left coroutines.
                     scope.launch {
                         currentSentenceIndex = item.sentenceIndex
                         _observableState.update {
@@ -382,76 +504,123 @@ class EnginePlayer @AssistedInject constructor(
                             )
                         }
                     }
-                    val track = audioTrack ?: break
 
-                    // Start AudioTrack on the first iteration, only once we
-                    // have real data ready to feed it. See createAudioTrack
-                    // comment for the empty-buffer / reattach reasoning.
                     if (firstSentence) {
-                        track.play()
+                        runCatching { track.play() }
                         firstSentence = false
                     }
 
                     var written = 0
-                    while (written < item.pcm.size) {
+                    while (written < item.pcm.size && pipelineRunning.get()) {
                         val n = track.write(item.pcm, written, item.pcm.size - written)
                         if (n < 0) break // error code from AudioTrack
                         written += n
                     }
+                    // Spool trailing silence from a shared zero-filled
+                    // buffer (no per-sentence allocation).
+                    var remaining = item.trailingSilenceBytes
+                    while (remaining > 0 && pipelineRunning.get()) {
+                        val chunk = remaining.coerceAtMost(SILENCE_CHUNK.size)
+                        val n = track.write(SILENCE_CHUNK, 0, chunk)
+                        if (n < 0) break
+                        remaining -= n
+                    }
                 }
-                // All sentences consumed — chapter ended.
-                withContext(Dispatchers.Main) {
-                    sleepTimer.signalChapterEnd()
-                    handleChapterDone()
+            } finally {
+                // Release the AudioTrack from the same thread that owns
+                // its write() loop. Doing this from the main thread (as
+                // [stopPlaybackPipeline] used to) raced with whatever
+                // write() was in flight and could JNI-crash. Now release
+                // happens *after* the write loop has definitely exited.
+                runCatching { track.pause() }
+                runCatching { track.flush() }
+                runCatching { track.release() }
+                if (naturalEnd && pipelineRunning.get()) {
+                    scope.launch {
+                        sleepTimer.signalChapterEnd()
+                        handleChapterDone()
+                    }
                 }
-            } catch (_: Throwable) {
-                // Cancelled.
             }
+        }, "storyvox-audio-out").apply {
+            isDaemon = true
+            start()
         }
     }
 
     private fun stopPlaybackPipeline() {
-        generationJob?.cancel()
-        generationJob = null
-        playbackJob?.cancel()
-        playbackJob = null
-        pcmQueue?.close()
-        pcmQueue = null
-        audioTrack?.let {
+        // Shutdown handshake:
+        //  1. Signal stop via the run flag.
+        //  2. Pause + flush the AudioTrack so any currently-blocked
+        //     write() returns immediately (ring buffer has space again).
+        //  3. Cancel the producer coroutine; runInterruptible turns the
+        //     thread interrupt into a CancellationException for blocked
+        //     queue.put() calls.
+        //  4. Interrupt + join the consumer thread (so a queue.take()
+        //     blocked on an empty queue wakes up).
+        //  5. The consumer's own finally block does the AudioTrack
+        //     release — *not* main thread — so we can't race a write().
+        //     If join times out we still don't release ourselves; the
+        //     consumer will finish its current write and clean up
+        //     whenever it gets there.
+        pipelineRunning.set(false)
+
+        val track = audioTrack
+        audioTrack = null
+        track?.let {
             runCatching { it.pause() }
             runCatching { it.flush() }
-            runCatching { it.release() }
         }
-        audioTrack = null
+
+        generationJob?.cancel()
+        generationJob = null
+
+        val t = consumerThread
+        consumerThread = null
+        if (t != null && t !== Thread.currentThread()) {
+            t.interrupt()
+            // 2 s upper bound — plenty for a paused+flushed track to
+            // finish its current write iteration. If we somehow exceed
+            // this the consumer keeps living until it's done; the OLD
+            // track's release is its responsibility.
+            try { t.join(2_000) } catch (_: InterruptedException) {}
+        }
+
+        pcmQueue = null
     }
 
-    /**
-     * Build an AudioTrack matching VoxSherpa standalone byte-for-byte —
-     * deprecated `STREAM_MUSIC` constructor with `minBufferSize`, no
-     * `AudioAttributes` Builder. This is a deliberate diagnostic: VoxSherpa
-     * sounds clean on Tab A7 Lite with this exact configuration; storyvox
-     * was fuzzy with the modern `AudioTrack.Builder` even after fixing
-     * `CONTENT_TYPE_SPEECH`. The Builder API may attach additional routing
-     * metadata that AudioFlinger uses to pick a different output stream
-     * (DEEP_BUFFER offload vs NORMAL), and on Samsung MTK SoCs that picks a
-     * different post-processing chain. Going bare-metal eliminates the
-     * variable.
+    /** Build an AudioTrack that mirrors the standalone VoxSherpa demo exactly:
+     *  legacy `STREAM_MUSIC` constructor, `getMinBufferSize()` buffer (no
+     *  multiplier), `MODE_STREAM`. This is deliberate even though it costs us
+     *  the seconds-long pre-render cushion the bigger buffer provided.
      *
-     * The smaller buffer (minBufferSize, not 2s) is fine because URGENT_AUDIO
-     * priority on the writer keeps it ahead of drain — VoxSherpa proves this
-     * on the same hardware.
-     */
+     *  Why minBuffer specifically: AudioFlinger has two media mixer paths.
+     *  Tracks created with a buffer ≈ minBufferSize qualify for the
+     *  fast-track (low-latency) mixer; larger buffers route through the
+     *  deep-buffer mixer. On Samsung tablets the deep-buffer mixer uses a
+     *  different sample-rate-conversion chain that introduces audible
+     *  distortion on 22050/24000Hz mono speech PCM. The bigger buffer
+     *  bought us ~2 seconds of generator headroom but lost us clean output;
+     *  the producer now keeps the generator queue full ([QUEUE_CAPACITY]
+     *  sentences ahead) so the small buffer never empties between writes.
+     *
+     *  We also keep the legacy constructor (vs `AudioTrack.Builder`) because
+     *  on Samsung the Builder path with `USAGE_MEDIA + CONTENT_TYPE_MUSIC`
+     *  goes through the AudioAttributes routing layer, which on some firmware
+     *  applies SoundAlive/Atmos. The legacy ctor advertises `STREAM_MUSIC`
+     *  directly to AudioFlinger and bypasses those effects on the affected
+     *  devices. VoxSherpa standalone does the same. */
+    @Suppress("DEPRECATION")
     private fun createAudioTrack(sampleRate: Int): AudioTrack {
         val channelMask = AndroidAudioFormat.CHANNEL_OUT_MONO
         val encoding = AndroidAudioFormat.ENCODING_PCM_16BIT
-        val minBuf = AudioTrack.getMinBufferSize(sampleRate, channelMask, encoding)
-        @Suppress("DEPRECATION")
+        val bufferSize = AudioTrack.getMinBufferSize(sampleRate, channelMask, encoding)
         return AudioTrack(
             AudioManager.STREAM_MUSIC,
             sampleRate,
             channelMask,
             encoding,
-            minBuf,
+            bufferSize,
             AudioTrack.MODE_STREAM,
         )
     }
@@ -465,6 +634,20 @@ class EnginePlayer @AssistedInject constructor(
 
     fun resume() {
         if (sentences.isEmpty()) return
+        // If the user activated a different voice while paused (#8), the
+        // existing engine model is the wrong one — route through loadAndPlay
+        // to swap it before any audio comes out.
+        if (voiceReloadPending) {
+            val s = _observableState.value
+            val fictionId = s.currentFictionId
+            val chapterId = s.currentChapterId
+            if (fictionId != null && chapterId != null) {
+                voiceReloadPending = false
+                scope.launch { loadAndPlay(fictionId, chapterId, s.charOffset) }
+                return
+            }
+            voiceReloadPending = false
+        }
         _observableState.update { it.copy(isPlaying = true, error = null) }
         startPlaybackPipeline()
         invalidateState()
@@ -579,18 +762,84 @@ class EnginePlayer @AssistedInject constructor(
         ioScope.cancel()
     }
 
+    /**
+     * Length of trailing silence to splice after a sentence's PCM, picked
+     * by the punctuation it ends with. Neural TTS engines barely breathe
+     * between sentences; without these padding gaps the listener hears one
+     * continuous block of speech. Values are tuned to match audiobook-style
+     * cadence at 1.0× speed; the producer scales them down at higher speeds
+     * so a 2× listener doesn't sit through 700ms gaps.
+     *
+     * The tail-detection is robust against:
+     *  - **Closing punctuation** wrapping a sentence: `"He left."`, `(yes!)`,
+     *    `'maybe?'` — we strip trailing closers and whitespace before
+     *    looking at the real terminal char.
+     *  - **Multi-character ellipsis** (`...` written as three dots, common
+     *    in HTML-decoded chapter text where the real `…` is rare) — the
+     *    "..." literal is mapped to the same bucket as `…`.
+     *  - **Dash variants** — en-dash, em-dash, and ASCII hyphen used as a
+     *    sentence-internal cesura.
+     */
+    private fun trailingPauseMs(sentenceText: String): Int {
+        // Strip trailing whitespace + closing punctuation/quotes so we look
+        // at the terminal *speech* character, not the visual close-mark.
+        var end = sentenceText.length
+        while (end > 0 && (sentenceText[end - 1].isWhitespace() ||
+                sentenceText[end - 1] in CLOSE_PUNCT)) end--
+        if (end == 0) return 60
+        // Multi-char ellipsis takes precedence over the single-char switch.
+        if (end >= 3 && sentenceText.regionMatches(end - 3, "...", 0, 3)) return 350
+        return when (sentenceText[end - 1]) {
+            '.', '!', '?', '…' -> 350
+            ';', ':' -> 200
+            ',', '—', '–', '-' -> 120
+            else -> 60
+        }
+    }
+
+    private fun silenceBytesFor(durationMs: Int, sampleRate: Int): Int {
+        if (durationMs <= 0) return 0
+        // 16-bit signed PCM = 2 bytes per sample, mono = 1 channel.
+        return ((sampleRate.toLong() * durationMs / 1000L).toInt() * 2).coerceAtLeast(0)
+    }
+
     private companion object {
         /** Buffered slots ahead of the playback consumer. Each slot holds one
-         *  sentence's PCM (~50–500KB). At 4 slots × ~250KB avg = ~1MB peak —
-         *  fine on Android. Higher capacity gives more pre-render headroom but
-         *  costs memory and slows seek-flush. */
-        // 8 sentences of cushion; with ~2s/sentence playback that gives the
-        // generator ~16s of headroom before the queue runs dry on a slow
-        // sentence. Was 4 — too tight on Tab A7 Lite for variable-length text.
+         *  sentence's PCM (~50–500KB). At 8 slots × ~250KB avg ≈ 2MB peak.
+         *  This is the *only* generator headroom we have now that the
+         *  AudioTrack itself uses minBufferSize (~130 ms at 22 kHz) — the
+         *  queue has to stay full or the buffer underruns and we hear clicks. */
         const val QUEUE_CAPACITY = 8
 
         /** Fallback when the engine reports a non-positive sample rate (model
          *  not loaded yet). Piper voices are 22050Hz; Kokoro is 24000Hz. */
         const val DEFAULT_SAMPLE_RATE = 22050
+
+        /** Closing-punctuation characters stripped before deciding the
+         *  terminal punctuation for trailing-silence sizing. Covers ASCII
+         *  + curly + bracketed close marks. */
+        val CLOSE_PUNCT: Set<Char> = setOf(
+            '"', '\'', ')', ']', '}', '”', '’', '»', '」',
+        )
+
+        /** Shared zero-filled buffer the consumer writes from to spool
+         *  inter-sentence silence. Sized for one chunk @ 24 kHz mono 16-bit
+         *  ≈ 350 ms, which is the longest silence we ever emit; longer
+         *  silences chain multiple writes from the same buffer. Static so
+         *  every sentence reuses the same allocation. */
+        val SILENCE_CHUNK: ByteArray = ByteArray(24_000 * 2 * 350 / 1000)
+
+        /** Sentinel pushed by the producer onto the queue when it has run
+         *  out of sentences naturally (i.e. the chapter is finished). The
+         *  consumer thread checks for object identity (`===`) and triggers
+         *  the chapter-done handler instead of treating it like real audio.
+         *  A cancellation-driven shutdown does NOT enqueue this — it just
+         *  flips [pipelineRunning] to false and interrupts the consumer. */
+        val NATURAL_END_PILL: SentencePcm = SentencePcm(
+            sentenceIndex = -1,
+            pcm = ByteArray(0),
+            trailingSilenceBytes = 0,
+            range = SentenceRange(-1, -1, -1),
+        )
     }
 }

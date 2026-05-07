@@ -2,6 +2,7 @@ package `in`.jphe.storyvox.feature.engine
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,8 +37,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import `in`.jphe.storyvox.playback.voice.UiVoiceInfo
+import `in`.jphe.storyvox.playback.voice.VoiceCatalog
 import `in`.jphe.storyvox.playback.voice.VoiceManager
 import `in`.jphe.storyvox.playback.voice.VoiceManager.DownloadProgress
 import `in`.jphe.storyvox.ui.component.BrassButton
@@ -64,28 +69,47 @@ fun VoicePickerGate(
     val downloadingId by vm.downloadingVoiceId.collectAsStateWithLifecycle()
     val progress by vm.progress.collectAsStateWithLifecycle()
     val bypassed by vm.bypassed.collectAsStateWithLifecycle()
+    val recommended by vm.recommended.collectAsStateWithLifecycle()
 
-    if (bypassed || activeVoice != null) {
+    // Render content unconditionally so the embedded NavHost (and its graph)
+    // is registered even while the gate is still up. Tapping "More voices →"
+    // dismisses the gate AND calls navController.navigate in the same frame —
+    // if content weren't already in the composition, the destination route
+    // wouldn't exist on the NavController yet and navigate() would crash.
+    Box(modifier = Modifier.fillMaxSize()) {
         content()
-        return
+        if (!bypassed && activeVoice == null) {
+            // Swallow taps in the gate's empty regions so they don't fall
+            // through to the LibraryScreen rendered underneath. We use a
+            // ripple-less clickable rather than pointerInput because the
+            // foundation API is shorter and we don't need finer gesture
+            // control here.
+            val swallow = remember { MutableInteractionSource() }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .clickable(
+                        interactionSource = swallow,
+                        indication = null,
+                        onClick = {},
+                    ),
+            ) {
+                VoicePickerScreen(
+                    recommended = recommended,
+                    downloadingVoiceId = downloadingId,
+                    progress = progress,
+                    onPick = vm::pick,
+                    onSkip = vm::bypass,
+                    onOpenLibrary = {
+                        vm.bypass()
+                        onOpenVoiceLibrary()
+                    },
+                    onDismissProgress = vm::dismissProgress,
+                )
+            }
+        }
     }
-
-    VoicePickerScreen(
-        recommended = vm.recommended,
-        downloadingVoiceId = downloadingId,
-        progress = progress,
-        onPick = vm::pick,
-        onSkip = vm::bypass,
-        onOpenLibrary = {
-            // Dismiss the gate so the NavHost is visible, then route to the
-            // library. If the user picks a voice there, activeVoice flips
-            // to non-null and the gate stays dismissed permanently. If not,
-            // they got reader-only mode for the session.
-            vm.bypass()
-            onOpenVoiceLibrary()
-        },
-        onDismissProgress = vm::dismissProgress,
-    )
 }
 
 @HiltViewModel
@@ -93,8 +117,25 @@ class VoicePickerGateViewModel @Inject constructor(
     private val voices: VoiceManager,
 ) : ViewModel() {
 
-    /** First three catalog entries — Amy low / Lessac medium / Ryan high (en_US Piper). */
-    val recommended: List<UiVoiceInfo> = voices.availableVoices.take(3)
+    /** Hand-picked best-of-catalog starter voices ([VoiceCatalog.featuredIds]).
+     *  Same set the Voice Library highlights under "Featured", so a user sees
+     *  the same three names whether they pick now or browse the library.
+     *  Prefers an installed [UiVoiceInfo] when available so the gate row
+     *  reflects reality (and so [pick] can skip the download on tap). */
+    val recommended: StateFlow<List<UiVoiceInfo>> = voices.installedVoices
+        .map { installed ->
+            val installedById = installed.associateBy { it.id }
+            VoiceCatalog.featuredIds.mapNotNull { id ->
+                installedById[id] ?: voices.availableVoices.firstOrNull { it.id == id }
+            }
+        }
+        .stateIn(
+            viewModelScope,
+            kotlinx.coroutines.flow.SharingStarted.Eagerly,
+            VoiceCatalog.featuredIds.mapNotNull { id ->
+                voices.availableVoices.firstOrNull { it.id == id }
+            },
+        )
 
     val activeVoice: StateFlow<UiVoiceInfo?> = voices.activeVoice
         .let { flow ->
@@ -117,6 +158,15 @@ class VoicePickerGateViewModel @Inject constructor(
 
     fun pick(voiceId: String) {
         if (_downloadingVoiceId.value != null) return
+        // Already-installed featured voices (e.g. the gate re-appearing
+        // after the previously-active voice was deleted but other voices
+        // are still on disk) should activate immediately — no need to
+        // re-download a model that already lives in filesDir.
+        val installed = recommended.value.firstOrNull { it.id == voiceId }?.isInstalled == true
+        if (installed) {
+            viewModelScope.launch { voices.setActive(voiceId) }
+            return
+        }
         _downloadingVoiceId.value = voiceId
         _progress.value = DownloadProgress.Resolving
         viewModelScope.launch {

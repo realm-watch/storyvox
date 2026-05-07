@@ -53,6 +53,7 @@ fun HybridReaderScreen(
                 state = playback,
                 chapterText = state.chapterText,
                 onPlayPause = viewModel::playPause,
+                onSeekToChar = viewModel::seekToChar,
             )
         },
     )

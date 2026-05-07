@@ -1,6 +1,7 @@
 package `in`.jphe.storyvox.ui.component
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -14,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
@@ -83,6 +85,27 @@ fun SentenceHighlight(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 4.dp)
+            // Tap-to-seek: convert the tap position into a UTF-16 offset via
+            // the captured TextLayoutResult and forward to onTapWord. The
+            // pointerInput is keyed on `text` AND `onTapWord` so a chapter
+            // switch (which changes both text content and length) re-installs
+            // the gesture handler with the fresh closure — otherwise tap
+            // offsets would be clamped against the previous chapter's length
+            // and produce wrong seek positions.
+            .then(
+                if (onTapWord != null) {
+                    Modifier.pointerInput(onTapWord, text) {
+                        detectTapGestures { tap ->
+                            val l = layout ?: return@detectTapGestures
+                            val charIndex = l.getOffsetForPosition(tap)
+                                .coerceIn(0, text.length)
+                            onTapWord(charIndex)
+                        }
+                    }
+                } else {
+                    Modifier
+                }
+            )
             .drawBehind {
                 val l = layout ?: return@drawBehind
                 if (highlightEnd <= highlightStart) return@drawBehind
@@ -109,8 +132,4 @@ fun SentenceHighlight(
             },
     )
 
-    // Tap-to-seek is the caller's responsibility — SentenceHighlight is a pure renderer
-    // so it composes cleanly inside a scrolling reader. Callers wire onTapWord via
-    // Modifier.pointerInput on their parent and use the layout result for hit-testing.
-    onTapWord?.let { _ -> }
 }
