@@ -352,6 +352,9 @@ private class RealPlaybackControllerUi(
         val charOffset = ((ms / 1000.0) * charsPerSec).toInt().coerceAtLeast(0)
         controller.seekTo(charOffset)
     }
+    override fun seekToChar(charOffset: Int) {
+        controller.seekTo(charOffset.coerceAtLeast(0))
+    }
     override fun skipForward() = controller.skipForward30s()
     override fun skipBack() = controller.skipBack30s()
     override fun nextChapter() {

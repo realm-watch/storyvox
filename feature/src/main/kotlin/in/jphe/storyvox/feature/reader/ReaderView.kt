@@ -56,6 +56,7 @@ fun ReaderTextView(
     state: UiPlaybackState,
     chapterText: String,
     onPlayPause: () -> Unit,
+    onSeekToChar: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val spacing = LocalSpacing.current
@@ -126,6 +127,7 @@ fun ReaderTextView(
                         text = chapterText,
                         highlightStart = state.sentenceStart,
                         highlightEnd = state.sentenceEnd,
+                        onTapWord = onSeekToChar,
                         onLayout = { layout -> textLayout = layout },
                     )
                 }

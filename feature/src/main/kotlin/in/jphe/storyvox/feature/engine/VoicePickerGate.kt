@@ -37,6 +37,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import `in`.jphe.storyvox.playback.voice.UiVoiceInfo
 import `in`.jphe.storyvox.playback.voice.VoiceCatalog
@@ -67,6 +69,7 @@ fun VoicePickerGate(
     val downloadingId by vm.downloadingVoiceId.collectAsStateWithLifecycle()
     val progress by vm.progress.collectAsStateWithLifecycle()
     val bypassed by vm.bypassed.collectAsStateWithLifecycle()
+    val recommended by vm.recommended.collectAsStateWithLifecycle()
 
     // Render content unconditionally so the embedded NavHost (and its graph)
     // is registered even while the gate is still up. Tapping "More voices →"
@@ -93,7 +96,7 @@ fun VoicePickerGate(
                     ),
             ) {
                 VoicePickerScreen(
-                    recommended = vm.recommended,
+                    recommended = recommended,
                     downloadingVoiceId = downloadingId,
                     progress = progress,
                     onPick = vm::pick,
@@ -116,9 +119,23 @@ class VoicePickerGateViewModel @Inject constructor(
 
     /** Hand-picked best-of-catalog starter voices ([VoiceCatalog.featuredIds]).
      *  Same set the Voice Library highlights under "Featured", so a user sees
-     *  the same three names whether they pick now or browse the library. */
-    val recommended: List<UiVoiceInfo> = VoiceCatalog.featuredIds
-        .mapNotNull { id -> voices.availableVoices.firstOrNull { it.id == id } }
+     *  the same three names whether they pick now or browse the library.
+     *  Prefers an installed [UiVoiceInfo] when available so the gate row
+     *  reflects reality (and so [pick] can skip the download on tap). */
+    val recommended: StateFlow<List<UiVoiceInfo>> = voices.installedVoices
+        .map { installed ->
+            val installedById = installed.associateBy { it.id }
+            VoiceCatalog.featuredIds.mapNotNull { id ->
+                installedById[id] ?: voices.availableVoices.firstOrNull { it.id == id }
+            }
+        }
+        .stateIn(
+            viewModelScope,
+            kotlinx.coroutines.flow.SharingStarted.Eagerly,
+            VoiceCatalog.featuredIds.mapNotNull { id ->
+                voices.availableVoices.firstOrNull { it.id == id }
+            },
+        )
 
     val activeVoice: StateFlow<UiVoiceInfo?> = voices.activeVoice
         .let { flow ->
@@ -141,6 +158,15 @@ class VoicePickerGateViewModel @Inject constructor(
 
     fun pick(voiceId: String) {
         if (_downloadingVoiceId.value != null) return
+        // Already-installed featured voices (e.g. the gate re-appearing
+        // after the previously-active voice was deleted but other voices
+        // are still on disk) should activate immediately — no need to
+        // re-download a model that already lives in filesDir.
+        val installed = recommended.value.firstOrNull { it.id == voiceId }?.isInstalled == true
+        if (installed) {
+            viewModelScope.launch { voices.setActive(voiceId) }
+            return
+        }
         _downloadingVoiceId.value = voiceId
         _progress.value = DownloadProgress.Resolving
         viewModelScope.launch {

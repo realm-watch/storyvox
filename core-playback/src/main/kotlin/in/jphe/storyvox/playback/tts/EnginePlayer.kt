@@ -107,14 +107,74 @@ class EnginePlayer @AssistedInject constructor(
      *  [startPlaybackPipeline] to decide which engine drives generation. */
     private var activeEngineType: EngineType? = null
 
+    /** Voice id whose model is currently loaded. Used by the active-voice
+     *  watcher (see [observeActiveVoice]) to decide whether a DataStore
+     *  emission represents a real change worth reloading for, and by
+     *  [resume] to detect a "voice changed while paused" situation that
+     *  needs a full reload before playback can continue with the new model. */
+    private var loadedVoiceId: String? = null
+
+    /** Flagged when the user picks a different voice while playback is
+     *  paused. The flag tells [resume] to route through [loadAndPlay] for
+     *  a fresh model load instead of restarting the existing pipeline. */
+    private var voiceReloadPending: Boolean = false
+
+    init {
+        observeActiveVoice()
+    }
+
+    /**
+     * Watches [VoiceManager.activeVoice] and reacts to user-driven voice
+     * changes. The catalog of cases:
+     *
+     *  - Active voice changes mid-playback → reload the engine and resume
+     *    from the current char offset so the listener hears the new voice
+     *    immediately (issue #8).
+     *  - Active voice changes while paused → flag a pending reload and stop
+     *    the existing pipeline; the next [resume] call will do a full
+     *    [loadAndPlay] with the new voice.
+     *  - Active voice changes before any chapter is loaded → no-op; the
+     *    next [loadAndPlay] reads activeVoice itself.
+     *
+     *  De-dup: we track [loadedVoiceId] so re-emissions of the same id
+     *  (e.g. after [setActive] writes the same value, or first-launch
+     *  hydration) are filtered out.
+     */
+    private fun observeActiveVoice() {
+        scope.launch {
+            voiceManager.activeVoice.collect { active ->
+                val newId = active?.id ?: return@collect
+                if (newId == loadedVoiceId) return@collect
+                val s = _observableState.value
+                val fictionId = s.currentFictionId
+                val chapterId = s.currentChapterId
+                if (fictionId == null || chapterId == null) return@collect
+                if (s.isPlaying) {
+                    // Live swap. loadAndPlay will tear down the current
+                    // pipeline (including the queue full of old-voice PCM)
+                    // and rebuild from the current char offset.
+                    loadAndPlay(fictionId, chapterId, s.charOffset)
+                } else {
+                    voiceReloadPending = true
+                    stopPlaybackPipeline()
+                    activeEngineType = null
+                }
+            }
+        }
+    }
+
     /** AudioTrack for the active chapter. Recreated on play/seek/sample-rate change. */
     private var audioTrack: AudioTrack? = null
 
     /** Producer-consumer plumbing. PCM is tagged with its sentence so the
-     *  consumer knows what range to surface when playback actually reaches it. */
+     *  consumer knows what range to surface when playback actually reaches it.
+     *  [trailingSilenceBytes] is appended **after** [pcm] is written so the
+     *  consumer can spool zeros out of a shared buffer instead of every
+     *  sentence carrying a freshly-allocated copy of pcm + silence (issue #3). */
     private data class SentencePcm(
         val sentenceIndex: Int,
         val pcm: ByteArray,
+        val trailingSilenceBytes: Int,
         val range: SentenceRange,
     )
 
@@ -267,6 +327,8 @@ class EnginePlayer @AssistedInject constructor(
             return
         }
         activeEngineType = active.engineType
+        loadedVoiceId = active.id
+        voiceReloadPending = false
 
         // (state was already pushed above so the spinner could show during
         // model load — refresh durationEstimate now that the active engine
@@ -315,23 +377,26 @@ class EnginePlayer @AssistedInject constructor(
             try {
                 for (i in currentSentenceIndex until sentences.size) {
                     val s = sentences[i]
-                    val raw = when (engineType) {
+                    val pcm = when (engineType) {
                         is EngineType.Kokoro -> KokoroEngine.getInstance()
                             .generateAudioPCM(s.text, currentSpeed, currentPitch)
                         else -> VoiceEngine.getInstance()
                             .generateAudioPCM(s.text, currentSpeed, currentPitch)
                     } ?: continue // skip silently; defensive
                     // Neural TTS engines compress the natural inter-sentence
-                    // pause down to almost nothing — append silence sized to
-                    // the terminal punctuation so a period actually sounds
-                    // like a beat-and-then-next-sentence rather than a wall
-                    // of words crashing together.
+                    // pause down to almost nothing — instruct the consumer
+                    // to spool N zero-bytes of silence after this sentence,
+                    // sized by the sentence's terminal punctuation. We don't
+                    // splice the silence into a fresh ByteArray here because
+                    // each sentence's PCM is already 50–500 KB and a copy
+                    // per sentence is avoidable GC pressure.
                     val pauseMs = trailingPauseMs(s.text) / currentSpeed.coerceAtLeast(0.5f)
-                    val pcm = appendSilence(raw, pauseMs.toInt(), sampleRate)
+                    val silenceBytes = silenceBytesFor(pauseMs.toInt(), sampleRate)
                     queue.send(
                         SentencePcm(
                             sentenceIndex = i,
                             pcm = pcm,
+                            trailingSilenceBytes = silenceBytes,
                             range = SentenceRange(s.index, s.startChar, s.endChar),
                         ),
                     )
@@ -387,6 +452,16 @@ class EnginePlayer @AssistedInject constructor(
                         val n = track.write(item.pcm, written, item.pcm.size - written)
                         if (n < 0) break // error code from AudioTrack
                         written += n
+                    }
+                    // Spool the trailing silence from a shared zero-filled
+                    // buffer so we don't allocate per-sentence (the producer
+                    // sized this in bytes on its side).
+                    var remaining = item.trailingSilenceBytes
+                    while (remaining > 0) {
+                        val chunk = remaining.coerceAtMost(SILENCE_CHUNK.size)
+                        val n = track.write(SILENCE_CHUNK, 0, chunk)
+                        if (n < 0) break
+                        remaining -= n
                     }
                 }
                 // All sentences consumed — chapter ended.
@@ -454,6 +529,20 @@ class EnginePlayer @AssistedInject constructor(
 
     fun resume() {
         if (sentences.isEmpty()) return
+        // If the user activated a different voice while paused (#8), the
+        // existing engine model is the wrong one — route through loadAndPlay
+        // to swap it before any audio comes out.
+        if (voiceReloadPending) {
+            val s = _observableState.value
+            val fictionId = s.currentFictionId
+            val chapterId = s.currentChapterId
+            if (fictionId != null && chapterId != null) {
+                voiceReloadPending = false
+                scope.launch { loadAndPlay(fictionId, chapterId, s.charOffset) }
+                return
+            }
+            voiceReloadPending = false
+        }
         _observableState.update { it.copy(isPlaying = true, error = null) }
         startPlaybackPipeline()
         invalidateState()
@@ -569,32 +658,44 @@ class EnginePlayer @AssistedInject constructor(
     }
 
     /**
-     * Length of trailing silence to splice onto a sentence's PCM, picked
+     * Length of trailing silence to splice after a sentence's PCM, picked
      * by the punctuation it ends with. Neural TTS engines barely breathe
      * between sentences; without these padding gaps the listener hears one
      * continuous block of speech. Values are tuned to match audiobook-style
      * cadence at 1.0× speed; the producer scales them down at higher speeds
      * so a 2× listener doesn't sit through 700ms gaps.
+     *
+     * The tail-detection is robust against:
+     *  - **Closing punctuation** wrapping a sentence: `"He left."`, `(yes!)`,
+     *    `'maybe?'` — we strip trailing closers and whitespace before
+     *    looking at the real terminal char.
+     *  - **Multi-character ellipsis** (`...` written as three dots, common
+     *    in HTML-decoded chapter text where the real `…` is rare) — the
+     *    "..." literal is mapped to the same bucket as `…`.
+     *  - **Dash variants** — en-dash, em-dash, and ASCII hyphen used as a
+     *    sentence-internal cesura.
      */
     private fun trailingPauseMs(sentenceText: String): Int {
-        val tail = sentenceText.trimEnd().lastOrNull() ?: return 60
-        return when (tail) {
+        // Strip trailing whitespace + closing punctuation/quotes so we look
+        // at the terminal *speech* character, not the visual close-mark.
+        var end = sentenceText.length
+        while (end > 0 && (sentenceText[end - 1].isWhitespace() ||
+                sentenceText[end - 1] in CLOSE_PUNCT)) end--
+        if (end == 0) return 60
+        // Multi-char ellipsis takes precedence over the single-char switch.
+        if (end >= 3 && sentenceText.regionMatches(end - 3, "...", 0, 3)) return 350
+        return when (sentenceText[end - 1]) {
             '.', '!', '?', '…' -> 350
             ';', ':' -> 200
-            ',', '—' -> 120
+            ',', '—', '–', '-' -> 120
             else -> 60
         }
     }
 
-    private fun appendSilence(pcm: ByteArray, durationMs: Int, sampleRate: Int): ByteArray {
-        if (durationMs <= 0) return pcm
+    private fun silenceBytesFor(durationMs: Int, sampleRate: Int): Int {
+        if (durationMs <= 0) return 0
         // 16-bit signed PCM = 2 bytes per sample, mono = 1 channel.
-        val silenceBytes = (sampleRate.toLong() * durationMs / 1000L).toInt() * 2
-        if (silenceBytes <= 0) return pcm
-        val out = ByteArray(pcm.size + silenceBytes)
-        System.arraycopy(pcm, 0, out, 0, pcm.size)
-        // ByteArray default-init is zero — that's silence in signed PCM.
-        return out
+        return ((sampleRate.toLong() * durationMs / 1000L).toInt() * 2).coerceAtLeast(0)
     }
 
     private companion object {
@@ -610,5 +711,19 @@ class EnginePlayer @AssistedInject constructor(
         /** Fallback when the engine reports a non-positive sample rate (model
          *  not loaded yet). Piper voices are 22050Hz; Kokoro is 24000Hz. */
         const val DEFAULT_SAMPLE_RATE = 22050
+
+        /** Closing-punctuation characters stripped before deciding the
+         *  terminal punctuation for trailing-silence sizing. Covers ASCII
+         *  + curly + bracketed close marks. */
+        val CLOSE_PUNCT: Set<Char> = setOf(
+            '"', '\'', ')', ']', '}', '”', '’', '»', '」',
+        )
+
+        /** Shared zero-filled buffer the consumer writes from to spool
+         *  inter-sentence silence. Sized for one chunk @ 24 kHz mono 16-bit
+         *  ≈ 350 ms, which is the longest silence we ever emit; longer
+         *  silences chain multiple writes from the same buffer. Static so
+         *  every sentence reuses the same allocation. */
+        val SILENCE_CHUNK: ByteArray = ByteArray(24_000 * 2 * 350 / 1000)
     }
 }

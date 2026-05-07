@@ -128,6 +128,8 @@ interface PlaybackControllerUi {
     fun play()
     fun pause()
     fun seekTo(ms: Long)
+    /** Seek by char offset into chapter text (used by tap-on-sentence). */
+    fun seekToChar(charOffset: Int)
     fun skipForward()
     fun skipBack()
     fun nextChapter()
