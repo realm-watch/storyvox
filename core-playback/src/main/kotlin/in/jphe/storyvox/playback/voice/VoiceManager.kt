@@ -12,11 +12,14 @@ import java.io.File
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -60,6 +63,43 @@ class VoiceManager @Inject constructor(
 
     private val store: DataStore<Preferences> = context.voicesSettingsStore
     private val http: OkHttpClient = OkHttpClient.Builder().build()
+    private val migrationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    init {
+        // One-shot migration for users who installed v0.4.5–v0.4.13 with
+        // `piper_*_int8`-suffixed IDs. The suffix was kept across the
+        // INT8→fp32 catalog repoint to preserve persisted state, but it's
+        // misleading (the files have been fp32 since v0.4.12). Strip it
+        // from DataStore + rename matching voice directories.
+        migrationScope.launch { migrateInt8VoiceIds() }
+    }
+
+    private suspend fun migrateInt8VoiceIds() {
+        // 1. Filesystem: voices/{id}_int8/ → voices/{id}/
+        val voicesRoot = File(context.filesDir, "voices")
+        if (voicesRoot.exists()) {
+            voicesRoot.listFiles()?.forEach { dir ->
+                if (dir.isDirectory && dir.name.endsWith("_int8")) {
+                    val newDir = File(voicesRoot, dir.name.removeSuffix("_int8"))
+                    if (!newDir.exists()) dir.renameTo(newDir)
+                }
+            }
+        }
+        // 2. DataStore: rewrite ACTIVE_ID + INSTALLED_IDS to drop _int8
+        store.edit { prefs ->
+            prefs[VoiceKeys.ACTIVE_ID]?.let { active ->
+                if (active.endsWith("_int8")) {
+                    prefs[VoiceKeys.ACTIVE_ID] = active.removeSuffix("_int8")
+                }
+            }
+            prefs[VoiceKeys.INSTALLED_IDS]?.let { ids ->
+                val rewritten = ids.map {
+                    if (it.endsWith("_int8")) it.removeSuffix("_int8") else it
+                }.toSet()
+                if (rewritten != ids) prefs[VoiceKeys.INSTALLED_IDS] = rewritten
+            }
+        }
+    }
 
     /** Catalog projected as [UiVoiceInfo]. Static — never changes at runtime. */
     val availableVoices: List<UiVoiceInfo>

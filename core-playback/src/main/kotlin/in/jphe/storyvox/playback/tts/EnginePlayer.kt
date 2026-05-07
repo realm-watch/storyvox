@@ -330,27 +330,39 @@ class EnginePlayer @AssistedInject constructor(
         invalidateState()
 
         val loadResult: String = withContext(Dispatchers.IO) {
-            when (active.engineType) {
-                EngineType.Piper -> {
-                    val voiceDir = voiceManager.voiceDirFor(active.id)
-                    val onnx = File(voiceDir, "model.onnx").absolutePath
-                    val tokens = File(voiceDir, "tokens.txt").absolutePath
-                    VoiceEngine.getInstance().loadModel(context, onnx, tokens) ?: "Error: load returned null"
-                }
-                is EngineType.Kokoro -> {
-                    // All 53 Kokoro speakers share a single ~168MB multi-speaker
-                    // model. Switching speakers reuses the loaded engine; first
-                    // load takes 30+s as sherpa-onnx builds the onnxruntime
-                    // session and runs a warm-up generate.
-                    val sharedDir = voiceManager.kokoroSharedDir()
-                    val onnx = File(sharedDir, "model.onnx").absolutePath
-                    val tokens = File(sharedDir, "tokens.txt").absolutePath
-                    val voicesBin = File(sharedDir, "voices.bin").absolutePath
-                    KokoroEngine.getInstance().setActiveSpeakerId(
-                        (active.engineType as EngineType.Kokoro).speakerId,
-                    )
-                    KokoroEngine.getInstance().loadModel(context, onnx, tokens, voicesBin)
-                        ?: "Error: load returned null"
+            // Critical: serialize loadModel against in-flight generateAudioPCM
+            // by holding engineMutex (issue #11). Without it, a Piper-to-Piper
+            // swap can call loadModel().destroy() and free the native `tts`
+            // pointer while the prior generator's JNI generate(...) is still
+            // dereferencing it on another thread → SIGSEGV. The producer
+            // coroutine takes engineMutex around every generateAudioPCM, so
+            // withLock here waits for the in-flight call to finish before
+            // we tear the model down.
+            engineMutex.withLock {
+                when (active.engineType) {
+                    EngineType.Piper -> {
+                        val voiceDir = voiceManager.voiceDirFor(active.id)
+                        val onnx = File(voiceDir, "model.onnx").absolutePath
+                        val tokens = File(voiceDir, "tokens.txt").absolutePath
+                        VoiceEngine.getInstance().loadModel(context, onnx, tokens)
+                            ?: "Error: load returned null"
+                    }
+                    is EngineType.Kokoro -> {
+                        // All 53 Kokoro speakers share a single ~325MB fp32
+                        // multi-speaker model. Switching speakers reuses the
+                        // loaded engine; first load takes 30+s as sherpa-onnx
+                        // builds the onnxruntime session and runs a warm-up
+                        // generate.
+                        val sharedDir = voiceManager.kokoroSharedDir()
+                        val onnx = File(sharedDir, "model.onnx").absolutePath
+                        val tokens = File(sharedDir, "tokens.txt").absolutePath
+                        val voicesBin = File(sharedDir, "voices.bin").absolutePath
+                        KokoroEngine.getInstance().setActiveSpeakerId(
+                            (active.engineType as EngineType.Kokoro).speakerId,
+                        )
+                        KokoroEngine.getInstance().loadModel(context, onnx, tokens, voicesBin)
+                            ?: "Error: load returned null"
+                    }
                 }
             }
         }
@@ -659,7 +671,16 @@ class EnginePlayer @AssistedInject constructor(
         val target = sentences.indexOfLast { it.startChar <= clamped }
             .takeIf { it >= 0 } ?: 0
         currentSentenceIndex = target
-        _observableState.update { it.copy(charOffset = sentences[target].startChar) }
+        val s = sentences[target]
+        // Issue #7: also update currentSentenceRange so the brass underline
+        // and auto-scroll move to the tapped sentence — previously only
+        // charOffset moved, leaving the visual highlight stale.
+        _observableState.update {
+            it.copy(
+                charOffset = s.startChar,
+                currentSentenceRange = SentenceRange(s.index, s.startChar, s.endChar),
+            )
+        }
         if (_observableState.value.isPlaying) startPlaybackPipeline()
         invalidateState()
     }

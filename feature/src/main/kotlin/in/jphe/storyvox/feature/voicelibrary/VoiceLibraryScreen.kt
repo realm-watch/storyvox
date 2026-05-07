@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import `in`.jphe.storyvox.playback.voice.EngineType
 import `in`.jphe.storyvox.playback.voice.UiVoiceInfo
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
@@ -129,6 +130,9 @@ fun VoiceLibraryScreen(
                     Spacer(modifier = Modifier.height(spacing.md))
                     SectionHeader("Available", count = available.size, dim = true)
                 }
+                if (available.any { it.engineType is EngineType.Kokoro }) {
+                    item { KokoroBundleNote() }
+                }
                 items(available, key = { "a-${it.id}" }) { voice ->
                     val downloading = state.currentDownload
                     val rowProgress = if (downloading?.voiceId == voice.id) downloading.progress ?: -1f else null
@@ -151,6 +155,45 @@ fun VoiceLibraryScreen(
             onConfirm = viewModel::confirmDelete,
             onDismiss = viewModel::cancelDelete,
         )
+    }
+}
+
+/** Explains the unusual storage model of Kokoro voices once, inline in
+ *  the Available list. The 53 Kokoro speakers all share one ~380 MB
+ *  bundled download — picking any of them downloads the model once,
+ *  and the remaining 52 then activate instantly. Inference is heavier
+ *  than Piper, so on modest hardware a small inter-sentence pause is
+ *  expected. Heading off both UX surprises upfront. */
+@Composable
+private fun KokoroBundleNote() {
+    val spacing = LocalSpacing.current
+    val outline = MaterialTheme.colorScheme.outlineVariant
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .border(1.dp, outline.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+            .padding(spacing.sm),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                "🌐 Kokoro voices share one bundle",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "All 53 Kokoro speakers (English, Spanish, French, Hindi, Italian, Japanese, Portuguese, Chinese) live in one ~380 MB multi-speaker model. The first Kokoro voice you pick downloads it; every Kokoro voice after that activates instantly.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "Kokoro inference is heavier than Piper — on modest hardware you may notice a small pause between sentences while the next chunk renders.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 

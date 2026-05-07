@@ -7,15 +7,19 @@ object VoiceCatalog {
     /** The three voices we hand-picked as the strongest starters. Surfaced
      *  on the first-launch picker AND highlighted in the Voice Library
      *  under a "Featured" section so newcomers don't have to scroll the
-     *  90-voice catalog hunting for the good ones. */
+     *  98-voice catalog hunting for the good ones.
+     *
+     *  Curated per JP's call (issue #10): Cori for en_GB Piper, Lessac
+     *  for en_US Piper, Aoede for the multi-speaker Kokoro path. Three
+     *  distinct engines and accents so first-time users hear the range. */
     val featuredIds: List<String> = listOf(
-        "piper_lessac_en_US_high_int8",
-        "piper_ryan_en_US_high_int8",
-        "piper_amy_en_US_medium_int8",
+        "piper_cori_en_GB_high",
+        "piper_lessac_en_US_high",
+        "kokoro_aoede_en_US_1",
     )
     private fun piperEntries(): List<CatalogEntry> = listOf(
         CatalogEntry(
-            id = "piper_lessac_en_US_high_int8",
+            id = "piper_lessac_en_US_high",
             displayName = "⭐ Lessac (High)",
             language = "en_US",
             sizeBytes = 113895332L,
@@ -27,7 +31,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_ryan_en_US_high_int8",
+            id = "piper_ryan_en_US_high",
             displayName = "⭐ Ryan (High)",
             language = "en_US",
             sizeBytes = 120786923L,
@@ -39,7 +43,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_amy_en_US_medium_int8",
+            id = "piper_amy_en_US_medium",
             displayName = "⭐ Amy (Medium)",
             language = "en_US",
             sizeBytes = 63201425L,
@@ -51,7 +55,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_alan_en_GB_low_int8",
+            id = "piper_alan_en_GB_low",
             displayName = "Alan (Low)",
             language = "en_GB",
             sizeBytes = 63104662L,
@@ -63,7 +67,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_alan_en_GB_medium_int8",
+            id = "piper_alan_en_GB_medium",
             displayName = "Alan (Medium)",
             language = "en_GB",
             sizeBytes = 63201430L,
@@ -75,7 +79,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_alba_en_GB_medium_int8",
+            id = "piper_alba_en_GB_medium",
             displayName = "Alba (Medium)",
             language = "en_GB",
             sizeBytes = 63201430L,
@@ -87,7 +91,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_aru_en_GB_medium_int8",
+            id = "piper_aru_en_GB_medium",
             displayName = "Aru (Medium)",
             language = "en_GB",
             sizeBytes = 76754234L,
@@ -99,7 +103,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_cori_en_GB_medium_int8",
+            id = "piper_cori_en_GB_medium",
             displayName = "Cori (Medium)",
             language = "en_GB",
             sizeBytes = 63531507L,
@@ -111,7 +115,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_cori_en_GB_high_int8",
+            id = "piper_cori_en_GB_high",
             displayName = "Cori (High)",
             language = "en_GB",
             sizeBytes = 114219480L,
@@ -123,7 +127,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_dii_en_GB_high_int8",
+            id = "piper_dii_en_GB_high",
             displayName = "Dii (High)",
             language = "en_GB",
             sizeBytes = 63511174L,
@@ -135,7 +139,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_jenny_dioco_en_GB_medium_int8",
+            id = "piper_jenny_dioco_en_GB_medium",
             displayName = "Jenny Dioco (Medium)",
             language = "en_GB",
             sizeBytes = 63201430L,
@@ -147,7 +151,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_miro_en_GB_high_int8",
+            id = "piper_miro_en_GB_high",
             displayName = "Miro (High)",
             language = "en_GB",
             sizeBytes = 63511174L,
@@ -159,7 +163,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_northern_english_male_en_GB_medium_int8",
+            id = "piper_northern_english_male_en_GB_medium",
             displayName = "Northern English Male (Medium)",
             language = "en_GB",
             sizeBytes = 63201430L,
@@ -171,7 +175,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_semaine_en_GB_medium_int8",
+            id = "piper_semaine_en_GB_medium",
             displayName = "Semaine (Medium)",
             language = "en_GB",
             sizeBytes = 76737847L,
@@ -183,7 +187,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_southern_english_female_en_GB_low_int8",
+            id = "piper_southern_english_female_en_GB_low",
             displayName = "Southern English Female (Low)",
             language = "en_GB",
             sizeBytes = 63104662L,
@@ -195,7 +199,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_southern_english_female_en_GB_medium_int8",
+            id = "piper_southern_english_female_en_GB_medium",
             displayName = "Southern English Female (Medium)",
             language = "en_GB",
             sizeBytes = 77059414L,
@@ -207,7 +211,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_southern_english_male_en_GB_medium_int8",
+            id = "piper_southern_english_male_en_GB_medium",
             displayName = "Southern English Male (Medium)",
             language = "en_GB",
             sizeBytes = 77063512L,
@@ -231,7 +235,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_vctk_en_GB_medium_int8",
+            id = "piper_vctk_en_GB_medium",
             displayName = "Vctk (Medium)",
             language = "en_GB",
             sizeBytes = 76952891L,
@@ -243,7 +247,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_amy_en_US_low_int8",
+            id = "piper_amy_en_US_low",
             displayName = "Amy (Low)",
             language = "en_US",
             sizeBytes = 63104657L,
@@ -255,7 +259,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_arctic_en_US_medium_int8",
+            id = "piper_arctic_en_US_medium",
             displayName = "Arctic (Medium)",
             language = "en_US",
             sizeBytes = 76715309L,
@@ -267,7 +271,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_bryce_en_US_medium_int8",
+            id = "piper_bryce_en_US_medium",
             displayName = "Bryce (Medium)",
             language = "en_US",
             sizeBytes = 63152970L,
@@ -279,7 +283,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_danny_en_US_low_int8",
+            id = "piper_danny_en_US_low",
             displayName = "Danny (Low)",
             language = "en_US",
             sizeBytes = 63052430L,
@@ -291,7 +295,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_glados_en_US_high_int8",
+            id = "piper_glados_en_US_high",
             displayName = "GLaDOS (High)",
             language = "en_US",
             sizeBytes = 113800584L,
@@ -315,7 +319,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_hfc_female_en_US_medium_int8",
+            id = "piper_hfc_female_en_US_medium",
             displayName = "Hfc Female (Medium)",
             language = "en_US",
             sizeBytes = 63149198L,
@@ -327,7 +331,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_hfc_male_en_US_medium_int8",
+            id = "piper_hfc_male_en_US_medium",
             displayName = "Hfc Male (Medium)",
             language = "en_US",
             sizeBytes = 63149198L,
@@ -339,7 +343,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_joe_en_US_medium_int8",
+            id = "piper_joe_en_US_medium",
             displayName = "Joe (Medium)",
             language = "en_US",
             sizeBytes = 63149198L,
@@ -351,7 +355,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_john_en_US_medium_int8",
+            id = "piper_john_en_US_medium",
             displayName = "John (Medium)",
             language = "en_US",
             sizeBytes = 63152970L,
@@ -363,7 +367,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_kathleen_en_US_low_int8",
+            id = "piper_kathleen_en_US_low",
             displayName = "Kathleen (Low)",
             language = "en_US",
             sizeBytes = 63052430L,
@@ -375,7 +379,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_kristin_en_US_medium_int8",
+            id = "piper_kristin_en_US_medium",
             displayName = "Kristin (Medium)",
             language = "en_US",
             sizeBytes = 63531507L,
@@ -387,7 +391,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_kusal_en_US_medium_int8",
+            id = "piper_kusal_en_US_medium",
             displayName = "Kusal (Medium)",
             language = "en_US",
             sizeBytes = 63201425L,
@@ -399,7 +403,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_l2arctic_en_US_medium_int8",
+            id = "piper_l2arctic_en_US_medium",
             displayName = "L2Arctic (Medium)",
             language = "en_US",
             sizeBytes = 76778805L,
@@ -411,7 +415,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_lessac_en_US_low_int8",
+            id = "piper_lessac_en_US_low",
             displayName = "Lessac (Low)",
             language = "en_US",
             sizeBytes = 63149198L,
@@ -423,7 +427,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_lessac_en_US_medium_int8",
+            id = "piper_lessac_en_US_medium",
             displayName = "Lessac (Medium)",
             language = "en_US",
             sizeBytes = 63149198L,
@@ -435,7 +439,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_libritts_en_US_high_int8",
+            id = "piper_libritts_en_US_high",
             displayName = "Libritts (High)",
             language = "en_US",
             sizeBytes = 129438513L,
@@ -447,7 +451,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_libritts_r_en_US_medium_int8",
+            id = "piper_libritts_r_en_US_medium",
             displayName = "Libritts R (Medium)",
             language = "en_US",
             sizeBytes = 78529840L,
@@ -459,7 +463,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_ljspeech_en_US_medium_int8",
+            id = "piper_ljspeech_en_US_medium",
             displayName = "Ljspeech (Medium)",
             language = "en_US",
             sizeBytes = 63531507L,
@@ -471,7 +475,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_ljspeech_en_US_high_int8",
+            id = "piper_ljspeech_en_US_high",
             displayName = "Ljspeech (High)",
             language = "en_US",
             sizeBytes = 114199139L,
@@ -483,7 +487,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_miro_en_US_high_int8",
+            id = "piper_miro_en_US_high",
             displayName = "Miro (High)",
             language = "en_US",
             sizeBytes = 63511169L,
@@ -495,7 +499,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_norman_en_US_medium_int8",
+            id = "piper_norman_en_US_medium",
             displayName = "Norman (Medium)",
             language = "en_US",
             sizeBytes = 63531507L,
@@ -507,7 +511,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_reza_ibrahim_en_US_medium_int8",
+            id = "piper_reza_ibrahim_en_US_medium",
             displayName = "Reza Ibrahim (Medium)",
             language = "en_US",
             sizeBytes = 63511169L,
@@ -519,7 +523,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_ryan_en_US_low_int8",
+            id = "piper_ryan_en_US_low",
             displayName = "Ryan (Low)",
             language = "en_US",
             sizeBytes = 63052430L,
@@ -531,7 +535,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_ryan_en_US_medium_int8",
+            id = "piper_ryan_en_US_medium",
             displayName = "Ryan (Medium)",
             language = "en_US",
             sizeBytes = 63149198L,
@@ -543,7 +547,7 @@ object VoiceCatalog {
             ),
         ),
         CatalogEntry(
-            id = "piper_sam_en_US_medium_int8",
+            id = "piper_sam_en_US_medium",
             displayName = "Sam (Medium)",
             language = "en_US",
             sizeBytes = 62946438L,
