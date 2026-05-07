@@ -12,6 +12,8 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import dagger.multibindings.IntoMap
+import dagger.multibindings.StringKey
 import okhttp3.OkHttpClient
 import javax.inject.Qualifier
 import javax.inject.Singleton
@@ -50,6 +52,8 @@ internal abstract class RoyalRoadBindings {
 
     @Binds
     @Singleton
+    @IntoMap
+    @StringKey("royalroad")
     abstract fun bindFictionSource(impl: RoyalRoadSource): FictionSource
 
     @Binds

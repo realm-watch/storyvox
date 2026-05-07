@@ -8,6 +8,7 @@ import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import `in`.jphe.storyvox.data.db.dao.ChapterDao
+import `in`.jphe.storyvox.data.db.dao.FictionDao
 import `in`.jphe.storyvox.data.db.entity.ChapterDownloadState
 import `in`.jphe.storyvox.data.repository.AuthRepository
 import `in`.jphe.storyvox.data.source.FictionSource
@@ -35,11 +36,17 @@ import java.security.MessageDigest
 class ChapterDownloadWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted params: WorkerParameters,
-    private val source: FictionSource,
+    private val sources: Map<String, @JvmSuppressWildcards FictionSource>,
     private val chapterDao: ChapterDao,
+    private val fictionDao: FictionDao,
     private val auth: AuthRepository,
     private val webView: WebViewFetcher? = null,
 ) : CoroutineWorker(appContext, params) {
+
+    private fun sourceFor(sourceId: String?): FictionSource =
+        sourceId?.let { sources[it] }
+            ?: sources.values.singleOrNull()
+            ?: error("No FictionSource for id=$sourceId; bound: ${sources.keys}")
 
     override suspend fun doWork(): Result {
         val fictionId = inputData.getString(KEY_FICTION_ID) ?: return Result.failure(
@@ -49,6 +56,7 @@ class ChapterDownloadWorker @AssistedInject constructor(
             Data.Builder().putString(KEY_RESULT, RESULT_BAD_INPUT).build(),
         )
         val now = System.currentTimeMillis()
+        val source = sourceFor(fictionDao.get(fictionId)?.sourceId)
 
         chapterDao.setDownloadState(chapterId, ChapterDownloadState.DOWNLOADING, now, null)
 
