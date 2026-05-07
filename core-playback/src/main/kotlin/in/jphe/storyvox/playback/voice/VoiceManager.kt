@@ -89,7 +89,7 @@ class VoiceManager @Inject constructor(
 
     private fun isKokoroSharedModelInstalled(): Boolean {
         val dir = kokoroSharedDir()
-        return File(dir, "model.int8.onnx").exists() &&
+        return File(dir, "model.onnx").exists() &&
             File(dir, "voices.bin").exists() &&
             File(dir, "tokens.txt").exists()
     }
@@ -120,31 +120,34 @@ class VoiceManager @Inject constructor(
         when (entry.engineType) {
             is EngineType.Kokoro -> {
                 // Kokoro speakers all share one ~168MB multi-speaker model
-                // (model.int8.onnx + tokens.txt + voices.bin). The first
+                // (model.onnx + tokens.txt + voices.bin). The first
                 // Kokoro pick downloads it; every subsequent one just flips
                 // the active speaker id with no additional payload.
                 val sharedDir = kokoroSharedDir()
-                val onnxFile = File(sharedDir, "model.int8.onnx")
+                val onnxFile = File(sharedDir, "model.onnx")
                 val tokensFile = File(sharedDir, "tokens.txt")
                 val voicesFile = File(sharedDir, "voices.bin")
                 if (!onnxFile.exists() || !voicesFile.exists() || !tokensFile.exists()) {
                     sharedDir.mkdirs()
                     try {
+                        // Kokoro v1_1 fp32 sizes (vs voices-v1's int8: 114M / 53M).
+                        // Total ~379MB on first install — bigger than int8 but
+                        // produces clean speech (no quantization fuzz).
                         downloadFile(
-                            url = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/kokoro-model.onnx",
+                            url = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/kokoro-model.onnx",
                             target = onnxFile,
-                            knownTotalBytes = 114_299_010L,
-                        ) { read, total -> emit(DownloadProgress.Downloading(read, 168_090_841L)) }
+                            knownTotalBytes = 325_631_784L,
+                        ) { read, _ -> emit(DownloadProgress.Downloading(read, 379_423_615L)) }
                         downloadFile(
-                            url = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/kokoro-voices.bin",
+                            url = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/kokoro-voices.bin",
                             target = voicesFile,
                             knownTotalBytes = 53_790_720L,
-                        ) { read, total ->
+                        ) { read, _ ->
                             // Continue progress where the model left off so the bar keeps moving.
-                            emit(DownloadProgress.Downloading(114_299_010L + read, 168_090_841L))
+                            emit(DownloadProgress.Downloading(325_631_784L + read, 379_423_615L))
                         }
                         downloadFile(
-                            url = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/kokoro-tokens.txt",
+                            url = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/kokoro-tokens.txt",
                             target = tokensFile,
                             knownTotalBytes = 0L,
                         ) { _, _ -> }

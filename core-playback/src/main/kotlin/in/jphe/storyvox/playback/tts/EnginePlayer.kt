@@ -343,7 +343,7 @@ class EnginePlayer @AssistedInject constructor(
                     // load takes 30+s as sherpa-onnx builds the onnxruntime
                     // session and runs a warm-up generate.
                     val sharedDir = voiceManager.kokoroSharedDir()
-                    val onnx = File(sharedDir, "model.int8.onnx").absolutePath
+                    val onnx = File(sharedDir, "model.onnx").absolutePath
                     val tokens = File(sharedDir, "tokens.txt").absolutePath
                     val voicesBin = File(sharedDir, "voices.bin").absolutePath
                     KokoroEngine.getInstance().setActiveSpeakerId(

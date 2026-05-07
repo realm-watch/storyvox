@@ -22,8 +22,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/lessac-high-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/lessac-high-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-lessac-high.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-lessac-high.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -34,8 +34,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/ryan-high-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/ryan-high-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-ryan-high.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-ryan-high.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -46,8 +46,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/amy-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/amy-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-amy-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-amy-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -58,8 +58,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/alan-low-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/alan-low-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-alan-low.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-alan-low.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -70,8 +70,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/alan-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/alan-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-alan-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-alan-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -82,8 +82,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/alba-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/alba-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-alba-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-alba-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -94,8 +94,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/aru-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/aru-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-aru-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-aru-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -106,8 +106,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/cori-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/cori-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-cori-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-cori-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -118,8 +118,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/cori-high-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/cori-high-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-cori-high.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-cori-high.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -130,8 +130,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/dii-high-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/dii-high-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-dii-high.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-dii-high.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -142,8 +142,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/jenny_dioco-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/jenny_dioco-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-jenny_dioco-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-jenny_dioco-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -154,8 +154,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/miro-high-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/miro-high-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-miro-high.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-miro-high.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -166,8 +166,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/northern_english_male-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/northern_english_male-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-northern_english_male-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-northern_english_male-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -178,8 +178,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/semaine-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/semaine-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-semaine-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-semaine-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -190,8 +190,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/southern_english_female-low-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/southern_english_female-low-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-southern_english_female-low.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-southern_english_female-low.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -202,8 +202,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/southern_english_female-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/southern_english_female-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-southern_english_female-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-southern_english_female-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -214,8 +214,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/southern_english_male-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/southern_english_male-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-southern_english_male-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-southern_english_male-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -226,8 +226,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/vctk-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/vctk-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-vctk-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-vctk-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -238,8 +238,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/amy-low-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/amy-low-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-amy-low.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-amy-low.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -250,8 +250,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/arctic-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/arctic-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-arctic-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-arctic-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -262,8 +262,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/bryce-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/bryce-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-bryce-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-bryce-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -274,8 +274,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/danny-low-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/danny-low-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-danny-low.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-danny-low.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -286,8 +286,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/glados-high-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/glados-high-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-glados-high.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-glados-high.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -298,8 +298,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/hfc_female-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/hfc_female-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-hfc_female-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-hfc_female-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -310,8 +310,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/hfc_male-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/hfc_male-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-hfc_male-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-hfc_male-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -322,8 +322,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/joe-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/joe-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-joe-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-joe-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -334,8 +334,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/john-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/john-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-john-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-john-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -346,8 +346,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/kathleen-low-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/kathleen-low-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-kathleen-low.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-kathleen-low.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -358,8 +358,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/kristin-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/kristin-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-kristin-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-kristin-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -370,8 +370,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/kusal-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/kusal-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-kusal-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-kusal-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -382,8 +382,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/l2arctic-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/l2arctic-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-l2arctic-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-l2arctic-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -394,8 +394,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/lessac-low-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/lessac-low-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-lessac-low.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-lessac-low.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -406,8 +406,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/lessac-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/lessac-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-lessac-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-lessac-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -418,8 +418,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/libritts-high-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/libritts-high-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-libritts-high.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-libritts-high.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -430,8 +430,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/libritts_r-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/libritts_r-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-libritts_r-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-libritts_r-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -442,8 +442,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/ljspeech-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/ljspeech-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-ljspeech-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-ljspeech-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -454,8 +454,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/ljspeech-high-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/ljspeech-high-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-ljspeech-high.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-ljspeech-high.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -466,8 +466,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/miro-high-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/miro-high-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-miro-high.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-miro-high.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -478,8 +478,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/norman-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/norman-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-norman-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-norman-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -490,8 +490,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/reza_ibrahim-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/reza_ibrahim-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-reza_ibrahim-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-reza_ibrahim-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -502,8 +502,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/ryan-low-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/ryan-low-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-ryan-low.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-ryan-low.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -514,8 +514,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/ryan-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/ryan-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-ryan-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-ryan-medium.tokens.txt",
             ),
         ),
         CatalogEntry(
@@ -526,8 +526,8 @@ object VoiceCatalog {
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
-                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/sam-medium-int8.onnx",
-                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v1/sam-medium-int8.tokens.txt",
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-sam-medium.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-sam-medium.tokens.txt",
             ),
         ),
     )
