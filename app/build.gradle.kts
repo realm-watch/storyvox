@@ -53,11 +53,33 @@ android {
         )
     }
 
+    signingConfigs {
+        // Repo-checked-in debug keystore so every environment (CI runners,
+        // each contributor's machine) signs the debug APK with the SAME
+        // certificate. Without this Android refuses to install a CI-built
+        // APK over a locally-built one (same package id, different
+        // signature → "App not installed: package conflicts with an
+        // existing package by the same name"). The keystore is intentionally
+        // committed because it's debug-only and has zero security value.
+        getByName("debug") {
+            storeFile = file("storyvox-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
-            applicationIdSuffix = ".debug"
-            versionNameSuffix = "-debug"
+            // No applicationIdSuffix / versionNameSuffix: the build is
+            // marketed and tested as the real app. The label "debug"
+            // here is just AGP-internal terminology for "debuggable,
+            // non-minified, signed with the dev cert" — there's no
+            // separate release flavor being shipped, and forcing
+            // ".debug" / "-debug" into the package id and version
+            // string was just visual noise on a sideload-only app.
+            signingConfig = signingConfigs.getByName("debug")
         }
         release {
             isMinifyEnabled = false
