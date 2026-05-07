@@ -17,8 +17,12 @@ interface PlaybackPositionRepository {
 
     fun observePosition(fictionId: String): Flow<PlaybackPosition?>
 
-    /** Joined "Continue listening" feed for the Library tab. */
-    fun observeContinueListening(): Flow<List<ContinueListeningEntry>>
+    /**
+     * Topmost "Continue listening" entry for the Library tab. The DAO layer
+     * applies `LIMIT 1` so we never re-emit a library-sized list when only
+     * the head row is consumed by the Library tile.
+     */
+    fun observeMostRecentContinueListening(): Flow<ContinueListeningEntry?>
 
     suspend fun savePosition(
         fictionId: String,
@@ -69,8 +73,8 @@ class PlaybackPositionRepositoryImpl @Inject constructor(
     override fun observePosition(fictionId: String): Flow<PlaybackPosition?> =
         dao.observe(fictionId)
 
-    override fun observeContinueListening(): Flow<List<ContinueListeningEntry>> =
-        dao.observeContinueListening().map { rows -> rows.map(ContinueListeningRow::toEntry) }
+    override fun observeMostRecentContinueListening(): Flow<ContinueListeningEntry?> =
+        dao.observeMostRecentContinueListening().map { row -> row?.toEntry() }
 
     override suspend fun savePosition(
         fictionId: String,

@@ -47,8 +47,13 @@ interface PlaybackDao {
     suspend fun recent(limit: Int): List<RecentPlaybackRow>
 
     /**
-     * Joined "Continue listening" projection — Aurora flows this directly into
-     * the Library tile.
+     * Most-recent "Continue listening" projection — Aurora flows this directly
+     * into the Library tile.
+     *
+     * Only the topmost row is needed (the Library UI calls `firstOrNull()`),
+     * so we LIMIT 1 in SQL: the join collapses from O(library size) per
+     * emission to O(1), and a position-save tick no longer rebuilds and
+     * re-emits an entire library's worth of fiction+chapter rows.
      *
      * The SELECT explicitly aliases every column with the `f_` / `c_` prefix
      * that [ContinueListeningRow] expects via `@Embedded(prefix = ...)`. Room
@@ -108,9 +113,10 @@ interface PlaybackDao {
           JOIN chapter c ON c.id = p.chapterId
          WHERE f.inLibrary = 1
          ORDER BY p.updatedAt DESC
+         LIMIT 1
         """,
     )
-    fun observeContinueListening(): Flow<List<ContinueListeningRow>>
+    fun observeMostRecentContinueListening(): Flow<ContinueListeningRow?>
 }
 
 data class ContinueListeningRow(
