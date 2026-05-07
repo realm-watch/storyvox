@@ -22,3 +22,22 @@ data class Motion(
 )
 
 val LocalMotion = staticCompositionLocalOf { Motion() }
+
+/**
+ * Whether the user has "Remove animations" / "Reduce motion" enabled in
+ * system settings. Provided at the app root by reading
+ * `Settings.Global.ANIMATOR_DURATION_SCALE`.
+ *
+ * This is a runtime user-preference flag, deliberately kept separate from
+ * [Motion]: [Motion] is `@Immutable` and describes the realm's motion
+ * vocabulary, while this flag tells consumers whether to play any motion at
+ * all right now. Nesting it inside [Motion] would silently break stable-
+ * snapshot semantics.
+ *
+ * Reduced motion means *absent* motion, not shorter motion — consumers
+ * should branch to instant transitions, not faster ones.
+ *
+ * Default `false` is a safe fallback for previews and tests that don't wire
+ * a provider.
+ */
+val LocalReducedMotion = staticCompositionLocalOf { false }

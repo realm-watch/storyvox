@@ -2,7 +2,6 @@ package `in`.jphe.storyvox.navigation
 
 import android.content.Intent
 import android.net.Uri
-import android.provider.Settings
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -16,9 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -39,6 +36,7 @@ import `in`.jphe.storyvox.feature.voicelibrary.VoiceLibraryScreen
 import `in`.jphe.storyvox.ui.component.BottomTabBar
 import `in`.jphe.storyvox.ui.component.HomeTab
 import `in`.jphe.storyvox.ui.theme.LocalMotion
+import `in`.jphe.storyvox.ui.theme.LocalReducedMotion
 
 object StoryvoxRoutes {
     const val PLAYING = "playing"
@@ -82,19 +80,7 @@ private fun StoryvoxNavHostContent(
     val currentRoute = currentEntry?.destination?.route
     val showBottomBar = StoryvoxRoutes.isHome(currentRoute)
 
-    // "Reduce motion" / "Remove animations" is signalled by ANIMATOR_DURATION_SCALE = 0.
-    // Read once per process — toggling this setting in Developer Options effectively
-    // requires an app restart anyway, so a recheck loop would be overengineered.
-    val reducedMotion = run {
-        val context = LocalContext.current
-        remember {
-            Settings.Global.getFloat(
-                context.contentResolver,
-                Settings.Global.ANIMATOR_DURATION_SCALE,
-                1f,
-            ) == 0f
-        }
-    }
+    val reducedMotion = LocalReducedMotion.current
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
