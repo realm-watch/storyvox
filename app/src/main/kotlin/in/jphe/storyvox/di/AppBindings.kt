@@ -134,11 +134,28 @@ private class RealFictionRepositoryUi(
             list.map { UiFollow(fiction = toUiFiction(it), unreadCount = 0) }
         }
 
+    /** Per-id error tracker shared between [fictionById] and
+     *  [fictionLoadError] so the same first-subscription refresh result
+     *  surfaces in both flows. Singleton-scoped (this adapter is
+     *  @Singleton via Hilt), so the map and its entries live for the app
+     *  lifetime — fine for the small number of fictions a user opens. */
+    private val loadErrors = java.util.concurrent.ConcurrentHashMap<String, MutableStateFlow<String?>>()
+
+    private fun errorState(id: String): MutableStateFlow<String?> =
+        loadErrors.getOrPut(id) { MutableStateFlow(null) }
+
     override fun fictionById(id: String): Flow<UiFiction?> = flow {
-        // Kick off a refresh on first subscription; ignore failure (cached row may exist).
-        repo.refreshDetail(id)
+        // Kick off a refresh on first subscription. Failures are silently
+        // tolerated for the value flow (the cached row may exist) but
+        // captured in [errorState] so [fictionLoadError] can surface them.
+        when (val result = repo.refreshDetail(id)) {
+            is FictionResult.Success -> errorState(id).value = null
+            is FictionResult.Failure -> errorState(id).value = result.message
+        }
         emitAll(repo.observeFiction(id).map { detail -> detail?.summary?.let(::toUiFiction) })
     }
+
+    override fun fictionLoadError(id: String): Flow<String?> = errorState(id).asStateFlow()
 
     override fun chaptersFor(fictionId: String): Flow<List<UiChapter>> =
         repo.observeFiction(fictionId).map { detail ->
