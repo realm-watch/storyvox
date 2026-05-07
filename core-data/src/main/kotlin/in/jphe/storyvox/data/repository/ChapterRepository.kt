@@ -83,7 +83,7 @@ class ChapterRepositoryImpl @Inject constructor(
     private val workManager: WorkManager get() = WorkManager.getInstance(context)
 
     override fun observeChapters(fictionId: String): Flow<List<ChapterInfo>> =
-        dao.observeByFiction(fictionId).map { it.map(Chapter::toInfo) }
+        dao.observeChapterInfosByFiction(fictionId).map { rows -> rows.map(::toInfo) }
 
     override fun observeChapter(chapterId: String): Flow<ChapterContent?> =
         dao.observe(chapterId).map { row ->

@@ -86,11 +86,11 @@ class FictionRepositoryImpl @Inject constructor(
         fictionDao.observeFollowsRemote().map { rows -> rows.map { it.toSummary() } }
 
     override fun observeFiction(id: String): Flow<FictionDetail?> =
-        fictionDao.observe(id).combine(chapterDao.observeByFiction(id)) { fiction, chapters ->
+        fictionDao.observe(id).combine(chapterDao.observeChapterInfosByFiction(id)) { fiction, chapters ->
             fiction?.let {
                 FictionDetail(
                     summary = it.toSummary(),
-                    chapters = chapters.map(Chapter::toInfo),
+                    chapters = chapters.map(::toInfo),
                     genres = it.genres,
                     wordCount = it.wordCount,
                     views = it.views,
@@ -315,4 +315,13 @@ internal fun Chapter.toInfo(): ChapterInfo = ChapterInfo(
     title = title,
     publishedAt = publishedAt,
     wordCount = wordCount,
+)
+
+internal fun toInfo(row: `in`.jphe.storyvox.data.db.dao.ChapterInfoRow): ChapterInfo = ChapterInfo(
+    id = row.id,
+    sourceChapterId = row.sourceChapterId,
+    index = row.index,
+    title = row.title,
+    publishedAt = row.publishedAt,
+    wordCount = row.wordCount,
 )
