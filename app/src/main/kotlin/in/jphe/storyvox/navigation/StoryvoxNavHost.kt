@@ -2,12 +2,24 @@ package `in`.jphe.storyvox.navigation
 
 import android.content.Intent
 import android.net.Uri
+import android.provider.Settings
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -26,6 +38,7 @@ import `in`.jphe.storyvox.feature.settings.VoicePickerScreen
 import `in`.jphe.storyvox.feature.voicelibrary.VoiceLibraryScreen
 import `in`.jphe.storyvox.ui.component.BottomTabBar
 import `in`.jphe.storyvox.ui.component.HomeTab
+import `in`.jphe.storyvox.ui.theme.LocalMotion
 
 object StoryvoxRoutes {
     const val PLAYING = "playing"
@@ -69,6 +82,20 @@ private fun StoryvoxNavHostContent(
     val currentRoute = currentEntry?.destination?.route
     val showBottomBar = StoryvoxRoutes.isHome(currentRoute)
 
+    // "Reduce motion" / "Remove animations" is signalled by ANIMATOR_DURATION_SCALE = 0.
+    // Read once per process — toggling this setting in Developer Options effectively
+    // requires an app restart anyway, so a recheck loop would be overengineered.
+    val reducedMotion = run {
+        val context = LocalContext.current
+        remember {
+            Settings.Global.getFloat(
+                context.contentResolver,
+                Settings.Global.ANIMATOR_DURATION_SCALE,
+                1f,
+            ) == 0f
+        }
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         bottomBar = {
@@ -101,29 +128,103 @@ private fun StoryvoxNavHostContent(
             }
         },
     ) { padding ->
+        val motion = LocalMotion.current
+
+        // Library Nocturne motion vocabulary for screen transitions.
+        //
+        // Home tabs (Playing/Library/Follows/Browse/Settings) cross-fade only — the
+        // bottom bar is shared across them, and a horizontal slide would shear the
+        // bar visually. Drill-down routes slide in from the right + fade, the
+        // standard "push" motion; the pop reverses direction.
+        //
+        // When the user has "Remove animations" / "Reduce motion" on, every factory
+        // is null → NavHost interprets that as no transition (instant cut), which is
+        // what motion-sensitive users actually want, not a "shorter" version.
+        val homeEnter: (AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition)? =
+            if (reducedMotion) null else {
+                { fadeIn(animationSpec = tween(motion.standardDurationMs, easing = motion.standardEasing)) }
+            }
+        val homeExit: (AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition)? =
+            if (reducedMotion) null else {
+                { fadeOut(animationSpec = tween(motion.standardDurationMs, easing = motion.standardEasing)) }
+            }
+
+        // 320ms swipe with the existing swipeEasing curve — distinct from the 280ms
+        // standard so a forward navigation feels intentional, not abrupt.
+        val pushEnter: (AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition)? =
+            if (reducedMotion) null else {
+                {
+                    slideInHorizontally(
+                        animationSpec = tween(motion.swipeDurationMs, easing = motion.swipeEasing),
+                        initialOffsetX = { fullWidth -> fullWidth / 6 },
+                    ) + fadeIn(animationSpec = tween(motion.swipeDurationMs, easing = motion.swipeEasing))
+                }
+            }
+        val pushExit: (AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition)? =
+            if (reducedMotion) null else {
+                { fadeOut(animationSpec = tween(motion.swipeDurationMs, easing = motion.swipeEasing)) }
+            }
+        val popEnter: (AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition)? =
+            if (reducedMotion) null else {
+                { fadeIn(animationSpec = tween(motion.swipeDurationMs, easing = motion.swipeEasing)) }
+            }
+        val popExit: (AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition)? =
+            if (reducedMotion) null else {
+                {
+                    slideOutHorizontally(
+                        animationSpec = tween(motion.swipeDurationMs, easing = motion.swipeEasing),
+                        targetOffsetX = { fullWidth -> fullWidth / 6 },
+                    ) + fadeOut(animationSpec = tween(motion.swipeDurationMs, easing = motion.swipeEasing))
+                }
+            }
+
         NavHost(
             navController = navController,
             startDestination = StoryvoxRoutes.LIBRARY,
             modifier = Modifier.padding(padding),
         ) {
-            composable(StoryvoxRoutes.PLAYING) {
+            composable(
+                StoryvoxRoutes.PLAYING,
+                enterTransition = homeEnter,
+                exitTransition = homeExit,
+                popEnterTransition = homeEnter,
+                popExitTransition = homeExit,
+            ) {
                 HybridReaderScreen(
                     onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
                 )
             }
-            composable(StoryvoxRoutes.LIBRARY) {
+            composable(
+                StoryvoxRoutes.LIBRARY,
+                enterTransition = homeEnter,
+                exitTransition = homeExit,
+                popEnterTransition = homeEnter,
+                popExitTransition = homeExit,
+            ) {
                 LibraryScreen(
                     onOpenFiction = { id -> navController.navigate(StoryvoxRoutes.fictionDetail(id)) },
                     onOpenReader = { f, c -> navController.navigate(StoryvoxRoutes.reader(f, c)) },
                 )
             }
-            composable(StoryvoxRoutes.FOLLOWS) {
+            composable(
+                StoryvoxRoutes.FOLLOWS,
+                enterTransition = homeEnter,
+                exitTransition = homeExit,
+                popEnterTransition = homeEnter,
+                popExitTransition = homeExit,
+            ) {
                 FollowsScreen(
                     onOpenFiction = { id -> navController.navigate(StoryvoxRoutes.fictionDetail(id)) },
                     onOpenSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
                 )
             }
-            composable(StoryvoxRoutes.BROWSE) {
+            composable(
+                StoryvoxRoutes.BROWSE,
+                enterTransition = homeEnter,
+                exitTransition = homeExit,
+                popEnterTransition = homeEnter,
+                popExitTransition = homeExit,
+            ) {
                 BrowseScreen(
                     onOpenFiction = { id -> navController.navigate(StoryvoxRoutes.fictionDetail(id)) },
                 )
@@ -132,6 +233,10 @@ private fun StoryvoxNavHostContent(
             composable(
                 route = StoryvoxRoutes.FICTION_DETAIL,
                 arguments = listOf(navArgument("fictionId") { type = NavType.StringType }),
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
             ) {
                 FictionDetailScreen(
                     onOpenReader = { f, c -> navController.navigate(StoryvoxRoutes.reader(f, c)) },
@@ -144,6 +249,10 @@ private fun StoryvoxNavHostContent(
                     navArgument("fictionId") { type = NavType.StringType },
                     navArgument("chapterId") { type = NavType.StringType },
                 ),
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
             ) {
                 HybridReaderScreen(
                     onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
@@ -156,29 +265,57 @@ private fun StoryvoxNavHostContent(
                     navArgument("fictionId") { type = NavType.StringType },
                     navArgument("chapterId") { type = NavType.StringType },
                 ),
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
             ) {
                 HybridReaderScreen(
                     onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
                 )
             }
 
-            composable(StoryvoxRoutes.SETTINGS) {
+            composable(
+                StoryvoxRoutes.SETTINGS,
+                enterTransition = homeEnter,
+                exitTransition = homeExit,
+                popEnterTransition = homeEnter,
+                popExitTransition = homeExit,
+            ) {
                 SettingsScreen(
                     onOpenVoiceLibrary = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
                     onOpenSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
                 )
             }
-            composable(StoryvoxRoutes.SETTINGS_VOICE) {
+            composable(
+                StoryvoxRoutes.SETTINGS_VOICE,
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+            ) {
                 VoicePickerScreen(
                     onPicked = { navController.popBackStack() },
                 )
             }
-            composable(StoryvoxRoutes.VOICE_LIBRARY) {
+            composable(
+                StoryvoxRoutes.VOICE_LIBRARY,
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+            ) {
                 VoiceLibraryScreen(
                     onBack = { navController.popBackStack() },
                 )
             }
-            composable(StoryvoxRoutes.AUTH_WEBVIEW) {
+            composable(
+                StoryvoxRoutes.AUTH_WEBVIEW,
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+            ) {
                 AuthWebViewScreen(
                     onSignedIn = { navController.popBackStack() },
                     onCancelled = { navController.popBackStack() },
