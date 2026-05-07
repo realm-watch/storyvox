@@ -31,7 +31,9 @@ import `in`.jphe.storyvox.feature.api.UiFictionStatus
 import `in`.jphe.storyvox.feature.api.UiFictionType
 import `in`.jphe.storyvox.feature.api.UiSearchOrder
 import `in`.jphe.storyvox.feature.api.UiSortDirection
+import `in`.jphe.storyvox.data.repository.AddByUrlResult
 import `in`.jphe.storyvox.feature.api.FictionRepositoryUi
+import `in`.jphe.storyvox.feature.api.UiAddByUrlResult
 import `in`.jphe.storyvox.feature.api.PlaybackControllerUi
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.UiChapter
@@ -189,6 +191,14 @@ private class RealFictionRepositoryUi(
         // which the UI treats as "stay with whatever's in the local DB".
         runCatching { repo.refreshRemoteFollows() }
     }
+
+    override suspend fun addByUrl(url: String): UiAddByUrlResult =
+        when (val r = repo.addByUrl(url)) {
+            is AddByUrlResult.Success -> UiAddByUrlResult.Success(r.fictionId)
+            AddByUrlResult.UnrecognizedUrl -> UiAddByUrlResult.UnrecognizedUrl
+            is AddByUrlResult.UnsupportedSource -> UiAddByUrlResult.UnsupportedSource(r.sourceId)
+            is AddByUrlResult.SourceFailure -> UiAddByUrlResult.Error(r.failure.message)
+        }
 }
 
 private fun DownloadMode.toData(): `in`.jphe.storyvox.data.db.entity.DownloadMode = when (this) {

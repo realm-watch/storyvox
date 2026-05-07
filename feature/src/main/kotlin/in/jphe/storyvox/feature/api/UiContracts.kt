@@ -40,6 +40,18 @@ data class UiFollow(
 
 enum class DownloadMode { Lazy, Eager, Subscribe }
 
+/** Outcome of pasting a URL into the add-fiction sheet. */
+sealed class UiAddByUrlResult {
+    /** Resolved + persisted; UI navigates to the detail screen. */
+    data class Success(val fictionId: String) : UiAddByUrlResult()
+    /** No source matched the input. */
+    data object UnrecognizedUrl : UiAddByUrlResult()
+    /** Recognised but not yet supported (GitHub today). */
+    data class UnsupportedSource(val sourceId: String) : UiAddByUrlResult()
+    /** Source-layer failure (network, 404, auth, rate-limit, ...). [message] is user-facing. */
+    data class Error(val message: String) : UiAddByUrlResult()
+}
+
 interface FictionRepositoryUi {
     val library: Flow<List<UiFiction>>
     val follows: Flow<List<UiFollow>>
@@ -63,6 +75,14 @@ interface FictionRepositoryUi {
      * `follows` Flow will emit when the DB is upserted.
      */
     suspend fun refreshFollows()
+
+    /**
+     * Resolve a pasted URL (or short form) to a fiction, persist it, and
+     * fetch detail. Implementation routes through `UrlRouter` + the
+     * multi-source map. Returns enough information for the sheet to
+     * navigate on success or surface a useful message on failure.
+     */
+    suspend fun addByUrl(url: String): UiAddByUrlResult
 }
 
 interface BrowseRepositoryUi {
