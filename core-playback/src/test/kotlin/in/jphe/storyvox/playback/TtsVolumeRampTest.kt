@@ -42,4 +42,14 @@ class TtsVolumeRampTest {
         ramp.set(0.4f)
         assertEquals(0.4f, ramp.current, 0f)
     }
+
+    @Test fun `NaN input falls back to full volume`() {
+        // Float.coerceIn doesn't trap NaN — once EnginePlayer reads `current`
+        // and forwards to AudioTrack.setVolume, NaN either silently mutes the
+        // track or throws on newer API levels.
+        val ramp = TtsVolumeRamp()
+        ramp.set(0.5f)
+        ramp.set(Float.NaN)
+        assertEquals(1.0f, ramp.current, 0f)
+    }
 }
