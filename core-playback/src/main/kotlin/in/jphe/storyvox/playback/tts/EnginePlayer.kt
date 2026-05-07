@@ -496,6 +496,11 @@ class EnginePlayer @AssistedInject constructor(
             AndroidProcess.setThreadPriority(AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO)
             var naturalEnd = false
             var firstSentence = true
+            // Live track volume mirror. Scoped to the consumer thread (not
+            // per-sentence) so the per-write change-detection skips the
+            // setVolume JNI call when the ramp is idle, which is the steady
+            // state. Seeded in the firstSentence block below.
+            var lastVol = -1f
             try {
                 while (pipelineRunning.get()) {
                     val item = try {
@@ -520,15 +525,17 @@ class EnginePlayer @AssistedInject constructor(
                     }
 
                     if (firstSentence) {
-                        runCatching { track.setVolume(volumeRamp.current) }
+                        val v = volumeRamp.current
+                        runCatching { track.setVolume(v) }
+                        lastVol = v
                         runCatching { track.play() }
                         firstSentence = false
                     }
 
                     // Apply the SleepTimer fade-out ramp to the live track.
                     // Polled per write iteration; AudioTrack.setVolume is a
-                    // cheap JNI call and only fires when the value changes.
-                    var lastVol = -1f
+                    // cheap JNI call but the lastVol guard skips it entirely
+                    // when the ramp is idle (steady state).
                     var written = 0
                     while (written < item.pcm.size && pipelineRunning.get()) {
                         val v = volumeRamp.current
