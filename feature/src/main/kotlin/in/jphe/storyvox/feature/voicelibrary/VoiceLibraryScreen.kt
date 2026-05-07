@@ -184,7 +184,7 @@ private fun KokoroBundleNote() {
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                "All 53 Kokoro speakers (English, Spanish, French, Hindi, Italian, Japanese, Portuguese, Chinese) live in one ~380 MB multi-speaker model. The first Kokoro voice you pick downloads it; every Kokoro voice after that activates instantly.",
+                "All 53 Kokoro speakers (English, Spanish, French, Hindi, Italian, Japanese, Portuguese, Chinese) share one ~380 MB bundle (model + speakers + tokens). The first Kokoro voice you pick downloads it; every Kokoro voice after that activates instantly.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

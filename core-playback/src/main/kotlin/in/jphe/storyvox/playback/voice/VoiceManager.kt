@@ -75,26 +75,54 @@ class VoiceManager @Inject constructor(
     }
 
     private suspend fun migrateInt8VoiceIds() {
-        // 1. Filesystem: voices/{id}_int8/ → voices/{id}/
+        // 1. Filesystem: voices/{id}_int8/ → voices/{id}/. Track which IDs
+        //    we successfully migrated so we don't rewrite DataStore for an
+        //    ID whose directory we couldn't actually move (e.g. target
+        //    already exists from a previous interrupted migration, or
+        //    File.renameTo returns false on this filesystem). The
+        //    [normalizeId] reads tolerate either form, so a partial
+        //    migration is still functional — but we want DataStore to
+        //    eventually agree with the on-disk truth.
+        val migratedIds = mutableSetOf<String>()
         val voicesRoot = File(context.filesDir, "voices")
         if (voicesRoot.exists()) {
             voicesRoot.listFiles()?.forEach { dir ->
                 if (dir.isDirectory && dir.name.endsWith("_int8")) {
-                    val newDir = File(voicesRoot, dir.name.removeSuffix("_int8"))
-                    if (!newDir.exists()) dir.renameTo(newDir)
+                    val newName = dir.name.removeSuffix("_int8")
+                    val newDir = File(voicesRoot, newName)
+                    when {
+                        newDir.exists() -> {
+                            // New-form dir already there; treat the rename
+                            // as logically done. Any duplicate files on the
+                            // old path are dead weight but harmless.
+                            migratedIds += newName
+                        }
+                        dir.renameTo(newDir) -> migratedIds += newName
+                        // else: rename failed — leave both DataStore and
+                        // disk in legacy state. Reads still resolve.
+                    }
                 }
             }
         }
-        // 2. DataStore: rewrite ACTIVE_ID + INSTALLED_IDS to drop _int8
+        // 2. DataStore: only rewrite the legacy IDs whose directory we
+        //    actually moved (or that have no per-voice directory at all,
+        //    i.e. Kokoro entries). Anything else stays as `_int8` so
+        //    voiceDirFor(id) still resolves.
         store.edit { prefs ->
             prefs[VoiceKeys.ACTIVE_ID]?.let { active ->
-                if (active.endsWith("_int8")) {
-                    prefs[VoiceKeys.ACTIVE_ID] = active.removeSuffix("_int8")
+                val stripped = active.removeSuffix("_int8")
+                val isLegacy = active.endsWith("_int8")
+                val isKokoro = stripped.startsWith("kokoro_")
+                if (isLegacy && (isKokoro || stripped in migratedIds)) {
+                    prefs[VoiceKeys.ACTIVE_ID] = stripped
                 }
             }
             prefs[VoiceKeys.INSTALLED_IDS]?.let { ids ->
                 val rewritten = ids.map {
-                    if (it.endsWith("_int8")) it.removeSuffix("_int8") else it
+                    val stripped = it.removeSuffix("_int8")
+                    val isLegacy = it.endsWith("_int8")
+                    val isKokoro = stripped.startsWith("kokoro_")
+                    if (isLegacy && (isKokoro || stripped in migratedIds)) stripped else it
                 }.toSet()
                 if (rewritten != ids) prefs[VoiceKeys.INSTALLED_IDS] = rewritten
             }
@@ -108,24 +136,37 @@ class VoiceManager @Inject constructor(
     /** Hot Flow of installed voices, derived from the DataStore-backed installed-id set.
      *  All 53 Kokoro speakers report installed once the shared model has been
      *  downloaded — they all share one set of files, the speaker id is just
-     *  metadata baked into a generate() call. */
+     *  metadata baked into a generate() call.
+     *
+     *  Reads `_int8`-suffixed legacy IDs through [normalizeId] so users
+     *  upgrading from v0.4.5–v0.4.13 don't briefly see "no voices installed"
+     *  if the async [migrateInt8VoiceIds] hasn't completed by the time the
+     *  first collector observes this Flow. */
     val installedVoices: Flow<List<UiVoiceInfo>> = store.data.map { prefs ->
-        val installedIds = prefs[VoiceKeys.INSTALLED_IDS].orEmpty()
+        val installedIds = prefs[VoiceKeys.INSTALLED_IDS].orEmpty().map(::normalizeId).toSet()
         val kokoroReady = isKokoroSharedModelInstalled()
         VoiceCatalog.voices
             .filter { it.id in installedIds || (it.engineType is EngineType.Kokoro && kokoroReady) }
             .map { it.toUiVoiceInfo(installed = true) }
     }
 
-    /** Hot Flow of the active voice (or null if nothing chosen yet). */
+    /** Hot Flow of the active voice (or null if nothing chosen yet).
+     *  Same legacy-ID normalization as [installedVoices]. */
     val activeVoice: Flow<UiVoiceInfo?> = store.data.map { prefs ->
-        val activeId = prefs[VoiceKeys.ACTIVE_ID] ?: return@map null
-        val installed = prefs[VoiceKeys.INSTALLED_IDS].orEmpty()
+        val activeId = prefs[VoiceKeys.ACTIVE_ID]?.let(::normalizeId) ?: return@map null
+        val installed = prefs[VoiceKeys.INSTALLED_IDS].orEmpty().map(::normalizeId).toSet()
         val entry = VoiceCatalog.byId(activeId) ?: return@map null
         val isInstalled = activeId in installed ||
             (entry.engineType is EngineType.Kokoro && isKokoroSharedModelInstalled())
         entry.toUiVoiceInfo(installed = isInstalled)
     }
+
+    /** Strip the historical `_int8` suffix so legacy stored IDs resolve
+     *  against the current catalog. Used on every read; the async migration
+     *  rewrites the persisted store eventually but reads must succeed before
+     *  it lands. */
+    private fun normalizeId(id: String): String =
+        if (id.endsWith("_int8")) id.removeSuffix("_int8") else id
 
     private fun isKokoroSharedModelInstalled(): Boolean {
         val dir = kokoroSharedDir()
