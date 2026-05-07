@@ -50,6 +50,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import `in`.jphe.storyvox.feature.api.BrowseFilter
 import `in`.jphe.storyvox.ui.component.cascadeReveal
+import `in`.jphe.storyvox.ui.component.ErrorBlock
+import `in`.jphe.storyvox.ui.component.ErrorPlacement
 import `in`.jphe.storyvox.ui.component.FictionCardSkeleton
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
@@ -99,6 +101,15 @@ fun BrowseScreen(
         when {
             state.isLoading && state.items.isEmpty() -> SkeletonGrid()
             state.tab == BrowseTab.Search && state.query.isBlank() && !state.isFilterActive -> SearchHint()
+            // First-load failure with no cached items: full-screen error.
+            // Retry triggers viewModel.loadMore() which the paginator
+            // resolves to the same page that failed.
+            state.error != null && state.items.isEmpty() -> ErrorBlock(
+                title = "The realm is unreachable",
+                message = state.error ?: "We couldn't reach Royal Road. Check your connection and try again.",
+                onRetry = { viewModel.loadMore() },
+                placement = ErrorPlacement.FullScreen,
+            )
             else -> {
                 // Hoist the grid state so we can watch the last-visible
                 // index and trigger viewModel.loadMore() near the end.
@@ -152,6 +163,20 @@ fun BrowseScreen(
                     horizontalArrangement = Arrangement.spacedBy(spacing.sm),
                     verticalArrangement = Arrangement.spacedBy(spacing.md),
                 ) {
+                    // Tail/refresh error while we still have cached items —
+                    // surface as a banner so users keep seeing what they were
+                    // browsing. Retry path is the same loadMore() the
+                    // paginator already wires to scroll-near-end.
+                    if (state.error != null) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            ErrorBlock(
+                                title = "Couldn't refresh",
+                                message = state.error ?: "We couldn't reach Royal Road.",
+                                onRetry = { viewModel.loadMore() },
+                                placement = ErrorPlacement.Banner,
+                            )
+                        }
+                    }
                     itemsIndexed(state.items, key = { _, item -> item.id }) { index, fiction ->
                         Column(
                             modifier = Modifier
