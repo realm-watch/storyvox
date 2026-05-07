@@ -1,6 +1,7 @@
 package `in`.jphe.storyvox.playback.tts
 
 import android.content.Context
+import android.media.AudioAttributes as PlatformAudioAttributes
 import android.media.AudioFormat as AndroidAudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
@@ -645,9 +646,22 @@ class EnginePlayer @AssistedInject constructor(
      *  goes through the AudioAttributes routing layer, which on some firmware
      *  applies SoundAlive/Atmos. The legacy ctor advertises `STREAM_MUSIC`
      *  directly to AudioFlinger and bypasses those effects on the affected
-     *  devices. VoxSherpa standalone does the same. */
+     *  devices. VoxSherpa standalone does the same.
+     *
+     *  ROADMAP A/B: temporarily routable through [createAudioTrackBuilder]
+     *  via a runtime toggle. Touch the file at
+     *  `${context.filesDir}/audiotrack-builder` (e.g.
+     *  `adb shell touch /data/data/in.jphe.storyvox/files/audiotrack-builder`)
+     *  to switch to the Builder + AudioAttributes path on the next pipeline
+     *  rebuild. Remove the file to flip back. The toggle is checked on
+     *  every [createAudioTrack] call — every play()/seek/setSpeed/voice-swap
+     *  rebuilds the AudioTrack — so JP can A/B in-place without an app
+     *  restart, and definitely without a rebuild. The Builder path will
+     *  ship as the default once we confirm clean output on Tab A7 Lite;
+     *  this entire dual-path block is deleted in that follow-up PR. */
     @Suppress("DEPRECATION")
     private fun createAudioTrack(sampleRate: Int): AudioTrack {
+        if (isBuilderPathEnabled()) return createAudioTrackBuilder(sampleRate)
         val channelMask = AndroidAudioFormat.CHANNEL_OUT_MONO
         val encoding = AndroidAudioFormat.ENCODING_PCM_16BIT
         val bufferSize = AudioTrack.getMinBufferSize(sampleRate, channelMask, encoding)
@@ -659,6 +673,69 @@ class EnginePlayer @AssistedInject constructor(
             bufferSize,
             AudioTrack.MODE_STREAM,
         )
+    }
+
+    /** Modern AudioTrack.Builder + AudioAttributes(USAGE_MEDIA,
+     *  CONTENT_TYPE_MUSIC) path. Same channel mask / encoding / buffer size
+     *  as the legacy ctor so the only behavioural difference under test is
+     *  the AudioAttributes routing layer.
+     *
+     *  Why CONTENT_TYPE_MUSIC and not CONTENT_TYPE_SPEECH: on Tab A7 Lite,
+     *  CONTENT_TYPE_SPEECH triggered Samsung's speech-DSP path back in
+     *  v0.4.9 — we documented the symptom (audible distortion) and moved
+     *  off it. The legacy STREAM_MUSIC ctor already advertises music to
+     *  AudioFlinger, and we're trying to match that behaviour through the
+     *  modern API.
+     *
+     *  Outcome 1 — Builder sounds clean on Tab A7 Lite: the cleanup PR
+     *  deletes the legacy ctor + the @Suppress("DEPRECATION") + this entire
+     *  toggle block, and the `createAudioTrack(sampleRate)` body becomes
+     *  just the Builder call.
+     *
+     *  Outcome 2 — Builder reintroduces fuzz: this dual-path stays as a
+     *  diagnostic for future devices, but the default toggle stays off,
+     *  and we file an issue documenting WHICH USAGE × CONTENT_TYPE combos
+     *  we tested. The legacy ctor stays load-bearing. */
+    private fun createAudioTrackBuilder(sampleRate: Int): AudioTrack {
+        val channelMask = AndroidAudioFormat.CHANNEL_OUT_MONO
+        val encoding = AndroidAudioFormat.ENCODING_PCM_16BIT
+        val bufferSize = AudioTrack.getMinBufferSize(sampleRate, channelMask, encoding)
+        val attrs = PlatformAudioAttributes.Builder()
+            .setUsage(PlatformAudioAttributes.USAGE_MEDIA)
+            .setContentType(PlatformAudioAttributes.CONTENT_TYPE_MUSIC)
+            .build()
+        val format = AndroidAudioFormat.Builder()
+            .setEncoding(encoding)
+            .setSampleRate(sampleRate)
+            .setChannelMask(channelMask)
+            .build()
+        return AudioTrack.Builder()
+            .setAudioAttributes(attrs)
+            .setAudioFormat(format)
+            .setBufferSizeInBytes(bufferSize)
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .build()
+    }
+
+    /** Runtime toggle for the AudioTrack.Builder A/B test. Checked on every
+     *  AudioTrack rebuild so flipping the marker file takes effect on the
+     *  next play()/seek/setSpeed/voice-swap with no app restart needed.
+     *  Marker lives in app-private storage so no permissions are required:
+     *
+     *  ```
+     *  adb shell touch /data/data/in.jphe.storyvox/files/audiotrack-builder
+     *  ```
+     *
+     *  Remove the file to flip back to the legacy ctor.
+     *
+     *  Failure-tolerant: if `filesDir` is somehow unavailable (it never
+     *  is in practice — Android creates it on first context use) we fall
+     *  back to the legacy path. The whole toggle is dead code once the A/B
+     *  resolves. */
+    private fun isBuilderPathEnabled(): Boolean = try {
+        java.io.File(context.filesDir, "audiotrack-builder").exists()
+    } catch (_: Throwable) {
+        false
     }
 
     fun pauseTts() {
