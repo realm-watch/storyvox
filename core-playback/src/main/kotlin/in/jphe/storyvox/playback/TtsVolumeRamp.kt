@@ -18,6 +18,10 @@ class TtsVolumeRamp @Inject constructor() : VolumeRamp {
         private set
 
     override fun set(v: Float) {
-        current = v.coerceIn(0f, 1f)
+        // Float.coerceIn doesn't trap NaN — Float comparisons with NaN return
+        // false in both directions, so NaN passes through untouched. Once the
+        // EnginePlayer reads `current` and forwards it to AudioTrack.setVolume,
+        // a NaN either silently mutes the track or throws on newer API levels.
+        current = if (v.isNaN()) 1.0f else v.coerceIn(0f, 1f)
     }
 }
