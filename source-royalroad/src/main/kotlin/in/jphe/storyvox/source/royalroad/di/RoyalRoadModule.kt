@@ -15,6 +15,7 @@ import dagger.hilt.components.SingletonComponent
 import dagger.multibindings.IntoMap
 import dagger.multibindings.StringKey
 import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 import javax.inject.Qualifier
 import javax.inject.Singleton
 
@@ -32,6 +33,25 @@ internal object RoyalRoadHttpModule {
             .cookieJar(jar)
             .followRedirects(true)
             .followSslRedirects(true)
+            // Tab A7 Lite is the constraint device. With no explicit
+            // timeouts OkHttp falls back to 10 s/10 s/10 s, and combined
+            // with retryOnConnectionFailure(true) below the worst-case
+            // stall on Wi-Fi-off / flaky-cellular reaches ~30 s — long
+            // enough that Browse / FictionDetail sit at "blank cream"
+            // before the upstream Failure surfaces and ErrorBlock
+            // renders. Snappier numbers cap the perceived latency:
+            //   connectTimeout:  TCP handshake (incl. TLS pre-negotiation
+            //                    on a flaky link).
+            //   readTimeout:     between socket reads while a response
+            //                    streams.
+            //   callTimeout:     hard cap on the whole call (DNS +
+            //                    connect + TLS + read + retries) — the
+            //                    safety net that bounds the worst case
+            //                    even when retryOnConnectionFailure
+            //                    elects to retry.
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .callTimeout(15, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .addInterceptor { chain ->
                 val req = chain.request().newBuilder()
