@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import `in`.jphe.storyvox.ui.theme.LocalMotion
+import `in`.jphe.storyvox.ui.theme.LocalReducedMotion
 import kotlinx.coroutines.delay
 
 /**
@@ -37,6 +38,8 @@ fun Modifier.cascadeReveal(
     staggerMs: Int = 28,
     riseFrom: Dp = 10.dp,
 ): Modifier = composed {
+    if (LocalReducedMotion.current) return@composed Modifier
+
     val motion = LocalMotion.current
     val density = LocalDensity.current
     val riseFromPx = with(density) { riseFrom.toPx() }

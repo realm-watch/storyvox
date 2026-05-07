@@ -44,6 +44,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.unit.dp
 import `in`.jphe.storyvox.feature.api.UiPlaybackState
 import `in`.jphe.storyvox.feature.api.UiSleepTimerMode
@@ -196,9 +198,17 @@ fun AudiobookView(
         if (showSheet) {
             val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
             val coroutineScope = rememberCoroutineScope()
+            // Candlelight scrim — a translucent brass tone composited over
+            // the default scrim color, instead of a flat black dim. Reads
+            // as "the light's been turned down", not "the screen got eaten".
+            val brassScrim = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                .compositeOver(MaterialTheme.colorScheme.scrim.copy(alpha = 0.42f))
             ModalBottomSheet(
                 onDismissRequest = { showSheet = false },
                 sheetState = sheetState,
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                scrimColor = brassScrim,
+                tonalElevation = 6.dp,
             ) {
                 PlayerOptionsSheet(
                     state = state,
