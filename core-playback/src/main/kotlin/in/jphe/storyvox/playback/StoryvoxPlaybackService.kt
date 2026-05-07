@@ -108,6 +108,12 @@ class StoryvoxPlaybackService : MediaSessionService() {
      * navigate straight to the reader for the playing chapter. With a null
      * fiction/chapter id (e.g. before playback starts) we still launch
      * MainActivity — the user lands on Library which is the right default.
+     *
+     * `TaskStackBuilder.getPendingIntent(...)` is documented as nullable on
+     * older platforms / under platform PendingIntent broker pressure. The
+     * previous `!!` would crash the foreground service on that path; we
+     * fall back to a flat `PendingIntent.getActivity` that exercises the
+     * simpler broker path before giving up.
      */
     private fun buildSessionActivity(fictionId: String?, chapterId: String?): PendingIntent {
         val launchIntent = Intent().apply {
@@ -121,12 +127,11 @@ class StoryvoxPlaybackService : MediaSessionService() {
         // FLAG_UPDATE_CURRENT so the new fictionId/chapterId actually overwrite
         // any previous intent extras (PendingIntent equality ignores extras by
         // default — without UPDATE_CURRENT we'd keep firing the original chapter).
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         return TaskStackBuilder.create(this)
             .addNextIntent(launchIntent)
-            .getPendingIntent(
-                /* requestCode = */ 0,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )!!
+            .getPendingIntent(/* requestCode = */ 0, flags)
+            ?: PendingIntent.getActivity(this, 0, launchIntent, flags)
     }
 
     /** Placeholder posted to satisfy Android's 5-sec foreground deadline.
