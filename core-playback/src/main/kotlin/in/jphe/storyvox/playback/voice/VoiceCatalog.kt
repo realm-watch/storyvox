@@ -18,7 +18,7 @@ object VoiceCatalog {
             id = "piper_lessac_en_US_high_int8",
             displayName = "⭐ Lessac (High)",
             language = "en_US",
-            sizeBytes = 35022847L,
+            sizeBytes = 113895332L,
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -30,7 +30,7 @@ object VoiceCatalog {
             id = "piper_ryan_en_US_high_int8",
             displayName = "⭐ Ryan (High)",
             language = "en_US",
-            sizeBytes = 34473341L,
+            sizeBytes = 120786923L,
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -42,7 +42,7 @@ object VoiceCatalog {
             id = "piper_amy_en_US_medium_int8",
             displayName = "⭐ Amy (Medium)",
             language = "en_US",
-            sizeBytes = 21028122L,
+            sizeBytes = 63201425L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -54,7 +54,7 @@ object VoiceCatalog {
             id = "piper_alan_en_GB_low_int8",
             displayName = "Alan (Low)",
             language = "en_GB",
-            sizeBytes = 21289969L,
+            sizeBytes = 63104662L,
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -66,7 +66,7 @@ object VoiceCatalog {
             id = "piper_alan_en_GB_medium_int8",
             displayName = "Alan (Medium)",
             language = "en_GB",
-            sizeBytes = 21103831L,
+            sizeBytes = 63201430L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -78,7 +78,7 @@ object VoiceCatalog {
             id = "piper_alba_en_GB_medium_int8",
             displayName = "Alba (Medium)",
             language = "en_GB",
-            sizeBytes = 21104326L,
+            sizeBytes = 63201430L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -90,7 +90,7 @@ object VoiceCatalog {
             id = "piper_aru_en_GB_medium_int8",
             displayName = "Aru (Medium)",
             language = "en_GB",
-            sizeBytes = 23125986L,
+            sizeBytes = 76754234L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -102,7 +102,7 @@ object VoiceCatalog {
             id = "piper_cori_en_GB_medium_int8",
             displayName = "Cori (Medium)",
             language = "en_GB",
-            sizeBytes = 20768736L,
+            sizeBytes = 63531507L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -114,7 +114,7 @@ object VoiceCatalog {
             id = "piper_cori_en_GB_high_int8",
             displayName = "Cori (High)",
             language = "en_GB",
-            sizeBytes = 35038210L,
+            sizeBytes = 114219480L,
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -126,7 +126,7 @@ object VoiceCatalog {
             id = "piper_dii_en_GB_high_int8",
             displayName = "Dii (High)",
             language = "en_GB",
-            sizeBytes = 21037620L,
+            sizeBytes = 63511174L,
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -138,7 +138,7 @@ object VoiceCatalog {
             id = "piper_jenny_dioco_en_GB_medium_int8",
             displayName = "Jenny Dioco (Medium)",
             language = "en_GB",
-            sizeBytes = 20950036L,
+            sizeBytes = 63201430L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -150,7 +150,7 @@ object VoiceCatalog {
             id = "piper_miro_en_GB_high_int8",
             displayName = "Miro (High)",
             language = "en_GB",
-            sizeBytes = 21347062L,
+            sizeBytes = 63511174L,
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -162,7 +162,7 @@ object VoiceCatalog {
             id = "piper_northern_english_male_en_GB_medium_int8",
             displayName = "Northern English Male (Medium)",
             language = "en_GB",
-            sizeBytes = 21100291L,
+            sizeBytes = 63201430L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -174,7 +174,7 @@ object VoiceCatalog {
             id = "piper_semaine_en_GB_medium_int8",
             displayName = "Semaine (Medium)",
             language = "en_GB",
-            sizeBytes = 23227810L,
+            sizeBytes = 76737847L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -186,7 +186,7 @@ object VoiceCatalog {
             id = "piper_southern_english_female_en_GB_low_int8",
             displayName = "Southern English Female (Low)",
             language = "en_GB",
-            sizeBytes = 21207615L,
+            sizeBytes = 63104662L,
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -198,7 +198,7 @@ object VoiceCatalog {
             id = "piper_southern_english_female_en_GB_medium_int8",
             displayName = "Southern English Female (Medium)",
             language = "en_GB",
-            sizeBytes = 23714066L,
+            sizeBytes = 77059414L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -210,7 +210,7 @@ object VoiceCatalog {
             id = "piper_southern_english_male_en_GB_medium_int8",
             displayName = "Southern English Male (Medium)",
             language = "en_GB",
-            sizeBytes = 23601346L,
+            sizeBytes = 77063512L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -222,7 +222,7 @@ object VoiceCatalog {
             id = "piper_vctk_en_GB_medium_int8",
             displayName = "Vctk (Medium)",
             language = "en_GB",
-            sizeBytes = 23366127L,
+            sizeBytes = 76952891L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -234,7 +234,7 @@ object VoiceCatalog {
             id = "piper_amy_en_US_low_int8",
             displayName = "Amy (Low)",
             language = "en_US",
-            sizeBytes = 21099246L,
+            sizeBytes = 63104657L,
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -246,7 +246,7 @@ object VoiceCatalog {
             id = "piper_arctic_en_US_medium_int8",
             displayName = "Arctic (Medium)",
             language = "en_US",
-            sizeBytes = 23320524L,
+            sizeBytes = 76715309L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -258,7 +258,7 @@ object VoiceCatalog {
             id = "piper_bryce_en_US_medium_int8",
             displayName = "Bryce (Medium)",
             language = "en_US",
-            sizeBytes = 20910568L,
+            sizeBytes = 63152970L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -270,7 +270,7 @@ object VoiceCatalog {
             id = "piper_danny_en_US_low_int8",
             displayName = "Danny (Low)",
             language = "en_US",
-            sizeBytes = 21184916L,
+            sizeBytes = 63052430L,
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -282,7 +282,7 @@ object VoiceCatalog {
             id = "piper_glados_en_US_high_int8",
             displayName = "Glados (High)",
             language = "en_US",
-            sizeBytes = 35125025L,
+            sizeBytes = 113800584L,
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -294,7 +294,7 @@ object VoiceCatalog {
             id = "piper_hfc_female_en_US_medium_int8",
             displayName = "Hfc Female (Medium)",
             language = "en_US",
-            sizeBytes = 21021379L,
+            sizeBytes = 63149198L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -306,7 +306,7 @@ object VoiceCatalog {
             id = "piper_hfc_male_en_US_medium_int8",
             displayName = "Hfc Male (Medium)",
             language = "en_US",
-            sizeBytes = 20984819L,
+            sizeBytes = 63149198L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -318,7 +318,7 @@ object VoiceCatalog {
             id = "piper_joe_en_US_medium_int8",
             displayName = "Joe (Medium)",
             language = "en_US",
-            sizeBytes = 21230019L,
+            sizeBytes = 63149198L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -330,7 +330,7 @@ object VoiceCatalog {
             id = "piper_john_en_US_medium_int8",
             displayName = "John (Medium)",
             language = "en_US",
-            sizeBytes = 20800096L,
+            sizeBytes = 63152970L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -342,7 +342,7 @@ object VoiceCatalog {
             id = "piper_kathleen_en_US_low_int8",
             displayName = "Kathleen (Low)",
             language = "en_US",
-            sizeBytes = 21289266L,
+            sizeBytes = 63052430L,
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -354,7 +354,7 @@ object VoiceCatalog {
             id = "piper_kristin_en_US_medium_int8",
             displayName = "Kristin (Medium)",
             language = "en_US",
-            sizeBytes = 20882061L,
+            sizeBytes = 63531507L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -366,7 +366,7 @@ object VoiceCatalog {
             id = "piper_kusal_en_US_medium_int8",
             displayName = "Kusal (Medium)",
             language = "en_US",
-            sizeBytes = 21044470L,
+            sizeBytes = 63201425L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -378,7 +378,7 @@ object VoiceCatalog {
             id = "piper_l2arctic_en_US_medium_int8",
             displayName = "L2Arctic (Medium)",
             language = "en_US",
-            sizeBytes = 23273574L,
+            sizeBytes = 76778805L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -390,7 +390,7 @@ object VoiceCatalog {
             id = "piper_lessac_en_US_low_int8",
             displayName = "Lessac (Low)",
             language = "en_US",
-            sizeBytes = 21070568L,
+            sizeBytes = 63149198L,
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -402,7 +402,7 @@ object VoiceCatalog {
             id = "piper_lessac_en_US_medium_int8",
             displayName = "Lessac (Medium)",
             language = "en_US",
-            sizeBytes = 20969179L,
+            sizeBytes = 63149198L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -414,7 +414,7 @@ object VoiceCatalog {
             id = "piper_libritts_en_US_high_int8",
             displayName = "Libritts (High)",
             language = "en_US",
-            sizeBytes = 36406088L,
+            sizeBytes = 129438513L,
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -426,7 +426,7 @@ object VoiceCatalog {
             id = "piper_libritts_r_en_US_medium_int8",
             displayName = "Libritts R (Medium)",
             language = "en_US",
-            sizeBytes = 23398348L,
+            sizeBytes = 78529840L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -438,7 +438,7 @@ object VoiceCatalog {
             id = "piper_ljspeech_en_US_medium_int8",
             displayName = "Ljspeech (Medium)",
             language = "en_US",
-            sizeBytes = 21090429L,
+            sizeBytes = 63531507L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -450,7 +450,7 @@ object VoiceCatalog {
             id = "piper_ljspeech_en_US_high_int8",
             displayName = "Ljspeech (High)",
             language = "en_US",
-            sizeBytes = 33886472L,
+            sizeBytes = 114199139L,
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -462,7 +462,7 @@ object VoiceCatalog {
             id = "piper_miro_en_US_high_int8",
             displayName = "Miro (High)",
             language = "en_US",
-            sizeBytes = 21336806L,
+            sizeBytes = 63511169L,
             qualityLevel = QualityLevel.High,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -474,7 +474,7 @@ object VoiceCatalog {
             id = "piper_norman_en_US_medium_int8",
             displayName = "Norman (Medium)",
             language = "en_US",
-            sizeBytes = 20987233L,
+            sizeBytes = 63531507L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -486,7 +486,7 @@ object VoiceCatalog {
             id = "piper_reza_ibrahim_en_US_medium_int8",
             displayName = "Reza Ibrahim (Medium)",
             language = "en_US",
-            sizeBytes = 21139277L,
+            sizeBytes = 63511169L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -498,7 +498,7 @@ object VoiceCatalog {
             id = "piper_ryan_en_US_low_int8",
             displayName = "Ryan (Low)",
             language = "en_US",
-            sizeBytes = 21212659L,
+            sizeBytes = 63052430L,
             qualityLevel = QualityLevel.Low,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -510,7 +510,7 @@ object VoiceCatalog {
             id = "piper_ryan_en_US_medium_int8",
             displayName = "Ryan (Medium)",
             language = "en_US",
-            sizeBytes = 21083446L,
+            sizeBytes = 63149198L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
@@ -522,12 +522,36 @@ object VoiceCatalog {
             id = "piper_sam_en_US_medium_int8",
             displayName = "Sam (Medium)",
             language = "en_US",
-            sizeBytes = 20874946L,
+            sizeBytes = 62946438L,
             qualityLevel = QualityLevel.Medium,
             engineType = EngineType.Piper,
             piper = PiperPaths(
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-sam-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-sam-medium.tokens.txt",
+            ),
+        ),
+        CatalogEntry(
+            id = "piper_glados_en_US_medium",
+            displayName = "GLaDOS",
+            language = "en_US",
+            sizeBytes = 63511169L,
+            qualityLevel = QualityLevel.Medium,
+            engineType = EngineType.Piper,
+            piper = PiperPaths(
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-glados.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-glados.tokens.txt",
+            ),
+        ),
+        CatalogEntry(
+            id = "piper_sweetbbak_amy_en_GB",
+            displayName = "Sweetbbak Amy",
+            language = "en_GB",
+            sizeBytes = 114199142L,
+            qualityLevel = QualityLevel.High,
+            engineType = EngineType.Piper,
+            piper = PiperPaths(
+                onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-sweetbbak-amy.onnx",
+                tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-sweetbbak-amy.tokens.txt",
             ),
         ),
     )
