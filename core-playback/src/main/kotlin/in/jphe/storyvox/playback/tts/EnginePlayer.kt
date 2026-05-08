@@ -448,6 +448,12 @@ class EnginePlayer @AssistedInject constructor(
             AndroidProcess.setThreadPriority(AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO)
             var naturalEnd = false
             var firstSentence = true
+            // Track AudioTrack pause state so the buffer-low check below can
+            // toggle play/pause without thrashing JNI on every iteration.
+            // Consumer is the only thread that calls track.play / track.pause
+            // for streaming-source playback (user-initiated pauses go through
+            // stopPlaybackPipeline, which tears the track down).
+            var paused = false
             // Live track volume mirror. Scoped to the consumer thread (not
             // per-sentence) so the per-write change-detection skips the
             // setVolume JNI call when the ramp is idle, which is the steady
@@ -455,6 +461,18 @@ class EnginePlayer @AssistedInject constructor(
             var lastVol = -1f
             try {
                 while (pipelineRunning.get()) {
+                    // BEFORE pulling the next chunk, check whether buffer
+                    // recovered above the resume threshold. If so, kick
+                    // AudioTrack alive again so the next write lands in a
+                    // playing track rather than a paused-then-played one.
+                    if (paused && source.bufferHeadroomMs.value >= BUFFER_RESUME_THRESHOLD_MS) {
+                        runCatching { track.play() }
+                        paused = false
+                        scope.launch {
+                            _observableState.update { it.copy(isBuffering = false) }
+                        }
+                    }
+
                     // runBlocking on the dedicated audio thread — same shape
                     // as the prior runInterruptible bridge. The thread stays
                     // pinned at URGENT_AUDIO; nextChunk's runInterruptible
@@ -498,6 +516,23 @@ class EnginePlayer @AssistedInject constructor(
                         firstSentence = false
                     }
 
+                    // After the take, headroom dropped by this chunk's audio
+                    // duration. If we just crossed below the underrun
+                    // threshold AND we're not already paused, pause the
+                    // AudioTrack and surface the buffering UI BEFORE we
+                    // start writing — the OS hardware buffer is large
+                    // enough on this device (~2-3 s deep) that the next
+                    // write would land seconds before the listener hears
+                    // silence, so the buffering UI needs to lead the audio
+                    // by that margin.
+                    if (!paused && source.bufferHeadroomMs.value < BUFFER_UNDERRUN_THRESHOLD_MS) {
+                        runCatching { track.pause() }
+                        paused = true
+                        scope.launch {
+                            _observableState.update { it.copy(isBuffering = true) }
+                        }
+                    }
+
                     // Stamp the start of the AudioTrack-write phase for this
                     // chunk. Combined with the chunkEnd() below, this lets
                     // the perf lane log gap_ms = startN - endNm1, which is
@@ -506,7 +541,7 @@ class EnginePlayer @AssistedInject constructor(
                     // ChunkGapLogger doc). No-op unless the marker file is
                     // present, so this is free in normal operation.
                     val gapVoiceId = loadedVoiceId ?: "unknown"
-                    chunkGapLogger.chunkStart(gapVoiceId, item.sentenceIndex)
+                    chunkGapLogger.chunkStart(gapVoiceId, chunk.sentenceIndex)
 
                     // Apply the SleepTimer fade-out ramp to the live track.
                     // Polled per write iteration; AudioTrack.setVolume is a
@@ -542,7 +577,7 @@ class EnginePlayer @AssistedInject constructor(
                     // pcm + trailing silence. The next iteration's blocking
                     // queue.take() is where a slow producer shows up as a
                     // logged gap.
-                    chunkGapLogger.chunkEnd(gapVoiceId, item.sentenceIndex)
+                    chunkGapLogger.chunkEnd(gapVoiceId, chunk.sentenceIndex)
                 }
             } finally {
                 // Release the AudioTrack from the same thread that owns
@@ -553,6 +588,16 @@ class EnginePlayer @AssistedInject constructor(
                 runCatching { track.pause() }
                 runCatching { track.flush() }
                 runCatching { track.release() }
+                // Don't leave the UI stuck in "Buffering..." after we've
+                // shut down — pause/stop tears the pipeline down via
+                // stopPlaybackPipeline which sets isPlaying=false; we
+                // additionally clear isBuffering so a subsequent resume
+                // that builds a fresh pipeline starts from a clean slate.
+                if (paused) {
+                    scope.launch {
+                        _observableState.update { it.copy(isBuffering = false) }
+                    }
+                }
                 if (naturalEnd && pipelineRunning.get()) {
                     scope.launch {
                         sleepTimer.signalChapterEnd()
@@ -893,6 +938,18 @@ class EnginePlayer @AssistedInject constructor(
         /** Fallback when the engine reports a non-positive sample rate (model
          *  not loaded yet). Piper voices are 22050Hz; Kokoro is 24000Hz. */
         const val DEFAULT_SAMPLE_RATE = 22050
+
+        /** When buffered audio falls below this, pause AudioTrack and surface
+         *  a "Buffering..." UI state. Tab A7 Lite's hardware buffer is ~2-3s
+         *  deep; pausing at 2s gives the listener clear feedback before the
+         *  silence fully drains the buffer and they hear dead air. */
+        const val BUFFER_UNDERRUN_THRESHOLD_MS = 2_000L
+
+        /** Hysteresis. Don't resume until we have this much queued or we'll
+         *  thrash pause/play on every chunk transition. 4s ≈ 2 sentences of
+         *  Piper-high audio average; the consumer can drain that before the
+         *  producer puts the next one. */
+        const val BUFFER_RESUME_THRESHOLD_MS = 4_000L
 
         /** Shared zero-filled buffer the consumer writes from to spool
          *  inter-sentence silence. Sized for one chunk @ 24 kHz mono 16-bit
