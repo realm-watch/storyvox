@@ -12,6 +12,7 @@ import `in`.jphe.storyvox.data.db.entity.DownloadMode
 import `in`.jphe.storyvox.data.db.entity.Fiction
 import `in`.jphe.storyvox.data.source.FictionSource
 import `in`.jphe.storyvox.data.source.FictionSourceEvent
+import `in`.jphe.storyvox.data.source.SourceIds
 import `in`.jphe.storyvox.data.source.model.ChapterContent
 import `in`.jphe.storyvox.data.source.model.ChapterInfo
 import `in`.jphe.storyvox.data.source.model.FictionDetail
@@ -37,10 +38,10 @@ class FictionRepositoryImplTest {
 
     // -- Fixtures ----------------------------------------------------------------
 
-    private fun summary(id: String, sourceId: String = "rr", title: String = id) =
+    private fun summary(id: String, sourceId: String = SourceIds.ROYAL_ROAD, title: String = id) =
         FictionSummary(id = id, sourceId = sourceId, title = title, author = "auth-$id")
 
-    private fun detail(id: String, sourceId: String = "rr", chapterCount: Int = 1) =
+    private fun detail(id: String, sourceId: String = SourceIds.ROYAL_ROAD, chapterCount: Int = 1) =
         FictionDetail(
             summary = summary(id, sourceId, title = "title-$id"),
             chapters = (0 until chapterCount).map {
@@ -279,7 +280,7 @@ class FictionRepositoryImplTest {
      * repository call, then asserts on the recorded call log + result mapping.
      * Defaults to a generic NetworkError so an un-stubbed call fails loudly.
      */
-    private class FakeSource(override val id: String = "rr") : FictionSource {
+    private class FakeSource(override val id: String = SourceIds.ROYAL_ROAD) : FictionSource {
         override val displayName: String = "Fake $id"
 
         var detailResult: FictionResult<FictionDetail> =
@@ -336,7 +337,7 @@ class FictionRepositoryImplTest {
     // -- repo() ------------------------------------------------------------------
 
     private fun repo(
-        sources: Map<String, FictionSource> = mapOf("rr" to FakeSource("rr")),
+        sources: Map<String, FictionSource> = mapOf(SourceIds.ROYAL_ROAD to FakeSource(SourceIds.ROYAL_ROAD)),
         fictionDao: FakeFictionDao = FakeFictionDao(),
         chapterDao: FakeChapterDao = FakeChapterDao(),
     ) = Triple(
@@ -348,23 +349,23 @@ class FictionRepositoryImplTest {
     // -- sourceFor() routing -----------------------------------------------------
 
     @Test fun `single bound source is used as fallback when sourceId is null`() = runTest {
-        val src = FakeSource("rr").apply {
+        val src = FakeSource(SourceIds.ROYAL_ROAD).apply {
             popularResult = FictionResult.Success(ListPage(emptyList(), 1, false))
         }
-        val (r, _, _) = repo(sources = mapOf("rr" to src))
+        val (r, _, _) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to src))
         val result = r.browsePopular(1)
         assertTrue(result is FictionResult.Success)
         assertEquals(listOf("popular(1)"), src.callLog)
     }
 
     @Test fun `multi-bound source routes by row's sourceId on refreshDetail`() = runTest {
-        val rr = FakeSource("rr").apply {
-            detailResult = FictionResult.Success(detail("123", sourceId = "rr"))
+        val rr = FakeSource(SourceIds.ROYAL_ROAD).apply {
+            detailResult = FictionResult.Success(detail("123", sourceId = SourceIds.ROYAL_ROAD))
         }
         val gh = FakeSource("github").apply {
             detailResult = FictionResult.Success(detail("123", sourceId = "github"))
         }
-        val (r, fictionDao, _) = repo(sources = mapOf("rr" to rr, "github" to gh))
+        val (r, fictionDao, _) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to rr, "github" to gh))
         // Pre-seed the row so refreshDetail's lookup finds the sourceId.
         fictionDao.rows["123"] = Fiction(
             id = "123", sourceId = "github", title = "", author = "",
@@ -377,32 +378,51 @@ class FictionRepositoryImplTest {
         assertEquals(emptyList<String>(), rr.callLog)
     }
 
-    @Test fun `multi-bound with missing row falls through to error on null sourceId`() = runTest {
-        val rr = FakeSource("rr")
+    @Test fun `multi-bound with missing row defaults to ROYAL_ROAD source for refreshDetail`() = runTest {
+        // Step-8a-i contract: when the persisted row is absent, the
+        // browse/refresh paths default to SourceIds.ROYAL_ROAD rather
+        // than firing the old multi-source guard. The pre-write of a
+        // stub row in addByUrl (#44) means new GitHub fictions reach
+        // refreshDetail with their sourceId already on disk; only
+        // legacy paths (refreshDetail before any add) hit this default.
+        val rr = FakeSource(SourceIds.ROYAL_ROAD).apply {
+            detailResult = FictionResult.NotFound("not on RR either")
+        }
         val gh = FakeSource("github")
-        val (r, _, _) = repo(sources = mapOf("rr" to rr, "github" to gh))
+        val (r, _, _) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to rr, "github" to gh))
+
+        val result = r.refreshDetail("404")
+        // Routed to RR (the default), which returns NotFound — surfaced
+        // verbatim to the caller. No IllegalStateException.
+        assertEquals(FictionResult.NotFound("not on RR either"), result)
+    }
+
+    @Test fun `sourceFor errors loudly when caller passes unknown sourceId`() = runTest {
+        // The loud-error behavior from PR #35 is preserved for the case
+        // it was actually designed for: a *known-bad* sourceId (e.g. a
+        // typo or a removed source). browsePopular with a sourceId not
+        // in the map throws — fail-fast for programming bugs.
+        val rr = FakeSource(SourceIds.ROYAL_ROAD)
+        val (r, _, _) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to rr))
 
         val ex = try {
-            // observeFiction doesn't hit sourceFor(); refreshDetail does, but
-            // with an absent row passes null → with multi-source bound and no
-            // singleOrNull match, sourceFor() throws.
-            r.refreshDetail("404")
+            r.browsePopular(page = 1, sourceId = "not-a-real-source")
             null
         } catch (t: IllegalStateException) {
             t
         }
-        assertNotNull("expected IllegalStateException for unknown sourceId in multi-bound map", ex)
+        assertNotNull("expected IllegalStateException for unknown sourceId", ex)
     }
 
     // -- browse / search / genres ------------------------------------------------
 
     @Test fun `browsePopular caches successful pages via upsertAllPreservingUserState`() = runTest {
-        val src = FakeSource("rr").apply {
+        val src = FakeSource(SourceIds.ROYAL_ROAD).apply {
             popularResult = FictionResult.Success(
                 ListPage(items = listOf(summary("a"), summary("b")), page = 1, hasNext = true),
             )
         }
-        val (r, fictionDao, _) = repo(sources = mapOf("rr" to src))
+        val (r, fictionDao, _) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to src))
 
         val result = r.browsePopular(1)
         assertTrue(result is FictionResult.Success)
@@ -411,10 +431,10 @@ class FictionRepositoryImplTest {
     }
 
     @Test fun `browsePopular does NOT write on Failure`() = runTest {
-        val src = FakeSource("rr").apply {
+        val src = FakeSource(SourceIds.ROYAL_ROAD).apply {
             popularResult = FictionResult.NetworkError("boom")
         }
-        val (r, fictionDao, _) = repo(sources = mapOf("rr" to src))
+        val (r, fictionDao, _) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to src))
 
         val result = r.browsePopular(1)
         assertTrue(result is FictionResult.Failure)
@@ -426,12 +446,12 @@ class FictionRepositoryImplTest {
     }
 
     @Test fun `browseLatest, browseByGenre, search all flow through cacheListing`() = runTest {
-        val src = FakeSource("rr").apply {
+        val src = FakeSource(SourceIds.ROYAL_ROAD).apply {
             latestResult = FictionResult.Success(ListPage(listOf(summary("a")), 1, false))
             byGenreResult = FictionResult.Success(ListPage(listOf(summary("b")), 1, false))
             searchResult = FictionResult.Success(ListPage(listOf(summary("c")), 1, false))
         }
-        val (r, fictionDao, _) = repo(sources = mapOf("rr" to src))
+        val (r, fictionDao, _) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to src))
 
         r.browseLatest(1)
         r.browseByGenre("fantasy", 1)
@@ -441,10 +461,10 @@ class FictionRepositoryImplTest {
     }
 
     @Test fun `genres() passes through source result without caching`() = runTest {
-        val src = FakeSource("rr").apply {
+        val src = FakeSource(SourceIds.ROYAL_ROAD).apply {
             genresResult = FictionResult.Success(listOf("fantasy", "litrpg"))
         }
-        val (r, fictionDao, _) = repo(sources = mapOf("rr" to src))
+        val (r, fictionDao, _) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to src))
 
         val result = r.genres()
         assertTrue(result is FictionResult.Success)
@@ -455,10 +475,10 @@ class FictionRepositoryImplTest {
     // -- refreshDetail -----------------------------------------------------------
 
     @Test fun `refreshDetail success writes detail and chapters`() = runTest {
-        val src = FakeSource("rr").apply {
+        val src = FakeSource(SourceIds.ROYAL_ROAD).apply {
             detailResult = FictionResult.Success(detail("99", chapterCount = 3))
         }
-        val (r, fictionDao, chapterDao) = repo(sources = mapOf("rr" to src))
+        val (r, fictionDao, chapterDao) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to src))
 
         val result = r.refreshDetail("99")
         assertTrue(result is FictionResult.Success)
@@ -467,10 +487,10 @@ class FictionRepositoryImplTest {
     }
 
     @Test fun `refreshDetail failure does NOT touch the DB`() = runTest {
-        val src = FakeSource("rr").apply {
+        val src = FakeSource(SourceIds.ROYAL_ROAD).apply {
             detailResult = FictionResult.NotFound()
         }
-        val (r, fictionDao, chapterDao) = repo(sources = mapOf("rr" to src))
+        val (r, fictionDao, chapterDao) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to src))
 
         val result = r.refreshDetail("99")
         assertTrue(result is FictionResult.NotFound)
@@ -479,10 +499,10 @@ class FictionRepositoryImplTest {
     }
 
     @Test fun `refreshDetail preserves existing chapter body bytes on merge`() = runTest {
-        val src = FakeSource("rr").apply {
+        val src = FakeSource(SourceIds.ROYAL_ROAD).apply {
             detailResult = FictionResult.Success(detail("99", chapterCount = 2))
         }
-        val (r, _, chapterDao) = repo(sources = mapOf("rr" to src))
+        val (r, _, chapterDao) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to src))
         // Pre-seed chapter 0 with downloaded body.
         chapterDao.rows["99-c0"] = Chapter(
             id = "99-c0", fictionId = "99", sourceChapterId = "src-0",
@@ -508,12 +528,12 @@ class FictionRepositoryImplTest {
     // -- refreshRemoteFollows ---------------------------------------------------
 
     @Test fun `refreshRemoteFollows upserts incoming and clears gone-from-remote`() = runTest {
-        val src = FakeSource("rr").apply {
+        val src = FakeSource(SourceIds.ROYAL_ROAD).apply {
             followsListResult = FictionResult.Success(
                 ListPage(listOf(summary("keep"), summary("new")), 1, false),
             )
         }
-        val (r, fictionDao, _) = repo(sources = mapOf("rr" to src))
+        val (r, fictionDao, _) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to src))
         // Pre-seed rows: "keep" already followedRemotely (should stay),
         // "gone" previously followedRemotely (should clear).
         fictionDao.rows["keep"] = summary("keep").toEntity(0L).copy(followedRemotely = true)
@@ -527,10 +547,10 @@ class FictionRepositoryImplTest {
     }
 
     @Test fun `refreshRemoteFollows AuthRequired propagates without DB writes`() = runTest {
-        val src = FakeSource("rr").apply {
+        val src = FakeSource(SourceIds.ROYAL_ROAD).apply {
             followsListResult = FictionResult.AuthRequired()
         }
-        val (r, fictionDao, _) = repo(sources = mapOf("rr" to src))
+        val (r, fictionDao, _) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to src))
 
         val result = r.refreshRemoteFollows()
         assertTrue(result is FictionResult.AuthRequired)
@@ -538,7 +558,7 @@ class FictionRepositoryImplTest {
     }
 
     @Test fun `refreshRemoteFollows preserves richer detail-page fields on merge`() = runTest {
-        val src = FakeSource("rr").apply {
+        val src = FakeSource(SourceIds.ROYAL_ROAD).apply {
             // Incoming row has blank title — repository must keep existing.
             followsListResult = FictionResult.Success(
                 ListPage(
@@ -547,7 +567,7 @@ class FictionRepositoryImplTest {
                 ),
             )
         }
-        val (r, fictionDao, _) = repo(sources = mapOf("rr" to src))
+        val (r, fictionDao, _) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to src))
         fictionDao.rows["keep"] = summary("keep").toEntity(0L).copy(
             title = "Existing Title",
             coverUrl = "https://existing.cover",
@@ -571,10 +591,10 @@ class FictionRepositoryImplTest {
     // -- addToLibrary / removeFromLibrary ----------------------------------------
 
     @Test fun `addToLibrary refreshes when row missing then sets inLibrary`() = runTest {
-        val src = FakeSource("rr").apply {
+        val src = FakeSource(SourceIds.ROYAL_ROAD).apply {
             detailResult = FictionResult.Success(detail("new", chapterCount = 1))
         }
-        val (r, fictionDao, _) = repo(sources = mapOf("rr" to src))
+        val (r, fictionDao, _) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to src))
 
         r.addToLibrary("new")
 
@@ -587,8 +607,8 @@ class FictionRepositoryImplTest {
     }
 
     @Test fun `addToLibrary skips refresh when row already exists`() = runTest {
-        val src = FakeSource("rr") // detailResult left as default error
-        val (r, fictionDao, _) = repo(sources = mapOf("rr" to src))
+        val src = FakeSource(SourceIds.ROYAL_ROAD) // detailResult left as default error
+        val (r, fictionDao, _) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to src))
         fictionDao.rows["existing"] = summary("existing").toEntity(0L)
 
         r.addToLibrary("existing")
@@ -601,10 +621,10 @@ class FictionRepositoryImplTest {
     }
 
     @Test fun `addToLibrary ignores refresh failure (best-effort)`() = runTest {
-        val src = FakeSource("rr").apply {
+        val src = FakeSource(SourceIds.ROYAL_ROAD).apply {
             detailResult = FictionResult.NetworkError("flaky")
         }
-        val (r, fictionDao, _) = repo(sources = mapOf("rr" to src))
+        val (r, fictionDao, _) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to src))
 
         // refreshDetail will fail. Ensure addToLibrary still attempts to flip
         // setInLibrary — but setInLibrary on a non-existent row in the fake
@@ -616,10 +636,10 @@ class FictionRepositoryImplTest {
     }
 
     @Test fun `addToLibrary applies downloadMode after setInLibrary`() = runTest {
-        val src = FakeSource("rr").apply {
+        val src = FakeSource(SourceIds.ROYAL_ROAD).apply {
             detailResult = FictionResult.Success(detail("eager", chapterCount = 1))
         }
-        val (r, fictionDao, _) = repo(sources = mapOf("rr" to src))
+        val (r, fictionDao, _) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to src))
 
         r.addToLibrary("eager", DownloadMode.EAGER)
 
@@ -660,10 +680,10 @@ class FictionRepositoryImplTest {
     // -- setFollowedRemote -------------------------------------------------------
 
     @Test fun `setFollowedRemote success flips local row only after source succeeds`() = runTest {
-        val src = FakeSource("rr").apply {
+        val src = FakeSource(SourceIds.ROYAL_ROAD).apply {
             setFollowedResult = FictionResult.Success(Unit)
         }
-        val (r, fictionDao, _) = repo(sources = mapOf("rr" to src))
+        val (r, fictionDao, _) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to src))
         fictionDao.rows["x"] = summary("x").toEntity(0L)
 
         val result = r.setFollowedRemote("x", true)
@@ -672,10 +692,10 @@ class FictionRepositoryImplTest {
     }
 
     @Test fun `setFollowedRemote source failure preserves local state`() = runTest {
-        val src = FakeSource("rr").apply {
+        val src = FakeSource(SourceIds.ROYAL_ROAD).apply {
             setFollowedResult = FictionResult.AuthRequired()
         }
-        val (r, fictionDao, _) = repo(sources = mapOf("rr" to src))
+        val (r, fictionDao, _) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to src))
         fictionDao.rows["x"] = summary("x").toEntity(0L).copy(followedRemotely = false)
 
         val result = r.setFollowedRemote("x", true)
@@ -697,8 +717,8 @@ class FictionRepositoryImplTest {
     }
 
     @Test fun `addByUrl recognised but unbound source returns UnsupportedSource`() = runTest {
-        // Map only has "rr"; UrlRouter recognises GitHub but no source bound.
-        val (r, fictionDao, _) = repo(sources = mapOf("rr" to FakeSource("rr")))
+        // Map only has SourceIds.ROYAL_ROAD; UrlRouter recognises GitHub but no source bound.
+        val (r, fictionDao, _) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to FakeSource(SourceIds.ROYAL_ROAD)))
         val result = r.addByUrl("https://github.com/example/repo")
         assertTrue(result is AddByUrlResult.UnsupportedSource)
         assertEquals("github", (result as AddByUrlResult.UnsupportedSource).sourceId)
