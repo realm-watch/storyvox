@@ -208,8 +208,24 @@ data class UiPlaybackState(
     /** True when the streaming TTS pipeline has paused AudioTrack waiting
      *  for the producer to refill the queue past the underrun threshold.
      *  UI surfaces a "Buffering..." spinner; differs from `!isPlaying`
-     *  (user pause) and from initial voice warm-up (sentenceEnd == 0). */
+     *  (user pause) and from initial voice warm-up (see [isWarmingUp]).
+     *
+     *  Issue #98 — when the user disables Mode B (Catch-up Pause), the
+     *  EnginePlayer consumer thread no longer pauses on underrun, so this
+     *  flag stays false through underrun events and the consumer drains
+     *  through the silence instead. UI surfaces no buffering spinner in
+     *  that mode by construction. */
     val isBuffering: Boolean = false,
+    /** True when the user has hit play but the voice engine hasn't
+     *  produced the first sentence's audio yet. Distinct from
+     *  [isBuffering] (mid-stream underrun). UI surfaces the "warming up"
+     *  spinner + freezes wall-time scrubber interpolation.
+     *
+     *  Issue #98 — Mode A (Warm-up Wait) gates this. With Mode A on
+     *  (default), this is `isPlaying && sentenceEnd == 0`. With Mode A
+     *  off, this is always false: the UI behaves as if playback started
+     *  immediately and the listener accepts silence at chapter start. */
+    val isWarmingUp: Boolean = false,
     val positionMs: Long,
     val durationMs: Long,
     /** Char index into the chapter text where the current sentence begins. */
@@ -300,6 +316,25 @@ data class UiSettings(
      * as exploratory; we want telemetry from users running there.
      */
     val playbackBufferChunks: Int = BUFFER_DEFAULT_CHUNKS,
+    /**
+     * Issue #98 — Mode A. When true (default), the UI shows a "warming up"
+     * spinner + freezes wall-time scrubber interpolation while the voice
+     * engine is loading + producing the first sentence's audio. When false,
+     * the UI behaves as if playback started immediately; the listener hears
+     * silence until the engine catches up but the scrubber and play button
+     * look "playing" the whole time. Useful for users who'd rather see motion
+     * than a spinner on slower devices.
+     */
+    val warmupWait: Boolean = true,
+    /**
+     * Issue #98 — Mode B. When true (default), the streaming pipeline pauses
+     * AudioTrack on mid-stream underrun (PR #77's pause-buffer-resume) and
+     * surfaces a "Buffering..." spinner while the producer catches up. When
+     * false, the consumer thread drains through underruns; the listener
+     * hears moments of dead air instead of paused-then-resumed playback,
+     * but never sees the buffering spinner.
+     */
+    val catchupPause: Boolean = true,
 )
 
 /** Default queue depth — current hardcoded `EngineStreamingSource(queueCapacity = 8)`. */
@@ -402,6 +437,10 @@ interface SettingsRepositoryUi {
     suspend fun setPollIntervalHours(hours: Int)
     suspend fun setPunctuationPause(mode: PunctuationPause)
     suspend fun setPlaybackBufferChunks(chunks: Int)
+    /** Issue #98 — Mode A toggle. See [UiSettings.warmupWait]. */
+    suspend fun setWarmupWait(enabled: Boolean)
+    /** Issue #98 — Mode B toggle. See [UiSettings.catchupPause]. */
+    suspend fun setCatchupPause(enabled: Boolean)
     suspend fun signIn()
     suspend fun signOut()
 }

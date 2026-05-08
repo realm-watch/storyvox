@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontStyle
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import `in`.jphe.storyvox.feature.api.BUFFER_DANGER_MULTIPLIER
@@ -74,9 +75,74 @@ fun SettingsScreen(
         )
         Text("Pitch ${"%.2f".format(s.defaultPitch)}×", style = MaterialTheme.typography.bodySmall)
 
-        // Issue #90: three-stop selector for the inter-sentence silence
-        // splice. Same brass-button-row aesthetic as the Theme picker so
-        // it feels like a sibling control.
+        Divider()
+        // Issue #98 — "Performance & buffering" home for every setting that
+        // trades upfront wait + memory for smoother playback on slow devices.
+        // Order intentionally goes from the cheapest knobs (boolean modes) to
+        // the most exploratory (the buffer slider, which goes well past the
+        // recommended max for the LMK probe in #84). Punctuation cadence sits
+        // at the bottom because it's a cadence preference more than a perf
+        // trade-off, but it also lives in the perf trade space (Off skips
+        // synthesis time per sentence boundary).
+        SectionHeader("Performance & buffering")
+        Text(
+            "Settings that trade upfront wait + memory for smoother playback. Useful on slower devices.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontStyle = FontStyle.Italic,
+        )
+
+        // Mode A — Warm-up Wait. Toggle, default ON. When ON the UI shows a
+        // brass spinner + freezes the scrubber while the voice engine is
+        // loading + producing the first sentence. When OFF the UI behaves as
+        // if playback started immediately; listener accepts silence at chapter
+        // start. Wired through PlaybackModeConfig + AppBindings.toUi.
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Warm-up Wait", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    if (s.warmupWait) {
+                        "Wait for the voice to warm up before playback starts."
+                    } else {
+                        "Start playback immediately; accept silence at chapter start."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = s.warmupWait, onCheckedChange = viewModel::setWarmupWait)
+        }
+
+        // Mode B — Catch-up Pause. Toggle, default ON. When ON, mid-stream
+        // underrun pauses AudioTrack and surfaces "Buffering…" until the
+        // queue refills (PR #77's pause-buffer-resume). When OFF the consumer
+        // drains through the underrun: listener may hear dead air, but never
+        // sees the buffering spinner. EngineStreamingSource is untouched.
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Catch-up Pause", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    if (s.catchupPause) {
+                        "Pause briefly when the voice falls behind, then resume cleanly."
+                    } else {
+                        "Drain through underruns; no buffering spinner."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = s.catchupPause, onCheckedChange = viewModel::setCatchupPause)
+        }
+
+        // Buffer Headroom — migrated from the standalone "Audio buffer"
+        // section. Same control, same #84 LMK-probe semantics.
+        BufferSlider(
+            chunks = s.playbackBufferChunks,
+            onChunksChange = viewModel::setPlaybackBufferChunks,
+        )
+
+        // Punctuation Cadence — migrated from the Reading section. Same
+        // three-stop control + brass-button-row aesthetic from #93.
         Text("Pause after . , ? ! ; :", style = MaterialTheme.typography.bodyMedium)
         Text(
             "How long to pause between sentences. Off makes the reader sprint; Long gives narration room to breathe.",
@@ -89,13 +155,6 @@ fun SettingsScreen(
                 BrassButton(label = mode.name, onClick = { viewModel.setPunctuationPause(mode) }, variant = variant)
             }
         }
-
-        Divider()
-        SectionHeader("Audio buffer")
-        BufferSlider(
-            chunks = s.playbackBufferChunks,
-            onChunksChange = viewModel::setPlaybackBufferChunks,
-        )
 
         Divider()
         SectionHeader("Theme")
