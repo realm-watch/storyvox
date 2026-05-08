@@ -30,10 +30,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -627,51 +629,107 @@ private fun PunctuationPauseSlider(
 /**
  * Anchored row of legacy-stop labels under [PunctuationPauseSlider]. Each
  * label sits at its true fractional position along the [0..4] range using
- * weight spacers, mirroring [TickMarker]'s technique. Labels include the
- * legacy stop names (Off / Normal / Long) so users coming from the 3-stop
- * selector can find their preferred cadence at a glance.
+ * a [Layout] composable, so the visual ▲ caret on each label aligns with
+ * the slider thumb position for that value. Labels include the legacy stop
+ * names (Off / Normal / Long) so users coming from the 3-stop selector
+ * can find their preferred cadence at a glance.
+ *
+ * Why not the [TickMarker] weight-spacer trick? With multiple labels in a
+ * single [Row], Compose's weight system divides only the *remaining* width
+ * after measuring unweighted children (the Texts themselves), so each label
+ * drifts right by the cumulative widths of preceding labels. With four
+ * labels the drift visibly mismatches the thumb position (issue #139).
+ *
+ * We also account for the M3 [Slider]'s internal track padding (half the
+ * thumb width = 10dp on each side), which the surrounding Column does not
+ * inherit. Fraction 0 in the parent layout maps to track-x = 0 + padding,
+ * not to the leftmost pixel of the parent.
  */
 @Composable
 private fun PunctuationPauseTickLabels() {
     val total = PUNCTUATION_PAUSE_MAX_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER
-    val offFrac = ((PUNCTUATION_PAUSE_OFF_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER) / total)
-        .coerceIn(0f, 1f)
-    val normalFrac = ((PUNCTUATION_PAUSE_NORMAL_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER) / total)
-        .coerceIn(0f, 1f)
-    val longFrac = ((PUNCTUATION_PAUSE_LONG_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER) / total)
-        .coerceIn(0f, 1f)
+    val ticks = listOf(
+        "▲ Off" to ((PUNCTUATION_PAUSE_OFF_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER) / total),
+        "▲ 1×" to ((PUNCTUATION_PAUSE_NORMAL_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER) / total),
+        "▲ Long" to ((PUNCTUATION_PAUSE_LONG_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER) / total),
+        "▲ 4×" to 1f,
+    )
 
-    // Distances between adjacent ticks along the row; the trailing slack
-    // after "Max" pads to the right edge of the parent.
-    val toNormal = (normalFrac - offFrac).coerceAtLeast(0.001f)
-    val toLong = (longFrac - normalFrac).coerceAtLeast(0.001f)
-    val toMax = (1f - longFrac).coerceAtLeast(0.001f)
+    // M3 Slider reserves half the thumb diameter as track padding on each
+    // side (default thumb is 20dp, so 10dp). Hardcoded here because
+    // SliderDefaults doesn't expose this constant publicly. If the thumb
+    // size ever changes, the labels will drift by ≤10dp — visible only on
+    // the extreme ends — so this stays a load-bearing constant.
+    val trackPaddingDp = SLIDER_TRACK_PADDING_DP
 
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            text = "▲ Off",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Box(modifier = Modifier.weight(toNormal))
-        Text(
-            text = "▲ 1×",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Box(modifier = Modifier.weight(toLong))
-        Text(
-            text = "▲ Long",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Box(modifier = Modifier.weight(toMax))
-        Text(
-            text = "▲ 4×",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+    Layout(
+        modifier = Modifier.fillMaxWidth(),
+        content = {
+            ticks.forEach { (label, _) ->
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+    ) { measurables, constraints ->
+        val placeables = measurables.map { it.measure(Constraints()) }
+        val rowWidth = constraints.maxWidth
+        val height = placeables.maxOfOrNull { it.height } ?: 0
+        val trackPaddingPx = trackPaddingDp.dp.toPx().toInt()
+
+        layout(rowWidth, height) {
+            placeables.forEachIndexed { i, placeable ->
+                val frac = ticks[i].second
+                val x = computeTickLabelX(
+                    rowWidthPx = rowWidth,
+                    trackPaddingPx = trackPaddingPx,
+                    fraction = frac,
+                    labelWidthPx = placeable.width,
+                    isLast = i == ticks.lastIndex,
+                )
+                placeable.place(x, 0)
+            }
+        }
     }
+}
+
+/** Half the M3 default thumb diameter; track padding on each side. */
+private const val SLIDER_TRACK_PADDING_DP: Int = 10
+
+/**
+ * Pure placement math for [PunctuationPauseTickLabels], extracted for unit
+ * testing. Returns the integer x-offset (in pixels) at which a tick label
+ * should be placed inside the parent so its visual ▲ caret sits at the
+ * slider thumb position for the given [fraction].
+ *
+ * Anchoring rule:
+ *  - The leftmost label and all middle labels are **left-aligned** at
+ *    `trackPaddingPx + fraction × trackWidthPx`. This puts the leading ▲
+ *    character at the slider's thumb-x for that value.
+ *  - The rightmost label is **right-aligned** to the parent so its full
+ *    text stays on screen (the ▲ ends up slightly right of the thumb's
+ *    track-x by half-a-thumb, which is the correct visual since the
+ *    thumb itself extends right of trackEnd by half its width).
+ *
+ * All labels are clamped so they never overflow the parent on the right.
+ */
+internal fun computeTickLabelX(
+    rowWidthPx: Int,
+    trackPaddingPx: Int,
+    fraction: Float,
+    labelWidthPx: Int,
+    isLast: Boolean,
+): Int {
+    if (isLast) {
+        // Right-align: label's right edge at parent's right edge.
+        return (rowWidthPx - labelWidthPx).coerceAtLeast(0)
+    }
+    val trackWidthPx = (rowWidthPx - 2 * trackPaddingPx).coerceAtLeast(0)
+    val anchorX = trackPaddingPx + (fraction.coerceIn(0f, 1f) * trackWidthPx).toInt()
+    // Clamp so multi-character middle labels don't overflow the right edge.
+    return anchorX.coerceIn(0, (rowWidthPx - labelWidthPx).coerceAtLeast(0))
 }
 
 /**
