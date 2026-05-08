@@ -30,6 +30,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -529,13 +530,11 @@ private fun BufferSlider(
 }
 
 /**
- * A discrete label rendered at the slider's tick fraction. Two-row layout:
- *  - Spacer that takes up `tickFraction × parentWidth` on the left
- *  - Small caret-and-label group anchored at that x
- *
- * Doesn't paint onto the slider canvas (Material3 Slider's track-painter
- * customization is verbose for what we need); just renders below the slider
- * at the correct horizontal offset.
+ * A discrete label rendered at the slider's tick fraction. Delegates layout
+ * to [SliderTickLabels] so the tick aligns with the slider thumb's travel
+ * range (not the rail's outer bounds) and the label's intrinsic width
+ * doesn't shift its target X — same fix as issue #139, applied here so the
+ * buffer slider's "▲ N" tick stays honest.
  */
 @Composable
 private fun TickMarker(
@@ -544,16 +543,7 @@ private fun TickMarker(
     max: Int,
 ) {
     val fraction = ((tickValue - min).toFloat() / (max - min).toFloat()).coerceIn(0f, 1f)
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        // Eat the left fraction of the row's width.
-        Box(modifier = Modifier.weight(fraction.coerceAtLeast(0.001f)))
-        Text(
-            text = "▲ $tickValue",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Box(modifier = Modifier.weight((1f - fraction).coerceAtLeast(0.001f)))
-    }
+    SliderTickLabels(labels = listOf("▲ $tickValue" to fraction))
 }
 
 /**
@@ -625,11 +615,17 @@ private fun PunctuationPauseSlider(
 }
 
 /**
- * Anchored row of legacy-stop labels under [PunctuationPauseSlider]. Each
- * label sits at its true fractional position along the [0..4] range using
- * weight spacers, mirroring [TickMarker]'s technique. Labels include the
- * legacy stop names (Off / Normal / Long) so users coming from the 3-stop
- * selector can find their preferred cadence at a glance.
+ * Anchored row of legacy-stop labels under [PunctuationPauseSlider].
+ *
+ * Each label sits centered at its true fractional position along the
+ * [PUNCTUATION_PAUSE_MIN_MULTIPLIER]..[PUNCTUATION_PAUSE_MAX_MULTIPLIER] range
+ * by laying them out manually (label intrinsic widths used to leak into
+ * fractional spacing when this was a Row of weight Boxes — issue #139).
+ *
+ * The slider thumb's center can travel from `ThumbRadius` to
+ * `width - ThumbRadius` of the parent, so a tick at fraction `f` sits at
+ * `ThumbRadius + f × (width - 2 × ThumbRadius)`. Material3's default
+ * thumb width is 20.dp, hence [SLIDER_THUMB_RADIUS_DP].
  */
 @Composable
 private fun PunctuationPauseTickLabels() {
@@ -641,36 +637,62 @@ private fun PunctuationPauseTickLabels() {
     val longFrac = ((PUNCTUATION_PAUSE_LONG_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER) / total)
         .coerceIn(0f, 1f)
 
-    // Distances between adjacent ticks along the row; the trailing slack
-    // after "Max" pads to the right edge of the parent.
-    val toNormal = (normalFrac - offFrac).coerceAtLeast(0.001f)
-    val toLong = (longFrac - normalFrac).coerceAtLeast(0.001f)
-    val toMax = (1f - longFrac).coerceAtLeast(0.001f)
+    SliderTickLabels(
+        labels = listOf(
+            "▲ Off" to offFrac,
+            "▲ 1×" to normalFrac,
+            "▲ Long" to longFrac,
+            "▲ 4×" to 1f,
+        ),
+    )
+}
 
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            text = "▲ Off",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Box(modifier = Modifier.weight(toNormal))
-        Text(
-            text = "▲ 1×",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Box(modifier = Modifier.weight(toLong))
-        Text(
-            text = "▲ Long",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Box(modifier = Modifier.weight(toMax))
-        Text(
-            text = "▲ 4×",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+/** Material3 Slider's default thumb radius — used to inset tick labels so
+ *  they line up with the slider thumb's travel range, not the rail's outer
+ *  bounds. Slider thumb width is 20.dp; half = 10.dp. */
+private val SLIDER_THUMB_RADIUS_DP = 10.dp
+
+/**
+ * Renders a row of tick labels positioned at exact fractional positions
+ * along a [Slider]'s track interior. Each label is centered horizontally
+ * over its target X (with 0.0 clamped to left edge and 1.0 clamped to right
+ * edge so end-cap labels stay on-screen), and inset by [SLIDER_THUMB_RADIUS_DP]
+ * on each side to match the thumb's travel range — i.e. the X under a label
+ * with fraction `f` is the X the slider thumb adopts when its value is at
+ * fraction `f` of its valueRange.
+ *
+ * Issue #139 — the prior weight-Box approach treated each label's intrinsic
+ * width as zero, so labels after the first slid right of their target by
+ * the cumulative width of preceding labels.
+ */
+@Composable
+private fun SliderTickLabels(labels: List<Pair<String, Float>>) {
+    val style = MaterialTheme.typography.labelSmall
+    val color = MaterialTheme.colorScheme.onSurfaceVariant
+
+    Layout(
+        modifier = Modifier.fillMaxWidth(),
+        content = {
+            labels.forEach { (text, _) ->
+                Text(text = text, style = style, color = color, maxLines = 1)
+            }
+        },
+    ) { measurables, constraints ->
+        val thumbInsetPx = SLIDER_THUMB_RADIUS_DP.roundToPx()
+        val placeables = measurables.map { it.measure(constraints.copy(minWidth = 0)) }
+        val width = constraints.maxWidth
+        val interior = (width - 2 * thumbInsetPx).coerceAtLeast(0)
+        val height = placeables.maxOfOrNull { it.height } ?: 0
+
+        layout(width, height) {
+            placeables.forEachIndexed { i, p ->
+                val frac = labels[i].second.coerceIn(0f, 1f)
+                val targetCenter = thumbInsetPx + (frac * interior).toInt()
+                // Clamp so end-cap labels don't run off the parent.
+                val x = (targetCenter - p.width / 2).coerceIn(0, width - p.width)
+                p.placeRelative(x = x, y = 0)
+            }
+        }
     }
 }
 
