@@ -16,7 +16,13 @@ import `in`.jphe.storyvox.ui.component.HybridReaderShell
 fun HybridReaderScreen(
     onPickVoice: () -> Unit,
     /** Open Settings → AI when the recap modal hits a NotConfigured /
-     *  AuthFailed state. AppNav wires this. Issue #81. */
+     *  AuthFailed state. **AppNav must wire this** — leaving the default
+     *  no-op causes the recap empty-state's "Open Settings" CTA to look
+     *  primary but be a dead button (issue #152, fixed in this PR by
+     *  wiring all three [HybridReaderScreen] composables in
+     *  `StoryvoxNavHost.kt`). The default stays for preview/test use,
+     *  but any new production callsite *must* pass a real navigation
+     *  callback or the unconfigured-AI user has no path forward. */
     onOpenAiSettings: () -> Unit = {},
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {

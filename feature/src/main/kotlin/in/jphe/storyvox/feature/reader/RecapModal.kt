@@ -74,7 +74,13 @@ fun RecapModal(
                 .padding(spacing.md),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
-            // Header
+            // Header — subtitle copy switches with state so the
+            // empty/error case doesn't read as "we're working on it"
+            // when the body literally says "set up AI first" (#153).
+            // Loading + Streaming use the present-progressive in-flight
+            // copy; Done describes what's now on screen; Error /
+            // unconfigured falls back to a neutral descriptor of the
+            // feature itself.
             Column {
                 Text(
                     text = "Recap so far",
@@ -82,7 +88,7 @@ fun RecapModal(
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    text = "Asking the librarian about the last few chapters.",
+                    text = subtitleFor(state),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -224,6 +230,30 @@ private fun StreamingBody(text: String) {
             modifier = Modifier.alpha(cursorAlpha),
         )
     }
+}
+
+/**
+ * Subtitle copy for the [RecapModal] header, picked by state. Issue #153 —
+ * the legacy hard-coded "Asking the librarian about the last few chapters."
+ * read as in-progress regardless of state, which clashed with the body's
+ * "Set up AI in Settings to use Recap." in the unconfigured/error case.
+ *
+ * - **Loading / Streaming** — present-progressive, matches the spinner /
+ *   blinking-cursor in-flight visual.
+ * - **Done** — past tense, matches the "this is the recap" body.
+ * - **Error** (NotConfigured / AuthFailed / Transport / ProviderError) —
+ *   neutral feature-descriptor, so the user reads the body's recovery copy
+ *   without a contradictory "we're already on it" subtitle.
+ *
+ * Internal so [`PunctuationPauseTickPlacementTest`-style] unit testing
+ * could cover the mapping if it grows beyond five branches.
+ */
+internal fun subtitleFor(state: RecapUiState): String = when (state) {
+    is RecapUiState.Loading,
+    is RecapUiState.Streaming -> "Asking the librarian about the last few chapters."
+    is RecapUiState.Done -> "Here's what happened in the last few chapters."
+    is RecapUiState.Error -> "Quick chapter summaries from your AI provider."
+    RecapUiState.Hidden -> ""  // unreachable — modal returns early when Hidden
 }
 
 @Composable
