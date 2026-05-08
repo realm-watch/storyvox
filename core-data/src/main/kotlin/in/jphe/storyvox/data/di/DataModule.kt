@@ -19,6 +19,7 @@ import `in`.jphe.storyvox.data.db.dao.PlaybackDao
 import `in`.jphe.storyvox.data.db.migration.ALL_MIGRATIONS
 import `in`.jphe.storyvox.data.repository.AuthRepository
 import `in`.jphe.storyvox.data.repository.AuthRepositoryImpl
+import `in`.jphe.storyvox.data.repository.ChapterDownloadScheduler
 import `in`.jphe.storyvox.data.repository.ChapterRepository
 import `in`.jphe.storyvox.data.repository.ChapterRepositoryImpl
 import `in`.jphe.storyvox.data.repository.FictionRepository
@@ -29,6 +30,7 @@ import `in`.jphe.storyvox.data.repository.LibraryRepository
 import `in`.jphe.storyvox.data.repository.LibraryRepositoryImpl
 import `in`.jphe.storyvox.data.repository.PlaybackPositionRepository
 import `in`.jphe.storyvox.data.repository.PlaybackPositionRepositoryImpl
+import `in`.jphe.storyvox.data.repository.WorkManagerChapterDownloadScheduler
 import javax.inject.Singleton
 
 /**
@@ -92,4 +94,9 @@ abstract class RepositoryBindings {
 
     @Binds @Singleton
     abstract fun bindFollowsRepository(impl: FollowsRepositoryImpl): FollowsRepository
+
+    @Binds @Singleton
+    abstract fun bindChapterDownloadScheduler(
+        impl: WorkManagerChapterDownloadScheduler,
+    ): ChapterDownloadScheduler
 }
