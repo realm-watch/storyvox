@@ -233,23 +233,80 @@ class SleepTimerTest {
         timer.cancel()
     }
 
-    @Test fun `signalChapterEnd before EndOfChapter start does not auto-trigger`() = runTest {
+    @Test fun `signalChapterEnd before EndOfChapter start IS captured and replayed`() = runTest {
+        // Issue #34: chapterEndSignal uses replay=1 so a signal fired in
+        // the millisecond before start(EndOfChapter) subscribes is still
+        // observable. Previously this test documented the dropped-signal
+        // behavior as a contract; the contract is now "captured and
+        // replayed" because the dropped-signal version produced
+        // unobservable bugs (timer never fires; user thinks the feature
+        // is broken).
         val ramp = RecordingVolumeRamp()
         val pause = CountingPauseAction()
         val timer = SleepTimer(ramp, pause, backgroundScope)
 
-        // Fire signal first; chapterEndSignal has extraBufferCapacity=1 but
-        // SharedFlow does NOT replay to new subscribers, so the subsequent
-        // start(EndOfChapter) should NOT see this emission.
         timer.signalChapterEnd()
         runCurrent()
 
         timer.start(SleepTimerMode.EndOfChapter)
         runCurrent()
+        // Cached signal is consumed immediately; let the fade-tail run.
+        advanceTimeBy(11_000L); runCurrent() // 10s fade tail + slack
+
+        assertEquals(1, pause.count)
+        timer.cancel()
+    }
+
+    @Test fun `cancel clears the chapter-end replay cache`() = runTest {
+        // Issue #34 corollary: a stale signal from chapter A must not
+        // arm a freshly-started EndOfChapter timer for chapter B. The
+        // cache is logically per-timer-lifetime, not per-process.
+        val ramp = RecordingVolumeRamp()
+        val pause = CountingPauseAction()
+        val timer = SleepTimer(ramp, pause, backgroundScope)
+
+        // Chapter A ends while no timer is active — signal cached.
+        timer.signalChapterEnd()
+        runCurrent()
+        // User briefly armed and cancelled an EndOfChapter timer.
+        timer.start(SleepTimerMode.EndOfChapter)
+        runCurrent()
+        timer.cancel()
+        runCurrent()
+        // The cancel above should clear the cache. So a fresh
+        // EndOfChapter timer must NOT consume the stale chapter A
+        // signal.
+        timer.start(SleepTimerMode.EndOfChapter)
+        runCurrent()
         advanceTimeBy(60_000L); runCurrent()
 
-        // Signal was lost — pauseAction must not have fired.
         assertEquals(0, pause.count)
+        timer.cancel()
+    }
+
+    @Test fun `fadeAndPause clears the chapter-end replay cache`() = runTest {
+        // Issue #34 corollary: after a successful EndOfChapter timer
+        // completes, the consumed signal must not auto-arm the NEXT
+        // EndOfChapter timer.
+        val ramp = RecordingVolumeRamp()
+        val pause = CountingPauseAction()
+        val timer = SleepTimer(ramp, pause, backgroundScope)
+
+        timer.start(SleepTimerMode.EndOfChapter)
+        runCurrent()
+        timer.signalChapterEnd()
+        runCurrent()
+        advanceTimeBy(11_000L); runCurrent() // 10s fade tail + slack
+        assertEquals(1, pause.count)
+
+        // Now arm a second EndOfChapter timer — the cache from the
+        // first one must be empty.
+        timer.start(SleepTimerMode.EndOfChapter)
+        runCurrent()
+        advanceTimeBy(60_000L); runCurrent()
+
+        // No new signal fired, so pause count stays at 1.
+        assertEquals(1, pause.count)
         timer.cancel()
     }
 }
