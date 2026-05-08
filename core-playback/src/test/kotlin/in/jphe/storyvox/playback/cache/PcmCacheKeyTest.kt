@@ -13,6 +13,7 @@ class PcmCacheKeyTest {
         speedHundredths = 100,
         pitchHundredths = 100,
         chunkerVersion = CHUNKER_VERSION,
+        pronunciationDictHash = 0,
     )
 
     @Test
@@ -37,6 +38,7 @@ class PcmCacheKeyTest {
             baseline.copy(speedHundredths = 125),
             baseline.copy(pitchHundredths = 105),
             baseline.copy(chunkerVersion = baseline.chunkerVersion + 1),
+            baseline.copy(pronunciationDictHash = 12345),
         )
         for (k in differentEachField) {
             assertNotEquals(

@@ -65,6 +65,7 @@ fun SettingsScreen(
     onOpenSignIn: () -> Unit,
     onOpenGitHubSignIn: () -> Unit,
     onOpenGitHubRevoke: () -> Unit = {},
+    onOpenPronunciationDict: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -104,6 +105,25 @@ fun SettingsScreen(
             steps = 79, // 0.01 per step
         )
         Text("Pitch ${"%.2f".format(s.defaultPitch)}×", style = MaterialTheme.typography.bodySmall)
+
+        // Issue #135 — Pronunciation dictionary entry point. Sub-screen
+        // owns the list editor; the row here is a one-liner so the
+        // Settings screen stays scannable. Sits in the Reading section
+        // because it shapes how chapters sound, not how they buffer.
+        Text(
+            "Pronunciation",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            "Teach the voice how to say specific names and words.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        BrassButton(
+            label = "Edit pronunciations",
+            onClick = onOpenPronunciationDict,
+            variant = BrassButtonVariant.Secondary,
+        )
 
         Divider()
         // Issue #98 — "Performance & buffering" home for every setting that

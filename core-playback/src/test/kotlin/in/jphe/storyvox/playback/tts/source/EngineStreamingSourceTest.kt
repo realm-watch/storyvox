@@ -249,6 +249,44 @@ class EngineStreamingSourceTest {
     }
 
     @Test
+    fun `pronunciationDictApply rewrites engine input but not Sentence text`() = runBlocking {
+        // Issue #135: confirm the dict substitution acts on the
+        // generateAudioPCM input only — the consumer-visible chunk's
+        // SentenceRange is still indexed against the original
+        // sentence (so the highlight char-range keeps working).
+        val sentences = listOf(
+            Sentence(0, 0, 16, "Astaria fell."),
+        )
+        val seenByEngine = java.util.concurrent.atomic.AtomicReference<String?>(null)
+        val fakeEngine = object : EngineStreamingSource.VoiceEngineHandle {
+            override val sampleRate: Int = 22050
+            override fun generateAudioPCM(text: String, speed: Float, pitch: Float): ByteArray? {
+                seenByEngine.set(text)
+                return ByteArray(20)
+            }
+        }
+        val source = EngineStreamingSource(
+            sentences = sentences,
+            startSentenceIndex = 0,
+            engine = fakeEngine,
+            speed = 1f,
+            pitch = 1f,
+            engineMutex = Mutex(),
+            pronunciationDictApply = { it.replace("Astaria", "uh-STAY-ree-uh") },
+        )
+
+        val chunk = source.nextChunk()
+
+        assertEquals("uh-STAY-ree-uh fell.", seenByEngine.get())
+        // Range still anchored to the original sentence — the highlight
+        // tracks the displayed text, not the spoken substitution.
+        assertEquals(0, chunk?.range?.startCharInChapter)
+        assertEquals(16, chunk?.range?.endCharInChapter)
+
+        source.close()
+    }
+
+    @Test
     fun `bufferHeadroomMs reflects queued audio duration`() = runBlocking {
         val sentences = listOf(
             Sentence(0, 0, 10, "One."),

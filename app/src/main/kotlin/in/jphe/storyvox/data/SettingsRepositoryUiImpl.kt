@@ -16,6 +16,11 @@ import `in`.jphe.storyvox.data.repository.AuthRepository
 import `in`.jphe.storyvox.data.repository.playback.PlaybackBufferConfig
 import `in`.jphe.storyvox.data.repository.playback.PlaybackModeConfig
 import `in`.jphe.storyvox.data.repository.playback.VoiceTuningConfig
+import `in`.jphe.storyvox.data.repository.pronunciation.PronunciationDict
+import `in`.jphe.storyvox.data.repository.pronunciation.PronunciationDictRepository
+import `in`.jphe.storyvox.data.repository.pronunciation.PronunciationEntry
+import `in`.jphe.storyvox.data.repository.pronunciation.decodePronunciationDictJson
+import `in`.jphe.storyvox.data.repository.pronunciation.encodePronunciationDictJson
 import `in`.jphe.storyvox.feature.api.BUFFER_DEFAULT_CHUNKS
 import `in`.jphe.storyvox.feature.api.BUFFER_MAX_CHUNKS
 import `in`.jphe.storyvox.feature.api.BUFFER_MIN_CHUNKS
@@ -143,7 +148,21 @@ private object Keys {
     val AI_OLLAMA_MODEL = stringPreferencesKey("pref_ai_ollama_model")
     val AI_PRIVACY_ACK = booleanPreferencesKey("pref_ai_privacy_ack")
     val AI_SEND_CHAPTER_TEXT = booleanPreferencesKey("pref_ai_send_chapter_text")
+
+    /** Issue #135 — JSON-serialized [PronunciationDict] (list of
+     *  pattern/replacement/matchType entries). _v1 suffix lets us
+     *  rev the schema later without a destructive migration; an
+     *  unparseable v1 blob falls back to [PronunciationDict.EMPTY]
+     *  and the user can re-enter their entries.
+     *
+     *  Stored as a flat JSON string rather than DataStore-Proto
+     *  because the rest of the file uses preferencesDataStore and
+     *  we want one store, one migration surface. The Json instance
+     *  in this file matches Converters.kt's settings
+     *  (`ignoreUnknownKeys = true; encodeDefaults = true`). */
+    val PRONUNCIATION_DICT = stringPreferencesKey("pref_pronunciation_dict_v1")
 }
+
 
 @Singleton
 class SettingsRepositoryUiImpl(
@@ -154,7 +173,12 @@ class SettingsRepositoryUiImpl(
     private val palaceApi: PalaceDaemonApi,
     private val llmCreds: LlmCredentialsStore,
     private val githubAuth: GitHubAuthRepository,
-) : SettingsRepositoryUi, PlaybackBufferConfig, PlaybackModeConfig, VoiceTuningConfig, LlmConfigProvider {
+) : SettingsRepositoryUi,
+    PlaybackBufferConfig,
+    PlaybackModeConfig,
+    VoiceTuningConfig,
+    PronunciationDictRepository,
+    LlmConfigProvider {
 
     /** Hilt entry point — pulls the production DataStore from the app context.
      *  The primary constructor takes the store directly so tests can swap in
@@ -431,6 +455,58 @@ class SettingsRepositoryUiImpl(
         // scopes from prefs. The Settings UI surfaces the deep-link to
         // github.com/settings/applications for users who want full revoke.
         githubAuth.clearSession()
+    }
+
+    // ── PronunciationDictRepository (issue #135) ───────────────────
+
+    /**
+     * Live flow of the user's pronunciation dictionary. Decodes the
+     * stored JSON on every emission; an empty / missing / unparseable
+     * value falls back to [PronunciationDict.EMPTY] so the engine
+     * pipeline always has a usable substitution lambda.
+     *
+     * Decode failures are silent on purpose — a corrupted blob (e.g.
+     * a future-format payload an older binary can't read) shouldn't
+     * crash the player; the user sees their dictionary "reset" and
+     * can re-enter it. The corrupt blob stays on disk until the next
+     * write (we don't actively wipe it on read), which preserves the
+     * forward-roll case where the user downgrades, sees the dict
+     * empty, then upgrades and gets it back.
+     */
+    override val dict: Flow<PronunciationDict> = store.data.map { prefs ->
+        decodePronunciationDictJson(prefs[Keys.PRONUNCIATION_DICT])
+    }
+
+    override suspend fun current(): PronunciationDict = dict.first()
+
+    override suspend fun add(entry: PronunciationEntry) {
+        store.edit { prefs ->
+            val current = decodePronunciationDictJson(prefs[Keys.PRONUNCIATION_DICT])
+            val next = current.copy(entries = current.entries + entry)
+            prefs[Keys.PRONUNCIATION_DICT] = encodePronunciationDictJson(next)
+        }
+    }
+
+    override suspend fun update(index: Int, entry: PronunciationEntry) {
+        store.edit { prefs ->
+            val current = decodePronunciationDictJson(prefs[Keys.PRONUNCIATION_DICT])
+            if (index !in current.entries.indices) return@edit
+            val newList = current.entries.toMutableList().apply { this[index] = entry }
+            prefs[Keys.PRONUNCIATION_DICT] = encodePronunciationDictJson(current.copy(entries = newList))
+        }
+    }
+
+    override suspend fun delete(index: Int) {
+        store.edit { prefs ->
+            val current = decodePronunciationDictJson(prefs[Keys.PRONUNCIATION_DICT])
+            if (index !in current.entries.indices) return@edit
+            val newList = current.entries.toMutableList().apply { removeAt(index) }
+            prefs[Keys.PRONUNCIATION_DICT] = encodePronunciationDictJson(current.copy(entries = newList))
+        }
+    }
+
+    override suspend fun replaceAll(dict: PronunciationDict) {
+        store.edit { it[Keys.PRONUNCIATION_DICT] = encodePronunciationDictJson(dict) }
     }
 
     // ── LlmConfigProvider — bridge to :core-llm ────────────────────

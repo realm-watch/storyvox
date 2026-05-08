@@ -50,6 +50,13 @@ import kotlinx.coroutines.sync.withLock
  *  at multiplier=0f they get no gap regardless of speed.
  * @param queueCapacity bounded queue depth; producer back-pressures when full.
  *  Defaults to 8 to match the prior EnginePlayer constant.
+ * @param pronunciationDictApply user pronunciation-dictionary substitution
+ *  (issue #135). Applied to the *spoken* text passed into
+ *  [VoiceEngineHandle.generateAudioPCM]; the underlying [Sentence.text]
+ *  is left untouched so the highlight ranges (`startChar..endChar` into
+ *  the original chapter body) keep working. Defaults to identity so
+ *  callers that don't care about pronunciations (tests, pre-#135
+ *  integrations) get the unchanged behavior.
  */
 class EngineStreamingSource(
     private val sentences: List<Sentence>,
@@ -65,6 +72,7 @@ class EngineStreamingSource(
     private val engineMutex: Mutex,
     private val punctuationPauseMultiplier: Float = 1f,
     private val queueCapacity: Int = 8,
+    private val pronunciationDictApply: (String) -> String = { it },
 ) : PcmSource {
 
     /** SAM-style handle so tests can fake the engine without pulling the
@@ -138,9 +146,15 @@ class EngineStreamingSource(
             for (i in fromIndex until sentences.size) {
                 if (!running.get()) return@launch
                 val s = sentences[i]
+                // Issue #135: substitute *only* the text fed to the
+                // engine. `s.text` and the highlight char-range stay
+                // unchanged — the user sees the original sentence in
+                // the reader while the synthesizer reads the
+                // phonetic respelling.
+                val spokenText = pronunciationDictApply(s.text)
                 val pcm = engineMutex.withLock {
                     if (!running.get()) return@withLock null
-                    engine.generateAudioPCM(s.text, speed, pitch)
+                    engine.generateAudioPCM(spokenText, speed, pitch)
                 } ?: continue
                 if (!running.get()) return@launch
                 // Issue #90: the user-facing punctuation-pause selector

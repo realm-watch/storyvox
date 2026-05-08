@@ -32,6 +32,8 @@ import `in`.jphe.storyvox.data.repository.playback.PlaybackBufferConfig
 import `in`.jphe.storyvox.data.repository.playback.PlaybackChapter
 import `in`.jphe.storyvox.data.repository.playback.PlaybackModeConfig
 import `in`.jphe.storyvox.data.repository.playback.VoiceTuningConfig
+import `in`.jphe.storyvox.data.repository.pronunciation.PronunciationDict
+import `in`.jphe.storyvox.data.repository.pronunciation.PronunciationDictRepository
 import `in`.jphe.storyvox.playback.PlaybackError
 import `in`.jphe.storyvox.playback.PlaybackState
 import `in`.jphe.storyvox.playback.PlaybackUiEvent
@@ -103,6 +105,7 @@ class EnginePlayer @AssistedInject constructor(
     private val bufferConfig: PlaybackBufferConfig,
     private val modeConfig: PlaybackModeConfig,
     private val voiceTuningConfig: VoiceTuningConfig,
+    private val pronunciationDictRepo: PronunciationDictRepository,
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
 
     @AssistedFactory
@@ -184,11 +187,31 @@ class EnginePlayer @AssistedInject constructor(
     @Volatile
     private var cachedVoiceSteady: Boolean = true
 
+    /**
+     * Issue #135 — live cache of the user's pronunciation dictionary.
+     * Read by [startPlaybackPipeline] when constructing each new
+     * [EngineStreamingSource]; the lambda passed to the source closes
+     * over the dict instance so substitution applies the most-recent
+     * dict at pipeline-construction time. Mid-pipeline edits take
+     * effect on the next pipeline rebuild (next chapter / seek / voice
+     * swap / speed/pitch change), which matches every other DataStore-
+     * driven knob in this class.
+     *
+     * Volatile because the writer is the collector coroutine and the
+     * readers are pipeline construction (Main) + the producer worker.
+     * Default is [PronunciationDict.EMPTY] — an identity substitution
+     * — so the first pipeline before DataStore hydrates renders
+     * exactly like pre-#135.
+     */
+    @Volatile
+    private var cachedPronunciationDict: PronunciationDict = PronunciationDict.EMPTY
+
     init {
         observeActiveVoice()
         observeBufferConfig()
         observeModeConfig()
         observeVoiceTuningConfig()
+        observePronunciationDict()
     }
 
     private fun observeBufferConfig() {
@@ -203,6 +226,18 @@ class EnginePlayer @AssistedInject constructor(
         scope.launch {
             modeConfig.catchupPause.collect { v ->
                 cachedCatchupPause = v
+            }
+        }
+    }
+
+    /** Issue #135 — collect dictionary edits into [cachedPronunciationDict]
+     *  so the next pipeline construction picks up the latest entries.
+     *  The collector is alive for the player's lifetime; cancellation
+     *  follows [scope] when the player is torn down. */
+    private fun observePronunciationDict() {
+        scope.launch {
+            pronunciationDictRepo.dict.collect { v ->
+                cachedPronunciationDict = v
             }
         }
     }
@@ -594,6 +629,16 @@ class EnginePlayer @AssistedInject constructor(
         // construction (next chapter / seek / voice swap); the bounded queue
         // can't be resized live. Issue #84 — this is the LMK probe knob.
         val queueCapacity = cachedBufferChunks.coerceIn(2, 1500)
+        // Issue #135: snapshot the dict at construction time. The
+        // capture is by-value (the dict is an immutable data class) so
+        // a mid-chapter edit doesn't mutate the active pipeline's
+        // substitution table — that's intentional, swapping the
+        // dictionary mid-sentence would shift the pre-rendered
+        // sentence text and the cache key on the next sentence,
+        // producing audible drift. Edits take effect on the next
+        // pipeline rebuild (seek / chapter change / voice swap /
+        // speed/pitch change), exactly like the buffer-chunks knob.
+        val pronunciationDict = cachedPronunciationDict
         val source = EngineStreamingSource(
             sentences = sentences,
             startSentenceIndex = currentSentenceIndex,
@@ -603,6 +648,7 @@ class EnginePlayer @AssistedInject constructor(
             engineMutex = engineMutex,
             punctuationPauseMultiplier = currentPunctuationPauseMultiplier,
             queueCapacity = queueCapacity,
+            pronunciationDictApply = pronunciationDict::apply,
         )
         pcmSource = source
         pipelineRunning.set(true)

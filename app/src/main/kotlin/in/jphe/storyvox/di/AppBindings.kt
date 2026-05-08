@@ -18,6 +18,7 @@ import `in`.jphe.storyvox.data.repository.FictionRepository
 import `in`.jphe.storyvox.data.repository.playback.PlaybackBufferConfig
 import `in`.jphe.storyvox.data.repository.playback.PlaybackModeConfig
 import `in`.jphe.storyvox.data.repository.playback.VoiceTuningConfig
+import `in`.jphe.storyvox.data.repository.pronunciation.PronunciationDictRepository
 import `in`.jphe.storyvox.data.source.WebViewFetcher
 import `in`.jphe.storyvox.data.source.model.ContentWarning
 import `in`.jphe.storyvox.data.source.model.FictionResult
@@ -143,6 +144,16 @@ object AppBindings {
      */
     @Provides @Singleton
     fun provideVoiceTuningConfig(impl: SettingsRepositoryUiImpl): VoiceTuningConfig = impl
+
+    /**
+     * Issue #135 — pronunciation dictionary contract for `core-playback`'s
+     * EnginePlayer + the Settings UI. Same singleton instance as the rest;
+     * one DataStore, every contract.
+     */
+    @Provides @Singleton
+    fun providePronunciationDictRepository(
+        impl: SettingsRepositoryUiImpl,
+    ): PronunciationDictRepository = impl
 
     /**
      * Same singleton instance as [provideSettingsRepositoryUi], exposed
