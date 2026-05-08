@@ -150,6 +150,7 @@ dependencies {
     implementation(project(":core-ui"))
     implementation(project(":source-royalroad"))
     implementation(project(":source-github"))
+    implementation(project(":source-mempalace"))
     implementation(project(":feature"))
 
     implementation(libs.androidx.core.ktx)
@@ -184,6 +185,13 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    // OkHttp on the test classpath only — SettingsRepositoryBufferTest
+    // constructs a real PalaceDaemonApi (with no HTTP traffic) so the
+    // repo signature is satisfied. Production transitively pulls okhttp
+    // via :source-mempalace; tests need an explicit testImplementation
+    // because the source module is `implementation` (not `api`) which
+    // doesn't expose its dep classpath to consumers' tests.
+    testImplementation(libs.okhttp)
     // Robolectric supplies a real android.net.Uri implementation under JVM
     // unit tests so StoryvoxRoutesTest can verify the v0.4.25 encoding fix
     // (Uri.encode in the route-builder) — the framework stub jar throws

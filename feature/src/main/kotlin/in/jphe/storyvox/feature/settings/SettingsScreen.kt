@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -18,18 +20,29 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import `in`.jphe.storyvox.feature.api.BUFFER_DANGER_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.BUFFER_MAX_CHUNKS
 import `in`.jphe.storyvox.feature.api.BUFFER_MIN_CHUNKS
 import `in`.jphe.storyvox.feature.api.BUFFER_RECOMMENDED_MAX_CHUNKS
+import `in`.jphe.storyvox.feature.api.PalaceProbeResult
 import `in`.jphe.storyvox.feature.api.PunctuationPause
 import `in`.jphe.storyvox.feature.api.ThemeOverride
+import `in`.jphe.storyvox.feature.api.UiPalaceConfig
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
@@ -197,6 +210,17 @@ fun SettingsScreen(
         }
 
         Divider()
+        MemoryPalaceSection(
+            palace = s.palace,
+            probe = state.palaceProbe,
+            probing = state.palaceProbing,
+            onSetHost = viewModel::setPalaceHost,
+            onSetApiKey = viewModel::setPalaceApiKey,
+            onClear = viewModel::clearPalaceConfig,
+            onTest = viewModel::testPalaceConnection,
+        )
+
+        Divider()
         SectionHeader("About")
         // Realm-sigil version. The "name" field is a deterministic
         // adjective+noun drawn from the fantasy realm word list, keyed on
@@ -229,6 +253,123 @@ fun SettingsScreen(
 @Composable
 private fun SectionHeader(label: String) {
     Text(label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+}
+
+/**
+ * Memory Palace section for the Settings screen (#79).
+ *
+ * Two text fields (host, optional API key) plus a Test/Clear row. The
+ * status pill above the fields shows the last probe result; user-typed
+ * edits clear the previous status (the address has changed; previous
+ * verdict no longer authoritative).
+ *
+ * Spec: docs/superpowers/specs/2026-05-08-mempalace-integration-design.md.
+ */
+@Composable
+private fun MemoryPalaceSection(
+    palace: UiPalaceConfig,
+    probe: PalaceProbeResult?,
+    probing: Boolean,
+    onSetHost: (String) -> Unit,
+    onSetApiKey: (String) -> Unit,
+    onClear: () -> Unit,
+    onTest: () -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    SectionHeader("Memory Palace")
+    Text(
+        "Browse and listen to your local MemPalace as fictions. Home network only — " +
+            "the palace stays put when you're off the LAN.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    // Status pill — reflects the last probe result, or guides the user
+    // when the host field is empty.
+    val (statusText, statusColor) = when {
+        !palace.isConfigured -> "Set host to enable" to MaterialTheme.colorScheme.onSurfaceVariant
+        probe == null -> "Tap “Test connection” to verify" to MaterialTheme.colorScheme.onSurfaceVariant
+        probe is PalaceProbeResult.Reachable ->
+            "Connected · daemon ${probe.daemonVersion}" to MaterialTheme.colorScheme.primary
+        probe is PalaceProbeResult.Unreachable ->
+            "Off home network · ${probe.message}" to MaterialTheme.colorScheme.error
+        probe is PalaceProbeResult.NotConfigured ->
+            "Set host to enable" to MaterialTheme.colorScheme.onSurfaceVariant
+        else -> "" to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Text(
+        statusText,
+        style = MaterialTheme.typography.bodySmall,
+        color = statusColor,
+    )
+
+    // Host field. Local state lets the user type freely; the persisted
+    // setter fires onValueChange so changes are picked up across config
+    // recreations. We don't debounce — DataStore is fine with the rate.
+    var hostInput by remember(palace.host) { mutableStateOf(palace.host) }
+    OutlinedTextField(
+        value = hostInput,
+        onValueChange = {
+            hostInput = it
+            onSetHost(it)
+        },
+        label = { Text("Palace host (e.g. 10.0.6.50:8085)") },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    // API key — masked. Stored in EncryptedSharedPreferences alongside
+    // Royal Road cookies. Empty is fine for unauthenticated daemons.
+    var apiKeyInput by remember(palace.apiKey) { mutableStateOf(palace.apiKey) }
+    var apiKeyVisible by remember { mutableStateOf(false) }
+    OutlinedTextField(
+        value = apiKeyInput,
+        onValueChange = {
+            apiKeyInput = it
+            onSetApiKey(it)
+        },
+        label = { Text("API key (optional)") },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        visualTransformation = if (apiKeyVisible) {
+            VisualTransformation.None
+        } else {
+            PasswordVisualTransformation()
+        },
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(spacing.sm)) {
+        if (probing) {
+            // Inline spinner; the BrassButton doesn't have a loading state
+            // and adding one for one site felt heavy. 16dp matches the
+            // text height on either side.
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text("Testing…", style = MaterialTheme.typography.bodySmall)
+        } else {
+            BrassButton(
+                label = "Test connection",
+                onClick = onTest,
+                variant = BrassButtonVariant.Primary,
+            )
+        }
+        if (palace.isConfigured) {
+            BrassButton(
+                label = "Clear",
+                onClick = {
+                    hostInput = ""
+                    apiKeyInput = ""
+                    onClear()
+                },
+                variant = BrassButtonVariant.Secondary,
+            )
+        }
+    }
 }
 
 /** Average sentence duration in seconds at 1.0× speed. Empirical, used only

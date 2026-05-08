@@ -17,12 +17,17 @@ import `in`.jphe.storyvox.data.repository.playback.PlaybackModeConfig
 import `in`.jphe.storyvox.feature.api.BUFFER_DEFAULT_CHUNKS
 import `in`.jphe.storyvox.feature.api.BUFFER_MAX_CHUNKS
 import `in`.jphe.storyvox.feature.api.BUFFER_MIN_CHUNKS
+import `in`.jphe.storyvox.feature.api.PalaceProbeResult
 import `in`.jphe.storyvox.feature.api.PunctuationPause
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
+import `in`.jphe.storyvox.feature.api.UiPalaceConfig
 import `in`.jphe.storyvox.feature.api.UiSettings
 import `in`.jphe.storyvox.feature.api.UiSigil
 import `in`.jphe.storyvox.sigil.Sigil
+import `in`.jphe.storyvox.source.mempalace.net.PalaceDaemonApi
+import `in`.jphe.storyvox.source.mempalace.net.PalaceDaemonResult
+import kotlinx.coroutines.flow.combine
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
@@ -66,6 +71,8 @@ class SettingsRepositoryUiImpl(
     private val store: DataStore<Preferences>,
     private val auth: AuthRepository,
     private val hydrator: SessionHydrator,
+    private val palaceConfig: PalaceConfigImpl,
+    private val palaceApi: PalaceDaemonApi,
 ) : SettingsRepositoryUi, PlaybackBufferConfig, PlaybackModeConfig {
 
     /** Hilt entry point — pulls the production DataStore from the app context.
@@ -76,9 +83,14 @@ class SettingsRepositoryUiImpl(
         @ApplicationContext context: Context,
         auth: AuthRepository,
         hydrator: SessionHydrator,
-    ) : this(context.settingsDataStore, auth, hydrator)
+        palaceConfig: PalaceConfigImpl,
+        palaceApi: PalaceDaemonApi,
+    ) : this(context.settingsDataStore, auth, hydrator, palaceConfig, palaceApi)
 
-    override val settings: Flow<UiSettings> = store.data.map { prefs ->
+    override val settings: Flow<UiSettings> = combine(
+        store.data,
+        palaceConfig.state,
+    ) { prefs, palace ->
         UiSettings(
             ttsEngine = "VoxSherpa",
             defaultVoiceId = prefs[Keys.DEFAULT_VOICE_ID],
@@ -96,6 +108,7 @@ class SettingsRepositoryUiImpl(
                 .coerceIn(BUFFER_MIN_CHUNKS, BUFFER_MAX_CHUNKS),
             warmupWait = prefs[Keys.WARMUP_WAIT] ?: true,
             catchupPause = prefs[Keys.CATCHUP_PAUSE] ?: true,
+            palace = UiPalaceConfig(host = palace.host, apiKey = palace.apiKey),
             sigil = Sigil.current.let {
                 UiSigil(
                     name = it.name,
@@ -187,5 +200,49 @@ class SettingsRepositoryUiImpl(
         auth.clearSession()
         hydrator.clear()
         store.edit { it[Keys.SIGNED_IN] = false }
+    }
+
+    // --- Memory Palace (#79) ---
+
+    override suspend fun setPalaceHost(host: String) {
+        palaceConfig.setHost(host)
+    }
+
+    override suspend fun setPalaceApiKey(apiKey: String) {
+        palaceConfig.setApiKey(apiKey)
+    }
+
+    override suspend fun clearPalaceConfig() {
+        palaceConfig.clear()
+    }
+
+    override suspend fun testPalaceConnection(): PalaceProbeResult {
+        if (!palaceConfig.current().isConfigured) return PalaceProbeResult.NotConfigured
+        return when (val r = palaceApi.health()) {
+            is PalaceDaemonResult.Success -> PalaceProbeResult.Reachable(
+                daemonVersion = r.value.version ?: "unknown",
+            )
+            is PalaceDaemonResult.HostRejected -> PalaceProbeResult.Unreachable(
+                "Host '${r.host}' is not on the home network.",
+            )
+            is PalaceDaemonResult.Unauthorized -> PalaceProbeResult.Unreachable(
+                "API key rejected by daemon.",
+            )
+            is PalaceDaemonResult.NotReachable -> PalaceProbeResult.Unreachable(
+                r.cause.message ?: "Could not reach daemon.",
+            )
+            is PalaceDaemonResult.Degraded -> PalaceProbeResult.Unreachable(
+                "Palace is rebuilding — try again shortly.",
+            )
+            is PalaceDaemonResult.HttpError -> PalaceProbeResult.Unreachable(
+                "Daemon returned ${r.code}: ${r.message}",
+            )
+            is PalaceDaemonResult.NotFound -> PalaceProbeResult.Unreachable(
+                "Daemon /health endpoint not found — is this palace-daemon?",
+            )
+            is PalaceDaemonResult.ParseError -> PalaceProbeResult.Unreachable(
+                "Malformed health response — is this palace-daemon?",
+            )
+        }
     }
 }

@@ -335,7 +335,26 @@ data class UiSettings(
      * but never sees the buffering spinner.
      */
     val catchupPause: Boolean = true,
+    /** Memory Palace daemon config (#79). Empty host = source disabled. */
+    val palace: UiPalaceConfig = UiPalaceConfig(),
 )
+
+/**
+ * UI projection of the MemPalace daemon connection config. The
+ * Settings screen shows two fields (host, optional API key) and the
+ * "test connection" button feeds [`SettingsRepositoryUi.testPalace`].
+ *
+ * The api key is shown masked in the field; reading it back hands the
+ * unmasked value to the UI so it can pre-populate the password field
+ * on a re-edit. This keeps the UX honest — the user typed the secret,
+ * they can read it back.
+ */
+data class UiPalaceConfig(
+    val host: String = "",
+    val apiKey: String = "",
+) {
+    val isConfigured: Boolean get() = host.isNotBlank()
+}
 
 /** Default queue depth — current hardcoded `EngineStreamingSource(queueCapacity = 8)`. */
 const val BUFFER_DEFAULT_CHUNKS: Int = 8
@@ -443,4 +462,20 @@ interface SettingsRepositoryUi {
     suspend fun setCatchupPause(enabled: Boolean)
     suspend fun signIn()
     suspend fun signOut()
+    /** Memory Palace daemon mutators (#79). */
+    suspend fun setPalaceHost(host: String)
+    suspend fun setPalaceApiKey(apiKey: String)
+    suspend fun clearPalaceConfig()
+    /**
+     * One-shot reachability probe against the configured daemon.
+     * Returns the daemon version on success, an error message on failure.
+     */
+    suspend fun testPalaceConnection(): PalaceProbeResult
+}
+
+/** Outcome of [`SettingsRepositoryUi.testPalaceConnection`]. */
+sealed class PalaceProbeResult {
+    data class Reachable(val daemonVersion: String) : PalaceProbeResult()
+    data class Unreachable(val message: String) : PalaceProbeResult()
+    object NotConfigured : PalaceProbeResult()
 }

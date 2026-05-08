@@ -9,8 +9,10 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import `in`.jphe.storyvox.data.PalaceConfigImpl
 import `in`.jphe.storyvox.data.SettingsRepositoryUiImpl
 import `in`.jphe.storyvox.data.VoiceProviderUiImpl
+import `in`.jphe.storyvox.source.mempalace.config.PalaceConfig
 import `in`.jphe.storyvox.data.repository.ChapterRepository
 import `in`.jphe.storyvox.data.repository.FictionRepository
 import `in`.jphe.storyvox.data.repository.playback.PlaybackBufferConfig
@@ -104,6 +106,16 @@ object AppBindings {
 
     @Provides @Singleton
     fun provideSettingsRepositoryUi(impl: SettingsRepositoryUiImpl): SettingsRepositoryUi = impl
+
+    /**
+     * Bridges the source-mempalace [PalaceConfig] read interface to the
+     * concrete app-side impl that owns DataStore + EncryptedSharedPreferences.
+     * The impl is exposed concretely under its own provide so the Settings
+     * UI can call its mutators without going through a write interface
+     * (kept off the read-side seam by design).
+     */
+    @Provides @Singleton
+    fun providePalaceConfig(impl: PalaceConfigImpl): PalaceConfig = impl
 
     /**
      * Same singleton instance as [provideSettingsRepositoryUi], exposed under
