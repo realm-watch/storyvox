@@ -13,15 +13,20 @@ package `in`.jphe.storyvox.source.github.manifest
  *  - Comments: `# …` to end of line (outside strings).
  *  - Blank lines and whitespace are ignored.
  *
- * NOT recognised:
+ * **Unsupported by design** (not TODOs — these are intentionally out
+ * of scope; if you need them, swap to `org.tomlj:tomlj` or
+ * `com.akuleshov7:ktoml` rather than extending this parser):
  *  - Multi-line strings (`"""…"""`).
  *  - Numbers, booleans, datetimes.
- *  - Inline tables.
+ *  - Inline tables (`{ key = "value", … }`).
  *  - Multi-line arrays.
- *  - Dotted keys.
+ *  - Dotted keys (`a.b.c = "…"`).
  *
- * Unparseable lines fall through silently — book.toml authors using
- * mdbook features storyvox doesn't read shouldn't crash the import.
+ * The threat model assumes well-formed `book.toml` files written by
+ * mdbook for mdbook — adversarial input isn't on the surface, so
+ * graceful fallthrough on unparseable lines is preferred over
+ * library-style hard-fail. Authors using mdbook features storyvox
+ * doesn't read shouldn't crash the import.
  */
 internal data class BookToml(
     val title: String? = null,
