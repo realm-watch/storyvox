@@ -46,6 +46,12 @@ class EngineStreamingSource(
     private val engine: VoiceEngineHandle,
     private val speed: Float,
     private val pitch: Float,
+    /** Shared with EnginePlayer.loadAndPlay so loadModel() can wait for any
+     *  in-flight generateAudioPCM to finish before tearing the model down.
+     *  Without this shared mutex, a Piper-to-Piper voice swap can call
+     *  loadModel().destroy() while the prior source's generator is still
+     *  inside the JNI generate(...) call, corrupting native state. */
+    private val engineMutex: Mutex,
     private val queueCapacity: Int = 8,
 ) : PcmSource {
 
@@ -62,14 +68,6 @@ class EngineStreamingSource(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val running = AtomicBoolean(true)
     private val queue = LinkedBlockingQueue<Item>(queueCapacity)
-
-    /** Serializes generateAudioPCM calls. The VoxSherpa engines are
-     *  process-singletons and their internal Sonic/onnxruntime state isn't
-     *  safe across concurrent threads. EnginePlayer's outer loadAndPlay
-     *  also takes this same shape (its own engineMutex); the source-level
-     *  mutex protects against a second source instance racing the first
-     *  during seek-while-busy. */
-    private val engineMutex = Mutex()
 
     private var producerJob: Job = startProducer(startSentenceIndex)
 

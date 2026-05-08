@@ -4,6 +4,7 @@ import `in`.jphe.storyvox.playback.tts.Sentence
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -28,6 +29,7 @@ class EngineStreamingSourceTest {
             engine = fakeEngine,
             speed = 1.0f,
             pitch = 1.0f,
+            engineMutex = Mutex(),
         )
 
         val c0 = source.nextChunk()
@@ -60,7 +62,7 @@ class EngineStreamingSourceTest {
             }
         }
         val sentences = listOf(Sentence(0, 0, 10, "One."))
-        val source = EngineStreamingSource(sentences, 0, gatedEngine, 1f, 1f)
+        val source = EngineStreamingSource(sentences, 0, gatedEngine, 1f, 1f, Mutex())
 
         // Producer is now parked at gate.await() inside engine.generateAudioPCM.
         // Give Dispatchers.IO a moment to schedule it; not strictly required
