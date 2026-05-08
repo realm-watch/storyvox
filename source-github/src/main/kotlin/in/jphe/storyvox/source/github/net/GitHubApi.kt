@@ -1,6 +1,7 @@
 package `in`.jphe.storyvox.source.github.net
 
 import `in`.jphe.storyvox.source.github.di.GitHubHttp
+import `in`.jphe.storyvox.source.github.model.GhCommitRef
 import `in`.jphe.storyvox.source.github.model.GhCompareResponse
 import `in`.jphe.storyvox.source.github.model.GhSearchResponse
 import `in`.jphe.storyvox.source.github.model.GhContent
@@ -98,6 +99,24 @@ internal open class GitHubApi @Inject constructor(
         head: String,
     ): GitHubApiResult<GhCompareResponse> =
         get("$BASE_URL/repos/${owner.lowercase()}/${repo.lowercase()}/compare/$base...$head")
+
+    /**
+     * `GET /repos/{owner}/{repo}/commits?sha={ref}&per_page=1` — returns
+     * the head commit on [ref] (or the repo's default branch if [ref]
+     * is null). Used by `latestRevisionToken` in [GitHubSource] for the
+     * cheap-poll path: a 5-line JSON response (~1KB) the worker compares
+     * against the stored token.
+     */
+    open suspend fun getHeadCommit(
+        owner: String,
+        repo: String,
+        ref: String? = null,
+    ): GitHubApiResult<List<GhCommitRef>> {
+        val refParam = if (ref != null) "&sha=$ref" else ""
+        return get(
+            "$BASE_URL/repos/${owner.lowercase()}/${repo.lowercase()}/commits?per_page=1$refParam",
+        )
+    }
 
     /**
      * `GET /search/repositories?q=...&page=...&per_page=...`. The

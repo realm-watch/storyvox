@@ -20,7 +20,7 @@ import `in`.jphe.storyvox.data.db.entity.PlaybackPosition
         PlaybackPosition::class,
         AuthCookie::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)

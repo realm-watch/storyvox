@@ -77,6 +77,17 @@ internal fun GhContent.decodedText(): String? {
  *
  * https://docs.github.com/en/rest/commits/commits#compare-two-commits
  */
+/**
+ * `GET /repos/{owner}/{repo}/commits?sha={ref}&per_page=1` — returns
+ * the JSON array of commits; we only consume the first element to get
+ * the head SHA on a given branch. Cheap-poll path for step 9 in the
+ * GitHub-source spec.
+ */
+@Serializable
+internal data class GhCommitRef(
+    @SerialName("sha") val sha: String,
+)
+
 @Serializable
 internal data class GhCompareResponse(
     @SerialName("status") val status: String, // "identical" | "behind" | "ahead" | "diverged"

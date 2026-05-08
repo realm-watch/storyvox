@@ -44,6 +44,16 @@ data class Fiction(
     val pinnedVoiceId: String? = null,
     val pinnedVoiceLocale: String? = null,
     val notesEverSeen: Boolean = false,
+    /**
+     * Source-side revision token captured the last time we successfully
+     * polled this fiction. For GitHub it's the head commit SHA on the
+     * default branch; for sources that don't expose a cheap revision
+     * check it stays null. Used by `NewChapterPollWorker` to short-
+     * circuit the full detail fetch when nothing has changed upstream
+     * — see step 9 in
+     * `docs/superpowers/specs/2026-05-06-github-source-design.md`.
+     */
+    val lastSeenRevision: String? = null,
 )
 
 /** Per-book download policy override. Null = inherit global setting. */

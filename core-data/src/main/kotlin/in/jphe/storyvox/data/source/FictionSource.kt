@@ -75,6 +75,32 @@ interface FictionSource {
     /** All genres the source supports — for the genre picker UI. */
     suspend fun genres(): FictionResult<List<String>>
 
+    // ─── polling ──────────────────────────────────────────────────────────
+
+    /**
+     * Cheap revision check for cheap-poll: returns a token (e.g. a
+     * commit SHA, a feed-level ETag, a Last-Modified header) that the
+     * poll worker can compare against the previously-stored token to
+     * decide whether the upstream source has changed at all. If the
+     * tokens match, the worker skips the heavier `fictionDetail` fetch.
+     *
+     * Default implementation returns `Success(null)` — sources that
+     * don't have a cheap revision check (Royal Road today) opt out by
+     * not overriding, and the worker falls back to the full path.
+     *
+     * Returning a non-null token implicitly tells the worker "if you
+     * see this same token again, nothing has changed". Implementations
+     * MUST therefore mint a fresh token whenever any chapter-affecting
+     * content changes (typically: head commit on the default branch
+     * for Git-backed sources).
+     *
+     * Errors should come back as a [FictionResult] failure variant
+     * so the worker can choose to fall back to the full path; throwing
+     * is reserved for programmer errors.
+     */
+    suspend fun latestRevisionToken(fictionId: String): FictionResult<String?> =
+        FictionResult.Success(null)
+
     // ─── eventing ─────────────────────────────────────────────────────────
 
     /**
