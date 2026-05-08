@@ -41,8 +41,13 @@ Stream chapters from [Royal Road](https://royalroad.com) and [GitHub](https://gi
 </tr>
 <tr>
 <td align="center"><b>Library</b><br/><img src="docs/screenshots/04-library.png" width="220" /></td>
+<td align="center"><b>Follows</b><br/><img src="docs/screenshots/07-follows.png" width="220" /></td>
 <td align="center"><b>Settings</b><br/><img src="docs/screenshots/05-settings.png" width="220" /></td>
-<td align="center"><b>Filters</b><br/><img src="docs/screenshots/06-filter.png" width="220" /></td>
+</tr>
+<tr>
+<td align="center"><b>Royal Road filters</b><br/><img src="docs/screenshots/06-filter.png" width="220" /></td>
+<td align="center"><b>GitHub filters</b><br/><img src="docs/screenshots/06b-filter-github.png" width="220" /></td>
+<td></td>
 </tr>
 </table>
 

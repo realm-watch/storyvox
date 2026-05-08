@@ -18,8 +18,13 @@ Captured on a Galaxy Tab A7 Lite (800×1340 px) running storyvox in the Library 
 ## Filters
 
 <figure>
-  <img src="screenshots/06-filter.png" alt="Filter sheet — tags include and exclude, status, type, length, rating, content warnings, sort order." />
-  <figcaption>The full Royal Road filter set — tags include / exclude, status, type, length, rating, content warnings, sort order.</figcaption>
+  <img src="screenshots/06-filter.png" alt="Royal Road filter sheet — exclude tags, length and rating sliders, content-warning pills, Reset and Apply buttons." />
+  <figcaption>The full Royal Road filter set — tags include / exclude, status, type, length, rating, sort order, plus content-warning pills (Profanity, Sexual, Violence, Sensitive, AI-assisted, AI-generated).</figcaption>
+</figure>
+
+<figure>
+  <img src="screenshots/06b-filter-github.png" alt="GitHub filter sheet — minimum stars slider, ISO language code, last-pushed dropdown, sort order, Reset and Apply buttons." />
+  <figcaption>The GitHub filter sheet — minimum stars, language code, last-pushed window, sort order.</figcaption>
 </figure>
 
 ## Fiction detail
@@ -58,6 +63,6 @@ Captured on a Galaxy Tab A7 Lite (800×1340 px) running storyvox in the Library 
 </figure>
 
 <figure>
-  <img src="screenshots/07-follows-loaded.png" alt="Follows tab loaded — bookmarked Royal Road fictions in a grid." />
-  <figcaption>Follows — bookmarked fictions, grid view, signed in.</figcaption>
+  <img src="screenshots/07-follows.png" alt="Follows tab loaded — bookmarked Royal Road fictions in a list." />
+  <figcaption>Follows — bookmarked fictions, signed in.</figcaption>
 </figure>
