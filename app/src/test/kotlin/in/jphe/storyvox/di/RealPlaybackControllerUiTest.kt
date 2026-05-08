@@ -8,6 +8,7 @@ import `in`.jphe.storyvox.data.source.model.ChapterContent
 import `in`.jphe.storyvox.data.source.model.ChapterInfo
 import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_DEFAULT_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
+import `in`.jphe.storyvox.feature.api.UiLlmProvider
 import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiSettings
 import `in`.jphe.storyvox.playback.PlaybackController
@@ -225,6 +226,18 @@ class RealPlaybackControllerUiTest {
         override suspend fun testPalaceConnection():
             `in`.jphe.storyvox.feature.api.PalaceProbeResult =
             `in`.jphe.storyvox.feature.api.PalaceProbeResult.NotConfigured
+
+        // ── AI no-ops (#81) — playback-controller-test fixture doesn't exercise these. ──
+        override suspend fun setAiProvider(provider: UiLlmProvider?) = Unit
+        override suspend fun setClaudeApiKey(key: String?) = Unit
+        override suspend fun setClaudeModel(model: String) = Unit
+        override suspend fun setOpenAiApiKey(key: String?) = Unit
+        override suspend fun setOpenAiModel(model: String) = Unit
+        override suspend fun setOllamaBaseUrl(url: String) = Unit
+        override suspend fun setOllamaModel(model: String) = Unit
+        override suspend fun setSendChapterTextEnabled(enabled: Boolean) = Unit
+        override suspend fun acknowledgeAiPrivacy() = Unit
+        override suspend fun resetAiSettings() = Unit
     }
 
     /** Chapter repo never invoked by the speed/pitch path under test. */

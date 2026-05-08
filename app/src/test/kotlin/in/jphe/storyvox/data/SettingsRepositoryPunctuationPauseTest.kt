@@ -64,6 +64,9 @@ class SettingsRepositoryPunctuationPauseTest {
             hydrator = FakeHydrator(),
             palaceConfig = makeFakePalaceConfig(tempFolder.newFolder("palace_ds"), scope),
             palaceApi = makeFakePalaceApi(),
+            // Test-only LlmCredentialsStore (#81) — bypasses encrypted prefs.
+            // Punctuation-pause tests don't touch AI fields, so a no-op store is fine.
+            llmCreds = `in`.jphe.storyvox.llm.LlmCredentialsStore.forTesting(),
         )
     }
 
