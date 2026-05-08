@@ -42,6 +42,10 @@ enum class BrowseTab { Popular, NewReleases, BestRated, Search }
 enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
     RoyalRoad(SourceIds.ROYAL_ROAD, "Royal Road"),
     GitHub(SourceIds.GITHUB, "GitHub"),
+    /** MemPalace — JP's local memory system as a read-only fiction source.
+     *  Only meaningful when on JP's home LAN; off-network the source returns
+     *  NetworkError on every call and Browse → Palace shows the empty state. */
+    MemPalace(SourceIds.MEMPALACE, "Memory Palace"),
 }
 
 /** Tabs that are meaningful for [source]. GitHub registry doesn't
@@ -61,6 +65,15 @@ fun BrowseSourceKey.supportedTabs(): List<BrowseTab> = when (this) {
         BrowseTab.Popular,
         BrowseTab.NewReleases,
         BrowseTab.Search,
+    )
+    // Spec: docs/superpowers/specs/2026-05-08-mempalace-integration-design.md.
+    // - Popular = Wings tab (top-N rooms by drawer count).
+    // - NewReleases = Recent tab (rooms ordered by latest drawer).
+    // - BestRated has no analogue (palace doesn't rank).
+    // - Search hidden in v1; surfaces in P1 once cross-room ranking lands.
+    BrowseSourceKey.MemPalace -> listOf(
+        BrowseTab.Popular,
+        BrowseTab.NewReleases,
     )
 }
 
@@ -248,6 +261,14 @@ class BrowseViewModel @Inject constructor(
         when (key) {
             BrowseSourceKey.RoyalRoad -> _githubFilter.value = GitHubSearchFilter()
             BrowseSourceKey.GitHub -> _filter.value = BrowseFilter()
+            // MemPalace has no source-specific filter shape today — the
+            // wing dropdown reuses BrowseFilter.tagsInclude (each wing
+            // appears as a single tag on its rooms). Clearing both the
+            // RR and GH filters keeps the picker idempotent.
+            BrowseSourceKey.MemPalace -> {
+                _filter.value = BrowseFilter()
+                _githubFilter.value = GitHubSearchFilter()
+            }
         }
     }
 
@@ -297,6 +318,16 @@ private fun resolveSource(
         tab == BrowseTab.BestRated -> BrowseSource.BestRated
         tab == BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
         else -> null
+    }
+    // MemPalace tabs map straight to the existing BrowseSource enum —
+    // Popular = Wings (top rooms by drawer count), NewReleases = Recent
+    // (rooms by latest drawer). No filtered/search variant in v1; spec
+    // P1 surfaces the daemon's /search endpoint behind a feature flag.
+    BrowseSourceKey.MemPalace -> when (tab) {
+        BrowseTab.Popular -> BrowseSource.Popular
+        BrowseTab.NewReleases -> BrowseSource.NewReleases
+        BrowseTab.BestRated -> null
+        BrowseTab.Search -> null
     }
 }
 

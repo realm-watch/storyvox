@@ -17,4 +17,8 @@ package `in`.jphe.storyvox.data.source
 object SourceIds {
     const val ROYAL_ROAD: String = "royalroad"
     const val GITHUB: String = "github"
+    /** MemPalace — JP's local memory system, treated as a read-only
+     *  fiction source. Spec: docs/superpowers/specs/2026-05-08-
+     *  mempalace-integration-design.md (#79). */
+    const val MEMPALACE: String = "mempalace"
 }

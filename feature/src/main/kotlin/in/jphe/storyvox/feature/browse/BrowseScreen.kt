@@ -104,6 +104,10 @@ fun BrowseScreen(
                 activeCount = when (state.sourceKey) {
                     BrowseSourceKey.RoyalRoad -> state.filter.activeCount()
                     BrowseSourceKey.GitHub -> state.githubFilter.activeCount()
+                    // MemPalace has no filter dimensions in v1 — the wing
+                    // dropdown is a TODO. Show 0 active so the badge stays
+                    // hidden; clicking still pops a sheet (placeholder).
+                    BrowseSourceKey.MemPalace -> 0
                 },
                 onClick = { showFilterSheet = true },
             )
@@ -270,6 +274,12 @@ fun BrowseScreen(
                 },
                 onDismiss = { showFilterSheet = false },
             )
+            // MemPalace filter sheet is a P1 follow-up — wing dropdown
+            // populated from `genres()`. For v1 we just dismiss so the
+            // tap doesn't strand the user with an empty sheet.
+            BrowseSourceKey.MemPalace -> {
+                showFilterSheet = false
+            }
         }
     }
 }
