@@ -367,7 +367,7 @@ private fun UiSortDirection.toData(): SortDirection = when (this) {
  * new bytes from the network.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-private class RealPlaybackControllerUi(
+internal class RealPlaybackControllerUi(
     private val context: Context,
     private val controller: PlaybackController,
     private val chapters: ChapterRepository,
@@ -402,6 +402,29 @@ private class RealPlaybackControllerUi(
                 .map { it.punctuationPause.multiplier }
                 .distinctUntilChanged()
                 .collect { controller.setPunctuationPauseMultiplier(it) }
+        }
+        // Issue #108: keep the live engine's speed + pitch in sync with the
+        // persisted user preference. Same seam + same reasoning as
+        // punctuationPause above — Settings slider writes to DataStore, this
+        // observer forwards the new value into PlaybackController so the
+        // EnginePlayer actually applies it. Without this, the slider only
+        // changes what the *next* fresh process boot would hydrate to, which
+        // is invisible to the user mid-session.
+        //
+        // distinctUntilChanged is load-bearing: setSpeed/setPitch each rebuild
+        // the playback pipeline if anything's playing, so a duplicate emission
+        // from DataStore hydration would interrupt audio for no reason.
+        scope.launch {
+            settings.settings
+                .map { it.defaultSpeed }
+                .distinctUntilChanged()
+                .collect { controller.setSpeed(it) }
+        }
+        scope.launch {
+            settings.settings
+                .map { it.defaultPitch }
+                .distinctUntilChanged()
+                .collect { controller.setPitch(it) }
         }
         // Issue #98 Mode A — mirror warmupWait into the volatile cache so the
         // synchronous toUi mapper can read it without suspending. Same shape

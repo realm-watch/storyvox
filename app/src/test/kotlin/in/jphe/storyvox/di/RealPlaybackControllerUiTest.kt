@@ -1,0 +1,240 @@
+package `in`.jphe.storyvox.di
+
+import android.app.Application
+import `in`.jphe.storyvox.data.db.entity.ChapterDownloadState
+import `in`.jphe.storyvox.data.repository.ChapterRepository
+import `in`.jphe.storyvox.data.repository.playback.PlaybackChapter
+import `in`.jphe.storyvox.data.source.model.ChapterContent
+import `in`.jphe.storyvox.data.source.model.ChapterInfo
+import `in`.jphe.storyvox.feature.api.PunctuationPause
+import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
+import `in`.jphe.storyvox.feature.api.ThemeOverride
+import `in`.jphe.storyvox.feature.api.UiSettings
+import `in`.jphe.storyvox.playback.PlaybackController
+import `in`.jphe.storyvox.playback.PlaybackState
+import `in`.jphe.storyvox.playback.PlaybackUiEvent
+import `in`.jphe.storyvox.playback.SleepTimerMode
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
+
+/**
+ * Issue #108 — verify the Settings → engine plumbing for speed + pitch.
+ *
+ * The bug: SettingsScreen sliders called SettingsViewModel.setSpeed which
+ * persisted to DataStore but never reached EnginePlayer. The fix mirrors
+ * the issue #90 punctuation-pause pattern — RealPlaybackControllerUi.init
+ * observes settings.settings, distinct-on-value, forwards into
+ * PlaybackController.setSpeed/setPitch.
+ *
+ * These tests assert that contract directly: emit a new defaultSpeed /
+ * defaultPitch on the settings flow → controller receives setSpeed /
+ * setPitch with the new value. Distinct guards too — duplicates from
+ * DataStore hydration must not call the controller a second time.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class)
+class RealPlaybackControllerUiTest {
+
+    @Test
+    fun `speed change in settings flow propagates to controller`() = runTest {
+        val controller = RecordingController()
+        val settings = FakeSettings(initial = uiSettings(defaultSpeed = 1.0f))
+        RealPlaybackControllerUi(
+            context = RuntimeEnvironment.getApplication(),
+            controller = controller,
+            chapters = NoOpChapters(),
+            settings = settings,
+        )
+        advanceUntilIdle()
+
+        // Initial hydration replays the seed value once.
+        assertEquals(listOf(1.0f), controller.speeds)
+
+        settings.update { it.copy(defaultSpeed = 1.75f) }
+        advanceUntilIdle()
+
+        assertEquals(listOf(1.0f, 1.75f), controller.speeds)
+    }
+
+    @Test
+    fun `pitch change in settings flow propagates to controller`() = runTest {
+        val controller = RecordingController()
+        val settings = FakeSettings(initial = uiSettings(defaultPitch = 1.0f))
+        RealPlaybackControllerUi(
+            context = RuntimeEnvironment.getApplication(),
+            controller = controller,
+            chapters = NoOpChapters(),
+            settings = settings,
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf(1.0f), controller.pitches)
+
+        settings.update { it.copy(defaultPitch = 0.92f) }
+        advanceUntilIdle()
+
+        assertEquals(listOf(1.0f, 0.92f), controller.pitches)
+    }
+
+    @Test
+    fun `duplicate settings emissions do not re-fire setSpeed`() = runTest {
+        // distinctUntilChanged matters — DataStore hydration can replay the
+        // same value, and setSpeed rebuilds the playback pipeline if
+        // anything's playing. A duplicate fire would mid-cut the audio.
+        val controller = RecordingController()
+        val settings = FakeSettings(initial = uiSettings(defaultSpeed = 1.0f))
+        RealPlaybackControllerUi(
+            context = RuntimeEnvironment.getApplication(),
+            controller = controller,
+            chapters = NoOpChapters(),
+            settings = settings,
+        )
+        advanceUntilIdle()
+
+        // Re-emit the same speed via an unrelated field change.
+        settings.update { it.copy(downloadOnWifiOnly = !it.downloadOnWifiOnly) }
+        advanceUntilIdle()
+
+        assertEquals(listOf(1.0f), controller.speeds)
+    }
+
+    @Test
+    fun `speed and pitch propagate independently`() = runTest {
+        val controller = RecordingController()
+        val settings = FakeSettings(initial = uiSettings())
+        RealPlaybackControllerUi(
+            context = RuntimeEnvironment.getApplication(),
+            controller = controller,
+            chapters = NoOpChapters(),
+            settings = settings,
+        )
+        advanceUntilIdle()
+
+        settings.update { it.copy(defaultSpeed = 1.5f) }
+        advanceUntilIdle()
+        settings.update { it.copy(defaultPitch = 1.05f) }
+        advanceUntilIdle()
+
+        assertEquals(listOf(1.0f, 1.5f), controller.speeds)
+        assertEquals(listOf(1.0f, 1.05f), controller.pitches)
+    }
+
+    // ---- helpers ----
+
+    private fun uiSettings(
+        defaultSpeed: Float = 1.0f,
+        defaultPitch: Float = 1.0f,
+    ): UiSettings = UiSettings(
+        ttsEngine = "voxsherpa",
+        defaultVoiceId = null,
+        defaultSpeed = defaultSpeed,
+        defaultPitch = defaultPitch,
+        themeOverride = ThemeOverride.System,
+        downloadOnWifiOnly = false,
+        pollIntervalHours = 6,
+        isSignedIn = false,
+        punctuationPause = PunctuationPause.Normal,
+    )
+
+    /**
+     * Captures every setSpeed/setPitch call so the test can assert ordering
+     * without needing a real EnginePlayer or coroutine plumbing.
+     */
+    private class RecordingController : PlaybackController {
+        val speeds = mutableListOf<Float>()
+        val pitches = mutableListOf<Float>()
+        val multipliers = mutableListOf<Float>()
+
+        override val state: StateFlow<PlaybackState> = MutableStateFlow(PlaybackState()).asStateFlow()
+        override val events: SharedFlow<PlaybackUiEvent> =
+            MutableSharedFlow<PlaybackUiEvent>().asSharedFlow()
+
+        override suspend fun play(fictionId: String, chapterId: String, charOffset: Int) = Unit
+        override fun pause() = Unit
+        override fun resume() = Unit
+        override fun togglePlayPause() = Unit
+        override fun seekTo(charOffset: Int) = Unit
+        override fun skipForward30s() = Unit
+        override fun skipBack30s() = Unit
+        override suspend fun nextChapter() = Unit
+        override suspend fun previousChapter() = Unit
+        override suspend fun jumpToChapter(chapterId: String) = Unit
+
+        override fun setSpeed(speed: Float) { speeds += speed }
+        override fun setPitch(pitch: Float) { pitches += pitch }
+        override fun setVoice(voiceId: String) = Unit
+        override fun setPunctuationPauseMultiplier(multiplier: Float) {
+            multipliers += multiplier
+        }
+
+        override fun startSleepTimer(mode: SleepTimerMode) = Unit
+        override fun cancelSleepTimer() = Unit
+        override fun toggleSleepTimer() = Unit
+    }
+
+    /**
+     * Hot StateFlow wrapper so the test can mutate the settings snapshot
+     * after construction and observe the downstream side-effect.
+     */
+    private class FakeSettings(initial: UiSettings) : SettingsRepositoryUi {
+        private val flow = MutableStateFlow(initial)
+        override val settings: Flow<UiSettings> = flow
+
+        fun update(transform: (UiSettings) -> UiSettings) {
+            flow.value = transform(flow.value)
+        }
+
+        override suspend fun setTheme(override: ThemeOverride) = Unit
+        override suspend fun setDefaultSpeed(speed: Float) {
+            flow.value = flow.value.copy(defaultSpeed = speed)
+        }
+        override suspend fun setDefaultPitch(pitch: Float) {
+            flow.value = flow.value.copy(defaultPitch = pitch)
+        }
+        override suspend fun setDefaultVoice(voiceId: String?) = Unit
+        override suspend fun setDownloadOnWifiOnly(enabled: Boolean) = Unit
+        override suspend fun setPollIntervalHours(hours: Int) = Unit
+        override suspend fun setPunctuationPause(mode: PunctuationPause) = Unit
+        override suspend fun setPlaybackBufferChunks(chunks: Int) = Unit
+        override suspend fun setWarmupWait(enabled: Boolean) = Unit
+        override suspend fun setCatchupPause(enabled: Boolean) = Unit
+        override suspend fun signIn() = Unit
+        override suspend fun signOut() = Unit
+    }
+
+    /** Chapter repo never invoked by the speed/pitch path under test. */
+    private class NoOpChapters : ChapterRepository {
+        override fun observeChapters(fictionId: String): Flow<List<ChapterInfo>> = flowOf(emptyList())
+        override fun observeChapter(chapterId: String): Flow<ChapterContent?> = flowOf(null)
+        override fun observeDownloadState(fictionId: String): Flow<Map<String, ChapterDownloadState>> =
+            flowOf(emptyMap())
+        override suspend fun queueChapterDownload(
+            fictionId: String,
+            chapterId: String,
+            requireUnmetered: Boolean,
+        ) = Unit
+        override suspend fun queueAllMissing(fictionId: String, requireUnmetered: Boolean) = Unit
+        override suspend fun markRead(chapterId: String, read: Boolean) = Unit
+        override suspend fun markChapterPlayed(chapterId: String) = Unit
+        override suspend fun trimDownloadedBodies(fictionId: String, keepLast: Int) = Unit
+        override suspend fun getChapter(id: String): PlaybackChapter? = null
+        override suspend fun getNextChapterId(currentChapterId: String): String? = null
+        override suspend fun getPreviousChapterId(currentChapterId: String): String? = null
+    }
+}
