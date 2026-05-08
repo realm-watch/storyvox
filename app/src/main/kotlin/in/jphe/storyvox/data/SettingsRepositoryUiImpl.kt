@@ -12,6 +12,10 @@ import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import `in`.jphe.storyvox.data.auth.SessionHydrator
 import `in`.jphe.storyvox.data.repository.AuthRepository
+import `in`.jphe.storyvox.data.repository.playback.PlaybackBufferConfig
+import `in`.jphe.storyvox.feature.api.BUFFER_DEFAULT_CHUNKS
+import `in`.jphe.storyvox.feature.api.BUFFER_MAX_CHUNKS
+import `in`.jphe.storyvox.feature.api.BUFFER_MIN_CHUNKS
 import `in`.jphe.storyvox.feature.api.PunctuationPause
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
@@ -21,6 +25,7 @@ import `in`.jphe.storyvox.sigil.Sigil
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "storyvox_settings")
@@ -39,16 +44,29 @@ private object Keys {
      *  preserves pre-#90 audiobook cadence on first launch + on existing
      *  installs that have no value persisted. */
     val PUNCTUATION_PAUSE = stringPreferencesKey("pref_punctuation_pause")
+    /** Pre-synth queue depth (sentence-chunks). Issue #84 — the slider is an
+     *  exploratory probe for where Android's LMK kills the app on slow
+     *  devices, so the persisted value is intentionally NOT clamped at a
+     *  conservative ceiling; only the absolute mechanical bounds apply. */
+    val PLAYBACK_BUFFER_CHUNKS = intPreferencesKey("pref_playback_buffer_chunks_v1")
 }
 
 @Singleton
-class SettingsRepositoryUiImpl @Inject constructor(
-    @ApplicationContext private val context: Context,
+class SettingsRepositoryUiImpl(
+    private val store: DataStore<Preferences>,
     private val auth: AuthRepository,
     private val hydrator: SessionHydrator,
-) : SettingsRepositoryUi {
+) : SettingsRepositoryUi, PlaybackBufferConfig {
 
-    private val store = context.settingsDataStore
+    /** Hilt entry point — pulls the production DataStore from the app context.
+     *  The primary constructor takes the store directly so tests can swap in
+     *  a `PreferenceDataStoreFactory.create(file)`-backed instance against a
+     *  `TemporaryFolder`. Mirrors the seam used in [VoiceFavorites.forTesting]. */
+    @Inject constructor(
+        @ApplicationContext context: Context,
+        auth: AuthRepository,
+        hydrator: SessionHydrator,
+    ) : this(context.settingsDataStore, auth, hydrator)
 
     override val settings: Flow<UiSettings> = store.data.map { prefs ->
         UiSettings(
@@ -64,6 +82,8 @@ class SettingsRepositoryUiImpl @Inject constructor(
             punctuationPause = prefs[Keys.PUNCTUATION_PAUSE]
                 ?.let { runCatching { PunctuationPause.valueOf(it) }.getOrNull() }
                 ?: PunctuationPause.Normal,
+            playbackBufferChunks = (prefs[Keys.PLAYBACK_BUFFER_CHUNKS] ?: BUFFER_DEFAULT_CHUNKS)
+                .coerceIn(BUFFER_MIN_CHUNKS, BUFFER_MAX_CHUNKS),
             sigil = Sigil.current.let {
                 UiSigil(
                     name = it.name,
@@ -109,6 +129,21 @@ class SettingsRepositoryUiImpl @Inject constructor(
     override suspend fun setPunctuationPause(mode: PunctuationPause) {
         store.edit { it[Keys.PUNCTUATION_PAUSE] = mode.name }
     }
+
+    override suspend fun setPlaybackBufferChunks(chunks: Int) {
+        store.edit {
+            it[Keys.PLAYBACK_BUFFER_CHUNKS] = chunks.coerceIn(BUFFER_MIN_CHUNKS, BUFFER_MAX_CHUNKS)
+        }
+    }
+
+    // --- PlaybackBufferConfig (consumed by core-playback's EnginePlayer) ---
+
+    override val playbackBufferChunks: Flow<Int> = store.data.map { prefs ->
+        (prefs[Keys.PLAYBACK_BUFFER_CHUNKS] ?: BUFFER_DEFAULT_CHUNKS)
+            .coerceIn(BUFFER_MIN_CHUNKS, BUFFER_MAX_CHUNKS)
+    }
+
+    override suspend fun currentBufferChunks(): Int = playbackBufferChunks.first()
 
     override suspend fun signIn() {
         // Just flips the persisted UI flag; the cookie capture is owned by

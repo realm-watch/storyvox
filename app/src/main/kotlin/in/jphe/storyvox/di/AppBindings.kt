@@ -13,6 +13,7 @@ import `in`.jphe.storyvox.data.SettingsRepositoryUiImpl
 import `in`.jphe.storyvox.data.VoiceProviderUiImpl
 import `in`.jphe.storyvox.data.repository.ChapterRepository
 import `in`.jphe.storyvox.data.repository.FictionRepository
+import `in`.jphe.storyvox.data.repository.playback.PlaybackBufferConfig
 import `in`.jphe.storyvox.data.source.WebViewFetcher
 import `in`.jphe.storyvox.data.source.model.ContentWarning
 import `in`.jphe.storyvox.data.source.model.FictionResult
@@ -102,6 +103,15 @@ object AppBindings {
 
     @Provides @Singleton
     fun provideSettingsRepositoryUi(impl: SettingsRepositoryUiImpl): SettingsRepositoryUi = impl
+
+    /**
+     * Same singleton instance as [provideSettingsRepositoryUi], exposed under
+     * the [PlaybackBufferConfig] contract so `core-playback`'s [EnginePlayer]
+     * can pull the user-tunable queue depth without depending on the feature
+     * layer's [SettingsRepositoryUi].
+     */
+    @Provides @Singleton
+    fun providePlaybackBufferConfig(impl: SettingsRepositoryUiImpl): PlaybackBufferConfig = impl
 
     /**
      * Stub WebViewFetcher — Selene's `:core-data` declares the interface; the

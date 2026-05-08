@@ -288,7 +288,45 @@ data class UiSettings(
     val isSignedIn: Boolean,
     val punctuationPause: PunctuationPause = PunctuationPause.Normal,
     val sigil: UiSigil = UiSigil.UNKNOWN,
+    /**
+     * Audio pre-synth queue depth, in sentence-chunks. Maps directly to
+     * [EngineStreamingSource.queueCapacity]. The minimum 2 keeps a real
+     * back-pressure buffer (1 in flight + 1 queued); the mechanical max is
+     * intentionally well past where we think Android's LMK starts killing the
+     * app — see [BUFFER_RECOMMENDED_MAX_CHUNKS] for the conservative tick.
+     *
+     * Issue #84 tracks the empirical work to find the real LMK threshold on
+     * Tab A7 Lite (Helio P22T, 3 GB). Treat values past the recommended max
+     * as exploratory; we want telemetry from users running there.
+     */
+    val playbackBufferChunks: Int = BUFFER_DEFAULT_CHUNKS,
 )
+
+/** Default queue depth — current hardcoded `EngineStreamingSource(queueCapacity = 8)`. */
+const val BUFFER_DEFAULT_CHUNKS: Int = 8
+
+/** Lower bound — 1 in flight + 1 queued is the minimum that gives any back-pressure benefit. */
+const val BUFFER_MIN_CHUNKS: Int = 2
+
+/**
+ * Conservative tick where the slider color flips amber. Below this we believe
+ * the queue is safe on a 3 GB device. Past this, copy intensifies + slider
+ * track turns amber → red as the user enters experimental territory. Picked
+ * to give Piper-high ≈ 160 s of headroom (≈ 64 chunks × 2.5 s/sentence ≈ 7 MB
+ * of PCM); refine as the LMK probe data arrives.
+ */
+const val BUFFER_RECOMMENDED_MAX_CHUNKS: Int = 64
+
+/**
+ * Mechanical upper bound. The LinkedBlockingQueue can hold this many; whether
+ * the heap survives is JP's experimental question. 1500 chunks ≈ 165 MB of
+ * PCM at 22050 Hz mono — comfortably past the worst-case LMK guess for a 3 GB
+ * Helio P22T.
+ */
+const val BUFFER_MAX_CHUNKS: Int = 1500
+
+/** Slider color shifts to red (intensified warning) past this multiple of the recommended max. */
+const val BUFFER_DANGER_MULTIPLIER: Int = 4
 
 /**
  * Three-stop selector for the inter-sentence silence storyvox splices after
@@ -363,6 +401,7 @@ interface SettingsRepositoryUi {
     suspend fun setDownloadOnWifiOnly(enabled: Boolean)
     suspend fun setPollIntervalHours(hours: Int)
     suspend fun setPunctuationPause(mode: PunctuationPause)
+    suspend fun setPlaybackBufferChunks(chunks: Int)
     suspend fun signIn()
     suspend fun signOut()
 }
