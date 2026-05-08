@@ -52,4 +52,16 @@ class PlaybackStateTest {
         assertEquals(150f, SPEED_BASELINE_WPM, 0f)
         assertEquals(12.5f, SPEED_BASELINE_CHARS_PER_SECOND, 0f)
     }
+
+    @Test fun `isBuffering defaults false and serializes round-trip`() {
+        val s = PlaybackState(isBuffering = true, isPlaying = true, charOffset = 42)
+        val json = kotlinx.serialization.json.Json.encodeToString(PlaybackState.serializer(), s)
+        val round = kotlinx.serialization.json.Json.decodeFromString(PlaybackState.serializer(), json)
+        assertEquals(true, round.isBuffering)
+        assertEquals(true, round.isPlaying)
+        assertEquals(42, round.charOffset)
+
+        val default = PlaybackState()
+        assertEquals(false, default.isBuffering)
+    }
 }
