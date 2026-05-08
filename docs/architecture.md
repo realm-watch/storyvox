@@ -62,6 +62,7 @@ storyvox is **eight Gradle modules**. The split keeps fiction sources, playback,
 | `:core-ui` | Library Nocturne theme, shared components. | `LibraryNocturneTheme`, `BrassButton`, `BrassProgressTrack`, spacing/color tokens |
 | `:source-royalroad` | Royal Road implementation of `FictionSource`. | `RoyalRoadSource`, `RoyalRoadFetcher`, `RoyalRoadParsers`, `LoginWebView` |
 | `:source-github` | GitHub-repo implementation of `FictionSource`. | `GithubSource`, `GithubFetcher`, `BookTomlParser`, `CommonmarkRenderer` |
+| `:source-mempalace` | Read-only LAN-only [MemPalace](https://github.com/jphein/mempalace) source — wings as collections, rooms as fictions, drawers as chapters. | `MempalaceSource`, `MempalaceFetcher`, `PalaceDaemonClient` |
 | `:wear` | Wear OS companion (experimental). | `WearMainActivity`, `WearTransport` |
 
 ## Fiction-source plug-in pattern
@@ -133,3 +134,4 @@ The `docs/superpowers/specs/` directory in the repo holds the canonical design s
 - [`2026-05-08-github-oauth-design.md`](https://github.com/jphein/storyvox/blob/main/docs/superpowers/specs/2026-05-08-github-oauth-design.md) — GitHub OAuth (future)
 - [`2026-05-08-settings-redesign-design.md`](https://github.com/jphein/storyvox/blob/main/docs/superpowers/specs/2026-05-08-settings-redesign-design.md) — Settings UI redesign
 - [`2026-05-08-voxsherpa-knobs-research.md`](https://github.com/jphein/storyvox/blob/main/docs/superpowers/specs/2026-05-08-voxsherpa-knobs-research.md) — VoxSherpa knobs research
+- [`2026-05-08-mempalace-integration-design.md`](https://github.com/jphein/storyvox/blob/main/docs/superpowers/specs/2026-05-08-mempalace-integration-design.md) — MemPalace as fiction source

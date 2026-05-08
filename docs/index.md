@@ -43,11 +43,12 @@ description: Offline neural TTS. Royal Road and GitHub fiction sources. Brass-on
       </p>
     </div>
     <div class="card">
-      <h3>Two fiction sources</h3>
+      <h3>Three fiction sources</h3>
       <p>
-        Browse Royal Road with the full filter set, or browse curated and discoverable GitHub
-        fiction repositories via <a href="https://github.com/jphein/storyvox-registry">storyvox-registry</a>
-        plus live <code>/search/repositories</code> results.
+        Browse Royal Road with the full filter set, browse curated and discoverable GitHub
+        fiction repositories via <a href="https://github.com/jphein/storyvox-registry">storyvox-registry</a>,
+        or read your <a href="https://github.com/jphein/mempalace">MemPalace</a> drawers as chapters
+        when on the home network.
       </p>
     </div>
     <div class="card">
@@ -101,10 +102,15 @@ description: Offline neural TTS. Royal Road and GitHub fiction sources. Brass-on
 <section class="recent">
   <h2>What just shipped</h2>
   <p>
-    <strong>v0.4.31</strong> — fixes infinite spin on track.pause() (regression from #77),
+    <strong>v0.4.31</strong> — fix(playback) infinite spin on track.pause() (regression from #77),
     PCM cache filesystem layer landed, Performance &amp; buffering Settings section with
     Mode A / Mode B toggles, voice library starring + Starred surface.
     <a href="https://github.com/jphein/storyvox/releases/tag/v0.4.31">Full release notes →</a>
+  </p>
+  <p>
+    <strong>Since v0.4.31:</strong> MemPalace as a read-only fiction source (#107),
+    speed/pitch flow-to-engine fix (#113), continuous Punctuation Cadence slider (#115),
+    polished README. Next release builds on these.
   </p>
   <p class="muted">
     See the <a href="https://github.com/jphein/storyvox/wiki">wiki</a> for per-feature documentation,
