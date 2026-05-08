@@ -73,14 +73,13 @@ fun VoiceLibraryScreen(
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        val featured = state.featured
         val favorites = state.favorites
         val installedByEngine = state.installedByEngine
         val availableByEngine = state.availableByEngine
         val installedTotal = installedByEngine.values.sumOf { tiers -> tiers.values.sumOf { it.size } }
         val availableTotal = availableByEngine.values.sumOf { tiers -> tiers.values.sumOf { it.size } }
         val availableHasKokoro = availableByEngine.containsKey(VoiceEngine.Kokoro)
-        val isEmpty = featured.isEmpty() && favorites.isEmpty() &&
+        val isEmpty = favorites.isEmpty() &&
             installedTotal == 0 && availableTotal == 0
 
         if (isEmpty) {
@@ -115,27 +114,6 @@ fun VoiceLibraryScreen(
                         modifier = Modifier
                             .animateItem()
                             .cascadeReveal(index = index, key = "fav-${voice.id}"),
-                    )
-                }
-                item { Spacer(modifier = Modifier.height(spacing.md)) }
-            }
-
-            if (featured.isNotEmpty()) {
-                item { SectionHeader("⭐ Featured", count = featured.size) }
-                itemsIndexed(featured, key = { _, item -> "f-${item.id}" }) { index, voice ->
-                    val downloading = state.currentDownload
-                    val rowProgress = if (downloading?.voiceId == voice.id) downloading.progress ?: -1f else null
-                    VoiceRow(
-                        voice = voice,
-                        isActive = voice.id == state.activeVoiceId,
-                        isFavorite = voice.id in state.favoriteIds,
-                        downloadingProgress = rowProgress,
-                        onTap = { if (downloading == null || voice.isInstalled) viewModel.onRowTapped(voice) },
-                        onLongPress = if (voice.isInstalled) ({ viewModel.requestDelete(voice) }) else null,
-                        onToggleFavorite = { viewModel.toggleFavorite(voice.id) },
-                        modifier = Modifier
-                            .animateItem()
-                            .cascadeReveal(index = index, key = voice.id),
                     )
                 }
                 item { Spacer(modifier = Modifier.height(spacing.md)) }
