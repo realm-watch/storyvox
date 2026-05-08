@@ -80,6 +80,33 @@ class MemPalaceSourceTest {
         assertTrue("expected NetworkError, got $r", r is FictionResult.NetworkError)
     }
 
+    @Test fun `unconfigured host surfaces a Settings-pointing message, not Reconnect-on-home-network (#164)`() {
+        // PalaceDaemonApi early-returns a NotReachable wrapping
+        // `IOException("Palace host not configured")` when the user
+        // hasn't filled in the Settings → Memory Palace host textfield.
+        // Issue #164 was that this got mapped to the generic
+        // "Reconnect on home network" copy — wrong cause attribution
+        // and no actionable path forward. Lock the new copy here so a
+        // future tweak to toFictionFailure can't silently regress.
+        val src = source(
+            graphResult = PalaceDaemonResult.NotReachable(
+                java.io.IOException("Palace host not configured"),
+            ),
+        )
+        val r = runBlocking { src.popular() }
+        assertTrue("expected NetworkError, got $r", r is FictionResult.NetworkError)
+        val msg = (r as FictionResult.NetworkError).message
+        assertTrue(
+            "expected message to point at Settings → Memory Palace; got: $msg",
+            msg.contains("Settings", ignoreCase = true) &&
+                msg.contains("Memory Palace", ignoreCase = true),
+        )
+        assertTrue(
+            "expected message NOT to say 'Reconnect on home network'; got: $msg",
+            !msg.contains("Reconnect on home network", ignoreCase = true),
+        )
+    }
+
     @Test fun `genres returns sorted wing list`() {
         val src = source(graph = sample3WingGraph())
         val r = runBlocking { src.genres() } as FictionResult.Success
