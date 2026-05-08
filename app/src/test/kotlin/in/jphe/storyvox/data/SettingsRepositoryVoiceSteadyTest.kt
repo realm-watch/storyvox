@@ -56,6 +56,9 @@ class SettingsRepositoryVoiceSteadyTest {
             // Test-only LlmCredentialsStore — voice-tuning tests don't touch
             // AI fields; a no-op store is fine.
             llmCreds = `in`.jphe.storyvox.llm.LlmCredentialsStore.forTesting(),
+            // GitHubAuth fake (#91) — voice-tuning tests don't touch GitHub
+            // state; mirrors the pattern in BufferTest / ModesTest / etc.
+            githubAuth = FakeGitHubAuth(),
         )
     }
 

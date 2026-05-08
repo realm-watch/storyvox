@@ -32,6 +32,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import `in`.jphe.storyvox.feature.api.BrowseFilter
@@ -152,6 +155,13 @@ fun BrowseFilterSheet(
                 },
                 valueRange = 0f..PAGES_MAX,
                 steps = 0,
+                // TalkBack #160 — RangeSlider announces a raw float pair
+                // by default. State description mirrors the visible
+                // pagesLabel() (e.g. "100 to 5000 pages") for parity.
+                modifier = Modifier.semantics {
+                    contentDescription = "Filter by page count"
+                    stateDescription = local.pagesLabel()
+                },
             )
 
             // Rating
@@ -167,6 +177,11 @@ fun BrowseFilterSheet(
                 },
                 valueRange = 0f..5f,
                 steps = 9,
+                // TalkBack #160 — same rationale as the pages slider above.
+                modifier = Modifier.semantics {
+                    contentDescription = "Filter by star rating"
+                    stateDescription = local.ratingLabel()
+                },
             )
 
             HorizontalDivider()

@@ -31,6 +31,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -91,6 +94,12 @@ fun SettingsScreen(
             value = s.defaultSpeed,
             onValueChange = viewModel::setSpeed,
             valueRange = 0.5f..3.0f,
+            // TalkBack #160 — without these, the slider announces a raw
+            // float ("1.25") instead of "Default speech speed, 1.25 times".
+            modifier = Modifier.semantics {
+                contentDescription = "Default speech speed"
+                stateDescription = "%.2f times".format(s.defaultSpeed)
+            },
         )
         Text("Speed ${"%.2f".format(s.defaultSpeed)}×", style = MaterialTheme.typography.bodySmall)
         Slider(
@@ -103,6 +112,10 @@ fun SettingsScreen(
             // introducing audible artifacts on Piper-medium voices.
             valueRange = 0.6f..1.4f,
             steps = 79, // 0.01 per step
+            modifier = Modifier.semantics {
+                contentDescription = "Default pitch"
+                stateDescription = "%.2f, neutral at one".format(s.defaultPitch)
+            },
         )
         Text("Pitch ${"%.2f".format(s.defaultPitch)}×", style = MaterialTheme.typography.bodySmall)
 
@@ -267,6 +280,12 @@ fun SettingsScreen(
             onValueChange = { viewModel.setPollHours(it.toInt().coerceIn(1, 24)) },
             valueRange = 1f..24f,
             steps = 22,
+            // TalkBack #160 — units matter: raw "6" without context reads
+            // ambiguous ("6 minutes? days?"). State description spells it.
+            modifier = Modifier.semantics {
+                contentDescription = "Update check interval"
+                stateDescription = "Every ${s.pollIntervalHours} hours"
+            },
         )
 
         Divider()
@@ -631,6 +650,14 @@ private fun BufferSlider(
                 activeTrackColor = activeColor,
                 inactiveTrackColor = inactiveColor,
             ),
+            // TalkBack #160 — sighted users see the live readout above the
+            // slider; TalkBack users get the same information here. The
+            // recommended-max ceiling matters for the past-tick warning, so
+            // it's spelled out in the state description.
+            modifier = Modifier.semantics {
+                contentDescription = "Playback buffer size"
+                stateDescription = "$chunks chunks, recommended max $BUFFER_RECOMMENDED_MAX_CHUNKS"
+            },
         )
 
         // Recommended-max tick label, spatially anchored to its position
@@ -766,6 +793,18 @@ private fun PunctuationPauseSlider(
                 activeTrackColor = MaterialTheme.colorScheme.primary,
                 inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant,
             ),
+            // TalkBack #160 — "Off" is the visible label at multiplier 0,
+            // so we mirror that for screen-reader users; otherwise read
+            // the multiplier directly with a "times" suffix to match the
+            // visible "Pause after punctuation: 1.50×" line above.
+            modifier = Modifier.semantics {
+                contentDescription = "Pause after punctuation"
+                stateDescription = if (multiplier <= PUNCTUATION_PAUSE_MIN_MULTIPLIER) {
+                    "Off"
+                } else {
+                    "%.2f times".format(multiplier)
+                }
+            },
         )
 
         // Tick labels at the legacy stops + the new 4× ceiling. Spatial

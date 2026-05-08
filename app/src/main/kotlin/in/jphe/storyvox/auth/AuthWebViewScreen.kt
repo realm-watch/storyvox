@@ -20,6 +20,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -82,7 +84,13 @@ fun AuthWebViewScreen(
 
             if (capture is CaptureState.Capturing) {
                 CircularProgressIndicator(
-                    modifier = Modifier.align(Alignment.Center),
+                    // TalkBack #160 — without contentDescription the spinner
+                    // announces nothing, leaving a screen-reader user
+                    // wondering if the OAuth flow froze. Mirror the visible
+                    // semantics of "we're working on it".
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .semantics { contentDescription = "Loading sign-in page" },
                     color = MaterialTheme.colorScheme.primary,
                 )
             }

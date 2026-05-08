@@ -47,6 +47,9 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -381,9 +384,16 @@ private fun PlayerOptionsSheet(
             onValueChangeFinished = { onPersistSpeed(state.speed) },
             valueRange = 0.5f..3.0f,
             steps = 49, // 0.05× per step
+            // TalkBack #160 — without these, the slider announces a raw
+            // float ("1.25") instead of a meaningful value ("Speech speed,
+            // 1.25 times").
+            modifier = Modifier.semantics {
+                contentDescription = "Speech speed"
+                stateDescription = "%.2f times".format(state.speed)
+            },
         )
 
-        SheetHeader("Pitch", "${"%.2f".format(state.pitch)}")
+        SheetHeader("Pitch", "${"%.2f".format(state.pitch)}×")
         Slider(
             value = state.pitch,
             onValueChange = onSetPitch,
@@ -394,6 +404,12 @@ private fun PlayerOptionsSheet(
             // Sonic introduces audible artifacts on Piper-medium voices.
             valueRange = 0.6f..1.4f,
             steps = 79, // 0.01 per step
+            // TalkBack #160 — neutral pitch is 1.0 (no shift); semantics
+            // calls that out so users know what the number references.
+            modifier = Modifier.semantics {
+                contentDescription = "Pitch"
+                stateDescription = "%.2f, neutral at one".format(state.pitch)
+            },
         )
 
         SheetHeader("Sleep timer", null)
