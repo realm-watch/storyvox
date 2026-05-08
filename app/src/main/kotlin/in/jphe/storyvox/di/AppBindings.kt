@@ -43,6 +43,8 @@ import `in`.jphe.storyvox.feature.api.UiFollow
 import `in`.jphe.storyvox.feature.api.UiPlaybackState
 import `in`.jphe.storyvox.feature.api.UiSleepTimerMode
 import `in`.jphe.storyvox.feature.api.VoiceProviderUi
+import `in`.jphe.storyvox.feature.browse.RealBrowsePaginator
+import `in`.jphe.storyvox.feature.browse.toUiFiction
 import `in`.jphe.storyvox.playback.PlaybackController
 import `in`.jphe.storyvox.playback.PlaybackState
 import `in`.jphe.storyvox.playback.SPEED_BASELINE_CHARS_PER_SECOND
@@ -259,60 +261,6 @@ private class RealBrowseRepositoryUi(
         }
 }
 
-/** Page-by-page accumulator. Mutex-guarded so the grid's near-end
- *  LaunchedEffect can call `loadNext()` freely without races. Failures
- *  surface in [error] without bumping the page counter, so the user
- *  scrolling back near-end after a transient blip retries the same
- *  page transparently. */
-private class RealBrowsePaginator(
-    private val fetchPage: suspend (page: Int) -> FictionResult<`in`.jphe.storyvox.data.source.model.ListPage<FictionSummary>>,
-) : BrowsePaginator {
-    private val _items = MutableStateFlow<List<UiFiction>>(emptyList())
-    private val _isLoading = MutableStateFlow(false)
-    private val _isAppending = MutableStateFlow(false)
-    private val _hasMore = MutableStateFlow(true)
-    private val _error = MutableStateFlow<String?>(null)
-    private var nextPage = 1
-    private val mutex = Mutex()
-
-    override val items: Flow<List<UiFiction>> = _items.asStateFlow()
-    override val isLoading: Flow<Boolean> = _isLoading.asStateFlow()
-    override val isAppending: Flow<Boolean> = _isAppending.asStateFlow()
-    override val hasMore: Flow<Boolean> = _hasMore.asStateFlow()
-    override val error: Flow<String?> = _error.asStateFlow()
-
-    override suspend fun loadNext() = mutex.withLock {
-        if (!_hasMore.value || _isAppending.value || _isLoading.value) return@withLock
-        val isFirst = nextPage == 1
-        if (isFirst) _isLoading.value = true else _isAppending.value = true
-        try {
-            when (val res = fetchPage(nextPage)) {
-                is FictionResult.Success -> {
-                    _items.value = _items.value + res.value.items.map(::toUiFiction)
-                    _hasMore.value = res.value.hasNext
-                    nextPage++
-                    _error.value = null
-                }
-                is FictionResult.Failure -> {
-                    android.util.Log.w("storyvox", "Browse fetch failed: ${res.message}", res.cause)
-                    _error.value = res.message
-                    // do NOT bump nextPage — next near-end retries the same page
-                }
-            }
-        } finally {
-            _isLoading.value = false
-            _isAppending.value = false
-        }
-    }
-
-    override suspend fun refresh() = mutex.withLock {
-        _items.value = emptyList()
-        _hasMore.value = true
-        _error.value = null
-        nextPage = 1
-    }
-}
-
 private fun BrowseFilter.toSearchQuery(): SearchQuery = SearchQuery(
     term = term,
     tags = tagsInclude,
@@ -368,17 +316,6 @@ private fun UiSortDirection.toData(): SortDirection = when (this) {
     UiSortDirection.Asc -> SortDirection.ASC
     UiSortDirection.Desc -> SortDirection.DESC
 }
-
-private fun toUiFiction(s: FictionSummary): UiFiction = UiFiction(
-    id = s.id,
-    title = s.title,
-    author = s.author,
-    coverUrl = s.coverUrl,
-    rating = s.rating ?: 0f,
-    chapterCount = s.chapterCount ?: 0,
-    isOngoing = s.status == FictionStatus.ONGOING,
-    synopsis = s.description.orEmpty(),
-)
 
 /**
  * Adapter from [PlaybackControllerUi] (Aurora's UI contract) to

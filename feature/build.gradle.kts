@@ -36,6 +36,21 @@ android {
             java.srcDirs("src/main/kotlin")
         }
     }
+
+    testOptions {
+        unitTests {
+            // JVM unit tests run against android.jar's stub classes, where
+            // every Android-framework method throws "Method ... not mocked"
+            // by default. RealBrowsePaginator's failure-path calls
+            // android.util.Log.w(...) — production-correct logging that
+            // would otherwise crash JVM tests. Returning defaults for
+            // unmocked Android methods is the standard AGP pattern (see
+            // "Unit testing your app" docs), not lazy mocking — adding
+            // Robolectric just to mock android.util.Log would be heavier
+            // than the surface here justifies.
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 dependencies {
@@ -60,4 +75,5 @@ dependencies {
     implementation(libs.coil.compose)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
