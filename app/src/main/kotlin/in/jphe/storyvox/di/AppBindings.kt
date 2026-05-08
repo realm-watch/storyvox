@@ -235,17 +235,18 @@ private fun relativeTime(epochMs: Long?): String {
 private class RealBrowseRepositoryUi(
     private val repo: FictionRepository,
 ) : BrowseRepositoryUi {
-    override fun paginator(source: BrowseSource): BrowsePaginator =
+    override fun paginator(source: BrowseSource, sourceId: String): BrowsePaginator =
         RealBrowsePaginator { page ->
             when (source) {
-                BrowseSource.Popular -> repo.browsePopular(page = page)
-                BrowseSource.NewReleases -> repo.browseLatest(page = page)
+                BrowseSource.Popular -> repo.browsePopular(page = page, sourceId = sourceId)
+                BrowseSource.NewReleases -> repo.browseLatest(page = page, sourceId = sourceId)
                 BrowseSource.BestRated -> repo.search(
                     SearchQuery(
                         orderBy = SearchOrder.RATING,
                         direction = SortDirection.DESC,
                         page = page,
                     ),
+                    sourceId = sourceId,
                 )
                 is BrowseSource.Search -> repo.search(
                     SearchQuery(
@@ -253,9 +254,11 @@ private class RealBrowseRepositoryUi(
                         orderBy = SearchOrder.RELEVANCE,
                         page = page,
                     ),
+                    sourceId = sourceId,
                 )
                 is BrowseSource.Filtered -> repo.search(
                     source.filter.toSearchQuery().copy(page = page),
+                    sourceId = sourceId,
                 )
             }
         }

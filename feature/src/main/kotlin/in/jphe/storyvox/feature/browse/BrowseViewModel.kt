@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import `in`.jphe.storyvox.data.source.SourceIds
 import `in`.jphe.storyvox.feature.api.BrowseFilter
 import `in`.jphe.storyvox.feature.api.BrowsePaginator
 import `in`.jphe.storyvox.feature.api.BrowseRepositoryUi
@@ -30,8 +31,37 @@ import kotlinx.coroutines.launch
 
 enum class BrowseTab { Popular, NewReleases, BestRated, Search }
 
+/**
+ * Top-level source picker on the Browse screen. Chooses which
+ * `FictionSource` the tabs route to. Royal Road is the default; the
+ * GitHub option surfaces the curated registry from PR #58 via the
+ * existing Popular/NewReleases tabs (BestRated + Search are hidden
+ * on GitHub until step 8b adds /search/repositories integration).
+ */
+enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
+    RoyalRoad(SourceIds.ROYAL_ROAD, "Royal Road"),
+    GitHub(SourceIds.GITHUB, "GitHub"),
+}
+
+/** Tabs that are meaningful for [source]. GitHub registry doesn't
+ *  yet support BestRated (no rating-ordered fetch) or Search (lands
+ *  in step 8b), so those are hidden on GitHub. */
+fun BrowseSourceKey.supportedTabs(): List<BrowseTab> = when (this) {
+    BrowseSourceKey.RoyalRoad -> listOf(
+        BrowseTab.Popular,
+        BrowseTab.NewReleases,
+        BrowseTab.BestRated,
+        BrowseTab.Search,
+    )
+    BrowseSourceKey.GitHub -> listOf(
+        BrowseTab.Popular,
+        BrowseTab.NewReleases,
+    )
+}
+
 @Immutable
 data class BrowseUiState(
+    val sourceKey: BrowseSourceKey = BrowseSourceKey.RoyalRoad,
     val tab: BrowseTab = BrowseTab.Popular,
     val query: String = "",
     val items: List<UiFiction> = emptyList(),
@@ -81,6 +111,7 @@ class BrowseViewModel @Inject constructor(
     private val repo: BrowseRepositoryUi,
 ) : ViewModel() {
 
+    private val _sourceKey = MutableStateFlow(BrowseSourceKey.RoyalRoad)
     private val _tab = MutableStateFlow(BrowseTab.Popular)
     private val _query = MutableStateFlow("")
     private val _filter = MutableStateFlow(BrowseFilter())
@@ -90,12 +121,15 @@ class BrowseViewModel @Inject constructor(
      *  has neither a query nor active filters (the empty search hint is
      *  shown instead). */
     private val paginator: StateFlow<BrowsePaginator?> = combine(
+        _sourceKey,
         _tab,
         _query.debounce(300),
         _filter,
-    ) { tab, q, filter -> resolveSource(tab, q, filter) }
+    ) { sourceKey, tab, q, filter ->
+        resolveSource(tab, q, filter)?.let { source -> source to sourceKey.sourceId }
+    }
         .distinctUntilChanged()
-        .map { source -> source?.let(repo::paginator) }
+        .map { pair -> pair?.let { (source, sourceId) -> repo.paginator(source, sourceId) } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     init {
@@ -113,8 +147,9 @@ class BrowseViewModel @Inject constructor(
         if (p == null) {
             // Empty-search/no-filter: surface a quiet idle state so the
             // screen renders SearchHint rather than the skeleton grid.
-            combine(_tab, _query, _filter) { tab, q, filter ->
+            combine(_sourceKey, _tab, _query, _filter) { sourceKey, tab, q, filter ->
                 BrowseUiState(
+                    sourceKey = sourceKey,
                     tab = tab,
                     query = q,
                     items = emptyList(),
@@ -129,8 +164,9 @@ class BrowseViewModel @Inject constructor(
         } else {
             // Two-step combine: first collapse the paginator's five
             // flows into a typed [PaginatorView], then merge with the
-            // tab/query/filter trio. Keeps each combine within the
-            // 5-arg comfort zone and avoids positional `vals[i]` casts.
+            // sourceKey/tab/query/filter quartet. Keeps each combine
+            // within the 5-arg comfort zone and avoids positional
+            // `vals[i]` casts.
             val paginatorView = combine(
                 p.items,
                 p.isLoading,
@@ -140,8 +176,10 @@ class BrowseViewModel @Inject constructor(
             ) { items, loading, appending, more, error ->
                 PaginatorView(items, loading, appending, more, error)
             }
-            combine(paginatorView, _tab, _query, _filter) { view, tab, q, filter ->
+            combine(paginatorView, _sourceKey, _tab, _query, _filter) {
+                view, sourceKey, tab, q, filter ->
                 BrowseUiState(
+                    sourceKey = sourceKey,
                     tab = tab,
                     query = q,
                     items = view.items,
@@ -155,6 +193,23 @@ class BrowseViewModel @Inject constructor(
             }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BrowseUiState())
+
+    fun selectSource(key: BrowseSourceKey) {
+        if (_sourceKey.value == key) return
+        _sourceKey.value = key
+        // If the previously-selected tab isn't supported on the new
+        // source (e.g. user was on BestRated/Search on RR and switches
+        // to GitHub), snap to Popular so the screen has something
+        // sensible to render. Filters are RR-shaped and don't apply
+        // to GitHub yet, so reset them too.
+        if (_tab.value !in key.supportedTabs()) {
+            _tab.value = BrowseTab.Popular
+        }
+        if (key == BrowseSourceKey.GitHub) {
+            _filter.value = BrowseFilter()
+            _query.value = ""
+        }
+    }
 
     fun selectTab(tab: BrowseTab) { _tab.value = tab }
     fun setQuery(q: String) { _query.value = q }

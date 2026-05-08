@@ -86,10 +86,20 @@ interface FictionRepositoryUi {
 }
 
 interface BrowseRepositoryUi {
-    /** Build a paginator for the given browse source. Callers consume
-     *  `items` / `isLoading` / `isAppending` / `hasMore` as Flows and call
-     *  `loadNext()` on initial composition + on near-end scroll. */
-    fun paginator(source: BrowseSource): BrowsePaginator
+    /**
+     * Build a paginator for the given browse [source] against the
+     * named [sourceId]. Callers consume `items` / `isLoading` /
+     * `isAppending` / `hasMore` as Flows and call `loadNext()` on
+     * initial composition + on near-end scroll.
+     *
+     * [sourceId] defaults to `royalroad` for backward compatibility
+     * with existing call sites; the BrowseScreen source-picker UI
+     * passes `github` when the user has chosen the GitHub tab.
+     */
+    fun paginator(
+        source: BrowseSource,
+        sourceId: String = `in`.jphe.storyvox.data.source.SourceIds.ROYAL_ROAD,
+    ): BrowsePaginator
 }
 
 /** What kind of listing the paginator should fetch. The repository
