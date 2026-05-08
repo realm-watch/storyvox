@@ -388,9 +388,12 @@ private fun PlayerOptionsSheet(
             value = state.pitch,
             onValueChange = onSetPitch,
             onValueChangeFinished = { onPersistPitch(state.pitch) },
-            // Narration-friendly band: anything beyond ±15% sounds robotic.
-            valueRange = 0.85f..1.15f,
-            steps = 29, // 0.01 per step
+            // Narration-friendly band — matches Settings → Reading. Widened
+            // from 0.85..1.15 (Thalia's VoxSherpa P0 #1, 2026-05-08) for
+            // narrator-baritone headroom. Hard floor at 0.6 — below ~0.7
+            // Sonic introduces audible artifacts on Piper-medium voices.
+            valueRange = 0.6f..1.4f,
+            steps = 79, // 0.01 per step
         )
 
         SheetHeader("Sleep timer", null)
