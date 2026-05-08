@@ -6,7 +6,7 @@ import `in`.jphe.storyvox.data.repository.ChapterRepository
 import `in`.jphe.storyvox.data.repository.playback.PlaybackChapter
 import `in`.jphe.storyvox.data.source.model.ChapterContent
 import `in`.jphe.storyvox.data.source.model.ChapterInfo
-import `in`.jphe.storyvox.feature.api.PunctuationPause
+import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_DEFAULT_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiSettings
@@ -149,7 +149,7 @@ class RealPlaybackControllerUiTest {
         downloadOnWifiOnly = false,
         pollIntervalHours = 6,
         isSignedIn = false,
-        punctuationPause = PunctuationPause.Normal,
+        punctuationPauseMultiplier = PUNCTUATION_PAUSE_DEFAULT_MULTIPLIER,
     )
 
     /**
@@ -210,12 +210,21 @@ class RealPlaybackControllerUiTest {
         override suspend fun setDefaultVoice(voiceId: String?) = Unit
         override suspend fun setDownloadOnWifiOnly(enabled: Boolean) = Unit
         override suspend fun setPollIntervalHours(hours: Int) = Unit
-        override suspend fun setPunctuationPause(mode: PunctuationPause) = Unit
+        override suspend fun setPunctuationPauseMultiplier(multiplier: Float) = Unit
         override suspend fun setPlaybackBufferChunks(chunks: Int) = Unit
         override suspend fun setWarmupWait(enabled: Boolean) = Unit
         override suspend fun setCatchupPause(enabled: Boolean) = Unit
         override suspend fun signIn() = Unit
         override suspend fun signOut() = Unit
+        // Memory Palace stubs (#79) — playback-controller-test fixture
+        // doesn't exercise the palace surface; keep them no-op + return
+        // NotConfigured.
+        override suspend fun setPalaceHost(host: String) = Unit
+        override suspend fun setPalaceApiKey(apiKey: String) = Unit
+        override suspend fun clearPalaceConfig() = Unit
+        override suspend fun testPalaceConnection():
+            `in`.jphe.storyvox.feature.api.PalaceProbeResult =
+            `in`.jphe.storyvox.feature.api.PalaceProbeResult.NotConfigured
     }
 
     /** Chapter repo never invoked by the speed/pitch path under test. */

@@ -140,6 +140,14 @@ class SettingsViewModelModesTest {
         }
         override suspend fun signIn() = Unit
         override suspend fun signOut() = Unit
+        // Memory Palace stubs (#79) — modes-test fixture doesn't exercise
+        // the palace surface; keep them no-op + return NotConfigured.
+        override suspend fun setPalaceHost(host: String) = Unit
+        override suspend fun setPalaceApiKey(apiKey: String) = Unit
+        override suspend fun clearPalaceConfig() = Unit
+        override suspend fun testPalaceConnection():
+            `in`.jphe.storyvox.feature.api.PalaceProbeResult =
+            `in`.jphe.storyvox.feature.api.PalaceProbeResult.NotConfigured
     }
 
     private class FakeVoiceProvider : VoiceProviderUi {
