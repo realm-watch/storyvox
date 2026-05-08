@@ -1,7 +1,7 @@
 package `in`.jphe.storyvox.playback.voice
 
 object VoiceCatalog {
-    val voices: List<CatalogEntry> = piperEntries() + kokoroEntries()
+    val voices: List<CatalogEntry> = piperEntries() + kokoroEntries() + azureEntries()
     fun byId(id: String): CatalogEntry? = voices.firstOrNull { it.id == id }
 
     /** The three voices we hand-picked as the strongest starters. Surfaced
@@ -633,7 +633,132 @@ object VoiceCatalog {
             kokoro("kokoro_yunyang_zh_CN_52", "🇨🇳 Yunyang (Chinese Male)", "zh_CN", 52),
         )
     }
+
+    /**
+     * Azure Speech Services HD voices — cloud-rendered TTS over HTTPS,
+     * BYOK (user pastes their Azure resource key into Settings →
+     * Sources → Azure). [Solara's spec](docs/superpowers/specs/2026-05-08-azure-hd-voices-design.md)
+     * recommends a hardcoded curated list for v1; the full ~400-voice
+     * Azure roster is fetchable via `voices/list` but most users only
+     * want the obvious picks.
+     *
+     * Curated set: Dragon HD voices (the 2025 generative tier — best
+     * quality Azure offers) + a handful of HD Neural multilingual
+     * voices for accent variety. en-US dominates because that's the
+     * primary user locale; en-GB Sonia covers British English.
+     *
+     * `sizeBytes = 0` because there's no per-voice download — the model
+     * lives on Azure's side.
+     *
+     * `region = "eastus"` is the default region. Per Solara's open
+     * question #3 the user can change it in Settings; the catalog
+     * entry's region is the activation default. The actual region
+     * used at runtime is read from `AzureCredentials.region()`, not
+     * from this catalog field — the catalog default just seeds the
+     * `EngineType.Azure` discriminator with a non-empty region for
+     * code paths that key on it before the user opens Settings.
+     *
+     * Pricing: $30/1M chars (3000¢) for both Dragon HD and HD Neural
+     * voices. Azure's F0 free tier covers 500K chars/month for HD.
+     * Pricing-page estimate as of 2026-05-08; flagged for verification
+     * at GA. If pricing churns, edit one constant — the picker chip,
+     * the cost-disclosure modal, and the per-chapter hint all read
+     * from `cost`.
+     *
+     * **PR-1 (this PR) ships the catalog entries.** The picker
+     * surfaces them in a "Cloud — Azure" section but rows are
+     * unselectable until PR-4 lands the engine wiring (Solara's plan).
+     * That keeps the layout reviewable in isolation without
+     * exercising the cloud round-trip path.
+     */
+    private fun azureEntries(): List<CatalogEntry> {
+        val cost = VoiceCost(centsPer1MChars = 3000, billedBy = "Azure")
+        val defaultRegion = "eastus"
+        fun azure(id: String, displayName: String, language: String, voiceName: String) =
+            CatalogEntry(
+                id = id,
+                displayName = displayName,
+                language = language,
+                sizeBytes = 0L,
+                qualityLevel = QualityLevel.Studio,
+                engineType = EngineType.Azure(voiceName, defaultRegion),
+                piper = null,
+                cost = cost,
+            )
+        return listOf(
+            // Dragon HD — Azure's 2025 generative tier. Highest quality.
+            azure(
+                "azure_ava_en_US_dragon_hd",
+                "☁️ Ava (Dragon HD)",
+                "en_US",
+                "en-US-AvaDragonHDLatestNeural",
+            ),
+            azure(
+                "azure_andrew_en_US_dragon_hd",
+                "☁️ Andrew (Dragon HD)",
+                "en_US",
+                "en-US-AndrewDragonHDLatestNeural",
+            ),
+            // HD Neural multilingual — broad accent + cross-language coverage.
+            azure(
+                "azure_aria_en_US_hd",
+                "☁️ Aria (HD Neural)",
+                "en_US",
+                "en-US-AriaNeural",
+            ),
+            azure(
+                "azure_jenny_en_US_hd",
+                "☁️ Jenny (HD Neural)",
+                "en_US",
+                "en-US-JennyMultilingualNeural",
+            ),
+            azure(
+                "azure_sonia_en_GB_hd",
+                "☁️ Sonia (HD Neural, British)",
+                "en_GB",
+                "en-GB-SoniaNeural",
+            ),
+        )
+    }
 }
 
-data class CatalogEntry(val id: String, val displayName: String, val language: String, val sizeBytes: Long, val qualityLevel: QualityLevel, val engineType: EngineType, val piper: PiperPaths?)
+data class CatalogEntry(
+    val id: String,
+    val displayName: String,
+    val language: String,
+    val sizeBytes: Long,
+    val qualityLevel: QualityLevel,
+    val engineType: EngineType,
+    val piper: PiperPaths?,
+    /**
+     * Per-voice billing rate for cloud engines. `null` for local
+     * engines (Piper, Kokoro) — no per-character cost.
+     *
+     * Surfaces in the picker as a small annotation chip beneath the
+     * display name (e.g. "$30 / 1M chars · Azure"), and feeds the
+     * first-time cost-disclosure modal that fires when a user picks
+     * an Azure voice for the first time. Single source of truth for
+     * cost numbers — bumping a provider's published price is a
+     * one-line change here, not a UI hunt.
+     */
+    val cost: VoiceCost? = null,
+)
+
 data class PiperPaths(val onnxUrl: String, val tokensUrl: String)
+
+/**
+ * Per-million-character billing for a cloud TTS voice. Stored as
+ * integer cents to avoid floating-point cost arithmetic — the picker
+ * formats the chip ("$30 / 1M chars · $billedBy") and the per-chapter
+ * estimate computes `chars × centsPer1MChars / 1_000_000` cents, which
+ * stays an integer until the final display.
+ *
+ * [billedBy] surfaces the provider name in the cost disclosure modal
+ * ("You pay $billedBy directly — storyvox does not bill you.") so the
+ * trust-boundary statement reads naturally regardless of which cloud
+ * provider the entry routes to.
+ */
+data class VoiceCost(
+    val centsPer1MChars: Int,
+    val billedBy: String,
+)

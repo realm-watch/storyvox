@@ -1,0 +1,132 @@
+package `in`.jphe.storyvox.source.azure
+
+import android.util.Log
+import `in`.jphe.storyvox.playback.tts.source.EngineStreamingSource
+import `in`.jphe.storyvox.playback.voice.EngineType
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Cloud TTS engine handle. Adapts [AzureSpeechClient] to the same
+ * [EngineStreamingSource.VoiceEngineHandle] contract Piper and
+ * Kokoro implement, so `EnginePlayer` can plug Azure in via the
+ * existing producer/consumer pipeline with **zero refactor of the
+ * engine seam**.
+ *
+ * The contract is "give me PCM for this sentence text, return null
+ * to skip"; we satisfy it via an HTTPS round-trip to Azure instead
+ * of a JNI call into a local model. Producer queue, consumer
+ * AudioTrack, sentence highlighting, PCM cache — all unchanged.
+ *
+ * **Stateless across sentences.** Each [synthesize] call is its own
+ * HTTPS request; OkHttp's connection pool reuses the TLS session,
+ * so steady-state cost is one round-trip per sentence. There's no
+ * "engine warm-up" path equivalent to Kokoro's 30-second model load
+ * — first-sentence latency is one round-trip, ~150–400 ms on
+ * residential WiFi.
+ *
+ * **Wired in PR-2; activated in PR-4.** This class compiles and runs,
+ * and is unit-tested below; but `EnginePlayer.activeVoiceEngineHandle`
+ * doesn't yet route `EngineType.Azure` to it. PR-4 in Solara's plan
+ * is the one-line switch that wires this engine into the pipeline.
+ *
+ * **Error mapping.** [AzureError] thrown by the client surfaces as a
+ * null PCM return — the existing producer skip-and-keep-going branch
+ * handles "this sentence had no PCM". PR-5 wires the auth-error case
+ * to `stopPlaybackPipeline()` (no point synthesizing further sentences
+ * with a bad key) plus a side-channel `PlaybackState.error` update.
+ * For PR-2 we just log the error type and return null — the loud
+ * guard message tells the next dev to come back here when PR-5 lands.
+ */
+@Singleton
+open class AzureVoiceEngine @Inject constructor(
+    private val client: AzureSpeechClient,
+    private val credentials: AzureCredentials,
+) {
+
+    /** Sample rate of synthesized PCM. Constant — every Azure HD
+     *  voice we request goes through with the 24 kHz output format
+     *  (see [AzureSpeechClient.SAMPLE_RATE_HZ]). The engine handle
+     *  surfaces this to AudioTrack on voice swap. */
+    val sampleRate: Int = AzureSpeechClient.SAMPLE_RATE_HZ
+
+    /**
+     * Synthesize one sentence to PCM via Azure.
+     *
+     * Returns the raw PCM bytes on success. Returns null when:
+     * - The sentence is blank (no point round-tripping for whitespace).
+     * - Credentials are missing — the client throws AuthFailed; we
+     *   swallow into null so the producer's skip path keeps going.
+     *   PR-5 elevates this to `stopPlaybackPipeline()` because every
+     *   subsequent sentence will fail the same way.
+     * - Any other [AzureError] — also swallowed to null in PR-2;
+     *   PR-5 routes throttles, server errors, and network failures
+     *   to the appropriate `PlaybackState.error` types and the
+     *   offline-fallback path.
+     *
+     * @param text the sentence to synthesize.
+     * @param engineType the active [EngineType.Azure] descriptor.
+     *                   The voice name comes from here, not from the
+     *                   credentials store; the credentials store
+     *                   knows region+key, but voice is a per-render
+     *                   choice (the user can voice-swap between Azure
+     *                   voices without re-pasting the key).
+     * @param speed   storyvox speed multiplier; mapped to SSML rate.
+     * @param pitch   storyvox pitch multiplier; mapped to SSML pitch.
+     */
+    open fun synthesize(
+        text: String,
+        engineType: EngineType.Azure,
+        speed: Float,
+        pitch: Float,
+    ): ByteArray? {
+        if (text.isBlank()) return null
+        if (!credentials.isConfigured) {
+            Log.w(TAG, "Azure synth requested but credentials not configured")
+            return null
+        }
+        val ssml = AzureSsmlBuilder.build(
+            text = text,
+            voiceName = engineType.voiceName,
+            speed = speed,
+            pitch = pitch,
+        )
+        return try {
+            client.synthesize(ssml)
+        } catch (e: AzureError) {
+            // PR-5 elevates these into PlaybackState.error so the UI
+            // can react (offline fallback, re-paste-key prompt). For
+            // PR-2 we log the type and return null so the producer's
+            // existing skip branch handles it without crashing.
+            Log.w(TAG, "Azure synth failed: ${e::class.java.simpleName}: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Hot-swap-friendly view of this engine as the
+     * [EngineStreamingSource.VoiceEngineHandle] the existing producer
+     * loop wraps. Captures [engineType] at handle-construction time;
+     * [EnginePlayer.startPlaybackPipeline] reconstructs the handle on
+     * voice swap, so the captured engineType always matches the
+     * pipeline's current voice.
+     *
+     * **Currently unused.** PR-4 calls this from
+     * `EnginePlayer.activeVoiceEngineHandle(EngineType.Azure)`. We
+     * ship the adapter in PR-2 so PR-4 is a one-line change to the
+     * `when` block; the seam stays test-friendly here.
+     */
+    fun asEngineHandle(engineType: EngineType.Azure): EngineStreamingSource.VoiceEngineHandle =
+        object : EngineStreamingSource.VoiceEngineHandle {
+            override val sampleRate: Int = this@AzureVoiceEngine.sampleRate
+            override fun generateAudioPCM(
+                text: String,
+                speed: Float,
+                pitch: Float,
+            ): ByteArray? = synthesize(text, engineType, speed, pitch)
+        }
+
+    private companion object {
+        const val TAG = "AzureVoiceEngine"
+    }
+}

@@ -119,6 +119,26 @@ class VoiceLibraryViewModel @Inject constructor(
     }
 
     fun onRowTapped(voice: UiVoiceInfo) {
+        // Azure voices have no downloadable assets and no activation
+        // path until PR-4 (Solara's plan) wires the engine. Showing
+        // them in the picker is intentional — see [VoiceCatalog.azureEntries] —
+        // but tapping must surface a "Coming soon" message rather than
+        // entering download() (which throws by design — VoiceManager
+        // rejects Azure download attempts so a future regression in
+        // this branch can't quietly start hammering Azure for a
+        // missing model).
+        //
+        // The friendly error is the right shape for PR-1: users see
+        // the new section and learn it's coming, but no crash, no
+        // surprising download progress bar, no half-baked Settings
+        // detour. PR-3 lands the Settings UI; PR-4 replaces this
+        // branch with `activate(voice.id)`.
+        if (voice.engineType is EngineType.Azure) {
+            _error.value =
+                "Azure cloud voices arrive in a follow-up update. " +
+                "(See issue #85.)"
+            return
+        }
         if (voice.isInstalled) activate(voice.id) else download(voice.id)
     }
 
@@ -191,12 +211,18 @@ class VoiceLibraryViewModel @Inject constructor(
  *  underlying [EngineType] is sealed and Kokoro carries a speakerId we
  *  don't want to key on, so we collapse to a tag-only enum here. Order
  *  matters: this is the outer iteration order in [groupByEngineThenTier]
- *  — Piper section first, then Kokoro. */
-enum class VoiceEngine { Piper, Kokoro }
+ *  — Piper section first, then Kokoro, then Azure. Azure goes last
+ *  intentionally per Solara's spec — Local engines (no cost, no network)
+ *  surface above the cloud section, even though Azure's quality tier is
+ *  Studio. The visual cue (engine header) matters more than the tier
+ *  sort here: users should reach for a free local voice before
+ *  considering a paid cloud voice. */
+enum class VoiceEngine { Piper, Kokoro, Azure }
 
 private fun UiVoiceInfo.voiceEngine(): VoiceEngine = when (engineType) {
     is EngineType.Piper -> VoiceEngine.Piper
     is EngineType.Kokoro -> VoiceEngine.Kokoro
+    is EngineType.Azure -> VoiceEngine.Azure
 }
 
 /** Tier order **within Piper** — ascending (Low → Medium → High). Piper
@@ -222,16 +248,29 @@ private val KOKORO_TIER_ORDER: List<QualityLevel> = listOf(
     QualityLevel.Low,
 )
 
+/** Tier order **within Azure** — every Azure HD voice we ship is
+ *  Studio tier. Other levels are listed for completeness in case the
+ *  curated list ever spans more than one tier (e.g. a "good enough"
+ *  cheap Neural alongside Dragon HD). */
+private val AZURE_TIER_ORDER: List<QualityLevel> = listOf(
+    QualityLevel.Studio,
+    QualityLevel.High,
+    QualityLevel.Medium,
+    QualityLevel.Low,
+)
+
 private fun tierOrderFor(engine: VoiceEngine): List<QualityLevel> = when (engine) {
     VoiceEngine.Piper -> PIPER_TIER_ORDER
     VoiceEngine.Kokoro -> KOKORO_TIER_ORDER
+    VoiceEngine.Azure -> AZURE_TIER_ORDER
 }
 
-/** Engine display order — Piper section first, Kokoro second. Drives
- *  outer iteration order of [groupByEngineThenTier]. */
+/** Engine display order — Piper section first, Kokoro second, Azure
+ *  third. Drives outer iteration order of [groupByEngineThenTier]. */
 private val ENGINE_DISPLAY_ORDER: List<VoiceEngine> = listOf(
     VoiceEngine.Piper,
     VoiceEngine.Kokoro,
+    VoiceEngine.Azure,
 )
 
 /** Group a list of voices first by [VoiceEngine] then by
