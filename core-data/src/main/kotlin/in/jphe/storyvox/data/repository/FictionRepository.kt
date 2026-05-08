@@ -7,6 +7,7 @@ import `in`.jphe.storyvox.data.db.entity.ChapterDownloadState
 import `in`.jphe.storyvox.data.db.entity.DownloadMode
 import `in`.jphe.storyvox.data.db.entity.Fiction
 import `in`.jphe.storyvox.data.source.FictionSource
+import `in`.jphe.storyvox.data.source.SourceIds
 import `in`.jphe.storyvox.data.source.UrlRouter
 import `in`.jphe.storyvox.data.source.model.ChapterInfo
 import `in`.jphe.storyvox.data.source.model.FictionDetail
@@ -33,11 +34,36 @@ interface FictionRepository {
     fun observeFollowsRemote(): Flow<List<FictionSummary>>
     fun observeFiction(id: String): Flow<FictionDetail?>
 
-    suspend fun browsePopular(page: Int): FictionResult<ListPage<FictionSummary>>
-    suspend fun browseLatest(page: Int): FictionResult<ListPage<FictionSummary>>
-    suspend fun browseByGenre(genre: String, page: Int): FictionResult<ListPage<FictionSummary>>
-    suspend fun search(query: SearchQuery): FictionResult<ListPage<FictionSummary>>
-    suspend fun genres(): FictionResult<List<String>>
+    /**
+     * Browse the popular fictions on [sourceId]. Defaults to
+     * [SourceIds.ROYAL_ROAD] for backwards-compat with existing
+     * callers; UI surfaces that route to other sources (e.g.
+     * Browse → GitHub) pass the chosen sourceId explicitly.
+     */
+    suspend fun browsePopular(
+        page: Int,
+        sourceId: String = SourceIds.ROYAL_ROAD,
+    ): FictionResult<ListPage<FictionSummary>>
+
+    suspend fun browseLatest(
+        page: Int,
+        sourceId: String = SourceIds.ROYAL_ROAD,
+    ): FictionResult<ListPage<FictionSummary>>
+
+    suspend fun browseByGenre(
+        genre: String,
+        page: Int,
+        sourceId: String = SourceIds.ROYAL_ROAD,
+    ): FictionResult<ListPage<FictionSummary>>
+
+    suspend fun search(
+        query: SearchQuery,
+        sourceId: String = SourceIds.ROYAL_ROAD,
+    ): FictionResult<ListPage<FictionSummary>>
+
+    suspend fun genres(
+        sourceId: String = SourceIds.ROYAL_ROAD,
+    ): FictionResult<List<String>>
 
     /** Force a detail-page refresh, upserting the cached row. */
     suspend fun refreshDetail(id: String): FictionResult<Unit>
@@ -93,19 +119,15 @@ class FictionRepositoryImpl @Inject constructor(
 ) : FictionRepository {
 
     /**
-     * Resolves a [FictionSource] by [sourceId]. When [sourceId] is null or
-     * not bound, falls back to the only source in the map — preserves
-     * single-source behaviour today and short-circuits the catalog calls
-     * (browse, search, genres) that don't yet have a per-source UX. Errors
-     * if multiple sources are bound and the key is missing/unknown — that's
-     * a programming bug we want to catch loudly when GitHub source lands.
+     * Resolves a [FictionSource] by [sourceId]. Errors loudly if the
+     * key isn't bound — callers either pass a known sourceId from
+     * [SourceIds] or look one up from a persisted Fiction row. The
+     * old "fall back to the only source" behaviour from #35 was
+     * removed in step 8a-i now that multiple sources are bound.
      */
-    private fun sourceFor(sourceId: String?): FictionSource =
-        sourceId?.let { sources[it] }
-            ?: sources.values.singleOrNull()
+    private fun sourceFor(sourceId: String): FictionSource =
+        sources[sourceId]
             ?: error("No FictionSource for id=$sourceId; bound: ${sources.keys}")
-
-    private val source: FictionSource get() = sourceFor(null)
 
     override fun observeLibrary(): Flow<List<FictionSummary>> =
         fictionDao.observeLibrary().map { rows -> rows.map { it.toSummary() } }
@@ -129,19 +151,33 @@ class FictionRepositoryImpl @Inject constructor(
             }
         }
 
-    override suspend fun browsePopular(page: Int): FictionResult<ListPage<FictionSummary>> =
-        cacheListing(source.popular(page))
+    override suspend fun browsePopular(
+        page: Int,
+        sourceId: String,
+    ): FictionResult<ListPage<FictionSummary>> =
+        cacheListing(sourceFor(sourceId).popular(page))
 
-    override suspend fun browseLatest(page: Int): FictionResult<ListPage<FictionSummary>> =
-        cacheListing(source.latestUpdates(page))
+    override suspend fun browseLatest(
+        page: Int,
+        sourceId: String,
+    ): FictionResult<ListPage<FictionSummary>> =
+        cacheListing(sourceFor(sourceId).latestUpdates(page))
 
-    override suspend fun browseByGenre(genre: String, page: Int): FictionResult<ListPage<FictionSummary>> =
-        cacheListing(source.byGenre(genre, page))
+    override suspend fun browseByGenre(
+        genre: String,
+        page: Int,
+        sourceId: String,
+    ): FictionResult<ListPage<FictionSummary>> =
+        cacheListing(sourceFor(sourceId).byGenre(genre, page))
 
-    override suspend fun search(query: SearchQuery): FictionResult<ListPage<FictionSummary>> =
-        cacheListing(source.search(query))
+    override suspend fun search(
+        query: SearchQuery,
+        sourceId: String,
+    ): FictionResult<ListPage<FictionSummary>> =
+        cacheListing(sourceFor(sourceId).search(query))
 
-    override suspend fun genres(): FictionResult<List<String>> = source.genres()
+    override suspend fun genres(sourceId: String): FictionResult<List<String>> =
+        sourceFor(sourceId).genres()
 
     override suspend fun refreshDetail(id: String): FictionResult<Unit> = withContext(Dispatchers.IO) {
         // Look up the persisted row to route to the correct source. Falls
@@ -149,7 +185,7 @@ class FictionRepositoryImpl @Inject constructor(
         // addToLibrary → refreshDetail before the row exists). Future
         // multi-source addByUrl pre-writes a stub row with sourceId so this
         // path always finds it.
-        val src = sourceFor(fictionDao.get(id)?.sourceId)
+        val src = sourceFor(fictionDao.get(id)?.sourceId ?: SourceIds.ROYAL_ROAD)
         when (val result = src.fictionDetail(id)) {
             is FictionResult.Success -> {
                 upsertDetail(result.value)
@@ -160,7 +196,11 @@ class FictionRepositoryImpl @Inject constructor(
     }
 
     override suspend fun refreshRemoteFollows(): FictionResult<Unit> = withContext(Dispatchers.IO) {
-        when (val result = source.followsList(page = 1)) {
+        // Follows is RR-only today — GitHub source throws on
+        // `followsList`. When step 3f wires GitHub PAT auth, this
+        // becomes a per-source flow and the kdoc on the interface
+        // method should grow a `sourceId` parameter to match.
+        when (val result = sourceFor(SourceIds.ROYAL_ROAD).followsList(page = 1)) {
             is FictionResult.Success -> {
                 val now = System.currentTimeMillis()
                 val incoming = result.value.items
@@ -226,7 +266,7 @@ class FictionRepositoryImpl @Inject constructor(
 
     override suspend fun setFollowedRemote(id: String, followed: Boolean): FictionResult<Unit> =
         withContext(Dispatchers.IO) {
-            val src = sourceFor(fictionDao.get(id)?.sourceId)
+            val src = sourceFor(fictionDao.get(id)?.sourceId ?: SourceIds.ROYAL_ROAD)
             when (val r = src.setFollowed(id, followed)) {
                 is FictionResult.Success -> {
                     fictionDao.setFollowedRemote(id, followed)
