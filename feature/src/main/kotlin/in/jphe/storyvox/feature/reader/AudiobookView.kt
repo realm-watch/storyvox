@@ -184,10 +184,22 @@ fun AudiobookView(
                 color = if (state.fictionTitle.isBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
             )
             Text(
+                // Issue #166 — when we have a chapter title, KEEP it visible
+                // through warmup / mid-chapter buffering instead of replacing
+                // it with the state label. The user just tapped a specific
+                // chapter and needs that confirmation while audio loads;
+                // replacing it costs them their tap-context confirmation
+                // during the exact 3-15s window that mistake-recovery
+                // matters most. Spinner state is already conveyed two
+                // separate ways (the play-button ring + BrassProgressTrack's
+                // `loading = showSpinner`), so the subtitle text doesn't
+                // need to carry it alone. When title is present + we're in
+                // a state tail, append the state to the title with a "·"
+                // separator so the user gets both pieces of information.
                 when {
                     state.chapterTitle.isBlank() -> "Loading voice + chapter text"
-                    warmingUp -> "Voice waking up…"
-                    state.isBuffering -> "Buffering…"
+                    warmingUp -> "${state.chapterTitle} · Voice waking up…"
+                    state.isBuffering -> "${state.chapterTitle} · Buffering…"
                     else -> state.chapterTitle
                 },
                 style = MaterialTheme.typography.bodyMedium,
