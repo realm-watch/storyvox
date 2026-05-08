@@ -1,15 +1,24 @@
 package `in`.jphe.storyvox.source.github
 
+import `in`.jphe.storyvox.data.source.SourceIds
 import `in`.jphe.storyvox.data.source.model.FictionResult
+import `in`.jphe.storyvox.data.source.model.FictionStatus
+import `in`.jphe.storyvox.source.github.model.GhContent
+import `in`.jphe.storyvox.source.github.model.GhOwner
+import `in`.jphe.storyvox.source.github.model.GhRepo
 import `in`.jphe.storyvox.source.github.net.GitHubApi
+import `in`.jphe.storyvox.source.github.net.GitHubApiResult
 import `in`.jphe.storyvox.source.github.registry.Registry
 import `in`.jphe.storyvox.source.github.registry.RegistryEntry
+import `in`.jphe.storyvox.source.github.render.MarkdownChapterRenderer
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Base64
 
 /**
  * Tests cover:
@@ -17,14 +26,18 @@ import org.junit.Test
  *    UrlRouter routing and UI surface strings.
  *  - Browse calls (popular/latestUpdates/byGenre/genres) wired to the
  *    [Registry] as of step 3c — sort/filter/distinct semantics.
- *  - Stubs that *should* still throw (search, fictionDetail, chapter,
- *    followsList, setFollowed) — accidental Hilt binding before the
- *    next steps fill these in must fail loudly, not return empty.
+ *  - Detail (`fictionDetail`) wired to `GitHubApi` + `ManifestParser`
+ *    as of step 3d-detail-and-chapter — repo + manifest fetch, mapping
+ *    to FictionDetail, error path forwarding.
+ *  - Chapter (`chapter`) wired to `GitHubApi` + `MarkdownChapterRenderer`
+ *    as of step 3d-detail-and-chapter — base64 decode, markdown render.
+ *  - Stubs that *should* still throw (search, followsList, setFollowed) —
+ *    accidental Hilt binding for those surfaces must fail loudly.
  */
 class GitHubSourceTest {
 
     @Test fun `sourceId is the stable github key`() {
-        assertEquals("github", source().id)
+        assertEquals(SourceIds.GITHUB, source().id)
     }
 
     @Test fun `displayName surfaces in UI strings and is stable`() {
@@ -33,15 +46,15 @@ class GitHubSourceTest {
 
     @Test fun `popular returns featured entries first, registry order within bands`() {
         val src = source(
-            entry("github:o/a", title = "A", featured = false),
-            entry("github:o/b", title = "B", featured = true),
-            entry("github:o/c", title = "C", featured = false),
-            entry("github:o/d", title = "D", featured = true),
+            entries = listOf(
+                entry("github:o/a", title = "A", featured = false),
+                entry("github:o/b", title = "B", featured = true),
+                entry("github:o/c", title = "C", featured = false),
+                entry("github:o/d", title = "D", featured = true),
+            ),
         )
         val r = runBlocking { src.popular() } as FictionResult.Success
         val ids = r.value.items.map { it.id }
-        // Featured (B, D) before non-featured (A, C); within each band
-        // the curator's authored order is preserved.
         assertEquals(listOf("github:o/b", "github:o/d", "github:o/a", "github:o/c"), ids)
         assertEquals(1, r.value.page)
         assertEquals(false, r.value.hasNext)
@@ -49,21 +62,27 @@ class GitHubSourceTest {
 
     @Test fun `latestUpdates sorts by addedAt descending, missing dates last`() {
         val src = source(
-            entry("github:o/a", title = "A", addedAt = "2026-01-01"),
-            entry("github:o/b", title = "B", addedAt = "2026-05-06"),
-            entry("github:o/c", title = "C", addedAt = null),
-            entry("github:o/d", title = "D", addedAt = "2026-03-15"),
+            entries = listOf(
+                entry("github:o/a", title = "A", addedAt = "2026-01-01"),
+                entry("github:o/b", title = "B", addedAt = "2026-05-06"),
+                entry("github:o/c", title = "C", addedAt = null),
+                entry("github:o/d", title = "D", addedAt = "2026-03-15"),
+            ),
         )
         val r = runBlocking { src.latestUpdates() } as FictionResult.Success
-        val ids = r.value.items.map { it.id }
-        assertEquals(listOf("github:o/b", "github:o/d", "github:o/a", "github:o/c"), ids)
+        assertEquals(
+            listOf("github:o/b", "github:o/d", "github:o/a", "github:o/c"),
+            r.value.items.map { it.id },
+        )
     }
 
     @Test fun `byGenre matches tags case-insensitively and trims input`() {
         val src = source(
-            entry("github:o/a", title = "A", tags = listOf("fantasy", "litrpg")),
-            entry("github:o/b", title = "B", tags = listOf("sci-fi")),
-            entry("github:o/c", title = "C", tags = listOf("FANTASY")),
+            entries = listOf(
+                entry("github:o/a", title = "A", tags = listOf("fantasy", "litrpg")),
+                entry("github:o/b", title = "B", tags = listOf("sci-fi")),
+                entry("github:o/c", title = "C", tags = listOf("FANTASY")),
+            ),
         )
         val r = runBlocking { src.byGenre("  Fantasy  ") } as FictionResult.Success
         assertEquals(setOf("github:o/a", "github:o/c"), r.value.items.map { it.id }.toSet())
@@ -71,8 +90,10 @@ class GitHubSourceTest {
 
     @Test fun `byGenre with blank input returns the full registry`() {
         val src = source(
-            entry("github:o/a", title = "A", tags = listOf("fantasy")),
-            entry("github:o/b", title = "B", tags = listOf("sci-fi")),
+            entries = listOf(
+                entry("github:o/a", title = "A", tags = listOf("fantasy")),
+                entry("github:o/b", title = "B", tags = listOf("sci-fi")),
+            ),
         )
         val r = runBlocking { src.byGenre("   ") } as FictionResult.Success
         assertEquals(2, r.value.items.size)
@@ -80,15 +101,17 @@ class GitHubSourceTest {
 
     @Test fun `genres returns deduplicated lowercase union of tags`() {
         val src = source(
-            entry("github:o/a", title = "A", tags = listOf("Fantasy", "litrpg")),
-            entry("github:o/b", title = "B", tags = listOf("FANTASY", "Sci-Fi")),
+            entries = listOf(
+                entry("github:o/a", title = "A", tags = listOf("Fantasy", "litrpg")),
+                entry("github:o/b", title = "B", tags = listOf("FANTASY", "Sci-Fi")),
+            ),
         )
         val r = runBlocking { src.genres() } as FictionResult.Success
         assertEquals(listOf("fantasy", "litrpg", "sci-fi"), r.value)
     }
 
     @Test fun `page 2 short-circuits to empty hasNext-false page`() {
-        val src = source(entry("github:o/a", title = "A"))
+        val src = source(entries = listOf(entry("github:o/a", title = "A")))
         val r = runBlocking { src.popular(page = 2) } as FictionResult.Success
         assertTrue(r.value.items.isEmpty())
         assertEquals(2, r.value.page)
@@ -96,57 +119,220 @@ class GitHubSourceTest {
     }
 
     @Test fun `registry failure surfaces unchanged from popular`() {
-        val src = sourceWithFailure(FictionResult.NetworkError(message = "no internet"))
+        val src = source(failure = FictionResult.NetworkError(message = "no internet"))
         val r = runBlocking { src.popular() }
         assertTrue(r is FictionResult.NetworkError)
+    }
+
+    // ─── fictionDetail ─────────────────────────────────────────────────
+
+    @Test fun `fictionDetail builds from book toml + storyvox json + summary md`() {
+        val api = FakeGitHubApi(
+            repos = mapOf(
+                Pair("octocat", "hello-world") to ghRepo(
+                    owner = "octocat",
+                    name = "hello-world",
+                    desc = "ignored when book.toml has description",
+                    defaultBranch = "main",
+                    topics = listOf("topic-from-gh"),
+                ),
+            ),
+            files = mapOf(
+                Triple("octocat", "hello-world", "book.toml") to ghFile(
+                    """
+                        [book]
+                        title = "Hello World Saga"
+                        authors = ["octocat"]
+                        description = "From the manifest."
+                        language = "en"
+                        src = "src"
+                    """.trimIndent(),
+                ),
+                Triple("octocat", "hello-world", "storyvox.json") to ghFile(
+                    """
+                        {
+                          "version": 1,
+                          "cover": "assets/cover.png",
+                          "tags": ["fantasy", "litrpg"],
+                          "status": "completed"
+                        }
+                    """.trimIndent(),
+                ),
+                Triple("octocat", "hello-world", "src/SUMMARY.md") to ghFile(
+                    "- [Intro](src/01-intro.md)\n- [Two](src/02-two.md)",
+                ),
+            ),
+        )
+        val src = source(api = api)
+
+        val r = runBlocking { src.fictionDetail("github:octocat/hello-world") } as FictionResult.Success
+        val d = r.value
+
+        assertEquals("github:octocat/hello-world", d.summary.id)
+        assertEquals(SourceIds.GITHUB, d.summary.sourceId)
+        assertEquals("Hello World Saga", d.summary.title)
+        assertEquals("octocat", d.summary.author)
+        assertEquals("From the manifest.", d.summary.description)
+        assertEquals(
+            "https://raw.githubusercontent.com/octocat/hello-world/main/assets/cover.png",
+            d.summary.coverUrl,
+        )
+        assertEquals(listOf("fantasy", "litrpg"), d.summary.tags)
+        assertEquals(FictionStatus.COMPLETED, d.summary.status)
+        assertEquals(2, d.chapters.size)
+        assertEquals("github:octocat/hello-world:src/01-intro.md", d.chapters[0].id)
+        assertEquals("Intro", d.chapters[0].title)
+        assertEquals(0, d.chapters[0].index)
+        assertEquals("octocat", d.authorId)
+    }
+
+    @Test fun `fictionDetail falls back to repo description and topics when no manifest`() {
+        val api = FakeGitHubApi(
+            repos = mapOf(
+                Pair("o", "minimal") to ghRepo(
+                    owner = "o",
+                    name = "minimal",
+                    desc = "Repo description.",
+                    defaultBranch = "trunk",
+                    topics = listOf("fiction"),
+                ),
+            ),
+        )
+        val src = source(api = api)
+
+        val r = runBlocking { src.fictionDetail("github:o/minimal") } as FictionResult.Success
+        val d = r.value
+
+        assertEquals("Minimal", d.summary.title) // titlecase from repo name
+        assertEquals("o", d.summary.author) // owner login
+        assertEquals("Repo description.", d.summary.description)
+        assertEquals(listOf("fiction"), d.summary.tags)
+        assertEquals(FictionStatus.ONGOING, d.summary.status)
+        assertTrue(d.chapters.isEmpty())
+    }
+
+    @Test fun `fictionDetail uses bare-repo dir listing when no SUMMARY md`() {
+        val api = FakeGitHubApi(
+            repos = mapOf(Pair("o", "bare") to ghRepo("o", "bare")),
+            dirs = mapOf(
+                Triple("o", "bare", "chapters") to listOf(
+                    ghDirEntry("chapters/01-intro.md"),
+                    ghDirEntry("chapters/02-fall.md"),
+                    ghDirEntry("chapters/notes.md"), // not numbered, ignored
+                ),
+            ),
+        )
+        val src = source(api = api)
+
+        val r = runBlocking { src.fictionDetail("github:o/bare") } as FictionResult.Success
+        assertEquals(2, r.value.chapters.size)
+        assertEquals("chapters/01-intro.md", r.value.chapters[0].sourceChapterId)
+        assertEquals("Intro", r.value.chapters[0].title)
+    }
+
+    @Test fun `fictionDetail surfaces NotFound when repo missing`() {
+        val api = FakeGitHubApi() // empty maps → all calls return NotFound
+        val src = source(api = api)
+        val r = runBlocking { src.fictionDetail("github:ghost/missing") }
+        assertTrue("got $r", r is FictionResult.NotFound)
+    }
+
+    @Test fun `fictionDetail rejects non-github fictionId`() {
+        val src = source()
+        val r = runBlocking { src.fictionDetail("royalroad:12345") }
+        assertTrue("got $r", r is FictionResult.NotFound)
+    }
+
+    @Test fun `fictionDetail short-circuits on rate-limit during manifest fetch`() {
+        val api = FakeGitHubApi(
+            repos = mapOf(Pair("o", "r") to ghRepo("o", "r")),
+            // book.toml fetch returns RateLimited; should propagate.
+            rateLimitedFiles = setOf(Triple("o", "r", "book.toml")),
+        )
+        val src = source(api = api)
+        val r = runBlocking { src.fictionDetail("github:o/r") }
+        assertTrue("got $r", r is FictionResult.RateLimited)
+    }
+
+    @Test fun `fictionDetail honors archived repo as completed status`() {
+        val api = FakeGitHubApi(
+            repos = mapOf(Pair("o", "old") to ghRepo("o", "old", archived = true)),
+        )
+        val src = source(api = api)
+        val r = runBlocking { src.fictionDetail("github:o/old") } as FictionResult.Success
+        assertEquals(FictionStatus.COMPLETED, r.value.summary.status)
+    }
+
+    // ─── chapter ───────────────────────────────────────────────────────
+
+    @Test fun `chapter renders markdown into ChapterContent`() {
+        val md = "# Intro\n\nIt was a **dark** and stormy night."
+        val api = FakeGitHubApi(
+            files = mapOf(Triple("o", "r", "src/01-intro.md") to ghFile(md)),
+        )
+        val src = source(api = api)
+
+        val r = runBlocking { src.chapter("github:o/r", "github:o/r:src/01-intro.md") } as FictionResult.Success
+        val c = r.value
+
+        assertEquals("github:o/r:src/01-intro.md", c.info.id)
+        assertEquals("src/01-intro.md", c.info.sourceChapterId)
+        assertTrue(c.htmlBody.contains("<h1>Intro</h1>"))
+        assertTrue(c.htmlBody.contains("<strong>dark</strong>"))
+        // plainBody strips heading + markup (verified independently in
+        // MarkdownChapterRendererTest); just sanity check here.
+        assertTrue(c.plainBody.startsWith("It was a"))
+        assertNotNull("expected non-empty plain body", c.plainBody.takeIf { it.isNotEmpty() })
+    }
+
+    @Test fun `chapter rejects malformed chapter id`() {
+        val src = source()
+        // chapterId not prefixed with "<fictionId>:"
+        val r = runBlocking { src.chapter("github:o/r", "garbage-id") }
+        assertTrue("got $r", r is FictionResult.NotFound)
+    }
+
+    @Test fun `chapter surfaces 404 when file missing`() {
+        val src = source(api = FakeGitHubApi())
+        val r = runBlocking { src.chapter("github:o/r", "github:o/r:src/missing.md") }
+        assertTrue("got $r", r is FictionResult.NotFound)
     }
 
     // ─── Still-stubbed surfaces ────────────────────────────────────────
 
     @Test fun `search still throws NotImplementedError`() {
-        val src = source()
         assertThrows(NotImplementedError::class.java) {
             runBlocking {
-                src.search(`in`.jphe.storyvox.data.source.model.SearchQuery(term = "anything"))
+                source().search(`in`.jphe.storyvox.data.source.model.SearchQuery(term = "anything"))
             }
         }
     }
 
-    @Test fun `fictionDetail still throws NotImplementedError`() {
-        val src = source()
-        assertThrows(NotImplementedError::class.java) {
-            runBlocking { src.fictionDetail("github:o/r") }
-        }
-    }
-
-    @Test fun `chapter still throws NotImplementedError`() {
-        val src = source()
-        assertThrows(NotImplementedError::class.java) {
-            runBlocking { src.chapter("github:o/r", "github:o/r:src/01.md") }
-        }
-    }
-
     @Test fun `followsList and setFollowed still throw NotImplementedError`() {
-        val src = source()
-        assertThrows(NotImplementedError::class.java) { runBlocking { src.followsList() } }
+        assertThrows(NotImplementedError::class.java) { runBlocking { source().followsList() } }
         assertThrows(NotImplementedError::class.java) {
-            runBlocking { src.setFollowed("github:o/r", true) }
+            runBlocking { source().setFollowed("github:o/r", true) }
         }
     }
 
     // ─── Helpers ───────────────────────────────────────────────────────
 
-    private fun source(vararg entries: RegistryEntry): GitHubSource =
-        GitHubSource(
-            api = GitHubApi(OkHttpClient()),
-            registry = StaticRegistry(entries.toList()),
+    private fun source(
+        entries: List<RegistryEntry> = emptyList(),
+        failure: FictionResult.Failure? = null,
+        api: GitHubApi = FakeGitHubApi(),
+    ): GitHubSource {
+        val registry = if (failure != null) {
+            FailingRegistry(failure)
+        } else {
+            StaticRegistry(entries)
+        }
+        return GitHubSource(
+            api = api,
+            registry = registry,
+            markdownRenderer = MarkdownChapterRenderer(),
         )
-
-    private fun sourceWithFailure(failure: FictionResult.Failure): GitHubSource =
-        GitHubSource(
-            api = GitHubApi(OkHttpClient()),
-            registry = FailingRegistry(failure),
-        )
+    }
 
     private fun entry(
         id: String,
@@ -164,12 +350,45 @@ class GitHubSourceTest {
         tags = tags,
     )
 
-    /**
-     * Test double: returns a fixed list, no network. Subclasses
-     * [Registry] (which is `internal open` for exactly this reason)
-     * so the constructor still accepts an OkHttpClient even though
-     * we never use it.
-     */
+    private fun ghRepo(
+        owner: String,
+        name: String,
+        desc: String? = null,
+        defaultBranch: String = "main",
+        topics: List<String> = emptyList(),
+        archived: Boolean = false,
+        stars: Int = 0,
+    ) = GhRepo(
+        id = 0L,
+        name = name,
+        fullName = "$owner/$name",
+        description = desc,
+        defaultBranch = defaultBranch,
+        owner = GhOwner(login = owner),
+        htmlUrl = "https://github.com/$owner/$name",
+        topics = topics,
+        archived = archived,
+        stars = stars,
+    )
+
+    private fun ghFile(text: String): GhContent = GhContent(
+        name = "x",
+        path = "x",
+        sha = "0",
+        size = text.length.toLong(),
+        type = "file",
+        content = Base64.getEncoder().encodeToString(text.toByteArray(Charsets.UTF_8)),
+        encoding = "base64",
+    )
+
+    private fun ghDirEntry(path: String): GhContent = GhContent(
+        name = path.substringAfterLast('/'),
+        path = path,
+        sha = "0",
+        size = 0,
+        type = "file",
+    )
+
     private class StaticRegistry(
         private val entries: List<RegistryEntry>,
     ) : Registry(httpClient = OkHttpClient()) {
@@ -182,4 +401,46 @@ class GitHubSourceTest {
     ) : Registry(httpClient = OkHttpClient()) {
         override suspend fun entries(): FictionResult<List<RegistryEntry>> = failure
     }
+
+    /**
+     * Fake [GitHubApi] driven by lookup maps. Owner/repo/path fetches
+     * miss → NotFound. Rate-limited paths return [GitHubApiResult.RateLimited].
+     */
+    private class FakeGitHubApi(
+        private val repos: Map<Pair<String, String>, GhRepo> = emptyMap(),
+        private val files: Map<Triple<String, String, String>, GhContent> = emptyMap(),
+        private val dirs: Map<Triple<String, String, String>, List<GhContent>> = emptyMap(),
+        private val rateLimitedFiles: Set<Triple<String, String, String>> = emptySet(),
+    ) : GitHubApi(httpClient = OkHttpClient()) {
+
+        override suspend fun getRepo(owner: String, repo: String): GitHubApiResult<GhRepo> =
+            repos[owner to repo]
+                ?.let { GitHubApiResult.Success(it, etag = null) }
+                ?: GitHubApiResult.NotFound("repo not found")
+
+        override suspend fun getContent(
+            owner: String,
+            repo: String,
+            path: String,
+            ref: String?,
+        ): GitHubApiResult<GhContent> {
+            val key = Triple(owner, repo, path)
+            if (key in rateLimitedFiles) return GitHubApiResult.RateLimited(retryAfterSeconds = 60)
+            return files[key]
+                ?.let { GitHubApiResult.Success(it, etag = null) }
+                ?: GitHubApiResult.NotFound("file not found")
+        }
+
+        override suspend fun getContents(
+            owner: String,
+            repo: String,
+            path: String,
+            ref: String?,
+        ): GitHubApiResult<List<GhContent>> {
+            return dirs[Triple(owner, repo, path)]
+                ?.let { GitHubApiResult.Success(it, etag = null) }
+                ?: GitHubApiResult.NotFound("dir not found")
+        }
+    }
+
 }

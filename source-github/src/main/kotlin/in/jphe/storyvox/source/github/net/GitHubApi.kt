@@ -56,13 +56,13 @@ internal sealed class GitHubApiResult<out T> {
  * faults from genuinely malformed JSON) come back as `ParseError`.
  */
 @Singleton
-internal class GitHubApi @Inject constructor(
+internal open class GitHubApi @Inject constructor(
     @GitHubHttp private val httpClient: OkHttpClient,
 ) {
-    suspend fun getRepo(owner: String, repo: String): GitHubApiResult<GhRepo> =
+    open suspend fun getRepo(owner: String, repo: String): GitHubApiResult<GhRepo> =
         get("$BASE_URL/repos/${owner.lowercase()}/${repo.lowercase()}")
 
-    suspend fun getContent(
+    open suspend fun getContent(
         owner: String,
         repo: String,
         path: String,
@@ -73,7 +73,24 @@ internal class GitHubApi @Inject constructor(
         return get("$BASE_URL/repos/${owner.lowercase()}/${repo.lowercase()}/contents/$cleanPath$refParam")
     }
 
-    suspend fun compareCommits(
+    /**
+     * Directory listing variant of [getContent]. The same `/contents`
+     * endpoint returns a JSON array when the path is a directory. Used
+     * by the bare-repo fallback to enumerate `chapters/` or `src/` for
+     * numbered .md files when no `SUMMARY.md` is present.
+     */
+    open suspend fun getContents(
+        owner: String,
+        repo: String,
+        path: String,
+        ref: String? = null,
+    ): GitHubApiResult<List<GhContent>> {
+        val refParam = if (ref != null) "?ref=$ref" else ""
+        val cleanPath = path.trimStart('/')
+        return get("$BASE_URL/repos/${owner.lowercase()}/${repo.lowercase()}/contents/$cleanPath$refParam")
+    }
+
+    open suspend fun compareCommits(
         owner: String,
         repo: String,
         base: String,
