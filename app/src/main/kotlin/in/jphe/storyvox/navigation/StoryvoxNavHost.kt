@@ -51,9 +51,13 @@ object StoryvoxRoutes {
     const val VOICE_LIBRARY = "settings/voices"
     const val AUTH_WEBVIEW = "auth/webview"
 
-    fun fictionDetail(fictionId: String) = "fiction/$fictionId"
-    fun reader(fictionId: String, chapterId: String) = "reader/$fictionId/$chapterId"
-    fun audiobook(fictionId: String, chapterId: String) = "audiobook/$fictionId/$chapterId"
+    // Encode ids: GitHubSource fictionIds contain `/` (e.g. "github:owner/repo")
+    // and chapterIds contain even more (e.g. "github:owner/repo:src/chapter-01.md"),
+    // which break single-segment route matching. Compose Navigation auto-decodes
+    // when reading args from SavedStateHandle, so encoding only at the call site is safe.
+    fun fictionDetail(fictionId: String) = "fiction/${Uri.encode(fictionId)}"
+    fun reader(fictionId: String, chapterId: String) = "reader/${Uri.encode(fictionId)}/${Uri.encode(chapterId)}"
+    fun audiobook(fictionId: String, chapterId: String) = "audiobook/${Uri.encode(fictionId)}/${Uri.encode(chapterId)}"
 
     private val HOME_ROUTES = setOf(PLAYING, LIBRARY, FOLLOWS, BROWSE, SETTINGS)
     fun isHome(route: String?) = route in HOME_ROUTES
