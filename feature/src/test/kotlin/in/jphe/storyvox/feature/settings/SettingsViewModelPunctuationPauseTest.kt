@@ -1,6 +1,8 @@
 package `in`.jphe.storyvox.feature.settings
 
 import `in`.jphe.storyvox.feature.api.BUFFER_DEFAULT_CHUNKS
+import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_DEFAULT_MULTIPLIER
+import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_LONG_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiSettings
@@ -23,15 +25,15 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * Verifies the issue #98 Mode A / Mode B launchers on
- * [SettingsViewModel] forward the value to the repository contract and
- * that [SettingsUiState.settings] surfaces the repository's emissions.
+ * Verifies the issue #109 punctuation-pause continuous slider on
+ * [SettingsViewModel] forwards the float to the repository contract and
+ * surfaces the repository's emission via [SettingsUiState.settings].
  *
- * Mirrors [SettingsViewModelBufferTest]'s shape so the pair stays
- * easy to compare side-by-side.
+ * Mirrors [SettingsViewModelBufferTest]'s shape — same Fake repo
+ * scaffolding, same flow-collection pattern.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class SettingsViewModelModesTest {
+class SettingsViewModelPunctuationPauseTest {
 
     @Before
     fun setUp() {
@@ -44,49 +46,48 @@ class SettingsViewModelModesTest {
     }
 
     @Test
-    fun `setWarmupWait forwards to the repository`() = runTest {
-        val repo = FakeSettingsRepo(initial = baseSettings(warmupWait = true, catchupPause = true))
+    fun `setPunctuationPauseMultiplier forwards to the repository`() = runTest {
+        val repo = FakeSettingsRepo(
+            initial = baseSettings(multiplier = PUNCTUATION_PAUSE_DEFAULT_MULTIPLIER),
+        )
         val vm = SettingsViewModel(repo, FakeVoiceProvider())
 
-        vm.setWarmupWait(false)
+        vm.setPunctuationPauseMultiplier(2.5f)
 
-        assertEquals(listOf(false), repo.warmupWaitWrites)
+        assertEquals(listOf(2.5f), repo.punctuationPauseMultiplierWrites)
     }
 
     @Test
-    fun `setCatchupPause forwards to the repository`() = runTest {
-        val repo = FakeSettingsRepo(initial = baseSettings(warmupWait = true, catchupPause = true))
-        val vm = SettingsViewModel(repo, FakeVoiceProvider())
-
-        vm.setCatchupPause(false)
-
-        assertEquals(listOf(false), repo.catchupPauseWrites)
-    }
-
-    @Test
-    fun `viewmodel uiState surfaces both mode values`() = runTest {
-        val repo = FakeSettingsRepo(initial = baseSettings(warmupWait = false, catchupPause = false))
+    fun `viewmodel uiState surfaces repository's punctuation pause multiplier`() = runTest {
+        val repo = FakeSettingsRepo(
+            initial = baseSettings(multiplier = PUNCTUATION_PAUSE_LONG_MULTIPLIER),
+        )
         val vm = SettingsViewModel(repo, FakeVoiceProvider())
 
         val emitted = vm.uiState.first { it.settings != null }
-        assertEquals(false, emitted.settings?.warmupWait)
-        assertEquals(false, emitted.settings?.catchupPause)
+        assertEquals(
+            PUNCTUATION_PAUSE_LONG_MULTIPLIER,
+            emitted.settings?.punctuationPauseMultiplier ?: Float.NaN,
+            0.0001f,
+        )
     }
 
     @Test
-    fun `Mode A and Mode B writes are independent`() = runTest {
-        val repo = FakeSettingsRepo(initial = baseSettings(warmupWait = true, catchupPause = true))
+    fun `viewmodel forwards values past the legacy Long stop`() = runTest {
+        // The whole point of #109 is the slider goes wider than the legacy
+        // 1.75× ceiling. The ViewModel must not clamp; that's the repo's job
+        // (it applies the engine's [0..4] range).
+        val repo = FakeSettingsRepo(
+            initial = baseSettings(multiplier = PUNCTUATION_PAUSE_DEFAULT_MULTIPLIER),
+        )
         val vm = SettingsViewModel(repo, FakeVoiceProvider())
 
-        vm.setWarmupWait(false)
-        vm.setCatchupPause(false)
-        vm.setWarmupWait(true)
+        vm.setPunctuationPauseMultiplier(3.5f)
 
-        assertEquals(listOf(false, true), repo.warmupWaitWrites)
-        assertEquals(listOf(false), repo.catchupPauseWrites)
+        assertEquals(listOf(3.5f), repo.punctuationPauseMultiplierWrites)
     }
 
-    private fun baseSettings(warmupWait: Boolean, catchupPause: Boolean): UiSettings = UiSettings(
+    private fun baseSettings(multiplier: Float): UiSettings = UiSettings(
         ttsEngine = "VoxSherpa",
         defaultVoiceId = null,
         defaultSpeed = 1.0f,
@@ -97,15 +98,13 @@ class SettingsViewModelModesTest {
         isSignedIn = false,
         sigil = UiSigil.UNKNOWN,
         playbackBufferChunks = BUFFER_DEFAULT_CHUNKS,
-        warmupWait = warmupWait,
-        catchupPause = catchupPause,
+        punctuationPauseMultiplier = multiplier,
     )
 
     private class FakeSettingsRepo(initial: UiSettings) : SettingsRepositoryUi {
         private val state = MutableStateFlow(initial)
         override val settings: Flow<UiSettings> = state
-        val warmupWaitWrites: MutableList<Boolean> = mutableListOf()
-        val catchupPauseWrites: MutableList<Boolean> = mutableListOf()
+        val punctuationPauseMultiplierWrites: MutableList<Float> = mutableListOf()
         override suspend fun setTheme(override: ThemeOverride) {
             state.value = state.value.copy(themeOverride = override)
         }
@@ -125,17 +124,16 @@ class SettingsViewModelModesTest {
             state.value = state.value.copy(pollIntervalHours = hours)
         }
         override suspend fun setPunctuationPauseMultiplier(multiplier: Float) {
+            punctuationPauseMultiplierWrites += multiplier
             state.value = state.value.copy(punctuationPauseMultiplier = multiplier)
         }
         override suspend fun setPlaybackBufferChunks(chunks: Int) {
             state.value = state.value.copy(playbackBufferChunks = chunks)
         }
         override suspend fun setWarmupWait(enabled: Boolean) {
-            warmupWaitWrites += enabled
             state.value = state.value.copy(warmupWait = enabled)
         }
         override suspend fun setCatchupPause(enabled: Boolean) {
-            catchupPauseWrites += enabled
             state.value = state.value.copy(catchupPause = enabled)
         }
         override suspend fun signIn() = Unit

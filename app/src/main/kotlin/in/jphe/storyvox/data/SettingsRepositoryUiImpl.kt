@@ -1,6 +1,7 @@
 package `in`.jphe.storyvox.data
 
 import android.content.Context
+import androidx.datastore.core.DataMigration
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -17,8 +18,13 @@ import `in`.jphe.storyvox.data.repository.playback.PlaybackModeConfig
 import `in`.jphe.storyvox.feature.api.BUFFER_DEFAULT_CHUNKS
 import `in`.jphe.storyvox.feature.api.BUFFER_MAX_CHUNKS
 import `in`.jphe.storyvox.feature.api.BUFFER_MIN_CHUNKS
+import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_DEFAULT_MULTIPLIER
+import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_LONG_MULTIPLIER
+import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_MAX_MULTIPLIER
+import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_MIN_MULTIPLIER
+import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_NORMAL_MULTIPLIER
+import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_OFF_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.PalaceProbeResult
-import `in`.jphe.storyvox.feature.api.PunctuationPause
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiPalaceConfig
@@ -34,7 +40,51 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "storyvox_settings")
+private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(
+    name = "storyvox_settings",
+    produceMigrations = { _ -> listOf(PunctuationPauseEnumToMultiplierMigration) },
+)
+
+/**
+ * Issue #109 — one-shot migration from the pre-#109 enum-string key
+ * `pref_punctuation_pause` ("Off"/"Normal"/"Long") to the continuous
+ * Float key `pref_punctuation_pause_multiplier_v2`. Maps:
+ *   Off    → 0×
+ *   Normal → 1×
+ *   Long   → 1.75×
+ *
+ * Runs once per process at first DataStore read. Idempotent — `shouldMigrate`
+ * returns false once the new key is present, so a partial-migration crash
+ * mid-run still completes safely on next launch. The old key is removed
+ * after the new one is written.
+ */
+internal val PunctuationPauseEnumToMultiplierMigration: DataMigration<Preferences> =
+    object : DataMigration<Preferences> {
+        private val oldKey = stringPreferencesKey("pref_punctuation_pause")
+        private val newKey = floatPreferencesKey("pref_punctuation_pause_multiplier_v2")
+
+        override suspend fun shouldMigrate(currentData: Preferences): Boolean {
+            // If new key is set, we're done. If old key isn't present either, also done
+            // (fresh install — defaults take over). Otherwise we have an enum value to map.
+            if (currentData[newKey] != null) return false
+            return currentData[oldKey] != null
+        }
+
+        override suspend fun migrate(currentData: Preferences): Preferences {
+            val mutable = currentData.toMutablePreferences()
+            val mapped = when (currentData[oldKey]) {
+                "Off" -> PUNCTUATION_PAUSE_OFF_MULTIPLIER
+                "Long" -> PUNCTUATION_PAUSE_LONG_MULTIPLIER
+                // "Normal" or any unrecognized legacy value falls through to the default.
+                else -> PUNCTUATION_PAUSE_NORMAL_MULTIPLIER
+            }
+            mutable[newKey] = mapped
+            mutable.remove(oldKey)
+            return mutable.toPreferences()
+        }
+
+        override suspend fun cleanUp() = Unit
+    }
 
 private object Keys {
     val DEFAULT_SPEED = floatPreferencesKey("pref_default_speed")
@@ -44,12 +94,12 @@ private object Keys {
     val DOWNLOAD_WIFI_ONLY = booleanPreferencesKey("pref_download_wifi_only")
     val POLL_INTERVAL_HOURS = intPreferencesKey("pref_poll_interval_hours")
     val SIGNED_IN = booleanPreferencesKey("pref_signed_in")
-    /** Issue #90 — three-stop selector for inter-sentence silence. Stored
-     *  as the enum name (`OFF`/`NORMAL`/`LONG`) for forward-compat if we
-     *  add stops later (matches THEME_OVERRIDE encoding). Default = NORMAL
-     *  preserves pre-#90 audiobook cadence on first launch + on existing
-     *  installs that have no value persisted. */
-    val PUNCTUATION_PAUSE = stringPreferencesKey("pref_punctuation_pause")
+    /** Issue #109 — continuous inter-sentence pause multiplier (Float).
+     *  Replaces the pre-#109 enum-string key `pref_punctuation_pause`; the
+     *  one-shot [PunctuationPauseEnumToMultiplierMigration] in this file
+     *  maps existing installs forward. Default = 1× preserves the
+     *  audiobook-tuned baseline on fresh installs. */
+    val PUNCTUATION_PAUSE_MULTIPLIER = floatPreferencesKey("pref_punctuation_pause_multiplier_v2")
     /** Pre-synth queue depth (sentence-chunks). Issue #84 — the slider is an
      *  exploratory probe for where Android's LMK kills the app on slow
      *  devices, so the persisted value is intentionally NOT clamped at a
@@ -101,9 +151,9 @@ class SettingsRepositoryUiImpl(
             downloadOnWifiOnly = prefs[Keys.DOWNLOAD_WIFI_ONLY] ?: true,
             pollIntervalHours = prefs[Keys.POLL_INTERVAL_HOURS] ?: 6,
             isSignedIn = prefs[Keys.SIGNED_IN] ?: false,
-            punctuationPause = prefs[Keys.PUNCTUATION_PAUSE]
-                ?.let { runCatching { PunctuationPause.valueOf(it) }.getOrNull() }
-                ?: PunctuationPause.Normal,
+            punctuationPauseMultiplier = (prefs[Keys.PUNCTUATION_PAUSE_MULTIPLIER]
+                ?: PUNCTUATION_PAUSE_DEFAULT_MULTIPLIER)
+                .coerceIn(PUNCTUATION_PAUSE_MIN_MULTIPLIER, PUNCTUATION_PAUSE_MAX_MULTIPLIER),
             playbackBufferChunks = (prefs[Keys.PLAYBACK_BUFFER_CHUNKS] ?: BUFFER_DEFAULT_CHUNKS)
                 .coerceIn(BUFFER_MIN_CHUNKS, BUFFER_MAX_CHUNKS),
             warmupWait = prefs[Keys.WARMUP_WAIT] ?: true,
@@ -151,8 +201,11 @@ class SettingsRepositoryUiImpl(
         store.edit { it[Keys.POLL_INTERVAL_HOURS] = hours.coerceIn(1, 24) }
     }
 
-    override suspend fun setPunctuationPause(mode: PunctuationPause) {
-        store.edit { it[Keys.PUNCTUATION_PAUSE] = mode.name }
+    override suspend fun setPunctuationPauseMultiplier(multiplier: Float) {
+        store.edit {
+            it[Keys.PUNCTUATION_PAUSE_MULTIPLIER] = multiplier
+                .coerceIn(PUNCTUATION_PAUSE_MIN_MULTIPLIER, PUNCTUATION_PAUSE_MAX_MULTIPLIER)
+        }
     }
 
     override suspend fun setPlaybackBufferChunks(chunks: Int) {

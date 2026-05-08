@@ -302,7 +302,16 @@ data class UiSettings(
     val downloadOnWifiOnly: Boolean,
     val pollIntervalHours: Int,
     val isSignedIn: Boolean,
-    val punctuationPause: PunctuationPause = PunctuationPause.Normal,
+    /**
+     * Issue #109 — inter-sentence pause as a continuous multiplier (was a
+     * 3-stop selector under #93). 0× disables trailing silence; 1× is the
+     * audiobook-tuned default; the engine already coerces to [0..4]
+     * ([in.jphe.storyvox.playback.tts.EnginePlayer.setPunctuationPauseMultiplier]).
+     * Migrated from `pref_punctuation_pause` (enum) on first read; see
+     * `PunctuationPauseEnumToMultiplierMigration` in
+     * `:app`'s `SettingsRepositoryUiImpl` for the mapping.
+     */
+    val punctuationPauseMultiplier: Float = PUNCTUATION_PAUSE_DEFAULT_MULTIPLIER,
     val sigil: UiSigil = UiSigil.UNKNOWN,
     /**
      * Audio pre-synth queue depth, in sentence-chunks. Maps directly to
@@ -383,34 +392,31 @@ const val BUFFER_MAX_CHUNKS: Int = 1500
 const val BUFFER_DANGER_MULTIPLIER: Int = 4
 
 /**
- * Three-stop selector for the inter-sentence silence storyvox splices after
- * each TTS sentence (issue #90). The base pause table lives in
- * `EngineStreamingSource.trailingPauseMs(...)` — `.`/`?`/`!` get 350 ms,
- * `;`/`:` get 200 ms, `,`/dashes get 120 ms, fallback 60 ms. This enum
- * scales every output by [multiplier]:
+ * Inter-sentence pause multiplier bounds (issue #109).
  *
- *  - **Off** (0×) — no inter-sentence silence at all. Engine boundary +
- *    AudioTrack scheduling latency are the only pause. Useful for fast
- *    re-listens or low-latency reads.
- *  - **Normal** (1×) — the audiobook-tuned default; what storyvox shipped
- *    pre-#90.
- *  - **Long** (1.75×) — slightly more dramatic cadence; useful for narration
- *    where the listener wants more time between sentences.
+ * The base pause table lives in `EngineStreamingSource.trailingPauseMs(...)`
+ * — `.`/`?`/`!` get 350 ms, `;`/`:` get 200 ms, `,`/dashes get 120 ms,
+ * fallback 60 ms. Storyvox scales every output by the multiplier the user
+ * sets in Settings → Performance & buffering.
  *
- * The 1.75× ceiling is conservative — anything beyond that started feeling
- * unnatural in JP's audiobook-ear test at 1× speed. A larger ceiling can be
- * justified later if the user feedback warrants it.
+ * Issue #109 widened the original 3-stop selector (Off=0×, Normal=1×,
+ * Long=1.75× under #93) into a continuous slider. The ceiling is now 4×
+ * to match the engine's existing internal coerceIn(0f, 4f) clamp — past
+ * that the engine truncates anyway. Tick marks at 0×/1×/1.75×/4× anchor
+ * the historical stops + the new max.
+ *
+ * The legacy enum stops are exposed as constants so the slider can render
+ * "Off" / "Normal" / "Long" tick labels and the migration code in
+ * [SettingsRepositoryUi]'s impl can map old enum names → multiplier.
  */
-enum class PunctuationPause {
-    Off, Normal, Long;
+const val PUNCTUATION_PAUSE_MIN_MULTIPLIER: Float = 0f
+const val PUNCTUATION_PAUSE_MAX_MULTIPLIER: Float = 4f
+const val PUNCTUATION_PAUSE_DEFAULT_MULTIPLIER: Float = 1f
 
-    val multiplier: Float
-        get() = when (this) {
-            Off -> 0f
-            Normal -> 1f
-            Long -> 1.75f
-        }
-}
+/** Legacy enum stop multipliers — used by the migration shim and tick labels. */
+const val PUNCTUATION_PAUSE_OFF_MULTIPLIER: Float = 0f
+const val PUNCTUATION_PAUSE_NORMAL_MULTIPLIER: Float = 1f
+const val PUNCTUATION_PAUSE_LONG_MULTIPLIER: Float = 1.75f
 
 /**
  * Realm-sigil version metadata captured at build time. Surfaced in the
@@ -454,7 +460,12 @@ interface SettingsRepositoryUi {
     suspend fun setDefaultVoice(voiceId: String?)
     suspend fun setDownloadOnWifiOnly(enabled: Boolean)
     suspend fun setPollIntervalHours(hours: Int)
-    suspend fun setPunctuationPause(mode: PunctuationPause)
+    /**
+     * Issue #109 — set the inter-sentence pause multiplier (continuous,
+     * coerced to [PUNCTUATION_PAUSE_MIN_MULTIPLIER]..[PUNCTUATION_PAUSE_MAX_MULTIPLIER]).
+     * Replaces the pre-#109 `setPunctuationPause(mode: PunctuationPause)`.
+     */
+    suspend fun setPunctuationPauseMultiplier(multiplier: Float)
     suspend fun setPlaybackBufferChunks(chunks: Int)
     /** Issue #98 — Mode A toggle. See [UiSettings.warmupWait]. */
     suspend fun setWarmupWait(enabled: Boolean)

@@ -39,8 +39,12 @@ import `in`.jphe.storyvox.feature.api.BUFFER_DANGER_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.BUFFER_MAX_CHUNKS
 import `in`.jphe.storyvox.feature.api.BUFFER_MIN_CHUNKS
 import `in`.jphe.storyvox.feature.api.BUFFER_RECOMMENDED_MAX_CHUNKS
+import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_LONG_MULTIPLIER
+import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_MAX_MULTIPLIER
+import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_MIN_MULTIPLIER
+import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_NORMAL_MULTIPLIER
+import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_OFF_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.PalaceProbeResult
-import `in`.jphe.storyvox.feature.api.PunctuationPause
 import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiPalaceConfig
 import `in`.jphe.storyvox.ui.component.BrassButton
@@ -154,20 +158,16 @@ fun SettingsScreen(
             onChunksChange = viewModel::setPlaybackBufferChunks,
         )
 
-        // Punctuation Cadence — migrated from the Reading section. Same
-        // three-stop control + brass-button-row aesthetic from #93.
-        Text("Pause after . , ? ! ; :", style = MaterialTheme.typography.bodyMedium)
-        Text(
-            "How long to pause between sentences. Off makes the reader sprint; Long gives narration room to breathe.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        // Punctuation Cadence — issue #109 widened the original 3-stop
+        // selector (#93) into a continuous slider so users who want
+        // slower-than-Long or faster-than-Off-style cadence can dial it in.
+        // Range 0×..4× matches the engine's existing internal clamp; tick
+        // labels anchor the legacy stops (Off, Normal, Long) and the new
+        // 4× ceiling.
+        PunctuationPauseSlider(
+            multiplier = s.punctuationPauseMultiplier,
+            onMultiplierChange = viewModel::setPunctuationPauseMultiplier,
         )
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
-            PunctuationPause.entries.forEach { mode ->
-                val variant = if (s.punctuationPause == mode) BrassButtonVariant.Primary else BrassButtonVariant.Secondary
-                BrassButton(label = mode.name, onClick = { viewModel.setPunctuationPause(mode) }, variant = variant)
-            }
-        }
 
         Divider()
         SectionHeader("Theme")
@@ -528,5 +528,123 @@ private fun TickMarker(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Box(modifier = Modifier.weight((1f - fraction).coerceAtLeast(0.001f)))
+    }
+}
+
+/**
+ * Settings → Punctuation Cadence slider (issue #109).
+ *
+ * Continuous multiplier on the inter-sentence silence storyvox splices after
+ * each TTS sentence. The base pause table (350/200/120/60 ms by terminator)
+ * lives in `EngineStreamingSource.trailingPauseMs` and is scaled by this
+ * value before being emitted as PCM zeros.
+ *
+ * Range is [PUNCTUATION_PAUSE_MIN_MULTIPLIER]..[PUNCTUATION_PAUSE_MAX_MULTIPLIER]
+ * (0×..4×) — wider than the legacy 3-stop selector's 0×/1×/1.75× because
+ * the engine has always coerced to 0..4 internally and #109 surfaces that
+ * full range. Tick labels anchor the legacy stops + the new ceiling so
+ * users who liked "Long" can find it precisely (1.75×).
+ *
+ * Same brass-styled aesthetic as [BufferSlider] — primary-colored thumb +
+ * active track, surface-variant inactive track. No "warning zone": every
+ * point on this slider is mechanically safe; it's purely a cadence
+ * preference. Single decimal-place readout (e.g. "1.8×") is enough
+ * precision for a perceptual knob.
+ */
+@Composable
+private fun PunctuationPauseSlider(
+    multiplier: Float,
+    onMultiplierChange: (Float) -> Unit,
+) {
+    val spacing = LocalSpacing.current
+
+    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        Text("Pause after . , ? ! ; :", style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "How long to pause between sentences. 0× makes the reader sprint; " +
+                "1× is the audiobook default; 1.75× matches the old \"Long\" stop; " +
+                "4× gives narration full theatrical room to breathe.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        Text(
+            text = "Pause after punctuation: ${"%.2f".format(multiplier)}×",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+
+        Slider(
+            value = multiplier,
+            onValueChange = {
+                onMultiplierChange(
+                    it.coerceIn(PUNCTUATION_PAUSE_MIN_MULTIPLIER, PUNCTUATION_PAUSE_MAX_MULTIPLIER),
+                )
+            },
+            valueRange = PUNCTUATION_PAUSE_MIN_MULTIPLIER..PUNCTUATION_PAUSE_MAX_MULTIPLIER,
+            colors = SliderDefaults.colors(
+                thumbColor = MaterialTheme.colorScheme.primary,
+                activeTrackColor = MaterialTheme.colorScheme.primary,
+                inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant,
+            ),
+        )
+
+        // Tick labels at the legacy stops + the new 4× ceiling. Spatial
+        // anchoring uses the same weight-trick as [TickMarker] so the labels
+        // sit under their actual slider positions without painting onto the
+        // canvas. Material3 Slider's `steps` parameter would draw real ticks
+        // but only at evenly-spaced fractions of the range; our stops aren't
+        // evenly spaced (0/1/1.75/4 fractions are 0, 0.25, 0.4375, 1) so
+        // we render them as a separate row.
+        PunctuationPauseTickLabels()
+    }
+}
+
+/**
+ * Anchored row of legacy-stop labels under [PunctuationPauseSlider]. Each
+ * label sits at its true fractional position along the [0..4] range using
+ * weight spacers, mirroring [TickMarker]'s technique. Labels include the
+ * legacy stop names (Off / Normal / Long) so users coming from the 3-stop
+ * selector can find their preferred cadence at a glance.
+ */
+@Composable
+private fun PunctuationPauseTickLabels() {
+    val total = PUNCTUATION_PAUSE_MAX_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER
+    val offFrac = ((PUNCTUATION_PAUSE_OFF_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER) / total)
+        .coerceIn(0f, 1f)
+    val normalFrac = ((PUNCTUATION_PAUSE_NORMAL_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER) / total)
+        .coerceIn(0f, 1f)
+    val longFrac = ((PUNCTUATION_PAUSE_LONG_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER) / total)
+        .coerceIn(0f, 1f)
+
+    // Distances between adjacent ticks along the row; the trailing slack
+    // after "Max" pads to the right edge of the parent.
+    val toNormal = (normalFrac - offFrac).coerceAtLeast(0.001f)
+    val toLong = (longFrac - normalFrac).coerceAtLeast(0.001f)
+    val toMax = (1f - longFrac).coerceAtLeast(0.001f)
+
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = "▲ Off",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Box(modifier = Modifier.weight(toNormal))
+        Text(
+            text = "▲ 1×",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Box(modifier = Modifier.weight(toLong))
+        Text(
+            text = "▲ Long",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Box(modifier = Modifier.weight(toMax))
+        Text(
+            text = "▲ 4×",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

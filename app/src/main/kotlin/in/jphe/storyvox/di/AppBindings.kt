@@ -405,13 +405,15 @@ internal class RealPlaybackControllerUi(
         // core-playback would invert the layering. This adapter is the
         // first place both modules already meet, so it's the right seam.
         //
-        // Distinct on the multiplier value (not the enum) so a no-op enum
-        // re-emission from DataStore hydration doesn't trigger a needless
-        // pipeline rebuild via setPunctuationPauseMultiplier (which calls
-        // startPlaybackPipeline if currently playing).
+        // Distinct on the multiplier value so a no-op DataStore re-emission
+        // (e.g. on hydration) doesn't trigger a needless pipeline rebuild via
+        // setPunctuationPauseMultiplier (which calls startPlaybackPipeline if
+        // currently playing). #109 widened this from a 3-stop enum to a
+        // continuous slider; the seam below didn't change shape — the engine
+        // has always taken a Float and clamps to [0..4] internally.
         scope.launch {
             settings.settings
-                .map { it.punctuationPause.multiplier }
+                .map { it.punctuationPauseMultiplier }
                 .distinctUntilChanged()
                 .collect { controller.setPunctuationPauseMultiplier(it) }
         }

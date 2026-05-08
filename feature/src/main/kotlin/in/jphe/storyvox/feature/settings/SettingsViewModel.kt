@@ -5,7 +5,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import `in`.jphe.storyvox.feature.api.PalaceProbeResult
-import `in`.jphe.storyvox.feature.api.PunctuationPause
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiSettings
@@ -61,9 +60,11 @@ class SettingsViewModel @Inject constructor(
     fun setDefaultVoice(id: String?) = viewModelScope.launch { repo.setDefaultVoice(id) }
     fun setWifiOnly(enabled: Boolean) = viewModelScope.launch { repo.setDownloadOnWifiOnly(enabled) }
     fun setPollHours(h: Int) = viewModelScope.launch { repo.setPollIntervalHours(h) }
-    /** Issue #90 — three-stop punctuation-pause selector. */
-    fun setPunctuationPause(mode: PunctuationPause) =
-        viewModelScope.launch { repo.setPunctuationPause(mode) }
+    /** Issue #109 — continuous inter-sentence pause multiplier (was a
+     *  3-stop selector under #93). Repo coerces to the engine's [0..4]
+     *  range; the slider in the screen passes a raw Float. */
+    fun setPunctuationPauseMultiplier(multiplier: Float) =
+        viewModelScope.launch { repo.setPunctuationPauseMultiplier(multiplier) }
     fun setPlaybackBufferChunks(n: Int) = viewModelScope.launch { repo.setPlaybackBufferChunks(n) }
     /** Issue #98 — Mode A toggle. */
     fun setWarmupWait(enabled: Boolean) = viewModelScope.launch { repo.setWarmupWait(enabled) }
