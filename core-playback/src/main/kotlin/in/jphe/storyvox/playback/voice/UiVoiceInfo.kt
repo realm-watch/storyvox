@@ -46,4 +46,17 @@ sealed interface EngineType {
 
     /** Kokoro speaker — shared Kokoro model, picks a speaker by index. */
     data class Kokoro(val speakerId: Int) : EngineType
+
+    /**
+     * Azure Speech Services HD voice. Cloud-rendered TTS over HTTPS;
+     * no local model. [voiceName] is the Azure voice id (e.g.
+     * `en-US-AvaDragonHDLatestNeural`, `en-US-AndrewMultilingualNeural`).
+     * [region] is the Azure resource region; user-configurable in
+     * Settings, defaults to `eastus`.
+     *
+     * The catalog entry seams in here ahead of the engine wiring (PR-4
+     * in Solara's plan) so PR-3 can land Settings → Sources → Azure UI
+     * against a stable type without circular module dependencies.
+     */
+    data class Azure(val voiceName: String, val region: String) : EngineType
 }

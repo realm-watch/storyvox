@@ -289,6 +289,12 @@ private fun EngineSubHeader(engine: VoiceEngine, count: Int, dim: Boolean = fals
     val label = when (engine) {
         VoiceEngine.Piper -> "Piper"
         VoiceEngine.Kokoro -> "Kokoro"
+        // Azure HD voices land in their own sub-header so the cloud
+        // round-trip story is one glance away. Catalog labels carry a
+        // ☁️ glyph, but the section header restates "Azure" plainly so
+        // a user scanning the library doesn't need to decode a single
+        // emoji to know what's cloud vs local.
+        VoiceEngine.Azure -> "Azure (Cloud)"
     }
     Row(
         verticalAlignment = Alignment.CenterVertically,

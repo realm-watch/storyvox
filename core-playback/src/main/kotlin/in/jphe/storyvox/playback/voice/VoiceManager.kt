@@ -201,6 +201,21 @@ class VoiceManager @Inject constructor(
         }
 
         when (entry.engineType) {
+            is EngineType.Azure -> {
+                // Cloud voice — nothing to download. The "install" step
+                // for an Azure voice is BYOK key entry in Settings, which
+                // PR-3 wires up. PR-4 lights the activation path.
+                //
+                // Currently this branch is a guarded no-op: VoiceManager
+                // surfaces Azure entries in `availableVoices` (so they
+                // appear greyed out in the picker per Solara's spec) but
+                // never reports them as installed and refuses to "download"
+                // them. Calling code in this PR shouldn't reach here yet
+                // — PR-4 will replace this guard with the real activation
+                // flow.
+                error("Azure voices have no downloadable assets — " +
+                    "credential-keyed activation arrives in PR-4. (#85)")
+            }
             is EngineType.Kokoro -> {
                 // Kokoro speakers all share one ~168MB multi-speaker model
                 // (model.onnx + tokens.txt + voices.bin). The first

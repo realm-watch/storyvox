@@ -1,0 +1,207 @@
+package `in`.jphe.storyvox.source.azure
+
+import `in`.jphe.storyvox.playback.voice.EngineType
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+/**
+ * Unit tests for [AzureVoiceEngine]. We stub the [AzureSpeechClient]
+ * at the class boundary — it returns canned PCM or throws an
+ * [AzureError]; the engine's job is to translate sentence text into
+ * an SSML body, hand it to the client, and translate failures into a
+ * null-PCM "skip this sentence" signal.
+ *
+ * No Hilt, no Android, no MockWebServer here — those live in
+ * [AzureSpeechClientTest].
+ */
+class AzureVoiceEngineTest {
+
+    /** Test double for the credentials store — configurable per-case. */
+    private fun creds(configured: Boolean): AzureCredentials = object : AzureCredentials() {
+        override fun key(): String? = if (configured) "test-key" else null
+        override val isConfigured: Boolean get() = configured
+    }
+
+    /** Recording client — captures the SSML bodies it received and
+     *  returns canned PCM. */
+    private class RecordingClient(
+        private val response: ByteArray = byteArrayOf(0x01, 0x02),
+        private val error: AzureError? = null,
+    ) : AzureSpeechClient(
+        // Real OkHttp + creds — never reached because synthesize() is
+        // overridden below. Pass a real-shaped instance so the Hilt
+        // base class's @Inject dependencies are happy.
+        okhttp3.OkHttpClient(),
+        AzureCredentials.forTesting(),
+    ) {
+        val captured = mutableListOf<String>()
+        override fun synthesize(ssml: String): ByteArray {
+            captured += ssml
+            error?.let { throw it }
+            return response
+        }
+    }
+
+    @Test
+    fun `synthesize returns client PCM on success`() {
+        val client = RecordingClient(response = byteArrayOf(0x10, 0x20, 0x30))
+        val engine = AzureVoiceEngine(client, creds(configured = true))
+
+        val pcm = engine.synthesize(
+            text = "Hello.",
+            engineType = EngineType.Azure("en-US-AvaDragonHDLatestNeural", "eastus"),
+            speed = 1.0f,
+            pitch = 1.0f,
+        )
+
+        assertNotNull(pcm)
+        assertArrayEquals(byteArrayOf(0x10, 0x20, 0x30), pcm)
+        assertEquals("client called once", 1, client.captured.size)
+    }
+
+    @Test
+    fun `synthesize embeds the voice name in the SSML body`() {
+        val client = RecordingClient()
+        val engine = AzureVoiceEngine(client, creds(configured = true))
+
+        engine.synthesize(
+            text = "x",
+            engineType = EngineType.Azure("en-US-AndrewDragonHDLatestNeural", "westus2"),
+            speed = 1.0f,
+            pitch = 1.0f,
+        )
+
+        val ssml = client.captured.single()
+        assertEquals(
+            "voice tag matches engineType.voiceName",
+            true,
+            ssml.contains("name=\"en-US-AndrewDragonHDLatestNeural\""),
+        )
+    }
+
+    @Test
+    fun `blank text returns null without calling the client`() {
+        val client = RecordingClient()
+        val engine = AzureVoiceEngine(client, creds(configured = true))
+
+        val pcm = engine.synthesize(
+            text = "   ",
+            engineType = EngineType.Azure("v", "eastus"),
+            speed = 1.0f,
+            pitch = 1.0f,
+        )
+
+        assertNull(pcm)
+        assertEquals("client never called", 0, client.captured.size)
+    }
+
+    @Test
+    fun `unconfigured credentials short-circuit to null`() {
+        val client = RecordingClient()
+        val engine = AzureVoiceEngine(client, creds(configured = false))
+
+        val pcm = engine.synthesize(
+            text = "Hello.",
+            engineType = EngineType.Azure("v", "eastus"),
+            speed = 1.0f,
+            pitch = 1.0f,
+        )
+
+        assertNull(pcm)
+        assertEquals("client never called", 0, client.captured.size)
+    }
+
+    @Test
+    fun `AuthFailed error swallowed to null`() {
+        val client = RecordingClient(
+            error = AzureError.AuthFailed("bad key"),
+        )
+        val engine = AzureVoiceEngine(client, creds(configured = true))
+
+        val pcm = engine.synthesize(
+            text = "x",
+            engineType = EngineType.Azure("v", "eastus"),
+            speed = 1.0f,
+            pitch = 1.0f,
+        )
+
+        // PR-2 swallows to null — PR-5 is the one that wires the
+        // PlaybackState.error channel. The producer's existing skip
+        // branch keeps the chapter going; PR-5 will instead halt the
+        // pipeline because every subsequent sentence will fail too.
+        assertNull(pcm)
+    }
+
+    @Test
+    fun `Throttled error swallowed to null`() {
+        val client = RecordingClient(error = AzureError.Throttled("429"))
+        val engine = AzureVoiceEngine(client, creds(configured = true))
+
+        val pcm = engine.synthesize(
+            text = "x",
+            engineType = EngineType.Azure("v", "eastus"),
+            speed = 1.0f,
+            pitch = 1.0f,
+        )
+
+        assertNull(pcm)
+    }
+
+    @Test
+    fun `NetworkError swallowed to null`() {
+        val client = RecordingClient(
+            error = AzureError.NetworkError(java.io.IOException("dns")),
+        )
+        val engine = AzureVoiceEngine(client, creds(configured = true))
+
+        val pcm = engine.synthesize(
+            text = "x",
+            engineType = EngineType.Azure("v", "eastus"),
+            speed = 1.0f,
+            pitch = 1.0f,
+        )
+
+        assertNull(pcm)
+    }
+
+    @Test
+    fun `asEngineHandle exposes the right sample rate`() {
+        val client = RecordingClient()
+        val engine = AzureVoiceEngine(client, creds(configured = true))
+        val handle = engine.asEngineHandle(
+            EngineType.Azure("v", "eastus"),
+        )
+
+        assertEquals(AzureSpeechClient.SAMPLE_RATE_HZ, handle.sampleRate)
+    }
+
+    @Test
+    fun `asEngineHandle generateAudioPCM delegates to synthesize`() {
+        val client = RecordingClient(response = byteArrayOf(0x42))
+        val engine = AzureVoiceEngine(client, creds(configured = true))
+        val handle = engine.asEngineHandle(
+            EngineType.Azure("en-US-JennyMultilingualNeural", "eastus"),
+        )
+
+        val pcm = handle.generateAudioPCM("hi", 1.0f, 1.0f)
+
+        assertArrayEquals(byteArrayOf(0x42), pcm)
+        val ssml = client.captured.single()
+        assertEquals(
+            true,
+            ssml.contains("name=\"en-US-JennyMultilingualNeural\""),
+        )
+    }
+
+    @Test
+    fun `engine sample rate matches client constant`() {
+        val client = RecordingClient()
+        val engine = AzureVoiceEngine(client, creds(configured = true))
+
+        assertEquals(24_000, engine.sampleRate)
+        assertEquals(AzureSpeechClient.SAMPLE_RATE_HZ, engine.sampleRate)
+    }
+}

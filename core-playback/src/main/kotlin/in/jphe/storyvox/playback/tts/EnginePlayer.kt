@@ -416,6 +416,23 @@ class EnginePlayer @AssistedInject constructor(
                         KokoroEngine.getInstance().loadModel(context, onnx, tokens, voicesBin)
                             ?: "Error: load returned null"
                     }
+                    is EngineType.Azure -> {
+                        // Cloud voice — no model to load. PR-4 (Solara's
+                        // plan) replaces this guard with the
+                        // AzureVoiceEngine activation path: credentials
+                        // check + optional voices/list verify + straight
+                        // to startPlaybackPipeline. PR-1+2 wire the type
+                        // and the synthesis client; PR-4 wires the
+                        // activation. Until PR-4 lands, the picker UI
+                        // greys Azure rows out (they're not "installed"
+                        // — see VoiceManager.installedVoices) so this
+                        // branch should be unreachable. If we hit it, a
+                        // catalog or filter regression has let an Azure
+                        // entry through to playback before its time.
+                        error("Azure voice activation arrives in PR-4 (#85). " +
+                            "Reaching this branch means a non-Azure-aware " +
+                            "code path made an Azure voice selectable.")
+                    }
                 }
             }
         }
