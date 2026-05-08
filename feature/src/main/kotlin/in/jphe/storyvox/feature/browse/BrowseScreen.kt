@@ -107,11 +107,11 @@ fun BrowseScreen(
             }
         }
 
-        if (state.tab == BrowseTab.Search && state.sourceKey == BrowseSourceKey.RoyalRoad) {
+        if (state.tab == BrowseTab.Search) {
             OutlinedTextField(
                 value = state.query,
                 onValueChange = viewModel::setQuery,
-                label = { Text("Search Royal Road") },
+                label = { Text("Search ${state.sourceKey.displayName}") },
                 modifier = Modifier.fillMaxWidth().padding(spacing.md),
                 singleLine = true,
             )

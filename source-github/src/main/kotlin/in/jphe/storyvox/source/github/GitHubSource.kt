@@ -90,8 +90,79 @@ internal class GitHubSource @Inject constructor(
         }
     }
 
-    override suspend fun search(query: SearchQuery): FictionResult<ListPage<FictionSummary>> =
-        throw NotImplementedError(STEP_3_SEARCH)
+    override suspend fun search(query: SearchQuery): FictionResult<ListPage<FictionSummary>> {
+        // Compose the GitHub search query: pin to fiction-shaped topics
+        // so we don't dredge generic repos, then append the user's
+        // search term verbatim. GitHub topic OR-syntax is `topic:a
+        // OR topic:b` — covers a few synonym tags at once. RR-shaped
+        // SearchQuery filter fields (genres, tags, statuses,
+        // requireWarnings, etc.) don't translate to GitHub today and
+        // are ignored; the GitHub-shaped filter sheet from step 8c
+        // will route through a different code path.
+        val term = query.term.trim()
+        val gh = buildString {
+            append("(topic:fiction OR topic:fanfiction OR topic:webnovel)")
+            if (term.isNotEmpty()) {
+                append(' ')
+                append(term)
+            }
+        }
+
+        return when (val r = api.searchRepositories(gh, page = query.page)) {
+            is GitHubApiResult.Success -> {
+                val items = r.value.items.map { it.toFictionSummary() }
+                FictionResult.Success(
+                    ListPage(
+                        items = items,
+                        page = query.page,
+                        // GitHub search caps at 1000 results across all
+                        // pages; signal end-of-list when items < per_page
+                        // OR we've reached the cap.
+                        hasNext = items.isNotEmpty() && items.size >= 20 && query.page < 50,
+                    ),
+                )
+            }
+            is GitHubApiResult.NotFound -> FictionResult.Success(
+                ListPage(items = emptyList(), page = query.page, hasNext = false),
+            )
+            is GitHubApiResult.RateLimited -> FictionResult.RateLimited(
+                retryAfter = r.retryAfterSeconds?.let { it.toDuration(DurationUnit.SECONDS) },
+            )
+            is GitHubApiResult.HttpError -> FictionResult.NetworkError(
+                message = "GitHub error ${r.code}: ${r.message}",
+            )
+            is GitHubApiResult.NetworkError -> FictionResult.NetworkError(
+                message = "Could not reach GitHub",
+                cause = r.cause,
+            )
+            is GitHubApiResult.ParseError -> FictionResult.NetworkError(
+                message = "Malformed search response",
+                cause = r.cause,
+            )
+        }
+    }
+
+    /**
+     * Map a GitHub repo into the cross-source [FictionSummary]. Cover
+     * URL is intentionally null — the manifest's storyvox.json.cover
+     * lives in the repo content, not the API response, so search
+     * results don't have it. The user opens the fiction → fictionDetail
+     * resolves the manifest → the detail card gets the cover. Tags
+     * fall back to GitHub topics; the manifest's storyvox.json.tags
+     * (if any) overrides that on the detail page.
+     */
+    private fun GhRepo.toFictionSummary(): FictionSummary = FictionSummary(
+        id = "${SourceIds.GITHUB}:${fullName.lowercase()}",
+        sourceId = SourceIds.GITHUB,
+        title = name,
+        author = owner.login,
+        coverUrl = null,
+        description = description,
+        tags = topics,
+        status = if (archived) FictionStatus.COMPLETED else FictionStatus.ONGOING,
+        chapterCount = null,
+        rating = null,
+    )
 
     override suspend fun fictionDetail(fictionId: String): FictionResult<FictionDetail> {
         val coords = parseFictionId(fictionId)
@@ -372,6 +443,5 @@ internal class GitHubSource @Inject constructor(
 
     private companion object {
         const val STEP_3F_AUTH = "GitHub source auth-gated calls not implemented yet — lands in step 3f (optional PAT support)"
-        const val STEP_3_SEARCH = "GitHub /search/repositories not implemented yet — lands in step 3-search (spec sequence step 8)"
     }
 }

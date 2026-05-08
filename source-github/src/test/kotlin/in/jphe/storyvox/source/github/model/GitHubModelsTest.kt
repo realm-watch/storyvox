@@ -242,4 +242,60 @@ class GitHubModelsTest {
         assertTrue(cmp.commits.isEmpty())
         assertTrue(cmp.files.isEmpty())
     }
+
+    // ─── GhSearchResponse ──────────────────────────────────────────────
+
+    @Test fun `search response deserializes total + items`() {
+        val json = """
+            {
+              "total_count": 2,
+              "incomplete_results": false,
+              "items": [
+                {
+                  "id": 1, "name": "fiction-a", "full_name": "o/fiction-a",
+                  "default_branch": "main",
+                  "owner": { "login": "o" },
+                  "html_url": "https://github.com/o/fiction-a",
+                  "topics": ["fiction"]
+                },
+                {
+                  "id": 2, "name": "fiction-b", "full_name": "p/fiction-b",
+                  "default_branch": "main",
+                  "owner": { "login": "p" },
+                  "html_url": "https://github.com/p/fiction-b"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val r = GitHubJson.decodeFromString<GhSearchResponse>(json)
+        assertEquals(2, r.totalCount)
+        assertFalse(r.incompleteResults)
+        assertEquals(2, r.items.size)
+        assertEquals("o/fiction-a", r.items[0].fullName)
+        assertEquals(listOf("fiction"), r.items[0].topics)
+    }
+
+    @Test fun `search response with incomplete-results signals partial`() {
+        val r = GitHubJson.decodeFromString<GhSearchResponse>(
+            """{ "total_count": 0, "incomplete_results": true, "items": [] }""",
+        )
+        assertTrue(r.incompleteResults)
+        assertTrue(r.items.isEmpty())
+    }
+
+    @Test fun `search response with omitted incomplete_results defaults to false`() {
+        val r = GitHubJson.decodeFromString<GhSearchResponse>(
+            """{ "total_count": 0, "items": [] }""",
+        )
+        assertFalse(r.incompleteResults)
+    }
+
+    @Test fun `search response with empty items list deserializes`() {
+        val r = GitHubJson.decodeFromString<GhSearchResponse>(
+            """{ "total_count": 0, "incomplete_results": false, "items": [] }""",
+        )
+        assertEquals(0, r.totalCount)
+        assertTrue(r.items.isEmpty())
+    }
 }
