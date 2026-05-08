@@ -58,6 +58,9 @@ class SettingsRepositoryPronunciationDictTest {
             palaceConfig = makeFakePalaceConfig(tempFolder.newFolder("palace_ds"), scope),
             palaceApi = makeFakePalaceApi(),
             llmCreds = `in`.jphe.storyvox.llm.LlmCredentialsStore.forTesting(),
+            // GitHubAuth fake (#91) — pronunciation-dict tests don't touch
+            // GitHub state; mirrors BufferTest / ModesTest / PitchTest pattern.
+            githubAuth = FakeGitHubAuth(),
         )
     }
 
