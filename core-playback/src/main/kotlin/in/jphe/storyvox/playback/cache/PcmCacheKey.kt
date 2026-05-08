@@ -3,7 +3,7 @@ package `in`.jphe.storyvox.playback.cache
 import java.security.MessageDigest
 
 /**
- * Identity of one cached chapter render. Five fields because the rendered
+ * Identity of one cached chapter render. Six fields because the rendered
  * audio depends on every one:
  *  - [chapterId] — different chapters obviously different audio.
  *  - [voiceId] — same chapter under "cori" vs "amy" sounds different.
@@ -15,6 +15,15 @@ import java.security.MessageDigest
  *  - [chunkerVersion] — see [`in`.jphe.storyvox.playback.tts.CHUNKER_VERSION].
  *    A chunker change shifts sentence boundaries which makes the sidecar
  *    index wrong; bumping this invalidates without DB migration.
+ *  - [pronunciationDictHash] — see [`in`.jphe.storyvox.data.repository.pronunciation.PronunciationDict.contentHash].
+ *    The dictionary mutates the string fed to `engine.generateAudioPCM`,
+ *    so the rendered PCM differs whenever the dict changes. Including
+ *    the content hash here means adding/editing/removing an entry
+ *    self-evicts the affected on-disk renders without a manual sweep
+ *    (issue #135). For users with no dictionary configured this is
+ *    `PronunciationDict.EMPTY.contentHash` — a stable constant — so
+ *    pre-#135 caches that get re-keyed on first launch will all
+ *    invalidate exactly once and rebuild cleanly.
  *
  * [fileBaseName] is a 64-char SHA-256 of `toString()`. Stable across
  * runs (no salt, no time component); a key derived twice with the same
@@ -29,6 +38,7 @@ data class PcmCacheKey(
     val speedHundredths: Int,
     val pitchHundredths: Int,
     val chunkerVersion: Int,
+    val pronunciationDictHash: Int,
 ) {
     /**
      * 64-char hex SHA-256 of `toString()`. Used as the on-disk basename

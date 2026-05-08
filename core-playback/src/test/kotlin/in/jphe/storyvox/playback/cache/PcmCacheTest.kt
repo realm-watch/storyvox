@@ -43,9 +43,9 @@ class PcmCacheTest {
         cache.rootDirectory().listFiles()?.forEach { it.delete() }
     }
 
-    private val key1 = PcmCacheKey("ch1", "cori", 100, 100, 1)
-    private val key2 = PcmCacheKey("ch2", "cori", 100, 100, 1)
-    private val key3 = PcmCacheKey("ch3", "cori", 100, 100, 1)
+    private val key1 = PcmCacheKey("ch1", "cori", 100, 100, 1, 0)
+    private val key2 = PcmCacheKey("ch2", "cori", 100, 100, 1, 0)
+    private val key3 = PcmCacheKey("ch3", "cori", 100, 100, 1, 0)
 
     private fun renderInto(key: PcmCacheKey, bytes: Int) {
         val app = cache.appender(key, sampleRate = 22050)
@@ -138,9 +138,9 @@ class PcmCacheTest {
 
     @Test
     fun `deleteAllForChapter removes every voice variant`() = runBlocking {
-        val ch1Cori = PcmCacheKey("ch1", "cori", 100, 100, 1)
-        val ch1Amy  = PcmCacheKey("ch1", "amy",  100, 100, 1)
-        val ch2Cori = PcmCacheKey("ch2", "cori", 100, 100, 1)
+        val ch1Cori = PcmCacheKey("ch1", "cori", 100, 100, 1, 0)
+        val ch1Amy  = PcmCacheKey("ch1", "amy",  100, 100, 1, 0)
+        val ch2Cori = PcmCacheKey("ch2", "cori", 100, 100, 1, 0)
         renderInto(ch1Cori, bytes = 100)
         renderInto(ch1Amy,  bytes = 100)
         renderInto(ch2Cori, bytes = 100)
