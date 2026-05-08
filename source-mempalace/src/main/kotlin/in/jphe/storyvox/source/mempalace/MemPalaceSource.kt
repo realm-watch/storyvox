@@ -14,6 +14,7 @@ import `in`.jphe.storyvox.source.mempalace.model.PalaceDrawer
 import `in`.jphe.storyvox.source.mempalace.model.PalaceGraph
 import `in`.jphe.storyvox.source.mempalace.net.PalaceDaemonApi
 import `in`.jphe.storyvox.source.mempalace.net.PalaceDaemonResult
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -331,10 +332,34 @@ internal class MemPalaceSource @Inject constructor(
         is PalaceDaemonResult.Degraded -> FictionResult.NetworkError(
             message = "Palace is rebuilding — try again shortly.",
         )
-        is PalaceDaemonResult.NotReachable -> FictionResult.NetworkError(
-            message = "Could not reach the palace daemon. Reconnect on home network.",
-            cause = cause,
-        )
+        is PalaceDaemonResult.NotReachable -> {
+            // Palace API surfaces "host not configured" (empty Settings →
+            // Memory Palace host textfield) as a NotReachable with that
+            // exact IOException message — see PalaceDaemonApi.kt's
+            // `if (!cfg.isConfigured)` early returns at lines 95 + 144.
+            // Without this branch, an unconfigured user sees "Reconnect
+            // on home network" — wrong cause, no actionable path. Issue
+            // #164. The proper fix for this is a typed-result error
+            // kind (mirroring PR #154's RecapUiState.ErrorKind shape)
+            // with a dedicated "Open Settings" CTA in the empty state;
+            // tracked as a follow-up. The copy fix here closes the
+            // immediate user-impact gap by directing them to the right
+            // place in Settings instead of telling them to reconnect
+            // a Wi-Fi connection that's already fine.
+            val isUnconfigured = (cause as? IOException)?.message ==
+                "Palace host not configured"
+            if (isUnconfigured) {
+                FictionResult.NetworkError(
+                    message = "Set up your Memory Palace host in Settings → Memory Palace to browse your private fictions.",
+                    cause = cause,
+                )
+            } else {
+                FictionResult.NetworkError(
+                    message = "Could not reach the palace daemon. Reconnect on home network or check the host address.",
+                    cause = cause,
+                )
+            }
+        }
         is PalaceDaemonResult.HostRejected -> FictionResult.NetworkError(
             message = "Palace host '${host}' is not on the home network.",
         )
