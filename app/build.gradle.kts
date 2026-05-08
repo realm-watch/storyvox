@@ -146,6 +146,7 @@ android {
 
 dependencies {
     implementation(project(":core-data"))
+    implementation(project(":core-llm"))
     implementation(project(":core-playback"))
     implementation(project(":core-ui"))
     implementation(project(":source-royalroad"))

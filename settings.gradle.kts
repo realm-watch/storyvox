@@ -35,6 +35,7 @@ rootProject.name = "storyvox"
 include(":app")
 include(":wear")
 include(":core-data")
+include(":core-llm")
 include(":core-playback")
 include(":core-ui")
 include(":source-royalroad")

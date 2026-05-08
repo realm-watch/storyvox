@@ -135,6 +135,17 @@ object AppBindings {
     fun providePlaybackModeConfig(impl: SettingsRepositoryUiImpl): PlaybackModeConfig = impl
 
     /**
+     * Same singleton instance as [provideSettingsRepositoryUi], exposed
+     * under the [`in`.jphe.storyvox.llm.LlmConfigProvider] contract so
+     * `core-llm`'s provider classes can read the user's chosen
+     * provider/model/URL without depending on the feature/api layer.
+     */
+    @Provides @Singleton
+    fun provideLlmConfigProvider(
+        impl: SettingsRepositoryUiImpl,
+    ): `in`.jphe.storyvox.llm.LlmConfigProvider = impl
+
+    /**
      * Stub WebViewFetcher — Selene's `:core-data` declares the interface; the
      * real impl in `:source-royalroad` is part of the deferred integration.
      * Returns a NetworkError with a clear message so any caller fails loudly.

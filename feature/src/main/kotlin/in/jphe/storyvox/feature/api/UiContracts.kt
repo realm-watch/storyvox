@@ -293,6 +293,46 @@ interface VoiceProviderUi {
     fun previewVoice(voice: UiVoice)
 }
 
+/** Mirror of [`in`.jphe.storyvox.llm.ProviderId] for the feature
+ *  module — keeps `:feature` from depending on `:core-llm` directly.
+ *  The Settings impl converts between the two. Stays in lockstep
+ *  with the canonical enum (PR-1 ships with the same set + order). */
+enum class UiLlmProvider {
+    Claude, OpenAi, Ollama, Bedrock, Vertex, Foundry, Teams;
+
+    /** Whether this provider has a real implementation in PR-1.
+     *  Matches `ProviderId.implemented`. */
+    val implemented: Boolean
+        get() = this == Claude || this == OpenAi || this == Ollama
+
+    val displayName: String
+        get() = when (this) {
+            Claude -> "Claude (Anthropic, BYOK)"
+            OpenAi -> "OpenAI (BYOK)"
+            Ollama -> "Ollama (local LAN)"
+            Bedrock -> "AWS Bedrock"
+            Vertex -> "Google Vertex AI"
+            Foundry -> "Azure AI Foundry"
+            Teams -> "Anthropic Teams (OAuth)"
+        }
+}
+
+/** UI-facing AI config — a flattened bundle the Settings screen
+ *  reads. Distinct from the wire-layer LlmConfig in :core-llm so
+ *  `:feature` doesn't take a direct dependency on the LLM module. */
+data class UiAiSettings(
+    /** null = AI disabled. */
+    val provider: UiLlmProvider? = null,
+    val claudeModel: String = "claude-haiku-4.5",
+    val claudeKeyConfigured: Boolean = false,
+    val openAiModel: String = "gpt-4o-mini",
+    val openAiKeyConfigured: Boolean = false,
+    val ollamaBaseUrl: String = "http://10.0.0.1:11434",
+    val ollamaModel: String = "llama3.3",
+    val privacyAcknowledged: Boolean = false,
+    val sendChapterTextEnabled: Boolean = true,
+)
+
 data class UiSettings(
     val ttsEngine: String,
     val defaultVoiceId: String?,
@@ -313,6 +353,7 @@ data class UiSettings(
      */
     val punctuationPauseMultiplier: Float = PUNCTUATION_PAUSE_DEFAULT_MULTIPLIER,
     val sigil: UiSigil = UiSigil.UNKNOWN,
+    val ai: UiAiSettings = UiAiSettings(),
     /**
      * Audio pre-synth queue depth, in sentence-chunks. Maps directly to
      * [EngineStreamingSource.queueCapacity]. The minimum 2 keeps a real
@@ -482,6 +523,23 @@ interface SettingsRepositoryUi {
      * Returns the daemon version on success, an error message on failure.
      */
     suspend fun testPalaceConnection(): PalaceProbeResult
+
+    // ── AI settings (issue #81) ────────────────────────────────────
+    /** null disables AI. Picking a spec-only provider has no effect
+     *  at runtime (the providers throw NotConfigured) but the
+     *  Settings UI surfaces them as "coming soon" rows that are
+     *  visible but not actually selectable. */
+    suspend fun setAiProvider(provider: UiLlmProvider?)
+    suspend fun setClaudeApiKey(key: String?)   // null = clear
+    suspend fun setClaudeModel(model: String)
+    suspend fun setOpenAiApiKey(key: String?)
+    suspend fun setOpenAiModel(model: String)
+    suspend fun setOllamaBaseUrl(url: String)
+    suspend fun setOllamaModel(model: String)
+    suspend fun setSendChapterTextEnabled(enabled: Boolean)
+    suspend fun acknowledgeAiPrivacy()
+    /** Wipe all AI configuration — provider/keys/URLs. */
+    suspend fun resetAiSettings()
 }
 
 /** Outcome of [`SettingsRepositoryUi.testPalaceConnection`]. */

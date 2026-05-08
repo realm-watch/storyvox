@@ -27,9 +27,15 @@ import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_OFF_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.PalaceProbeResult
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
+import `in`.jphe.storyvox.feature.api.UiAiSettings
+import `in`.jphe.storyvox.feature.api.UiLlmProvider
 import `in`.jphe.storyvox.feature.api.UiPalaceConfig
 import `in`.jphe.storyvox.feature.api.UiSettings
 import `in`.jphe.storyvox.feature.api.UiSigil
+import `in`.jphe.storyvox.llm.LlmConfig
+import `in`.jphe.storyvox.llm.LlmConfigProvider
+import `in`.jphe.storyvox.llm.LlmCredentialsStore
+import `in`.jphe.storyvox.llm.ProviderId
 import `in`.jphe.storyvox.sigil.Sigil
 import `in`.jphe.storyvox.source.mempalace.net.PalaceDaemonApi
 import `in`.jphe.storyvox.source.mempalace.net.PalaceDaemonResult
@@ -114,6 +120,17 @@ private object Keys {
      *  behavior on mid-stream underrun; OFF lets the consumer drain through
      *  underruns without raising the "Buffering…" UI. */
     val CATCHUP_PAUSE = booleanPreferencesKey("pref_catchup_pause_v1")
+
+    // ── AI / LLM (issue #81) ────────────────────────────────────────
+    /** Active provider — stored as the [ProviderId] enum's name.
+     *  Empty/missing = AI disabled. */
+    val AI_PROVIDER = stringPreferencesKey("pref_ai_provider")
+    val AI_CLAUDE_MODEL = stringPreferencesKey("pref_ai_claude_model")
+    val AI_OPENAI_MODEL = stringPreferencesKey("pref_ai_openai_model")
+    val AI_OLLAMA_BASE_URL = stringPreferencesKey("pref_ai_ollama_base_url")
+    val AI_OLLAMA_MODEL = stringPreferencesKey("pref_ai_ollama_model")
+    val AI_PRIVACY_ACK = booleanPreferencesKey("pref_ai_privacy_ack")
+    val AI_SEND_CHAPTER_TEXT = booleanPreferencesKey("pref_ai_send_chapter_text")
 }
 
 @Singleton
@@ -123,7 +140,8 @@ class SettingsRepositoryUiImpl(
     private val hydrator: SessionHydrator,
     private val palaceConfig: PalaceConfigImpl,
     private val palaceApi: PalaceDaemonApi,
-) : SettingsRepositoryUi, PlaybackBufferConfig, PlaybackModeConfig {
+    private val llmCreds: LlmCredentialsStore,
+) : SettingsRepositoryUi, PlaybackBufferConfig, PlaybackModeConfig, LlmConfigProvider {
 
     /** Hilt entry point — pulls the production DataStore from the app context.
      *  The primary constructor takes the store directly so tests can swap in
@@ -135,7 +153,8 @@ class SettingsRepositoryUiImpl(
         hydrator: SessionHydrator,
         palaceConfig: PalaceConfigImpl,
         palaceApi: PalaceDaemonApi,
-    ) : this(context.settingsDataStore, auth, hydrator, palaceConfig, palaceApi)
+        llmCreds: LlmCredentialsStore,
+    ) : this(context.settingsDataStore, auth, hydrator, palaceConfig, palaceApi, llmCreds)
 
     override val settings: Flow<UiSettings> = combine(
         store.data,
@@ -159,6 +178,19 @@ class SettingsRepositoryUiImpl(
             warmupWait = prefs[Keys.WARMUP_WAIT] ?: true,
             catchupPause = prefs[Keys.CATCHUP_PAUSE] ?: true,
             palace = UiPalaceConfig(host = palace.host, apiKey = palace.apiKey),
+            ai = UiAiSettings(
+                provider = prefs[Keys.AI_PROVIDER]
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { runCatching { UiLlmProvider.valueOf(it) }.getOrNull() },
+                claudeModel = prefs[Keys.AI_CLAUDE_MODEL] ?: "claude-haiku-4.5",
+                claudeKeyConfigured = llmCreds.hasClaudeKey,
+                openAiModel = prefs[Keys.AI_OPENAI_MODEL] ?: "gpt-4o-mini",
+                openAiKeyConfigured = llmCreds.hasOpenAiKey,
+                ollamaBaseUrl = prefs[Keys.AI_OLLAMA_BASE_URL] ?: "http://10.0.0.1:11434",
+                ollamaModel = prefs[Keys.AI_OLLAMA_MODEL] ?: "llama3.3",
+                privacyAcknowledged = prefs[Keys.AI_PRIVACY_ACK] ?: false,
+                sendChapterTextEnabled = prefs[Keys.AI_SEND_CHAPTER_TEXT] ?: true,
+            ),
             sigil = Sigil.current.let {
                 UiSigil(
                     name = it.name,
@@ -296,6 +328,94 @@ class SettingsRepositoryUiImpl(
             is PalaceDaemonResult.ParseError -> PalaceProbeResult.Unreachable(
                 "Malformed health response — is this palace-daemon?",
             )
+        }
+    }
+
+    // ── AI settings (issue #81) ────────────────────────────────────
+
+    override suspend fun setAiProvider(provider: UiLlmProvider?) {
+        store.edit {
+            if (provider == null) it.remove(Keys.AI_PROVIDER)
+            else it[Keys.AI_PROVIDER] = provider.name
+        }
+    }
+
+    override suspend fun setClaudeApiKey(key: String?) {
+        if (key == null) llmCreds.clearClaudeApiKey()
+        else llmCreds.setClaudeApiKey(key)
+    }
+
+    override suspend fun setClaudeModel(model: String) {
+        store.edit { it[Keys.AI_CLAUDE_MODEL] = model }
+    }
+
+    override suspend fun setOpenAiApiKey(key: String?) {
+        if (key == null) llmCreds.clearOpenAiApiKey()
+        else llmCreds.setOpenAiApiKey(key)
+    }
+
+    override suspend fun setOpenAiModel(model: String) {
+        store.edit { it[Keys.AI_OPENAI_MODEL] = model }
+    }
+
+    override suspend fun setOllamaBaseUrl(url: String) {
+        store.edit { it[Keys.AI_OLLAMA_BASE_URL] = url }
+    }
+
+    override suspend fun setOllamaModel(model: String) {
+        store.edit { it[Keys.AI_OLLAMA_MODEL] = model }
+    }
+
+    override suspend fun setSendChapterTextEnabled(enabled: Boolean) {
+        store.edit { it[Keys.AI_SEND_CHAPTER_TEXT] = enabled }
+    }
+
+    override suspend fun acknowledgeAiPrivacy() {
+        store.edit { it[Keys.AI_PRIVACY_ACK] = true }
+    }
+
+    override suspend fun resetAiSettings() {
+        store.edit {
+            it.remove(Keys.AI_PROVIDER)
+            it.remove(Keys.AI_CLAUDE_MODEL)
+            it.remove(Keys.AI_OPENAI_MODEL)
+            it.remove(Keys.AI_OLLAMA_BASE_URL)
+            it.remove(Keys.AI_OLLAMA_MODEL)
+            it.remove(Keys.AI_PRIVACY_ACK)
+            it.remove(Keys.AI_SEND_CHAPTER_TEXT)
+        }
+        llmCreds.clearAll()
+    }
+
+    // ── LlmConfigProvider — bridge to :core-llm ────────────────────
+
+    override val config: Flow<LlmConfig> = store.data.map { prefs ->
+        LlmConfig(
+            provider = prefs[Keys.AI_PROVIDER]
+                ?.takeIf { it.isNotBlank() }
+                ?.let { runCatching { ProviderId.valueOf(it) }.getOrNull() },
+            claudeModel = prefs[Keys.AI_CLAUDE_MODEL] ?: "claude-haiku-4.5",
+            openAiModel = prefs[Keys.AI_OPENAI_MODEL] ?: "gpt-4o-mini",
+            ollamaBaseUrl = prefs[Keys.AI_OLLAMA_BASE_URL] ?: "http://10.0.0.1:11434",
+            ollamaModel = prefs[Keys.AI_OLLAMA_MODEL] ?: "llama3.3",
+            privacyAcknowledged = prefs[Keys.AI_PRIVACY_ACK] ?: false,
+            sendChapterTextEnabled = prefs[Keys.AI_SEND_CHAPTER_TEXT] ?: true,
+        )
+    }
+
+    override suspend fun setConfig(config: LlmConfig) {
+        // Bulk write — used by tests / one-shot reset paths. The
+        // narrow setters above are the day-to-day path.
+        val providerName: String? = config.provider?.name
+        store.edit { p ->
+            if (providerName == null) p.remove(Keys.AI_PROVIDER)
+            else p[Keys.AI_PROVIDER] = providerName
+            p[Keys.AI_CLAUDE_MODEL] = config.claudeModel
+            p[Keys.AI_OPENAI_MODEL] = config.openAiModel
+            p[Keys.AI_OLLAMA_BASE_URL] = config.ollamaBaseUrl
+            p[Keys.AI_OLLAMA_MODEL] = config.ollamaModel
+            p[Keys.AI_PRIVACY_ACK] = config.privacyAcknowledged
+            p[Keys.AI_SEND_CHAPTER_TEXT] = config.sendChapterTextEnabled
         }
     }
 }

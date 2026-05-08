@@ -15,6 +15,8 @@ import `in`.jphe.storyvox.data.db.StoryvoxDatabase
 import `in`.jphe.storyvox.data.db.dao.AuthDao
 import `in`.jphe.storyvox.data.db.dao.ChapterDao
 import `in`.jphe.storyvox.data.db.dao.FictionDao
+import `in`.jphe.storyvox.data.db.dao.LlmMessageDao
+import `in`.jphe.storyvox.data.db.dao.LlmSessionDao
 import `in`.jphe.storyvox.data.db.dao.PlaybackDao
 import `in`.jphe.storyvox.data.db.migration.ALL_MIGRATIONS
 import `in`.jphe.storyvox.data.repository.AuthRepository
@@ -54,6 +56,8 @@ object DataModule {
     @Provides fun chapterDao(db: StoryvoxDatabase): ChapterDao = db.chapterDao()
     @Provides fun playbackDao(db: StoryvoxDatabase): PlaybackDao = db.playbackDao()
     @Provides fun authDao(db: StoryvoxDatabase): AuthDao = db.authDao()
+    @Provides fun llmSessionDao(db: StoryvoxDatabase): LlmSessionDao = db.llmSessionDao()
+    @Provides fun llmMessageDao(db: StoryvoxDatabase): LlmMessageDao = db.llmMessageDao()
 
     @Provides
     @Singleton

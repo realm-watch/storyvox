@@ -7,9 +7,13 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import `in`.jphe.storyvox.feature.api.PalaceProbeResult
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
+import `in`.jphe.storyvox.feature.api.UiLlmProvider
 import `in`.jphe.storyvox.feature.api.UiSettings
 import `in`.jphe.storyvox.feature.api.UiVoice
 import `in`.jphe.storyvox.feature.api.VoiceProviderUi
+import `in`.jphe.storyvox.llm.LlmRepository
+import `in`.jphe.storyvox.llm.ProbeResult
+import `in`.jphe.storyvox.llm.ProviderId
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -29,28 +33,44 @@ data class SettingsUiState(
     val palaceProbe: PalaceProbeResult? = null,
     /** True while a probe is in flight (button shows spinner). */
     val palaceProbing: Boolean = false,
+    /** Most recent Test-connection probe outcome. Settings UI
+     *  surfaces this as a transient toast/message under the Test
+     *  button. */
+    val probeOutcome: ProbeOutcome? = null,
 )
+
+/** Stable-typed probe message for the AI Settings UI. Distinct from
+ *  [ProbeResult] so the feature module doesn't expose :core-llm
+ *  types directly to the UI layer (this VM is the conversion seam). */
+sealed class ProbeOutcome {
+    object Ok : ProbeOutcome()
+    data class Failure(val message: String) : ProbeOutcome()
+}
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val repo: SettingsRepositoryUi,
     private val voices: VoiceProviderUi,
+    private val llm: LlmRepository,
 ) : ViewModel() {
 
     private val palaceProbe = MutableStateFlow<PalaceProbeResult?>(null)
     private val palaceProbing = MutableStateFlow(false)
+    private val _probe = MutableStateFlow<ProbeOutcome?>(null)
 
     val uiState: StateFlow<SettingsUiState> = combine(
         repo.settings,
         voices.installedVoices,
         palaceProbe,
         palaceProbing,
-    ) { settings, installed, probe, probing ->
+        _probe,
+    ) { settings, installed, palaceProbeResult, probing, probe ->
         SettingsUiState(
             settings = settings,
             voices = installed,
-            palaceProbe = probe,
+            palaceProbe = palaceProbeResult,
             palaceProbing = probing,
+            probeOutcome = probe,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -101,4 +121,54 @@ class SettingsViewModel @Inject constructor(
             palaceProbing.value = false
         }
     }
+
+    // ── AI settings (issue #81) ────────────────────────────────────
+
+    fun setAiProvider(provider: UiLlmProvider?) = viewModelScope.launch {
+        // Spec-only providers can be persisted (they're enum values)
+        // but the runtime providers will throw NotConfigured if used.
+        // The UI's "coming soon" rows already prevent that path.
+        repo.setAiProvider(provider)
+    }
+    fun setClaudeApiKey(key: String?) = viewModelScope.launch { repo.setClaudeApiKey(key) }
+    fun setClaudeModel(model: String) = viewModelScope.launch { repo.setClaudeModel(model) }
+    fun setOpenAiApiKey(key: String?) = viewModelScope.launch { repo.setOpenAiApiKey(key) }
+    fun setOpenAiModel(model: String) = viewModelScope.launch { repo.setOpenAiModel(model) }
+    fun setOllamaBaseUrl(url: String) = viewModelScope.launch { repo.setOllamaBaseUrl(url) }
+    fun setOllamaModel(model: String) = viewModelScope.launch { repo.setOllamaModel(model) }
+    fun setSendChapterTextEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setSendChapterTextEnabled(enabled) }
+    fun acknowledgeAiPrivacy() = viewModelScope.launch { repo.acknowledgeAiPrivacy() }
+    fun resetAiSettings() = viewModelScope.launch {
+        repo.resetAiSettings()
+        _probe.value = null
+    }
+
+    /** Run the probe for the named UI provider. UI surfaces the
+     *  outcome as a one-shot toast/message under the button. */
+    fun testAiConnection(uiProvider: UiLlmProvider) = viewModelScope.launch {
+        _probe.value = null
+        val result = llm.probe(uiProvider.toCoreId())
+        _probe.value = when (result) {
+            ProbeResult.Ok -> ProbeOutcome.Ok
+            is ProbeResult.AuthError -> ProbeOutcome.Failure(result.message)
+            is ProbeResult.Misconfigured -> ProbeOutcome.Failure(result.message)
+            is ProbeResult.NotReachable -> ProbeOutcome.Failure(result.message)
+        }
+    }
+
+    fun clearProbeOutcome() { _probe.value = null }
+}
+
+/** Map the feature-layer enum to the :core-llm enum. The two are
+ *  kept in lockstep — when a new value is added in one, the other
+ *  must follow. */
+private fun UiLlmProvider.toCoreId(): ProviderId = when (this) {
+    UiLlmProvider.Claude -> ProviderId.Claude
+    UiLlmProvider.OpenAi -> ProviderId.OpenAi
+    UiLlmProvider.Ollama -> ProviderId.Ollama
+    UiLlmProvider.Bedrock -> ProviderId.Bedrock
+    UiLlmProvider.Vertex -> ProviderId.Vertex
+    UiLlmProvider.Foundry -> ProviderId.Foundry
+    UiLlmProvider.Teams -> ProviderId.Teams
 }

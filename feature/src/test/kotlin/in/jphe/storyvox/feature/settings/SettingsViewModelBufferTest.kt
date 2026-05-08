@@ -4,10 +4,16 @@ import `in`.jphe.storyvox.feature.api.BUFFER_DEFAULT_CHUNKS
 import `in`.jphe.storyvox.feature.api.BUFFER_RECOMMENDED_MAX_CHUNKS
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
+import `in`.jphe.storyvox.feature.api.UiLlmProvider
 import `in`.jphe.storyvox.feature.api.UiSettings
 import `in`.jphe.storyvox.feature.api.UiSigil
 import `in`.jphe.storyvox.feature.api.UiVoice
 import `in`.jphe.storyvox.feature.api.VoiceProviderUi
+import `in`.jphe.storyvox.llm.LlmConfig
+import `in`.jphe.storyvox.llm.LlmRepository
+import `in`.jphe.storyvox.llm.provider.ClaudeApiProvider
+import `in`.jphe.storyvox.llm.provider.OllamaProvider
+import `in`.jphe.storyvox.llm.provider.OpenAiApiProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -18,6 +24,8 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.serialization.json.Json
+import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -44,7 +52,7 @@ class SettingsViewModelBufferTest {
     @Test
     fun `setPlaybackBufferChunks forwards to the repository`() = runTest {
         val repo = FakeSettingsRepo(initial = baseSettings(buffer = BUFFER_DEFAULT_CHUNKS))
-        val vm = SettingsViewModel(repo, FakeVoiceProvider())
+        val vm = SettingsViewModel(repo, FakeVoiceProvider(), fakeLlm())
 
         vm.setPlaybackBufferChunks(192)
 
@@ -54,7 +62,7 @@ class SettingsViewModelBufferTest {
     @Test
     fun `viewmodel uiState surfaces repository's buffer value`() = runTest {
         val repo = FakeSettingsRepo(initial = baseSettings(buffer = 256))
-        val vm = SettingsViewModel(repo, FakeVoiceProvider())
+        val vm = SettingsViewModel(repo, FakeVoiceProvider(), fakeLlm())
 
         // The shared flow's WhileSubscribed needs an active subscriber; first()
         // covers that for the duration of the read.
@@ -68,7 +76,7 @@ class SettingsViewModelBufferTest {
         // that's the whole point of the experimental probe. Repo is the only
         // layer that applies the absolute mechanical bounds.
         val repo = FakeSettingsRepo(initial = baseSettings(buffer = BUFFER_DEFAULT_CHUNKS))
-        val vm = SettingsViewModel(repo, FakeVoiceProvider())
+        val vm = SettingsViewModel(repo, FakeVoiceProvider(), fakeLlm())
 
         vm.setPlaybackBufferChunks(BUFFER_RECOMMENDED_MAX_CHUNKS * 8)
 
@@ -133,6 +141,35 @@ class SettingsViewModelBufferTest {
         override suspend fun testPalaceConnection():
             `in`.jphe.storyvox.feature.api.PalaceProbeResult =
             `in`.jphe.storyvox.feature.api.PalaceProbeResult.NotConfigured
+
+        // ── AI no-ops — buffer tests don't exercise these. ──
+        override suspend fun setAiProvider(provider: UiLlmProvider?) = Unit
+        override suspend fun setClaudeApiKey(key: String?) = Unit
+        override suspend fun setClaudeModel(model: String) = Unit
+        override suspend fun setOpenAiApiKey(key: String?) = Unit
+        override suspend fun setOpenAiModel(model: String) = Unit
+        override suspend fun setOllamaBaseUrl(url: String) = Unit
+        override suspend fun setOllamaModel(model: String) = Unit
+        override suspend fun setSendChapterTextEnabled(enabled: Boolean) = Unit
+        override suspend fun acknowledgeAiPrivacy() = Unit
+        override suspend fun resetAiSettings() = Unit
+    }
+
+    /** Construct an LlmRepository with three real-but-stubbed
+     *  provider instances. The buffer tests don't call any LLM
+     *  methods, so we just need an LlmRepository that doesn't blow
+     *  up at construction. */
+    private fun fakeLlm(): LlmRepository {
+        val cfg = flowOf(LlmConfig())
+        val store = `in`.jphe.storyvox.llm.LlmCredentialsStore.forTesting()
+        val http = OkHttpClient()
+        val json = Json
+        return LlmRepository(
+            configFlow = cfg,
+            claude = ClaudeApiProvider(http, store, cfg, json),
+            openAi = OpenAiApiProvider(http, store, cfg, json),
+            ollama = OllamaProvider(http, cfg, json),
+        )
     }
 
     private class FakeVoiceProvider : VoiceProviderUi {

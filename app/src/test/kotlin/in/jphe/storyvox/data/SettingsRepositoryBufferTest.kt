@@ -62,6 +62,10 @@ class SettingsRepositoryBufferTest {
             hydrator = FakeHydrator(),
             palaceConfig = makeFakePalaceConfig(tempFolder.newFolder("palace_ds"), scope),
             palaceApi = makeFakePalaceApi(),
+            // Test-only LlmCredentialsStore — bypasses encrypted prefs.
+            // The buffer-related tests don't touch AI fields, so a
+            // no-op store is fine.
+            llmCreds = `in`.jphe.storyvox.llm.LlmCredentialsStore.forTesting(),
         )
     }
 
