@@ -51,6 +51,7 @@ import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_OFF_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.PalaceProbeResult
 import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiAiSettings
+import `in`.jphe.storyvox.feature.api.UiGitHubAuthState
 import `in`.jphe.storyvox.feature.api.UiLlmProvider
 import `in`.jphe.storyvox.feature.api.UiPalaceConfig
 import `in`.jphe.storyvox.ui.component.BrassButton
@@ -62,6 +63,8 @@ import kotlinx.coroutines.delay
 fun SettingsScreen(
     onOpenVoiceLibrary: () -> Unit,
     onOpenSignIn: () -> Unit,
+    onOpenGitHubSignIn: () -> Unit,
+    onOpenGitHubRevoke: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -247,9 +250,24 @@ fun SettingsScreen(
         )
 
         Divider()
-        SectionHeader("Account")
+        SectionHeader("Sources")
+        // Royal Road row — preserves the v0.4.x "Account" surface, just
+        // labelled per-source so GitHub can sit beside it. Issue #91.
+        Text("Royal Road", style = MaterialTheme.typography.titleSmall)
         if (s.isSignedIn) {
-            BrassButton(label = "Sign out", onClick = viewModel::signOut, variant = BrassButtonVariant.Secondary)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Signed in",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
+                )
+                BrassButton(
+                    label = "Sign out",
+                    onClick = viewModel::signOut,
+                    variant = BrassButtonVariant.Secondary,
+                )
+            }
         } else {
             BrassButton(
                 label = "Sign in",
@@ -262,6 +280,16 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+
+        // GitHub row (#91). Always shown — sign-in is additive (lifts the
+        // anonymous 60 req/hr cap to 5,000 req/hr) so it's useful even
+        // before the user has any GitHub fictions in their library.
+        GitHubSignInRow(
+            state = s.github,
+            onSignIn = onOpenGitHubSignIn,
+            onSignOut = viewModel::signOutGitHub,
+            onOpenRevokePage = onOpenGitHubRevoke,
+        )
 
         Divider()
         MemoryPalaceSection(
@@ -307,6 +335,90 @@ fun SettingsScreen(
 @Composable
 private fun SectionHeader(label: String) {
     Text(label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+}
+
+/**
+ * Sources → GitHub row. Issue #91.
+ *
+ * Three states matching [UiGitHubAuthState]:
+ *  - Anonymous → "Sign in to GitHub" CTA + scope explainer.
+ *  - SignedIn → "Signed in as @login" + Sign-out button + revoke deep-link.
+ *  - Expired → "Session expired — sign in again" CTA + same revoke link.
+ *
+ * Spec § Settings UI surface, lines 384-395 of the design doc.
+ */
+@Composable
+private fun GitHubSignInRow(
+    state: UiGitHubAuthState,
+    onSignIn: () -> Unit,
+    onSignOut: () -> Unit,
+    onOpenRevokePage: () -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    Text(
+        "GitHub",
+        style = MaterialTheme.typography.titleSmall,
+        modifier = Modifier.padding(top = spacing.sm),
+    )
+    when (state) {
+        UiGitHubAuthState.Anonymous -> {
+            BrassButton(
+                label = "Sign in to GitHub",
+                onClick = onSignIn,
+                variant = BrassButtonVariant.Primary,
+            )
+            Text(
+                "Lifts the anonymous 60 req/hr cap to 5,000 req/hr and unlocks your repository " +
+                    "readmes as fictions. We ask for read:user public_repo only — never write " +
+                    "access, never private repos by default.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        is UiGitHubAuthState.SignedIn -> {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = state.login?.let { "Signed in as @$it" } ?: "Signed in",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
+                )
+                BrassButton(
+                    label = "Sign out",
+                    onClick = onSignOut,
+                    variant = BrassButtonVariant.Secondary,
+                )
+            }
+            Text(
+                text = "Granted scope: ${state.scopes}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            BrassButton(
+                label = "Revoke at github.com…",
+                onClick = onOpenRevokePage,
+                variant = BrassButtonVariant.Text,
+            )
+            Text(
+                "Sign-out clears the token from this device. To remove storyvox's authorization " +
+                    "on GitHub's side, use the link above.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        UiGitHubAuthState.Expired -> {
+            Text(
+                "Session expired — sign in again to recover.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+            BrassButton(
+                label = "Sign in to GitHub",
+                onClick = onSignIn,
+                variant = BrassButtonVariant.Primary,
+            )
+        }
+    }
 }
 
 /**

@@ -5,6 +5,8 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import `in`.jphe.storyvox.data.auth.SessionHydrator
 import `in`.jphe.storyvox.data.auth.SessionState
 import `in`.jphe.storyvox.data.repository.AuthRepository
+import `in`.jphe.storyvox.source.github.auth.GitHubAuthRepository
+import `in`.jphe.storyvox.source.github.auth.GitHubSession
 import `in`.jphe.storyvox.source.mempalace.config.PalaceConfig
 import `in`.jphe.storyvox.source.mempalace.config.PalaceConfigState
 import `in`.jphe.storyvox.source.mempalace.net.PalaceDaemonApi
@@ -49,6 +51,24 @@ internal class FakeAuth : AuthRepository {
 internal class FakeHydrator : SessionHydrator {
     override fun hydrate(cookies: Map<String, String>) = Unit
     override fun clear() = Unit
+}
+
+/**
+ * In-memory [GitHubAuthRepository] for the settings tests. The buffer
+ * / modes / pause tests don't exercise GitHub auth but the constructor
+ * needs *some* binding since #91. Mirrors [FakeAuth]'s shape — start
+ * Anonymous, allow capture/clear to flip the state flow synchronously.
+ */
+internal class FakeGitHubAuth : GitHubAuthRepository {
+    private val state = MutableStateFlow<GitHubSession>(GitHubSession.Anonymous)
+    override val sessionState: StateFlow<GitHubSession> = state.asStateFlow()
+    override suspend fun captureSession(token: String, login: String?, scopes: String) {
+        state.value = GitHubSession.Authenticated(
+            token = token, login = login, scopes = scopes, grantedAt = 0L,
+        )
+    }
+    override suspend fun clearSession() { state.value = GitHubSession.Anonymous }
+    override fun markExpired() { state.value = GitHubSession.Expired }
 }
 
 /**

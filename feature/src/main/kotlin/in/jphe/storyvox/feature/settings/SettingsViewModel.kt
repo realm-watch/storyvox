@@ -94,6 +94,8 @@ class SettingsViewModel @Inject constructor(
     fun setVoiceSteady(enabled: Boolean) = viewModelScope.launch { repo.setVoiceSteady(enabled) }
     fun signIn() = viewModelScope.launch { repo.signIn() }
     fun signOut() = viewModelScope.launch { repo.signOut() }
+    /** GitHub OAuth (#91) — local sign-out. Remote revoke deep-links to github.com. */
+    fun signOutGitHub() = viewModelScope.launch { repo.signOutGitHub() }
     fun previewVoice(voice: UiVoice) = voices.previewVoice(voice)
 
     // ─── Memory Palace (#79) ────────────────────────────────────────────

@@ -169,6 +169,7 @@ class SettingsViewModelPunctuationPauseTest {
         override suspend fun setSendChapterTextEnabled(enabled: Boolean) = Unit
         override suspend fun acknowledgeAiPrivacy() = Unit
         override suspend fun resetAiSettings() = Unit
+        override suspend fun signOutGitHub() = Unit
     }
 
     private class FakeVoiceProvider : VoiceProviderUi {

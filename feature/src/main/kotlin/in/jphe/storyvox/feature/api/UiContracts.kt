@@ -403,7 +403,30 @@ data class UiSettings(
     val voiceSteady: Boolean = true,
     /** Memory Palace daemon config (#79). Empty host = source disabled. */
     val palace: UiPalaceConfig = UiPalaceConfig(),
+    /**
+     * GitHub OAuth session surface (#91). Drives the Sources → GitHub
+     * row in Settings. The token itself is never exposed to the UI —
+     * only the login + state. See [UiGitHubAuthState].
+     */
+    val github: UiGitHubAuthState = UiGitHubAuthState.Anonymous,
 )
+
+/**
+ * UI projection of the GitHub OAuth session (#91). The Settings row
+ * needs to know "are you signed in, who as, do you need to re-auth"
+ * — never the token string itself, which stays inside :source-github's
+ * `GitHubAuthRepository`.
+ */
+sealed class UiGitHubAuthState {
+    object Anonymous : UiGitHubAuthState()
+    data class SignedIn(val login: String?, val scopes: String) : UiGitHubAuthState()
+    /**
+     * Token at github.com is gone (revoked, rotated). Disk copy intact;
+     * settings row shows "Session expired — sign in again" + the same
+     * sign-in CTA as [Anonymous].
+     */
+    object Expired : UiGitHubAuthState()
+}
 
 /**
  * UI projection of the MemPalace daemon connection config. The
@@ -558,6 +581,15 @@ interface SettingsRepositoryUi {
     suspend fun acknowledgeAiPrivacy()
     /** Wipe all AI configuration — provider/keys/URLs. */
     suspend fun resetAiSettings()
+
+    // ── GitHub OAuth (#91) ─────────────────────────────────────────
+    /**
+     * Local sign-out from GitHub. Clears the encrypted token + identity
+     * metadata. Remote revoke at github.com requires the client_secret
+     * we don't have — Settings UI deep-links the user to
+     * `github.com/settings/applications` if they want to revoke fully.
+     */
+    suspend fun signOutGitHub()
 }
 
 /** Outcome of [`SettingsRepositoryUi.testPalaceConnection`]. */
