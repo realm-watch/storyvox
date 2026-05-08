@@ -182,6 +182,7 @@ private fun StoryvoxNavHostContent(
             ) {
                 HybridReaderScreen(
                     onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
+                    onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
                 )
             }
             composable(
@@ -246,6 +247,7 @@ private fun StoryvoxNavHostContent(
             ) {
                 HybridReaderScreen(
                     onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
+                    onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
                 )
             }
 
@@ -262,6 +264,7 @@ private fun StoryvoxNavHostContent(
             ) {
                 HybridReaderScreen(
                     onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
+                    onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
                 )
             }
 
