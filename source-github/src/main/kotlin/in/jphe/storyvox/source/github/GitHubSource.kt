@@ -8,73 +8,131 @@ import `in`.jphe.storyvox.data.source.model.FictionSummary
 import `in`.jphe.storyvox.data.source.model.ListPage
 import `in`.jphe.storyvox.data.source.model.SearchQuery
 import `in`.jphe.storyvox.source.github.net.GitHubApi
+import `in`.jphe.storyvox.source.github.registry.Registry
+import `in`.jphe.storyvox.source.github.registry.RegistryEntry
+import `in`.jphe.storyvox.source.github.registry.toSummary
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Stub [FictionSource] for the GitHub source. The module is built and
- * test-covered in step-3a (this PR), but **not bound in Hilt yet** —
- * that wires up in step 3d when manifest parsing actually returns real
- * [FictionDetail] data. Today every call raises [NotImplementedError]
- * with a pointer to the implementing step in the spec, so any
- * accidental binding fails loudly during dev rather than silently
- * returning empty pages.
+ * GitHub [FictionSource]. Browse calls (popular/latestUpdates/byGenre/
+ * genres) are wired to the curated [Registry] as of step 3c. Detail
+ * and chapter still throw [NotImplementedError] — they land in step 3d
+ * when manifest parsing returns real [FictionDetail] data. Search
+ * lands in step 3-search (spec sequence step 8).
  *
- * The constructor accepts [GitHubApi] so the dependency graph is in
- * place — when the Hilt binding lands, no plumbing change here.
+ * **Still not Hilt-bound**: detail is the load-bearing call when the
+ * UrlRouter routes a paste through [`in`.jphe.storyvox.data.repository
+ * .FictionRepository.addByUrl], so binding the source before detail
+ * works would break that flow. Step 3d adds the @IntoMap binding
+ * once detail returns real data.
  */
 @Singleton
-@Suppress("unused", "UNUSED_PARAMETER") // intentional stub — see kdoc
 internal class GitHubSource @Inject constructor(
+    @Suppress("unused") // wired so the graph compiles when 3d adds detail
     private val api: GitHubApi,
+    private val registry: Registry,
 ) : FictionSource {
 
     override val id: String = "github"
     override val displayName: String = "GitHub"
 
     override suspend fun popular(page: Int): FictionResult<ListPage<FictionSummary>> =
-        throw NotImplementedError(STEP_3C_BROWSE)
+        registryPage(page) { entries ->
+            // Featured first, then the rest in registry order. Within each
+            // band we keep the curator's authored ordering rather than
+            // imposing a synthetic rank — curators sort hand-picks for a
+            // reason.
+            entries.sortedByDescending { it.featured }
+        }
 
     override suspend fun latestUpdates(page: Int): FictionResult<ListPage<FictionSummary>> =
-        throw NotImplementedError(STEP_3C_BROWSE)
+        registryPage(page) { entries ->
+            // `addedAt` is the only freshness signal we have pre-manifest.
+            // ISO-8601 yyyy-MM-dd string-sorts correctly; entries without
+            // an addedAt sort last (empty string < any date).
+            entries.sortedByDescending { it.addedAt.orEmpty() }
+        }
 
     override suspend fun byGenre(
         genre: String,
         page: Int,
     ): FictionResult<ListPage<FictionSummary>> =
-        throw NotImplementedError(STEP_3C_BROWSE)
+        registryPage(page) { entries ->
+            val needle = genre.trim().lowercase()
+            if (needle.isBlank()) entries
+            else entries.filter { it.tags.any { tag -> tag.equals(needle, ignoreCase = true) } }
+        }
+
+    override suspend fun genres(): FictionResult<List<String>> {
+        return when (val r = registry.entries()) {
+            is FictionResult.Success -> FictionResult.Success(
+                r.value.flatMap { it.tags }
+                    .map { it.lowercase() }
+                    .distinct()
+                    .sorted(),
+            )
+            is FictionResult.Failure -> r
+        }
+    }
 
     override suspend fun search(query: SearchQuery): FictionResult<ListPage<FictionSummary>> =
-        throw NotImplementedError(STEP_3C_BROWSE)
+        throw NotImplementedError(STEP_3_SEARCH)
 
     override suspend fun fictionDetail(fictionId: String): FictionResult<FictionDetail> =
         throw NotImplementedError(STEP_3D_DETAIL)
 
     override suspend fun chapter(
-        fictionId: String,
-        chapterId: String,
+        @Suppress("UNUSED_PARAMETER") fictionId: String,
+        @Suppress("UNUSED_PARAMETER") chapterId: String,
     ): FictionResult<ChapterContent> =
         throw NotImplementedError(STEP_3D_DETAIL)
 
-    override suspend fun followsList(page: Int): FictionResult<ListPage<FictionSummary>> =
+    override suspend fun followsList(
+        @Suppress("UNUSED_PARAMETER") page: Int,
+    ): FictionResult<ListPage<FictionSummary>> =
         throw NotImplementedError(STEP_3F_AUTH)
 
     override suspend fun setFollowed(
-        fictionId: String,
-        followed: Boolean,
+        @Suppress("UNUSED_PARAMETER") fictionId: String,
+        @Suppress("UNUSED_PARAMETER") followed: Boolean,
     ): FictionResult<Unit> =
         throw NotImplementedError(STEP_3F_AUTH)
 
-    override suspend fun genres(): FictionResult<List<String>> =
-        throw NotImplementedError(STEP_3C_BROWSE)
+    /**
+     * Registry-backed paging. Single page today (registry is small +
+     * hand-curated; pagination would be over-engineering until the
+     * curated set exceeds a screenful). [transform] runs over the raw
+     * [RegistryEntry] list — keeping `addedAt`/`featured` available
+     * for sort/filter before mapping to the cross-source
+     * [FictionSummary] shape.
+     */
+    private suspend fun registryPage(
+        page: Int,
+        transform: (List<RegistryEntry>) -> List<RegistryEntry>,
+    ): FictionResult<ListPage<FictionSummary>> {
+        // Page 2+ always empty — caller's pagination cursor short-
+        // circuits the next-page fetch via hasNext=false on page 1.
+        if (page > 1) {
+            return FictionResult.Success(
+                ListPage(items = emptyList(), page = page, hasNext = false),
+            )
+        }
+        return when (val r = registry.entries()) {
+            is FictionResult.Success -> FictionResult.Success(
+                ListPage(
+                    items = transform(r.value).map { it.toSummary() },
+                    page = 1,
+                    hasNext = false,
+                ),
+            )
+            is FictionResult.Failure -> r
+        }
+    }
 
     private companion object {
-        // References the build sequence in
-        // docs/superpowers/specs/2026-05-06-github-source-design.md
-        // (lines 256-262). Every NotImplementedError points at the
-        // step that fills it in.
-        const val STEP_3C_BROWSE = "GitHub source browse not implemented yet — lands in step 3c (registry-only Featured row + search)"
         const val STEP_3D_DETAIL = "GitHub source detail/chapter not implemented yet — lands in step 3d (manifest parsing + markdown rendering)"
         const val STEP_3F_AUTH = "GitHub source auth-gated calls not implemented yet — lands in step 3f (optional PAT support)"
+        const val STEP_3_SEARCH = "GitHub /search/repositories not implemented yet — lands in step 3-search (spec sequence step 8)"
     }
 }
