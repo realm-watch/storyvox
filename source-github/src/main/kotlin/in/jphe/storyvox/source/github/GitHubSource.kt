@@ -97,15 +97,22 @@ internal class GitHubSource @Inject constructor(
         // OR topic:b` — covers a few synonym tags at once. RR-shaped
         // SearchQuery filter fields (genres, tags, statuses,
         // requireWarnings, etc.) don't translate to GitHub today and
-        // are ignored; the GitHub-shaped filter sheet from step 8c
-        // will route through a different code path.
+        // are ignored.
+        //
+        // The GitHub filter sheet (step 8c) composes its own
+        // qualifier-laden query (stars:, language:, pushed:, sort:,
+        // and possibly its own topic:) and stuffs it into
+        // SearchQuery.term. Skip our default topic prefix when the
+        // term already contains a `topic:` qualifier so we don't
+        // double-up — the filter layer is more authoritative when
+        // it's chosen to override.
         val term = query.term.trim()
         val gh = buildString {
-            append("(topic:fiction OR topic:fanfiction OR topic:webnovel)")
-            if (term.isNotEmpty()) {
-                append(' ')
-                append(term)
+            if (!term.contains("topic:", ignoreCase = true)) {
+                append("(topic:fiction OR topic:fanfiction OR topic:webnovel)")
+                if (term.isNotEmpty()) append(' ')
             }
+            if (term.isNotEmpty()) append(term)
         }
 
         return when (val r = api.searchRepositories(gh, page = query.page)) {

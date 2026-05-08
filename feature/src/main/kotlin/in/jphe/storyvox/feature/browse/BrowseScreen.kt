@@ -96,15 +96,17 @@ fun BrowseScreen(
                     )
                 }
             }
-            // Filter sheet is RR-shaped (its dimensions don't yet
-            // translate to GitHub registry entries) so hide on GitHub.
-            // Step 8b will introduce a GitHub-shaped filter sheet.
-            if (state.sourceKey == BrowseSourceKey.RoyalRoad) {
-                FilterButton(
-                    activeCount = state.filter.activeCount(),
-                    onClick = { showFilterSheet = true },
-                )
-            }
+            // Filter sheet is per-source: RR has its `/fictions/search`
+            // form, GitHub has the `/search/repositories` qualifier set.
+            // Both surface through the same FilterButton; the badge
+            // count and the sheet that opens both branch on sourceKey.
+            FilterButton(
+                activeCount = when (state.sourceKey) {
+                    BrowseSourceKey.RoyalRoad -> state.filter.activeCount()
+                    BrowseSourceKey.GitHub -> state.githubFilter.activeCount()
+                },
+                onClick = { showFilterSheet = true },
+            )
         }
 
         if (state.tab == BrowseTab.Search) {
@@ -243,18 +245,32 @@ fun BrowseScreen(
     }
 
     if (showFilterSheet) {
-        BrowseFilterSheet(
-            filter = state.filter,
-            onApply = { applied ->
-                viewModel.setFilter(applied)
-                showFilterSheet = false
-            },
-            onReset = {
-                viewModel.resetFilter()
-                showFilterSheet = false
-            },
-            onDismiss = { showFilterSheet = false },
-        )
+        when (state.sourceKey) {
+            BrowseSourceKey.RoyalRoad -> BrowseFilterSheet(
+                filter = state.filter,
+                onApply = { applied ->
+                    viewModel.setFilter(applied)
+                    showFilterSheet = false
+                },
+                onReset = {
+                    viewModel.resetFilter()
+                    showFilterSheet = false
+                },
+                onDismiss = { showFilterSheet = false },
+            )
+            BrowseSourceKey.GitHub -> GitHubFilterSheet(
+                filter = state.githubFilter,
+                onApply = { applied ->
+                    viewModel.setGitHubFilter(applied)
+                    showFilterSheet = false
+                },
+                onReset = {
+                    viewModel.resetGitHubFilter()
+                    showFilterSheet = false
+                },
+                onDismiss = { showFilterSheet = false },
+            )
+        }
     }
 }
 
