@@ -5,6 +5,21 @@ import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Bumped when [SentenceChunker.chunk] changes its boundary semantics in a way
+ * that would shift `(startChar, endChar)` for the same input. Included in
+ * [`in`.jphe.storyvox.playback.cache.PcmCacheKey] so a chunker change
+ * self-evicts stale on-disk PCM caches without a DB migration. Bumping
+ * leaves old caches orphaned on disk; LRU eviction reclaims them.
+ *
+ * Bump policy: increment by 1 in the same commit that changes [SentenceChunker.chunk]'s
+ * output. Do NOT bump for cosmetic refactors that don't move any
+ * `(startChar, endChar)` pair on real input. If unsure, write a quick
+ * test with a representative chapter and diff the resulting [Sentence]
+ * lists.
+ */
+const val CHUNKER_VERSION: Int = 1
+
 data class Sentence(
     val index: Int,
     val startChar: Int,
