@@ -9,6 +9,7 @@ import `in`.jphe.storyvox.feature.api.BrowseFilter
 import `in`.jphe.storyvox.feature.api.BrowsePaginator
 import `in`.jphe.storyvox.feature.api.BrowseRepositoryUi
 import `in`.jphe.storyvox.feature.api.BrowseSource
+import `in`.jphe.storyvox.feature.api.GitHubSearchFilter
 import `in`.jphe.storyvox.feature.api.UiFiction
 import `in`.jphe.storyvox.feature.api.UiSearchOrder
 import `in`.jphe.storyvox.feature.api.UiSortDirection
@@ -83,6 +84,12 @@ data class BrowseUiState(
     val error: String? = null,
     val filter: BrowseFilter = BrowseFilter(),
     val isFilterActive: Boolean = false,
+    /** GitHub-shaped filter — applied when sourceKey is GitHub. RR-source
+     *  filter ([filter]) and GitHub filter coexist in state so flipping
+     *  between sources doesn't lose either side's settings (subject to
+     *  the [BrowseViewModel.selectSource] reset policy). */
+    val githubFilter: GitHubSearchFilter = GitHubSearchFilter(),
+    val isGitHubFilterActive: Boolean = false,
 )
 
 /** Typed view of a paginator's five state flows. Lifted into its own
@@ -94,6 +101,18 @@ private data class PaginatorView(
     val isAppending: Boolean,
     val hasMore: Boolean,
     val error: String?,
+)
+
+/** Bundled view of the user-controllable knobs (source picker, tab,
+ *  query, RR filter, GitHub filter). Lifted into its own record so the
+ *  outer combines stay within the 5-arg `combine` overload as we add
+ *  filter shapes per source. */
+private data class ControlsView(
+    val sourceKey: BrowseSourceKey,
+    val tab: BrowseTab,
+    val query: String,
+    val filter: BrowseFilter,
+    val githubFilter: GitHubSearchFilter,
 )
 
 /**
@@ -119,6 +138,7 @@ class BrowseViewModel @Inject constructor(
     private val _tab = MutableStateFlow(BrowseTab.Popular)
     private val _query = MutableStateFlow("")
     private val _filter = MutableStateFlow(BrowseFilter())
+    private val _githubFilter = MutableStateFlow(GitHubSearchFilter())
     val query: StateFlow<String> = _query.asStateFlow()
 
     /** Active paginator for the current tuple; null when the search tab
@@ -129,8 +149,9 @@ class BrowseViewModel @Inject constructor(
         _tab,
         _query.debounce(300),
         _filter,
-    ) { sourceKey, tab, q, filter ->
-        resolveSource(tab, q, filter)?.let { source -> source to sourceKey.sourceId }
+        _githubFilter,
+    ) { sourceKey, tab, q, filter, ghFilter ->
+        resolveSource(sourceKey, tab, q, filter, ghFilter)?.let { source -> source to sourceKey.sourceId }
     }
         .distinctUntilChanged()
         .map { pair -> pair?.let { (source, sourceId) -> repo.paginator(source, sourceId) } }
@@ -147,30 +168,39 @@ class BrowseViewModel @Inject constructor(
         }
     }
 
+    /** All user-controlled knobs collapsed into one typed record so the
+     *  outer combines below stay within the 5-arg `combine` overload. */
+    private val controls: kotlinx.coroutines.flow.Flow<ControlsView> = combine(
+        _sourceKey, _tab, _query, _filter, _githubFilter,
+    ) { sourceKey, tab, q, filter, ghFilter ->
+        ControlsView(sourceKey, tab, q, filter, ghFilter)
+    }
+
     val uiState: StateFlow<BrowseUiState> = paginator.flatMapLatest { p ->
         if (p == null) {
             // Empty-search/no-filter: surface a quiet idle state so the
             // screen renders SearchHint rather than the skeleton grid.
-            combine(_sourceKey, _tab, _query, _filter) { sourceKey, tab, q, filter ->
+            controls.map { c ->
                 BrowseUiState(
-                    sourceKey = sourceKey,
-                    tab = tab,
-                    query = q,
+                    sourceKey = c.sourceKey,
+                    tab = c.tab,
+                    query = c.query,
                     items = emptyList(),
                     isLoading = false,
                     isAppending = false,
                     hasMore = false,
                     error = null,
-                    filter = filter,
-                    isFilterActive = filter.isActive(),
+                    filter = c.filter,
+                    isFilterActive = c.filter.isActive(),
+                    githubFilter = c.githubFilter,
+                    isGitHubFilterActive = c.githubFilter.isActive(),
                 )
             }
         } else {
             // Two-step combine: first collapse the paginator's five
             // flows into a typed [PaginatorView], then merge with the
-            // sourceKey/tab/query/filter quartet. Keeps each combine
-            // within the 5-arg comfort zone and avoids positional
-            // `vals[i]` casts.
+            // [ControlsView]. Keeps each combine within the 5-arg
+            // comfort zone and avoids positional `vals[i]` casts.
             val paginatorView = combine(
                 p.items,
                 p.isLoading,
@@ -180,19 +210,20 @@ class BrowseViewModel @Inject constructor(
             ) { items, loading, appending, more, error ->
                 PaginatorView(items, loading, appending, more, error)
             }
-            combine(paginatorView, _sourceKey, _tab, _query, _filter) {
-                view, sourceKey, tab, q, filter ->
+            combine(paginatorView, controls) { view, c ->
                 BrowseUiState(
-                    sourceKey = sourceKey,
-                    tab = tab,
-                    query = q,
+                    sourceKey = c.sourceKey,
+                    tab = c.tab,
+                    query = c.query,
                     items = view.items,
                     isLoading = view.isLoading,
                     isAppending = view.isAppending,
                     hasMore = view.hasMore,
                     error = view.error,
-                    filter = filter,
-                    isFilterActive = filter.isActive(),
+                    filter = c.filter,
+                    isFilterActive = c.filter.isActive(),
+                    githubFilter = c.githubFilter,
+                    isGitHubFilterActive = c.githubFilter.isActive(),
                 )
             }
         }
@@ -204,14 +235,19 @@ class BrowseViewModel @Inject constructor(
         // If the previously-selected tab isn't supported on the new
         // source (e.g. user was on BestRated/Search on RR and switches
         // to GitHub), snap to Popular so the screen has something
-        // sensible to render. Filters are RR-shaped and don't apply
-        // to GitHub yet, so reset them too.
+        // sensible to render.
         if (_tab.value !in key.supportedTabs()) {
             _tab.value = BrowseTab.Popular
         }
-        if (key == BrowseSourceKey.GitHub) {
-            _filter.value = BrowseFilter()
-            _query.value = ""
+        // Per-source filter shapes don't translate, so clear the
+        // *other* source's filter on switch. Symmetrical: leaving
+        // GitHub clears the GH filter; leaving RR clears the RR
+        // filter. Always clear the query so a half-typed term doesn't
+        // leak across sources.
+        _query.value = ""
+        when (key) {
+            BrowseSourceKey.RoyalRoad -> _githubFilter.value = GitHubSearchFilter()
+            BrowseSourceKey.GitHub -> _filter.value = BrowseFilter()
         }
     }
 
@@ -219,6 +255,8 @@ class BrowseViewModel @Inject constructor(
     fun setQuery(q: String) { _query.value = q }
     fun setFilter(filter: BrowseFilter) { _filter.value = filter }
     fun resetFilter() { _filter.value = BrowseFilter() }
+    fun setGitHubFilter(filter: GitHubSearchFilter) { _githubFilter.value = filter }
+    fun resetGitHubFilter() { _githubFilter.value = GitHubSearchFilter() }
 
     /** Called by the grid when the user nears the end of the visible
      *  list. Idempotent — the paginator's mutex collapses concurrent
@@ -228,15 +266,38 @@ class BrowseViewModel @Inject constructor(
     }
 }
 
-private fun resolveSource(tab: BrowseTab, q: String, filter: BrowseFilter): BrowseSource? = when {
-    filter.isActive() -> BrowseSource.Filtered(
-        if (tab == BrowseTab.Search && q.isNotBlank()) filter.copy(term = q) else filter,
-    )
-    tab == BrowseTab.Popular -> BrowseSource.Popular
-    tab == BrowseTab.NewReleases -> BrowseSource.NewReleases
-    tab == BrowseTab.BestRated -> BrowseSource.BestRated
-    tab == BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
-    else -> null
+private fun resolveSource(
+    sourceKey: BrowseSourceKey,
+    tab: BrowseTab,
+    q: String,
+    filter: BrowseFilter,
+    githubFilter: GitHubSearchFilter,
+): BrowseSource? = when (sourceKey) {
+    // GitHub: filter takes priority over tab. When filter is active OR
+    // user is on Search with a typed query, route to FilteredGitHub so
+    // the qualifier-laden query lands. Otherwise the tab decides
+    // (Popular/NewReleases/Search). Search-with-blank-query stays null
+    // so the screen renders SearchHint.
+    BrowseSourceKey.GitHub -> when {
+        githubFilter.isActive() -> BrowseSource.FilteredGitHub(
+            query = if (tab == BrowseTab.Search) q else "",
+            filter = githubFilter,
+        )
+        tab == BrowseTab.Popular -> BrowseSource.Popular
+        tab == BrowseTab.NewReleases -> BrowseSource.NewReleases
+        tab == BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
+        else -> null
+    }
+    BrowseSourceKey.RoyalRoad -> when {
+        filter.isActive() -> BrowseSource.Filtered(
+            if (tab == BrowseTab.Search && q.isNotBlank()) filter.copy(term = q) else filter,
+        )
+        tab == BrowseTab.Popular -> BrowseSource.Popular
+        tab == BrowseTab.NewReleases -> BrowseSource.NewReleases
+        tab == BrowseTab.BestRated -> BrowseSource.BestRated
+        tab == BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
+        else -> null
+    }
 }
 
 private fun BrowseFilter.isActive(): Boolean =

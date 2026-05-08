@@ -260,6 +260,16 @@ private class RealBrowseRepositoryUi(
                     source.filter.toSearchQuery().copy(page = page),
                     sourceId = sourceId,
                 )
+                is BrowseSource.FilteredGitHub -> repo.search(
+                    SearchQuery(
+                        term = `in`.jphe.storyvox.feature.browse.composeGitHubQuery(
+                            term = source.query,
+                            filter = source.filter,
+                        ),
+                        page = page,
+                    ),
+                    sourceId = sourceId,
+                )
             }
         }
 }

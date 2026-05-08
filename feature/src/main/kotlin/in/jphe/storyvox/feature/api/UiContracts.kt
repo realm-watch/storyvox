@@ -103,13 +103,24 @@ interface BrowseRepositoryUi {
 }
 
 /** What kind of listing the paginator should fetch. The repository
- *  adapter maps each variant onto a Royal Road call. */
+ *  adapter maps each variant onto a source call (Royal Road for the
+ *  legacy variants, GitHub for [FilteredGitHub]). */
 sealed interface BrowseSource {
     data object Popular : BrowseSource
     data object NewReleases : BrowseSource
     data object BestRated : BrowseSource
     data class Search(val query: String) : BrowseSource
     data class Filtered(val filter: BrowseFilter) : BrowseSource
+    /**
+     * GitHub-shaped filter routed through `/search/repositories`.
+     * `query` is the user's typed search term (may be blank); the
+     * filter contributes additional GitHub query qualifiers (stars,
+     * language, pushed-since, sort).
+     */
+    data class FilteredGitHub(
+        val query: String,
+        val filter: GitHubSearchFilter,
+    ) : BrowseSource
 }
 
 /** A page-by-page accumulating cursor over a remote fiction listing.
@@ -160,6 +171,32 @@ enum class UiFictionType { All, Original, FanFiction }
 enum class UiContentWarning { Profanity, SexualContent, GraphicViolence, SensitiveContent, AiAssisted, AiGenerated }
 enum class UiSearchOrder { Relevance, Popularity, Rating, LastUpdate, ReleaseDate, Followers, Length, Views, Title }
 enum class UiSortDirection { Asc, Desc }
+
+/**
+ * GitHub-shaped filter for Browse → GitHub. Different dimensions
+ * from [BrowseFilter] because GitHub's `/search/repositories`
+ * qualifiers don't translate to Royal Road's filter form. The
+ * full set per spec (tags, status, length, last-updated, min-stars,
+ * language, sort) is split: this PR (step 8c) lands minStars /
+ * language / pushedSince / sort. Tag-multi-select and status would
+ * be a follow-up if the curated registry grows enough that browsing
+ * stops being good enough.
+ */
+data class GitHubSearchFilter(
+    val minStars: Int? = null,
+    /** ISO 639-1 language code, e.g. `"en"`. Null = no language
+     *  qualifier (GitHub returns repos in any language). */
+    val language: String? = null,
+    val pushedSince: GitHubPushedSince = GitHubPushedSince.Any,
+    val sort: GitHubSort = GitHubSort.BestMatch,
+)
+
+/** GitHub `pushed:>YYYY-MM-DD` cutoffs. `Any` omits the qualifier. */
+enum class GitHubPushedSince { Any, Last7Days, Last30Days, Last90Days, LastYear }
+
+/** GitHub `sort=` axis. `BestMatch` is the API default and omits the
+ *  `sort=` parameter; the others map directly to GitHub's values. */
+enum class GitHubSort { BestMatch, Stars, Updated }
 
 data class UiPlaybackState(
     val fictionId: String?,
