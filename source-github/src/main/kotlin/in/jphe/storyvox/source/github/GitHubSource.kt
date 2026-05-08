@@ -1,6 +1,7 @@
 package `in`.jphe.storyvox.source.github
 
 import `in`.jphe.storyvox.data.source.FictionSource
+import `in`.jphe.storyvox.data.source.SourceIds
 import `in`.jphe.storyvox.data.source.model.ChapterContent
 import `in`.jphe.storyvox.data.source.model.FictionDetail
 import `in`.jphe.storyvox.data.source.model.FictionResult
@@ -34,7 +35,7 @@ internal class GitHubSource @Inject constructor(
     private val registry: Registry,
 ) : FictionSource {
 
-    override val id: String = "github"
+    override val id: String = SourceIds.GITHUB
     override val displayName: String = "GitHub"
 
     override suspend fun popular(page: Int): FictionResult<ListPage<FictionSummary>> =

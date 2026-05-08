@@ -1,7 +1,9 @@
 package `in`.jphe.storyvox.source.royalroad.model
 
+import `in`.jphe.storyvox.data.source.SourceIds
+
 internal object RoyalRoadIds {
-    const val SOURCE_ID = "royalroad"
+    const val SOURCE_ID: String = SourceIds.ROYAL_ROAD
     const val SOURCE_NAME = "Royal Road"
     const val BASE_URL = "https://www.royalroad.com"
     const val USER_AGENT =
