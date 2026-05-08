@@ -5,11 +5,12 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -137,5 +138,54 @@ class VoiceFavoritesTest {
             ),
             seen,
         )
+    }
+
+    /**
+     * Regression for #106 — observation pipeline. The voice library
+     * ViewModel `combine`s [favoriteIds] with several other flows; if
+     * the favourites flow doesn't re-emit promptly after a toggle, the
+     * UI never sees a state update and JP sees "tap heart, nothing
+     * happens" (a symptom we kept on the table during #106's
+     * investigation). Pin the combine contract in a JVM test so a
+     * future refactor can't silently break it.
+     *
+     * Mirrors the ViewModel's combine shape with [favoriteIds] as the
+     * only mutating source. We assert each toggle's resulting set
+     * appears as the projected `ids` in the combined flow.
+     */
+    @Test
+    fun `combine downstream sees each toggle settle`() = runTest {
+        // Three "static" flows that each emit once and complete — the
+        // shape the ViewModel uses for [VoiceManager.availableVoices]
+        // (single value via flowOf) and the initial emissions of the
+        // DataStore-backed installed/active flows. Combined with
+        // [favoriteIds] which mutates as the user toggles.
+        val installedFake = flowOf(emptyList<String>())
+        val availableFake = flowOf(emptyList<String>())
+        val activeFake = flowOf<String?>(null)
+        val combined = combine(
+            installedFake,
+            availableFake,
+            activeFake,
+            favorites.favoriteIds,
+        ) { _, _, _, ids -> ids }
+
+        // Initial state — combine produces a value once all 4 sources
+        // have emitted at least once.
+        assertEquals(emptySet<String>(), combined.first())
+
+        // Toggle a voice and re-read the projected combined value.
+        // Each toggle settles before the next via UnconfinedTestDispatcher.
+        favorites.toggle("piper_lessac_en_US_high")
+        assertEquals(setOf("piper_lessac_en_US_high"), combined.first())
+
+        favorites.toggle("kokoro_heart_en_US_3")
+        assertEquals(
+            setOf("piper_lessac_en_US_high", "kokoro_heart_en_US_3"),
+            combined.first(),
+        )
+
+        favorites.toggle("piper_lessac_en_US_high") // unstar the first
+        assertEquals(setOf("kokoro_heart_en_US_3"), combined.first())
     }
 }

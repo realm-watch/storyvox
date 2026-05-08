@@ -13,23 +13,24 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 /**
- * User-customizable voice favourites. Backed by its own preferences
- * DataStore (`voice_favorites_v1`) so it can ride alongside, but stay
- * decoupled from, [VoiceManager]'s own `voices_settings` store —
- * favourites are pure UI ergonomics and shouldn't share schema fate
- * with installed-state metadata.
+ * User-customizable voice stars. Backed by its own preferences
+ * DataStore (`voice_favorites_v1` — name preserved for persisted-data
+ * compatibility from #89; user-facing label is "Starred") so it can
+ * ride alongside, but stay decoupled from, [VoiceManager]'s own
+ * `voices_settings` store — stars are pure UI ergonomics and shouldn't
+ * share schema fate with installed-state metadata.
  *
  * The schema is intentionally tiny: a single `Set<String>` of voice
- * ids. Order isn't stored; rendering code sorts the favourites
+ * ids. Order isn't stored; rendering code sorts the starred entries
  * alongside any other tier-grouping rules.
  *
  * **Why a separate file/store?** Two reasons:
  * 1. Migration safety — when [VoiceManager] needed an int8→fp32 id
  *    rewrite the migration touched both `INSTALLED_IDS` and
- *    `ACTIVE_ID` in one transaction. Adding favourites to that store
+ *    `ACTIVE_ID` in one transaction. Adding stars to that store
  *    would force any future `voices_settings` migration to consider
- *    favourites too. Easier to keep them apart.
- * 2. Test isolation — favourites can be unit-tested with their own
+ *    stars too. Easier to keep them apart.
+ * 2. Test isolation — stars can be unit-tested with their own
  *    in-memory `DataStore` without spinning up the full VoiceManager.
  */
 private val Context.voiceFavoritesStore: DataStore<Preferences> by preferencesDataStore(

@@ -2,6 +2,7 @@ package `in`.jphe.storyvox.feature.voicelibrary
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,12 +19,11 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -96,11 +96,11 @@ fun VoiceLibraryScreen(
             verticalArrangement = Arrangement.spacedBy(spacing.xs),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = spacing.md),
         ) {
-            // FAVOURITES — surfaces the user's pinned voices above
+            // STARRED — surfaces the user's pinned voices above
             // everything else. Hidden entirely when empty so the screen
-            // doesn't render a "no favourites" stub for first-time users.
+            // doesn't render a "no starred voices" stub for first-time users.
             if (favorites.isNotEmpty()) {
-                item { SectionHeader("♥ Favourites", count = favorites.size) }
+                item { SectionHeader("★ Starred", count = favorites.size) }
                 itemsIndexed(favorites, key = { _, item -> "fav-${item.id}" }) { index, voice ->
                     val downloading = state.currentDownload
                     val rowProgress = if (downloading?.voiceId == voice.id) downloading.progress ?: -1f else null
@@ -468,12 +468,18 @@ private fun VoiceRow(
     }
 }
 
-/** Heart-toggle leading the row. Filled = pinned to Favourites,
- *  outlined = not. Tap stops at the toggle so it doesn't bubble up to
- *  the row's combinedClickable (which would activate / download the
- *  voice — definitely not what the user meant when they tapped a
- *  heart). The IconButton's own click handling already swallows the
- *  pointer event before the parent's clickable sees it. */
+/** Star-toggle leading the row. Filled = starred (pinned to Starred
+ *  section), outlined = not. The whole row is wrapped in a parent
+ *  `combinedClickable` (tap = activate/download, long-press = delete);
+ *  in Compose, `combinedClickable` keeps the pointer event during the
+ *  long-press timeout window, which can starve a nested `IconButton`'s
+ *  own clickable — that's the regression #106 reports. We sidestep the
+ *  arbitration by giving the toggle its own `Box.clickable` directly
+ *  (no nested IconButton's gesture detector to compete with) and
+ *  letting Compose's standard hit-testing route taps to the deepest
+ *  descendant that has a clickable modifier. The bounded ripple inside
+ *  the round clip keeps the visual affordance equivalent to a Material
+ *  IconButton without the long-press race. */
 @Composable
 private fun FavoriteToggle(
     isFavorite: Boolean,
@@ -484,10 +490,16 @@ private fun FavoriteToggle(
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
-    IconButton(onClick = onToggle, modifier = Modifier.size(36.dp)) {
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onToggle),
+        contentAlignment = Alignment.Center,
+    ) {
         Icon(
-            imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-            contentDescription = if (isFavorite) "Remove from favourites" else "Add to favourites",
+            imageVector = if (isFavorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
+            contentDescription = if (isFavorite) "Remove from starred" else "Add to starred",
             tint = tint,
             modifier = Modifier.size(20.dp),
         )

@@ -28,9 +28,12 @@ data class VoiceLibraryUiState(
      *  Always 3 entries (sourced from [VoiceCatalog.featuredIds]); each
      *  carries its own installed flag so the row reflects current state. */
     val featured: List<UiVoiceInfo> = emptyList(),
-    /** User-favourited voices, surfaced under their own header above
+    /** User-starred voices, surfaced under their own header above
      *  Featured. Empty when nothing pinned, in which case the whole
-     *  section is hidden by the screen. */
+     *  section is hidden by the screen. The internal name "favorites"
+     *  is preserved from #89 (so is the DataStore key
+     *  `voice_favorites_v1`) — only the user-facing label changed to
+     *  "Starred" in #106. */
     val favorites: List<UiVoiceInfo> = emptyList(),
     /** Installed voices grouped first by engine (Piper, then Kokoro)
      *  and then by tier within each engine. Within Piper the tier order
