@@ -1,5 +1,6 @@
 package `in`.jphe.storyvox.source.github.registry
 
+import `in`.jphe.storyvox.data.source.SourceIds
 import `in`.jphe.storyvox.data.source.model.FictionStatus
 import `in`.jphe.storyvox.data.source.model.FictionSummary
 import kotlinx.serialization.SerialName
@@ -54,7 +55,7 @@ internal data class RegistryEntry(
  */
 internal fun RegistryEntry.toSummary(): FictionSummary = FictionSummary(
     id = id,
-    sourceId = "github",
+    sourceId = SourceIds.GITHUB,
     title = title,
     author = author,
     coverUrl = coverUrl,

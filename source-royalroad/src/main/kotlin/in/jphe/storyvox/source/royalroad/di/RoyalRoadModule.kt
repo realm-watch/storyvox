@@ -2,6 +2,7 @@ package `in`.jphe.storyvox.source.royalroad.di
 
 import `in`.jphe.storyvox.data.auth.SessionHydrator
 import `in`.jphe.storyvox.data.source.FictionSource
+import `in`.jphe.storyvox.data.source.SourceIds
 import `in`.jphe.storyvox.source.royalroad.RoyalRoadSource
 import `in`.jphe.storyvox.source.royalroad.auth.RoyalRoadSessionHydrator
 import `in`.jphe.storyvox.source.royalroad.model.RoyalRoadIds
@@ -73,7 +74,7 @@ internal abstract class RoyalRoadBindings {
     @Binds
     @Singleton
     @IntoMap
-    @StringKey("royalroad")
+    @StringKey(SourceIds.ROYAL_ROAD)
     abstract fun bindFictionSource(impl: RoyalRoadSource): FictionSource
 
     @Binds

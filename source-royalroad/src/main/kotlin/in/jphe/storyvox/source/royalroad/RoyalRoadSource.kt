@@ -50,8 +50,8 @@ class RoyalRoadSource @Inject internal constructor(
     @Suppress("unused") private val cookieJar: RoyalRoadCookieJar,
 ) : FictionSource {
 
-    override val id: String = "royalroad"
-    override val displayName: String = "Royal Road"
+    override val id: String = RoyalRoadIds.SOURCE_ID
+    override val displayName: String = RoyalRoadIds.SOURCE_NAME
 
     override suspend fun popular(page: Int): FictionResult<ListPage<FictionSummary>> =
         fetchBrowsePage(browseUrl("/fictions/active-popular", page), page)

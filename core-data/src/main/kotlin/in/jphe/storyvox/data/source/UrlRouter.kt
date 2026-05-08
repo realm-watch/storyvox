@@ -12,9 +12,6 @@ package `in`.jphe.storyvox.data.source
  */
 object UrlRouter {
 
-    private const val ROYALROAD = "royalroad"
-    private const val GITHUB = "github"
-
     /** `https://www.royalroad.com/fiction/{id}` and `/fiction/{id}/.../chapter/...`. */
     private val ROYALROAD_PATTERN = Regex(
         """^https?://(?:www\.)?royalroad\.com/fiction/(\d+)(?:/.*)?$""",
@@ -39,11 +36,11 @@ object UrlRouter {
         if (trimmed.isEmpty()) return null
 
         ROYALROAD_PATTERN.matchEntire(trimmed)?.let { m ->
-            return Match(ROYALROAD, m.groupValues[1])
+            return Match(SourceIds.ROYAL_ROAD, m.groupValues[1])
         }
 
         GITHUB_HTTPS_PATTERN.matchEntire(trimmed)?.let { m ->
-            return Match(GITHUB, "$GITHUB:${m.groupValues[1].lowercase()}/${m.groupValues[2].lowercase()}")
+            return Match(SourceIds.GITHUB, "${SourceIds.GITHUB}:${m.groupValues[1].lowercase()}/${m.groupValues[2].lowercase()}")
         }
 
         // Reject ambiguous short form on URLs that look like a full path
@@ -51,7 +48,7 @@ object UrlRouter {
         // pattern only matches `owner/repo` cleanly.
         if ("://" !in trimmed && trimmed.count { it == '/' } == 1) {
             GITHUB_SHORT_PATTERN.matchEntire(trimmed)?.let { m ->
-                return Match(GITHUB, "$GITHUB:${m.groupValues[1].lowercase()}/${m.groupValues[2].lowercase()}")
+                return Match(SourceIds.GITHUB, "${SourceIds.GITHUB}:${m.groupValues[1].lowercase()}/${m.groupValues[2].lowercase()}")
             }
         }
 
