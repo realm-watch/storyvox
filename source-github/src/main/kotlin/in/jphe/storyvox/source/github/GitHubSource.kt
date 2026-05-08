@@ -283,6 +283,72 @@ internal class GitHubSource @Inject constructor(
     ): FictionResult<Unit> =
         throw NotImplementedError(STEP_3F_AUTH)
 
+    /**
+     * Cheap-poll revision token: head commit SHA on the repo's default
+     * branch. The poll worker compares against the previously-stored
+     * token and skips the heavier `fictionDetail` round-trip when they
+     * match. Step 9 in the GitHub-source spec.
+     *
+     * Two API calls per check (`getRepo` for `default_branch` then
+     * `/commits?sha={branch}&per_page=1` for the head SHA), against a
+     * full `fictionDetail` of repo + book.toml + storyvox.json +
+     * SUMMARY.md (4-5 calls + parsing). Net win even if no skip-eligible
+     * fictions exist yet, because the parsing alone is the dominant
+     * cost.
+     *
+     * Failures (network, rate-limit, 404) come back as the equivalent
+     * `FictionResult.Failure` variants; the worker treats those as
+     * "fall back to the full path" rather than aborting the whole poll.
+     */
+    override suspend fun latestRevisionToken(fictionId: String): FictionResult<String?> {
+        val coords = parseFictionId(fictionId)
+            ?: return FictionResult.NotFound(message = "Not a GitHub fiction id: $fictionId")
+        val (owner, repo) = coords
+
+        val branch = when (val r = api.getRepo(owner, repo)) {
+            is GitHubApiResult.Success -> r.value.defaultBranch
+            is GitHubApiResult.NotFound -> return FictionResult.NotFound(message = r.message)
+            is GitHubApiResult.RateLimited -> return FictionResult.RateLimited(
+                retryAfter = r.retryAfterSeconds?.let { it.toDuration(DurationUnit.SECONDS) },
+            )
+            is GitHubApiResult.NetworkError -> return FictionResult.NetworkError(
+                message = "Could not reach GitHub",
+                cause = r.cause,
+            )
+            is GitHubApiResult.HttpError -> return FictionResult.NetworkError(
+                message = "GitHub error ${r.code}: ${r.message}",
+            )
+            is GitHubApiResult.ParseError -> return FictionResult.NetworkError(
+                message = "Malformed repo response",
+                cause = r.cause,
+            )
+        }
+
+        return when (val r = api.getHeadCommit(owner, repo, branch)) {
+            is GitHubApiResult.Success -> {
+                // Empty list means the branch has no commits yet — treat
+                // as "no revision known", caller falls back to the full
+                // path. A real repo always has at least one commit.
+                FictionResult.Success(r.value.firstOrNull()?.sha)
+            }
+            is GitHubApiResult.NotFound -> FictionResult.NotFound(message = r.message)
+            is GitHubApiResult.RateLimited -> FictionResult.RateLimited(
+                retryAfter = r.retryAfterSeconds?.let { it.toDuration(DurationUnit.SECONDS) },
+            )
+            is GitHubApiResult.NetworkError -> FictionResult.NetworkError(
+                message = "Could not reach GitHub",
+                cause = r.cause,
+            )
+            is GitHubApiResult.HttpError -> FictionResult.NetworkError(
+                message = "GitHub error ${r.code}: ${r.message}",
+            )
+            is GitHubApiResult.ParseError -> FictionResult.NetworkError(
+                message = "Malformed commits response",
+                cause = r.cause,
+            )
+        }
+    }
+
     // ─── helpers ───────────────────────────────────────────────────────
 
     /** Result wrapper for a candidate manifest file fetch. */

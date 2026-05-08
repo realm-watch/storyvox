@@ -455,6 +455,55 @@ class GitHubSourceTest {
         }
     }
 
+    // ─── latestRevisionToken (step 9 cheap-poll) ───────────────────────
+
+    @Test fun `latestRevisionToken returns head SHA on default branch`() = runBlocking {
+        val api = FakeGitHubApi(
+            repos = mapOf(("o" to "r") to ghRepo("o", "r", defaultBranch = "trunk")),
+            headCommits = mapOf(
+                Triple("o", "r", "trunk") to "abc1234567890",
+            ),
+        )
+        val result = source(api = api).latestRevisionToken("github:o/r")
+        assertTrue(result is FictionResult.Success)
+        assertEquals("abc1234567890", (result as FictionResult.Success).value)
+    }
+
+    @Test fun `latestRevisionToken returns null when branch has no commits`() = runBlocking {
+        // Empty repo (just-created, no commits yet) — empty array from
+        // /commits per_page=1. The worker treats this as "no token, fall
+        // back to full path" rather than an error.
+        val api = FakeGitHubApi(
+            repos = mapOf(("o" to "r") to ghRepo("o", "r")),
+            headCommits = emptyMap(),
+        )
+        val result = source(api = api).latestRevisionToken("github:o/r")
+        assertTrue(result is FictionResult.Success)
+        assertEquals(null, (result as FictionResult.Success).value)
+    }
+
+    @Test fun `latestRevisionToken propagates NotFound when repo missing`() = runBlocking {
+        val result = source(api = FakeGitHubApi()).latestRevisionToken("github:o/r")
+        assertTrue("got $result", result is FictionResult.NotFound)
+    }
+
+    @Test fun `latestRevisionToken propagates RateLimited from getRepo`() = runBlocking {
+        // No repo lookup → first call (getRepo) returns NotFound, not
+        // RateLimited. Cover the head-commit rate-limit path: getRepo
+        // succeeds, /commits is rate-limited.
+        val api = FakeGitHubApi(
+            repos = mapOf(("o" to "r") to ghRepo("o", "r")),
+            rateLimitedHeadCommits = setOf("o" to "r"),
+        )
+        val result = source(api = api).latestRevisionToken("github:o/r")
+        assertTrue("got $result", result is FictionResult.RateLimited)
+    }
+
+    @Test fun `latestRevisionToken rejects non-github fictionId`() = runBlocking {
+        val result = source(api = FakeGitHubApi()).latestRevisionToken("royalroad:42")
+        assertTrue("got $result", result is FictionResult.NotFound)
+    }
+
     // ─── Helpers ───────────────────────────────────────────────────────
 
     private fun source(
@@ -551,6 +600,10 @@ class GitHubSourceTest {
         private val files: Map<Triple<String, String, String>, GhContent> = emptyMap(),
         private val dirs: Map<Triple<String, String, String>, List<GhContent>> = emptyMap(),
         private val rateLimitedFiles: Set<Triple<String, String, String>> = emptySet(),
+        /** Head SHA per (owner, repo, ref) — null `ref` falls back to
+         *  default-branch lookups via `(owner, repo, "")`. */
+        private val headCommits: Map<Triple<String, String, String>, String> = emptyMap(),
+        private val rateLimitedHeadCommits: Set<Pair<String, String>> = emptySet(),
         /** Search-result lookup keyed by a substring match on the
          *  composed query. First key whose substring is contained in
          *  the actual query wins. */
@@ -584,6 +637,22 @@ class GitHubSourceTest {
             return dirs[Triple(owner, repo, path)]
                 ?.let { GitHubApiResult.Success(it, etag = null) }
                 ?: GitHubApiResult.NotFound("dir not found")
+        }
+
+        override suspend fun getHeadCommit(
+            owner: String,
+            repo: String,
+            ref: String?,
+        ): GitHubApiResult<List<`in`.jphe.storyvox.source.github.model.GhCommitRef>> {
+            if (owner to repo in rateLimitedHeadCommits) {
+                return GitHubApiResult.RateLimited(retryAfterSeconds = 60)
+            }
+            val key = Triple(owner, repo, ref ?: "")
+            val sha = headCommits[key] ?: return GitHubApiResult.Success(emptyList(), etag = null)
+            return GitHubApiResult.Success(
+                listOf(`in`.jphe.storyvox.source.github.model.GhCommitRef(sha = sha)),
+                etag = null,
+            )
         }
 
         override suspend fun searchRepositories(

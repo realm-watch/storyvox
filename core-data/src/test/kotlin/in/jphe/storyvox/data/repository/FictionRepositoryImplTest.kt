@@ -160,6 +160,13 @@ class FictionRepositoryImplTest {
             rows[id] = r.copy(metadataFetchedAt = now)
         }
 
+        override suspend fun getLastSeenRevision(id: String): String? = rows[id]?.lastSeenRevision
+
+        override suspend fun setLastSeenRevision(id: String, revision: String?) {
+            val r = rows[id] ?: return
+            rows[id] = r.copy(lastSeenRevision = revision)
+        }
+
         override suspend fun upsertAllPreservingUserState(fictions: List<Fiction>) {
             callLog += "upsertAllPreservingUserState(${fictions.map { it.id }})"
             for (incoming in fictions) {
@@ -173,6 +180,7 @@ class FictionRepositoryImplTest {
                     pinnedVoiceLocale = existing.pinnedVoiceLocale,
                     notesEverSeen = existing.notesEverSeen,
                     firstSeenAt = existing.firstSeenAt,
+                    lastSeenRevision = existing.lastSeenRevision,
                 )
                 rows[merged.id] = merged
                 publish(merged.id)

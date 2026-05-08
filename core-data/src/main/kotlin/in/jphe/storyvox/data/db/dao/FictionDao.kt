@@ -70,6 +70,16 @@ interface FictionDao {
     @Query("UPDATE fiction SET metadataFetchedAt = :now WHERE id = :id")
     suspend fun touchMetadata(id: String, now: Long)
 
+    /**
+     * Source-side revision token captured the last time we successfully
+     * polled the fiction. See [Fiction.lastSeenRevision].
+     */
+    @Query("SELECT lastSeenRevision FROM fiction WHERE id = :id")
+    suspend fun getLastSeenRevision(id: String): String?
+
+    @Query("UPDATE fiction SET lastSeenRevision = :revision WHERE id = :id")
+    suspend fun setLastSeenRevision(id: String, revision: String?)
+
     @Transaction
     suspend fun upsertAllPreservingUserState(fictions: List<Fiction>) {
         // Listing pages don't know about library/follow state — preserve the
@@ -85,6 +95,10 @@ interface FictionDao {
                 pinnedVoiceLocale = existing.pinnedVoiceLocale,
                 notesEverSeen = existing.notesEverSeen,
                 firstSeenAt = existing.firstSeenAt,
+                // Listing pages don't carry revision tokens — only the
+                // poll worker writes this column. Preserve so a browse
+                // upsert doesn't reset the cheap-poll state.
+                lastSeenRevision = existing.lastSeenRevision,
             )
             upsert(merged)
         }
