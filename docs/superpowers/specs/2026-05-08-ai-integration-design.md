@@ -10,38 +10,64 @@ and **P2** are roadmap, not part of PR-1.
 
 ## Recommendation (TL;DR)
 
-- **BYOK** for Anthropic Claude, **LAN URL** for Ollama. No proxy, no
-  shared key, no payment integration. Mirrors Solara's Azure HD voices
-  spec (#85): API key sits in `EncryptedSharedPreferences` next to the
+- **Match cloud-chat-assistant's full provider roster** in the
+  abstraction layer — Claude direct, OpenAI, Ollama, AWS Bedrock,
+  Google Vertex, Azure AI Foundry, and Anthropic Teams. The
+  `LlmProvider` interface accepts all seven; the actual code in
+  PR-1 ships **three** of them (Claude direct + OpenAI + Ollama).
+  The other four are **spec-only** — the wire-format details and
+  open questions are documented here so the next PR can grind them
+  out without re-deriving the architecture.
+- **BYOK for cloud providers, LAN URL for Ollama.** No proxy, no
+  shared key, no payment integration. Mirrors Solara's Azure HD
+  voices spec (#85): API key (or AWS profile, GCP token, Foundry
+  endpoint+key) sits in `EncryptedSharedPreferences` next to the
   Royal Road cookie and the (forthcoming) GitHub PAT.
-- **New `:core-llm` module**, mirroring the `:source-github` separation.
-  Pure Hilt-wired Android library. No JNI, no native libs — direct
-  REST over OkHttp + kotlinx-serialization, both already on the
-  classpath.
-- **`LlmProvider` interface**, two implementations for v1:
-  `ClaudeApiProvider` (Anthropic Messages API, BYOK) and
-  `OllamaProvider` (OpenAI-compat endpoint at
-  `${baseUrl}/v1/chat/completions`). The shape is taken almost verbatim
-  from JP's `cloud-chat-assistant/llm_stream.py` — same provider
-  abstraction, same SSE parsing, ported to Kotlin.
-- **One P0 feature lands in PR-1: Chapter Recap.** Reader's "Player
-  options" sheet gains a "Recap so far" entry. Tap → brass-themed modal
-  appears, streams a 200-word recap of the last three chapters, with
-  Cancel and "Read aloud" buttons. Character lookup (P1), voice
-  control (P2), and others enumerated below — but **only Chapter Recap
-  ships in this PR**.
-- **Privacy disclosure modal** fires on first activation. Plain-language:
-  "the text of these chapters will be sent to the AI provider you've
-  picked." Persistent toggle in Settings → AI → "Send chapter text to
-  AI" so users can disable it after the fact without un-installing the
-  feature.
-- **Streaming responses must be cancellable.** OkHttp's `Call.cancel()`
-  + a coroutine `Job` per request — hitting Cancel mid-recap aborts the
-  HTTP body read and unwinds without dangling state.
+- **New `:core-llm` module**, mirroring the `:source-github`
+  separation. Pure Hilt-wired Android library. No JNI, no native
+  libs — direct REST over OkHttp + kotlinx-serialization, both
+  already on the classpath.
+- **`LlmProvider` interface**, three implementations shipping in
+  PR-1: `ClaudeApiProvider` (Anthropic Messages API, BYOK),
+  `OpenAiApiProvider` (OpenAI Chat Completions, BYOK), and
+  `OllamaProvider` (OpenAI-compat endpoint). Sealed `ProviderId`
+  enum already covers all seven; adding the others is mechanical
+  once their auth questions are answered.
+- **Multi-session support**, per cloud-chat-assistant's
+  `create_session` / `switch_session` / `list_sessions` shape.
+  Sessions live in Room (table `llm_session` + `llm_message`) so
+  history survives process death. Each session has its own
+  provider, model, system prompt, and chat history. **PR-1 ships
+  the schema + repository + an "AI Chat" Settings entry that lists
+  sessions.** The reader's Chapter Recap is technically a session
+  (single-shot, auto-named "Recap of <chapter>") so the storage
+  shape and the user-facing chat surface use the same plumbing.
+- **One P0 reader feature lands in PR-1: Chapter Recap.** Reader's
+  "Player options" sheet gains a "Recap so far" entry. Tap →
+  brass-themed modal appears, streams a 150–220 word recap of the
+  last three chapters, with Cancel and "Read aloud" buttons.
+  Character lookup (P1), voice control (P2), and others enumerated
+  below.
+- **Privacy disclosure modal** fires on first activation.
+  Plain-language: "the text of these chapters will be sent to the
+  AI provider you've picked." Persistent toggle in Settings → AI →
+  "Send chapter text to AI" so users can disable it after the fact
+  without un-installing the feature. The privacy disclosure
+  string is **provider-specific** — sending text to Anthropic
+  reads differently than sending text to your home Ollama box.
+- **Streaming responses must be cancellable.** OkHttp's
+  `Call.cancel()` + a coroutine `Job` per request — hitting Cancel
+  mid-recap aborts the HTTP body read and unwinds without
+  dangling state.
 
 This is the librarian's first apprentice trick: the listener has been
 gone from the book for three days, taps the lectern, and the librarian
 murmurs back the gist of the last three chapters. Quiet, useful, opt-in.
+
+The librarian's robe has many pockets — Anthropic, OpenAI, the
+homelab Ollama box. PR-1 sews three of them; the other four are
+patterns drafted on the workbench, ready when JP confirms which
+auth-shape each one wants.
 
 ## Problem
 
@@ -66,38 +92,157 @@ JP's success criterion: **a listener pauses, taps "Recap so far",
 and gets the gist in 10 seconds — no infra, no payment hookup, no
 storyvox-as-a-service.**
 
-## Provider choice
+## Provider matrix
 
-We're picking which providers to support in v1. Considered:
+The `LlmProvider` interface accepts seven providers, mirroring
+JP's `cloud-chat-assistant/llm_stream.py` plus Anthropic Teams (the
+`cc` switcher's "teams" mode). PR-1 ships three; the other four are
+spec'd here with their open questions.
 
-| Provider | Auth | Streaming | LAN-friendly | Notes |
-|---|---|---|---|---|
-| **Anthropic Claude** (BYOK) | `x-api-key` header | SSE (`content_block_delta`) | n/a | Cleanest auth in the field — single header, no token refresh, no signer. Generous context (200k tokens). $1/1M-input on Haiku 4.5; recap costs ~$0.02. |
-| **Ollama** (local) | none on LAN | SSE via OpenAI-compat `/v1/chat/completions` | yes | Free. JP runs it on `10.0.6.x:11434`. Models vary in quality — Llama-3.3-70B tier matches Haiku for summarization. Privacy win: text never leaves home. |
-| OpenAI (BYOK) | `Authorization: Bearer` | SSE | no | Same shape as Claude; deferred to P1. Adding it is one provider class + one Settings entry. |
-| Google Gemini (BYOK) | API key in URL | SSE | no | Comparable; deferred. Geminis' free tier is interesting for an "anonymous" mode but the auth + region complexity isn't worth a v1 slot. |
-| Bedrock (AWS) | SigV4 signer | SSE binary event-stream | no | The signer is non-trivial (HMAC-SHA256 of canonical request — `cloud-chat-assistant/llm_stream.py` has the reference implementation). Defer until users ask. |
-| Azure OpenAI | API key + endpoint | SSE | no | Same family as the cloud-chat-assistant pattern. Defer; #85 already brings Azure into storyvox for TTS, so we have prior art when this matters. |
+| Provider | PR-1 | Auth | Wire format | Streaming | LAN-friendly | Cost (rough) |
+|---|---|---|---|---|---|---|
+| **Anthropic Claude (direct)** | **YES** | `x-api-key` header | Anthropic Messages | SSE `content_block_delta` | no | $1/1M-input (Haiku 4.5); recap ≈ $0.005 |
+| **OpenAI** | **YES** | `Authorization: Bearer` | OpenAI Chat Completions | SSE `choices[0].delta.content` | no | $0.15/1M-input (gpt-4o-mini); recap ≈ $0.001 |
+| **Ollama (local)** | **YES** | none | OpenAI-compat | SSE same as OpenAI | yes | free |
+| AWS Bedrock | spec-only | SigV4 (HMAC-SHA256) | Bedrock converse-stream | binary event-stream | no | varies by model |
+| Google Vertex AI | spec-only | OAuth2 token (gcloud) | Gemini generateContent | SSE `candidates[].content.parts[].text` | no | varies by model |
+| Azure AI Foundry | spec-only | `api-key` header + endpoint | OpenAI Chat Completions (deployed) or Foundry serverless | SSE same as OpenAI | no | varies by deployment |
+| Anthropic Teams (OAuth) | spec-only | OAuth browser flow → bearer token | Anthropic Messages | SSE same as Claude direct | no | covered by Teams subscription |
 
-**Claude + Ollama wins on three vectors:**
+### Why these three for PR-1
 
-1. **Two opposite use cases, one shape.** Claude is the cloud answer
-   (BYOK, fast, high quality, ~$0.02 / recap). Ollama is the
-   privacy-preserving local answer (LAN URL, free, response quality
-   depends on the model the user runs). One UI ("AI" Settings section,
-   one provider picker) covers both, and the abstraction shape is
-   identical because Ollama's OpenAI-compat endpoint is shaped like
-   Anthropic's Messages API minus the system-prompt placement.
-2. **Auth simplicity.** Claude is one header. Ollama is no header. No
-   OAuth, no signers, no service-account JSON, no token refresh.
-3. **No proxy infra.** Both providers talk directly from device to
-   endpoint. Storyvox stays a pure-client app, just like the existing
-   Royal Road and GitHub source modules.
+**Claude direct, OpenAI, and Ollama** were picked because:
 
-**REST over SDK** because Anthropic doesn't ship an official Kotlin SDK
-and the third-party ones are heavy (anthropic-java pulls in jackson,
-guava, ~3 MB transitive). OkHttp + kotlinx-serialization is ~150 lines
-of Kotlin and stays a pure JVM-17 module. We already have both deps.
+1. **Two cloud BYOK shapes, one local.** Claude direct represents
+   "single header, simplest auth"; OpenAI represents "the OpenAI-compat
+   wire format that 80% of the field shares" (Ollama, DigitalOcean,
+   Puter, Foundry serverless, even Azure deployed); Ollama represents
+   "I run my own". Together they cover the patterns you'll keep
+   adding providers under.
+2. **Zero new dependencies.** All three are pure REST + SSE. No
+   AWS SDK (~5 MB transitive), no Google auth library, no MSAL.
+   The implementation is OkHttp + kotlinx-serialization, both
+   already on the classpath.
+3. **JP can use all three on day one.** Anthropic key from
+   Vaultwarden, OpenAI key from Vaultwarden, Ollama on
+   `10.0.6.x:11434`. No new infrastructure or accounts required.
+4. **They prove the abstraction.** Adding Bedrock / Vertex /
+   Foundry / Teams is mechanical once their open questions are
+   answered, because each one is "a different auth + a different
+   wire format" and we already proved the seam handles two wire
+   formats (Anthropic + OpenAI-compat) and two auth shapes
+   (header BYOK + URL-only).
+
+### Spec-only providers
+
+Each one needs a small auth-and-wire-format spike before
+implementation. The wire format is a known quantity (cloud-chat-
+assistant's `llm_stream.py` has it for all of these); the **auth
+flow** is the open question because Android's auth story differs
+from a Linux desktop running `gcloud` or `aws configure`.
+
+#### AWS Bedrock
+
+- **Wire format**: `bedrock-runtime.{region}.amazonaws.com/model/{id}/converse-stream`. Body:
+  `{modelId, messages, inferenceConfig: {maxTokens, temperature}, system?}`.
+  Response: AWS binary event-stream (NOT SSE) — frames carry
+  `contentBlockDelta` events with text in `delta.text`. The frame
+  parser is ~50 lines of Kotlin (port of `_parse_event_stream` in
+  `llm_stream.py`).
+- **Auth options**:
+  1. **BYOK access key + secret** (recommended). User pastes both
+     into Settings → AI → Bedrock; both go to
+     `EncryptedSharedPreferences`. We compute SigV4 in-app (port of
+     `_aws_sign_v4` from `llm_stream.py` — pure stdlib HMAC).
+  2. Pull from `~/.aws/credentials` — N/A on Android (no shared file
+     system, no AWS CLI on device).
+  3. Cognito Identity Pools — would need a backend to issue temporary
+     creds. Out of scope for v1 (proxy mode).
+- **Recommendation**: BYOK access key + secret. Add a fourth
+  encrypted-prefs row, a small SigV4 signer, the binary event-stream
+  parser. Models hardcoded in a small list (Claude 4.x, Nova,
+  Llama 4) — same shape as cloud-chat-assistant's `BEDROCK_MODELS`
+  map.
+- **Open question for JP**: confirm BYOK access-key over
+  proxy/Cognito.
+
+#### Google Vertex AI
+
+- **Wire format**: `generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse&key={apiKey}`.
+  Body: `{contents: [{role, parts: [{text}]}], system_instruction?}`.
+  Response: SSE; tokens in `candidates[0].content.parts[0].text`.
+- **Auth options**:
+  1. **Vertex API key** (recommended for v1). Google issues simple
+     API keys for Gemini that go in the URL query string. Trivially
+     BYOK-able. Same shape as Claude direct.
+  2. Service-account JSON — file picker UX, JSON parse, OAuth2 token
+     refresh. Heavier; defer.
+  3. `gcloud auth` — N/A on Android.
+- **Recommendation**: Vertex API key. Simplest path; one Settings
+  entry; no token refresh.
+- **Open question for JP**: confirm API key over service-account
+  JSON for v1.
+
+#### Azure AI Foundry
+
+- **Wire format**: depends on deployment type (cloud-chat-assistant
+  splits into `deployed` and `serverless`):
+  - Deployed: `${endpoint}/openai/deployments/${model}/chat/completions?api-version=2024-12-01-preview`
+  - Serverless: `${endpoint}/models/chat/completions?api-version=...`
+  - Both use OpenAI-compat wire shape (same as our OpenAI provider!).
+- **Auth**: `api-key` header + endpoint URL. Both BYOK; no token
+  refresh.
+- **Recommendation**: implement as a thin wrapper over the OpenAI
+  provider — different base URL builder, different header name
+  (`api-key` not `Authorization: Bearer`), same SSE parser, same
+  body shape. **Probably 50 lines of Kotlin** once OpenAI provider
+  is in.
+- **Open question for JP**: do listeners actually want Foundry, or
+  is this only "JP's homelab uses it for storyvox-adjacent work"?
+  If the latter, defer to a later PR.
+
+#### Anthropic Teams (OAuth)
+
+- **Wire format**: identical to Claude direct (Anthropic Messages
+  API, SSE). The difference is the auth flow: instead of an API
+  key the user pastes, Teams uses an OAuth-style browser login that
+  yields a bearer token.
+- **Auth flow**: storyvox launches a `CustomTabsIntent` to
+  `console.anthropic.com`, user signs in to their Teams workspace,
+  workspace issues a token, redirects back to a custom scheme
+  (`storyvox://auth/anthropic-teams`). App captures the token and
+  stores in `EncryptedSharedPreferences`. Token refresh on expiry.
+- **Recommendation**: defer. The OAuth client registration with
+  Anthropic, the redirect-URI handshake, and token-refresh logic
+  add real surface area. Direct API + (forthcoming, if you want)
+  proxy mode covers most of the user base.
+- **Open question for JP**: is Teams a "must-have for first
+  release" or "nice to have for some homelab users on a Teams
+  subscription"? If the latter, defer.
+
+**Why three for PR-1:**
+
+1. **Two opposite use cases, one shape.** Claude is the cloud
+   answer (BYOK, fast, high quality, ~$0.005 / recap). OpenAI is
+   the same shape with a different wire format (Bearer auth,
+   choices/delta SSE). Ollama is the privacy-preserving local
+   answer (LAN URL, free). One UI ("AI" Settings section, one
+   provider picker) covers all three, and the abstraction shape
+   handles the two wire formats (Anthropic + OpenAI-compat) that
+   cover everything except Bedrock's binary event-stream and
+   Google's Gemini-shaped JSON.
+2. **Auth simplicity.** Claude is one header, OpenAI is one
+   header, Ollama is no header. No OAuth, no SigV4, no service-
+   account JSON, no token refresh.
+3. **No proxy infra.** All three providers talk directly from
+   device to endpoint. Storyvox stays a pure-client app, just like
+   the existing Royal Road and GitHub source modules.
+
+**REST over SDK** because Anthropic doesn't ship an official Kotlin
+SDK and the third-party ones are heavy (anthropic-java pulls in
+jackson, guava, ~3 MB transitive). OpenAI's situation is similar.
+OkHttp + kotlinx-serialization is ~200 lines of Kotlin per provider
+and stays a pure JVM-17 module. We already have both deps.
 
 ## Architecture
 
@@ -114,15 +259,24 @@ core-llm/
     LlmConfig.kt                      ← provider choice, model, baseUrl, etc.
     LlmCredentialsStore.kt            ← reads/writes EncryptedSharedPreferences
     LlmRepository.kt                  ← high-level API used by ViewModels
+    LlmSessionRepository.kt           ← multi-session CRUD + history
     sse/SseLineParser.kt              ← shared SSE event-line parsing
     provider/
       ClaudeApiProvider.kt            ← Anthropic Messages API (REST + SSE)
+      OpenAiApiProvider.kt            ← OpenAI Chat Completions (REST + SSE)
       OllamaProvider.kt               ← OpenAI-compat /v1/chat/completions
     feature/
       ChapterRecap.kt                 ← high-level "recap last N chapters" use case
     di/LlmModule.kt                   ← Hilt bindings
   src/test/kotlin/...
 ```
+
+Sessions persist in Room — schema lives in `:core-data` so it
+participates in the existing migration chain. The new entities
+(`LlmSession`, `LlmMessage`) and DAOs (`LlmSessionDao`,
+`LlmMessageDao`) are added to `:core-data`'s database, and the
+`:core-llm` module consumes them via the standard
+`@Inject`-from-DataModule path.
 
 `android-library` plugin (not pure JVM) because we need the
 `EncryptedSharedPreferences` Android API. Same shape as `:source-github`.
@@ -177,7 +331,26 @@ interface LlmProvider {
     suspend fun probe(): ProbeResult
 }
 
-enum class ProviderId { Claude, Ollama }
+enum class ProviderId {
+    /** Anthropic Messages API (BYOK), implemented in PR-1. */
+    Claude,
+    /** OpenAI Chat Completions (BYOK), implemented in PR-1. */
+    OpenAi,
+    /** OpenAI-compat local endpoint (LAN URL), implemented in PR-1. */
+    Ollama,
+    /** AWS Bedrock converse-stream (BYOK access key), spec only. */
+    Bedrock,
+    /** Google Vertex Gemini (BYOK API key), spec only. */
+    Vertex,
+    /** Azure AI Foundry (BYOK endpoint+key), spec only. */
+    Foundry,
+    /** Anthropic Teams (OAuth bearer token), spec only. */
+    Teams;
+
+    /** True for providers that ship in PR-1; false for spec-only. */
+    val implemented: Boolean
+        get() = this == Claude || this == OpenAi || this == Ollama
+}
 
 sealed class ProbeResult {
     object Ok : ProbeResult()
@@ -227,14 +400,41 @@ data class LlmMessage(
 }
 
 /** Persisted in DataStore (non-secret bits) + EncryptedSharedPreferences
- *  (api key only). Read at provider construction time. */
+ *  (api keys only). Read at provider construction time.
+ *
+ *  Per-provider model + auxiliary fields are kept on this single
+ *  config object rather than splitting per-provider records, because
+ *  (a) the config is small (a dozen scalars) and (b) Settings UI
+ *  reads them all at once. When users add Bedrock / Vertex / Foundry /
+ *  Teams the corresponding fields are added to the same record. */
 data class LlmConfig(
     val provider: ProviderId? = null,        // null = AI disabled
+
+    // Claude direct
     val claudeModel: String = "claude-haiku-4.5",
+
+    // OpenAI direct
+    val openAiModel: String = "gpt-4o-mini",
+
+    // Ollama (LAN)
     val ollamaBaseUrl: String = "http://10.0.0.1:11434",   // sentinel default
     val ollamaModel: String = "llama3.3",
+
+    // Bedrock (spec only — fields included so DataStore migrations are
+    // additive, not breaking, when the provider ships)
+    val bedrockRegion: String = "us-east-1",
+    val bedrockModel: String = "claude-haiku-4.5",
+
+    // Vertex (spec only)
+    val vertexModel: String = "gemini-2.5-flash",
+
+    // Foundry (spec only)
+    val foundryEndpoint: String = "",
+    val foundryDeployment: String = "",
+
+    // Cross-provider toggles
     /** First-time-activation modal acknowledged once; user is okay
-     *  with the privacy disclosure. */
+     *  with the privacy disclosure for the provider they picked. */
     val privacyAcknowledged: Boolean = false,
     /** Hard kill switch. When false, the AI section in Settings still
      *  works (key entry + test) but no chapter text is ever sent —
@@ -262,9 +462,50 @@ class LlmCredentialsStore @Inject constructor(
         prefs.edit { remove(KEY_CLAUDE) }
     val hasClaudeKey: Boolean get() = claudeApiKey() != null
 
+    fun openAiApiKey(): String? = prefs.getString(KEY_OPENAI, null)
+    fun setOpenAiApiKey(key: String) =
+        prefs.edit { putString(KEY_OPENAI, key) }
+    fun clearOpenAiApiKey() =
+        prefs.edit { remove(KEY_OPENAI) }
+    val hasOpenAiKey: Boolean get() = openAiApiKey() != null
+
+    // Spec-only — these fields wired now so the prefs layout doesn't
+    // change when the providers ship. Each is a method, not a constant,
+    // so the encrypted-prefs key namespace remains stable across
+    // builds.
+    fun bedrockAccessKey(): String? = prefs.getString(KEY_BEDROCK_ACCESS, null)
+    fun bedrockSecretKey(): String? = prefs.getString(KEY_BEDROCK_SECRET, null)
+    fun setBedrockKeys(access: String, secret: String) = prefs.edit {
+        putString(KEY_BEDROCK_ACCESS, access)
+        putString(KEY_BEDROCK_SECRET, secret)
+    }
+    fun clearBedrockKeys() = prefs.edit {
+        remove(KEY_BEDROCK_ACCESS); remove(KEY_BEDROCK_SECRET)
+    }
+
+    fun vertexApiKey(): String? = prefs.getString(KEY_VERTEX, null)
+    fun setVertexApiKey(key: String) =
+        prefs.edit { putString(KEY_VERTEX, key) }
+    fun clearVertexApiKey() = prefs.edit { remove(KEY_VERTEX) }
+
+    fun foundryApiKey(): String? = prefs.getString(KEY_FOUNDRY, null)
+    fun setFoundryApiKey(key: String) =
+        prefs.edit { putString(KEY_FOUNDRY, key) }
+    fun clearFoundryApiKey() = prefs.edit { remove(KEY_FOUNDRY) }
+
+    fun teamsBearerToken(): String? = prefs.getString(KEY_TEAMS, null)
+    fun setTeamsBearerToken(token: String) =
+        prefs.edit { putString(KEY_TEAMS, token) }
+    fun clearTeamsBearerToken() = prefs.edit { remove(KEY_TEAMS) }
+
     private companion object {
         const val KEY_CLAUDE = "llm_api_key:claude"
-        // Future: KEY_OPENAI, KEY_GEMINI — same shape.
+        const val KEY_OPENAI = "llm_api_key:openai"
+        const val KEY_BEDROCK_ACCESS = "llm_api_key:bedrock_access"
+        const val KEY_BEDROCK_SECRET = "llm_api_key:bedrock_secret"
+        const val KEY_VERTEX = "llm_api_key:vertex"
+        const val KEY_FOUNDRY = "llm_api_key:foundry"
+        const val KEY_TEAMS = "llm_api_key:teams"
     }
 }
 ```
@@ -376,6 +617,96 @@ the recap Job → coroutine cancellation propagates → OkHttp body close →
 TCP RST to Anthropic → no further token billing. (Anthropic bills only
 for tokens emitted up to the cancel; the half-finished message is not
 charged.)
+
+### `OpenAiApiProvider`
+
+The OpenAI Chat Completions wire format is the lingua franca of the
+LLM space — Ollama, DigitalOcean, Puter, Foundry serverless, and
+many others speak it natively. Sharing the parser between OpenAI and
+Ollama is intentional: adding a fourth OpenAI-shaped provider in the
+future is a `baseUrl` + `header name` change, not a new parser.
+
+```kotlin
+class OpenAiApiProvider @Inject constructor(
+    private val http: OkHttpClient,
+    private val store: LlmCredentialsStore,
+    private val configFlow: Flow<LlmConfig>,
+    private val json: Json,
+) : LlmProvider {
+
+    override val id = ProviderId.OpenAi
+
+    override fun stream(
+        messages: List<LlmMessage>,
+        systemPrompt: String?,
+        model: String?,
+    ): Flow<String> = flow {
+        val cfg = configFlow.first()
+        val apiKey = store.openAiApiKey()
+            ?: throw LlmError.NotConfigured(ProviderId.OpenAi)
+        val resolvedModel = model ?: cfg.openAiModel
+
+        // OpenAI puts system into the messages array (unlike Anthropic).
+        val systemMsg = systemPrompt?.let {
+            listOf(OpenAiMessage("system", it))
+        }.orEmpty()
+        val body = OpenAiRequest(
+            model = resolvedModel,
+            messages = systemMsg + messages.map {
+                OpenAiMessage(it.role.name, it.content)
+            },
+            stream = true,
+            maxTokens = 1024,
+        )
+
+        val request = Request.Builder()
+            .url("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", "Bearer $apiKey")
+            .header("content-type", "application/json")
+            .header("accept", "text/event-stream")
+            .post(json.encodeToString(body).toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+
+        http.newCall(request).await { resp ->
+            when {
+                resp.code == 401 || resp.code == 403 ->
+                    throw LlmError.AuthFailed(ProviderId.OpenAi, resp.message)
+                !resp.isSuccessful ->
+                    throw LlmError.ProviderError(
+                        ProviderId.OpenAi, resp.code,
+                        resp.body?.string()?.take(256) ?: resp.message,
+                    )
+            }
+            resp.body!!.source().use { src ->
+                while (!src.exhausted()) {
+                    val line = src.readUtf8Line() ?: break
+                    val token = SseLineParser.openAiCompat(line, json) ?: continue
+                    emit(token)
+                }
+            }
+        }
+    }.flowOn(Dispatchers.IO)
+
+    override suspend fun probe(): ProbeResult {
+        // GET /v1/models — instant, doesn't consume model time.
+        val apiKey = store.openAiApiKey() ?: return ProbeResult.Misconfigured("No API key")
+        val req = Request.Builder()
+            .url("https://api.openai.com/v1/models")
+            .header("Authorization", "Bearer $apiKey")
+            .build()
+        return try {
+            val resp = http.newCall(req).executeSuspending()
+            when {
+                resp.isSuccessful -> ProbeResult.Ok
+                resp.code == 401 -> ProbeResult.AuthError("Invalid OpenAI key")
+                else -> ProbeResult.NotReachable("OpenAI returned ${resp.code}")
+            }
+        } catch (e: IOException) {
+            ProbeResult.NotReachable(e.message ?: "Connection failed")
+        }
+    }
+}
+```
 
 ### `OllamaProvider`
 
@@ -538,6 +869,167 @@ class LlmRepository @Inject constructor(
 }
 ```
 
+### Multi-session storage
+
+Mirrors cloud-chat-assistant's
+`create_session` / `switch_session` / `delete_session` /
+`list_sessions` shape. Sessions persist in Room so chat history
+survives process death — Chapter Recap is technically a session
+(single-shot, auto-named "Recap of <chapter title>" so it shows up
+in the AI Chat Settings list as a record of "I asked the librarian
+this on this date").
+
+#### Schema
+
+Two new tables under `:core-data`'s database. Migration adds them in
+the standard `ALL_MIGRATIONS` chain (next version bump on
+`StoryvoxDatabase`).
+
+```kotlin
+@Entity(tableName = "llm_session")
+data class LlmSession(
+    @PrimaryKey val id: String,             // UUID
+    val name: String,                       // user-visible label
+    val provider: ProviderId,               // bound provider for this session
+    val model: String,                      // bound model
+    val systemPrompt: String? = null,       // optional per-session prompt
+    val createdAt: Long,                    // millis epoch
+    val lastUsedAt: Long,                   // millis epoch
+    /** When non-null, this session was auto-created for a feature
+     *  (Chapter Recap, Character Lookup) and the UI hides it from
+     *  the main session list by default. */
+    val featureKind: FeatureKind? = null,
+    /** For feature sessions: the fiction/chapter context that anchored
+     *  the session, so a returning user can see "the recap I asked
+     *  for on Sky Pride chapter 8". */
+    val anchorFictionId: String? = null,
+    val anchorChapterId: String? = null,
+)
+
+enum class FeatureKind { ChapterRecap, CharacterLookup }
+
+@Entity(
+    tableName = "llm_message",
+    foreignKeys = [
+        ForeignKey(
+            entity = LlmSession::class,
+            parentColumns = ["id"],
+            childColumns = ["sessionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index(value = ["sessionId"])],
+)
+data class StoredLlmMessage(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sessionId: String,
+    val role: LlmMessage.Role,
+    val content: String,
+    val createdAt: Long,
+)
+```
+
+The `LlmMessage` data class (used at the wire/API layer) and the
+`StoredLlmMessage` entity (Room storage) are intentionally
+distinct — wire-layer messages don't carry an id or timestamp;
+stored messages do. The repository converts between them.
+
+#### Repository
+
+```kotlin
+@Singleton
+class LlmSessionRepository @Inject constructor(
+    private val sessionDao: LlmSessionDao,
+    private val messageDao: LlmMessageDao,
+    private val llm: LlmRepository,
+    private val configFlow: Flow<LlmConfig>,
+) {
+
+    /** All sessions, newest first. UI filters featureKind != null
+     *  out of the main list by default. */
+    fun observeSessions(): Flow<List<LlmSession>> =
+        sessionDao.observeAll()
+
+    fun observeMessages(sessionId: String): Flow<List<StoredLlmMessage>> =
+        messageDao.observeBySession(sessionId)
+
+    /** Create a free-form session bound to the user's currently
+     *  active provider + model. Returns the new session id. */
+    suspend fun createSession(
+        name: String,
+        provider: ProviderId? = null,
+        model: String? = null,
+        systemPrompt: String? = null,
+        featureKind: FeatureKind? = null,
+        anchorFictionId: String? = null,
+        anchorChapterId: String? = null,
+    ): String { ... }
+
+    /** Send a user message in the named session, stream the reply,
+     *  persist both turns once the stream completes. */
+    fun chat(sessionId: String, userMessage: String): Flow<String> = flow {
+        val session = sessionDao.get(sessionId)
+            ?: throw IllegalStateException("Session $sessionId not found")
+        // Persist user turn now (even though reply is in-flight) so
+        // a process death mid-stream doesn't lose what the user said.
+        messageDao.insert(StoredLlmMessage(
+            sessionId = sessionId,
+            role = LlmMessage.Role.user,
+            content = userMessage,
+            createdAt = System.currentTimeMillis(),
+        ))
+        val history = messageDao.getBySession(sessionId).map {
+            LlmMessage(it.role, it.content)
+        }
+        // Provider override per session — NOT the global active provider.
+        val provider = providerFor(session.provider)
+        val replyBuf = StringBuilder()
+        emitAll(
+            provider.stream(
+                messages = history,
+                systemPrompt = session.systemPrompt,
+                model = session.model,
+            ).onEach { replyBuf.append(it) }
+                 .onCompletion {
+                     if (it == null) {  // success
+                         messageDao.insert(StoredLlmMessage(
+                             sessionId = sessionId,
+                             role = LlmMessage.Role.assistant,
+                             content = replyBuf.toString(),
+                             createdAt = System.currentTimeMillis(),
+                         ))
+                         sessionDao.touchLastUsed(sessionId,
+                             System.currentTimeMillis())
+                     }
+                 }
+        )
+    }
+
+    suspend fun deleteSession(sessionId: String) {
+        sessionDao.delete(sessionId)   // cascades to messages
+    }
+
+    private fun providerFor(id: ProviderId): LlmProvider {
+        // … delegated through LlmRepository.providerFor(id) — sessions
+        // are bound to a specific provider, ignoring global config.
+    }
+}
+```
+
+This shape means a user can have multiple sessions configured
+against different providers — "Sky Pride recap session"
+on Ollama, "weekly tarot chat" on Claude, "code questions" on
+OpenAI — without globally toggling. The Settings UI exposes this
+via a session manager.
+
+#### Why Room (not SQLite or DataStore)?
+
+cloud-chat-assistant uses raw SQLite because it's a Python script.
+Storyvox already runs Room for the entire data layer; using it
+here is the lowest-friction option. Room migrations are well-
+trodden in this codebase. DataStore is wrong-shaped for chat
+history — it's a key-value store, not a relational one.
+
 ### Chapter Recap use case
 
 The actual P0 user-facing feature. Pulls the last N chapters from Room,
@@ -688,41 +1180,94 @@ chatbot widget.
 ### Settings UI
 
 A new "AI" section in `SettingsScreen.kt`, between "Audio buffer" and
-"Theme":
+"Theme". With seven possible providers + multi-session, the section
+gets a sub-screen of its own (mirrors how the Voice library is its
+own screen, not inline). A single "AI" row at the top level routes
+into a dedicated `AiSettingsScreen.kt`:
 
 ```
-─────────────────────────────────────────
+─────────────────────────────────────────                 SettingsScreen.kt
 AI
 
-Provider: [ Off ] [ Claude ] [ Ollama ]    ← three-stop selector,
-                                              same shape as Theme/
-                                              PunctuationPause selectors
+  Active provider: Claude (Haiku 4.5)
+  [ Configure AI ]   ← routes to AiSettingsScreen
+─────────────────────────────────────────
+```
+
+The dedicated screen:
+
+```
+< AI                                                       AiSettingsScreen.kt
+
+Provider
+  ◉ Off
+  ◉ Claude (Anthropic, BYOK)             [implemented]
+  ◉ OpenAI (BYOK)                        [implemented]
+  ◉ Ollama (local LAN)                   [implemented]
+  ◯ AWS Bedrock                          [coming soon]
+  ◯ Google Vertex AI                     [coming soon]
+  ◯ Azure AI Foundry                     [coming soon]
+  ◯ Anthropic Teams (OAuth)              [coming soon]
 
 [when Claude selected:]
-  API key: ●●●●●●●●●●●●●●●●●●●●●●●●  [show]
-           [paste from clipboard]
-  Model: claude-haiku-4.5            (dropdown — haiku, sonnet, opus)
+  API key: ●●●●●●●●●●●●●●●●●●●●●●●●  [show] [paste]
+  Model: [claude-haiku-4.5  ▾]
   [ Test connection ]
   How do I get a Claude API key?  ↗
 
+[when OpenAI selected:]
+  API key: ●●●●●●●●●●●●●●●●●●●●●●●●  [show] [paste]
+  Model: [gpt-4o-mini  ▾]
+  [ Test connection ]
+  How do I get an OpenAI API key?  ↗
+
 [when Ollama selected:]
   Server URL: http://10.0.6.50:11434
-  Model: llama3.3                    (dropdown populated from /api/tags)
+  Model: llama3.3                         (dropdown populated from /api/tags)
   [ Test connection ]
-  Help: how to set up Ollama on the LAN  ↗
+  How to set up Ollama on the LAN  ↗
 
-[always when not Off:]
-  ☐ Send chapter text to AI
-       Required for Recap. Off means the feature
-       is disabled even with a key configured.
+[when "coming soon" provider tapped:]
+  modal: "Bedrock support is in the design spec but not yet
+  implemented. Want to help? See PR #XX."
 
-  Smart features
-    ✦ Chapter Recap                        [enabled by default]
-    (more coming — see roadmap)
+──────────
+Send chapter text to AI                              [ Toggle ]
+   Required for Recap. Off means the feature
+   is disabled even with a key configured.
 
-  Forget this provider's settings  [Reset]
-─────────────────────────────────────────
+Smart features
+  ✦ Chapter Recap                                    [Enabled]
+  (more coming — see roadmap)
+
+──────────
+Sessions
+  + New chat session
+  - "Sky Pride recap" — Claude, Haiku 4.5 (last used 3d ago)
+  - "Voice tutor" — OpenAI, gpt-4o-mini (last used 1w ago)
+  - … (feature-kind sessions hidden by default —
+       toggle "Show feature sessions" to reveal)
+
+──────────
+Forget all AI settings  [ Reset ]
 ```
+
+The "coming soon" rows are visible but not selectable in PR-1 — same
+greyed-out pattern Solara used for Azure voice rows in the picker.
+Tapping them surfaces a one-line "in design spec, not yet built"
+modal. This sets the expectation that more providers are coming
+without forcing PR-1 to ship them.
+
+The "Sessions" subsection is the user-facing entry to the
+multi-session system. **PR-1 ships only the schema + repository +
+read-only list view** — the chat UI surface (message list, input
+field, streaming response area) is a small follow-up PR. The
+reason: PR-1's user-visible value is Chapter Recap; a free-form
+chat UI is a sibling feature that benefits from its own design
+review and would inflate PR-1 past reviewability. The session
+list shows feature-kind sessions (Recap-of-X) so users can re-read
+their recaps; "+ New chat session" is greyed out with "Free-form
+chat coming soon" until the chat UI ships.
 
 The "Send chapter text to AI" toggle is the loud privacy switch. Off
 by default? The privacy-first answer is yes; the discoverability
@@ -1067,6 +1612,8 @@ need to back this out or extend it — is:
 | **Ollama OpenAI-compat endpoint changes.** Less stable than Anthropic; Ollama is a young project. | Bake the endpoint URL into a constant; pin Ollama model versions with the user's `ollamaModel` setting. If Ollama breaks the compat shape, fall back to its native `/api/chat` (newline-delimited JSON, slightly different parser). |
 | **Long recaps in slow Ollama configs.** A 7B model on a CPU-only Ollama box can take 30–60s to recap. | Modal shows a "this might take a moment on slow models" hint after 5s of streaming-without-progress. Cancel button is always live. |
 | **Provider abstraction leaks.** Future provider needs something the two-shape parser can't express. | Provider interface accepts the burden — `stream()` is the seam. Adding e.g. Bedrock means a new class with a new SSE event-stream parser, contained to that provider. The two-parser shape covers ~95% of real-world LLM providers; outliers are isolated. |
+| **Multi-session schema migration.** Adding `llm_session` + `llm_message` tables bumps `StoryvoxDatabase` version. | Standard Room migration path — `MIGRATION_X_Y` in the existing `ALL_MIGRATIONS` chain. Tables are new (no data movement), so the migration is one `CREATE TABLE` per table + the index. Test the migration with the existing `MigrationTestHelper` pattern. |
+| **Spec-only providers diverge from spec.** PR-1 ships a Settings UI showing 7 providers; later PRs implement them. The wire format documented here may be wrong by the time someone codes Bedrock. | Each spec-only provider section explicitly says "verify wire format against current cloud-chat-assistant on PR start". The wire formats are pinned to API versions (Anthropic `2023-06-01`, Bedrock `converse-stream`, Vertex `v1beta`) which have been stable; even so, the implementer's first task is to verify, not assume. |
 
 ## Out of scope
 
@@ -1094,6 +1641,27 @@ need to back this out or extend it — is:
   shape from #85's Open Questions. Same answer: deferred.
 
 ## Open questions for JP
+
+### Scope
+
+0. **Spec-only providers — confirm or cut.** Four are spec'd here
+   (Bedrock, Vertex, Foundry, Teams) with their open auth questions.
+   Are any of them not actually wanted? Specifically:
+   - **Bedrock**: BYOK access-key + secret + SigV4 signer in-app
+     (~50 lines), or punt to a proxy mode (~storyvox-side server)?
+     Cassia recommends **BYOK SigV4**, mirrors cloud-chat-assistant.
+   - **Vertex**: API key in URL (simplest), or service-account JSON
+     (more capable, more complex)? Cassia recommends **API key**.
+   - **Foundry**: thin OpenAI-compat wrapper, or full Foundry SDK?
+     Cassia recommends **thin wrapper**.
+   - **Teams**: full OAuth flow with redirect handlers, or skip
+     entirely? Cassia recommends **skip** — direct API + future
+     proxy mode covers most users; Teams adds real Android-OAuth
+     surface area without a proportionate user-base win.
+   Lock these in before PR-1 lands so the spec doesn't promise
+   what we won't deliver.
+
+### Defaults
 
 1. **Default provider on first install: Off (recommend) vs Ollama
    guess vs Claude entry?** Off is the safest — no surprise traffic.
@@ -1164,17 +1732,26 @@ For the spec:
 
 For the implementation (this PR):
 - `:core-llm` module compiles and tests green.
-- Both provider unit tests pass against MockWebServer.
+- All three provider unit tests pass against MockWebServer
+  (Claude, OpenAI, Ollama).
 - ChapterRecap test green against an in-memory Room DB.
-- Settings → AI section renders, persists, surveys via Test connection.
+- LlmSession schema + DAOs in `:core-data`, with a Room migration
+  test against the previous schema version.
+- Settings → AI section renders, persists, surveys via Test
+  connection on each implemented provider.
+- "Coming soon" rows for Bedrock / Vertex / Foundry / Teams render
+  greyed out with the design-spec disclosure modal.
 - Reader → Player options → Recap so far → modal opens, streams a
   recap on at least one provider configured locally.
 - First-time-activation modal fires and blocks until acknowledged.
+- Per-provider privacy disclosure strings (sending text to
+  Anthropic vs. OpenAI vs. local Ollama).
 - API key never appears in logs (verified by adding an OkHttp
-  logging-interceptor test that asserts header redaction).
+  logging-interceptor test that asserts header redaction for both
+  `x-api-key` and `Authorization`).
 - Cancel mid-stream cancels OkHttp Call within ~250 ms (verified by
   MockWebServer takeRequest + close-detection).
-- Tablet install: Recap actually generates plausible text on an
-  ngrok-connected Anthropic key + a LAN Ollama at JP's bench.
+- Tablet install: Recap actually generates plausible text on at
+  least one provider configured at JP's bench.
 - No version bump, no tablet install in PR script (orchestrator owns
   both).
