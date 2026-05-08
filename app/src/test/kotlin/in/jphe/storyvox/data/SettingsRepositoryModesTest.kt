@@ -3,17 +3,11 @@ package `in`.jphe.storyvox.data
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
-import `in`.jphe.storyvox.data.auth.SessionHydrator
-import `in`.jphe.storyvox.data.auth.SessionState
-import `in`.jphe.storyvox.data.repository.AuthRepository
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -52,7 +46,13 @@ class SettingsRepositoryModesTest {
             scope = scope,
             produceFile = { file },
         )
-        repo = SettingsRepositoryUiImpl(store, FakeAuth(), FakeHydrator())
+        repo = SettingsRepositoryUiImpl(
+            store = store,
+            auth = FakeAuth(),
+            hydrator = FakeHydrator(),
+            palaceConfig = makeFakePalaceConfig(tempFolder.newFolder("palace_ds"), scope),
+            palaceApi = makeFakePalaceApi(),
+        )
     }
 
     @After
@@ -139,22 +139,5 @@ class SettingsRepositoryModesTest {
         )
     }
 
-    private class FakeAuth : AuthRepository {
-        private val state = MutableStateFlow<SessionState>(SessionState.Anonymous)
-        override val sessionState: StateFlow<SessionState> = state.asStateFlow()
-        override suspend fun captureSession(
-            cookieHeader: String,
-            userDisplayName: String?,
-            userId: String?,
-            expiresAt: Long?,
-        ) = Unit
-        override suspend fun clearSession() = Unit
-        override suspend fun cookieHeader(): String? = null
-        override suspend fun verifyOrExpire(): SessionState = SessionState.Anonymous
-    }
-
-    private class FakeHydrator : SessionHydrator {
-        override fun hydrate(cookies: Map<String, String>) = Unit
-        override fun clear() = Unit
-    }
+    // FakeAuth / FakeHydrator / palace fakes live in [SettingsRepositoryTestSupport].
 }
