@@ -15,6 +15,7 @@ import `in`.jphe.storyvox.data.auth.SessionHydrator
 import `in`.jphe.storyvox.data.repository.AuthRepository
 import `in`.jphe.storyvox.data.repository.playback.PlaybackBufferConfig
 import `in`.jphe.storyvox.data.repository.playback.PlaybackModeConfig
+import `in`.jphe.storyvox.data.repository.playback.VoiceTuningConfig
 import `in`.jphe.storyvox.feature.api.BUFFER_DEFAULT_CHUNKS
 import `in`.jphe.storyvox.feature.api.BUFFER_MAX_CHUNKS
 import `in`.jphe.storyvox.feature.api.BUFFER_MIN_CHUNKS
@@ -120,6 +121,14 @@ private object Keys {
      *  behavior on mid-stream underrun; OFF lets the consumer drain through
      *  underruns without raising the "Buffering…" UI. */
     val CATCHUP_PAUSE = booleanPreferencesKey("pref_catchup_pause_v1")
+    /** Issue #85 — Voice-Determinism preset. Default true = Steady, which
+     *  preserves the pre-#85 calmed VITS defaults (0.35 / 0.667). false =
+     *  Expressive (sherpa-onnx upstream Piper defaults 0.667 / 0.8 — more
+     *  variable prosody but less reproducible). _v1 suffix matches the
+     *  versioning convention used by PLAYBACK_BUFFER_CHUNKS / WARMUP_WAIT
+     *  so we can rev defaults later without colliding with persisted v1
+     *  values. */
+    val VOICE_STEADY = booleanPreferencesKey("pref_voice_steady_v1")
 
     // ── AI / LLM (issue #81) ────────────────────────────────────────
     /** Active provider — stored as the [ProviderId] enum's name.
@@ -141,7 +150,7 @@ class SettingsRepositoryUiImpl(
     private val palaceConfig: PalaceConfigImpl,
     private val palaceApi: PalaceDaemonApi,
     private val llmCreds: LlmCredentialsStore,
-) : SettingsRepositoryUi, PlaybackBufferConfig, PlaybackModeConfig, LlmConfigProvider {
+) : SettingsRepositoryUi, PlaybackBufferConfig, PlaybackModeConfig, VoiceTuningConfig, LlmConfigProvider {
 
     /** Hilt entry point — pulls the production DataStore from the app context.
      *  The primary constructor takes the store directly so tests can swap in
@@ -177,6 +186,7 @@ class SettingsRepositoryUiImpl(
                 .coerceIn(BUFFER_MIN_CHUNKS, BUFFER_MAX_CHUNKS),
             warmupWait = prefs[Keys.WARMUP_WAIT] ?: true,
             catchupPause = prefs[Keys.CATCHUP_PAUSE] ?: true,
+            voiceSteady = prefs[Keys.VOICE_STEADY] ?: true,
             palace = UiPalaceConfig(host = palace.host, apiKey = palace.apiKey),
             ai = UiAiSettings(
                 provider = prefs[Keys.AI_PROVIDER]
@@ -260,6 +270,10 @@ class SettingsRepositoryUiImpl(
         store.edit { it[Keys.CATCHUP_PAUSE] = enabled }
     }
 
+    override suspend fun setVoiceSteady(enabled: Boolean) {
+        store.edit { it[Keys.VOICE_STEADY] = enabled }
+    }
+
     // --- PlaybackBufferConfig (consumed by core-playback's EnginePlayer) ---
 
     override val playbackBufferChunks: Flow<Int> = store.data.map { prefs ->
@@ -275,6 +289,11 @@ class SettingsRepositoryUiImpl(
     override val catchupPause: Flow<Boolean> = store.data.map { it[Keys.CATCHUP_PAUSE] ?: true }
     override suspend fun currentWarmupWait(): Boolean = warmupWait.first()
     override suspend fun currentCatchupPause(): Boolean = catchupPause.first()
+
+    // --- VoiceTuningConfig (issue #85, consumed by core-playback's EnginePlayer) ---
+
+    override val voiceSteady: Flow<Boolean> = store.data.map { it[Keys.VOICE_STEADY] ?: true }
+    override suspend fun currentVoiceSteady(): Boolean = voiceSteady.first()
 
     override suspend fun signIn() {
         // Just flips the persisted UI flag; the cookie capture is owned by

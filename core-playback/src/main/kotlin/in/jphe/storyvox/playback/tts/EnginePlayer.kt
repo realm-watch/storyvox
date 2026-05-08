@@ -24,9 +24,14 @@ import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import `in`.jphe.storyvox.data.repository.ChapterRepository
 import `in`.jphe.storyvox.data.repository.PlaybackPositionRepository
+import `in`.jphe.storyvox.data.repository.playback.NOISE_SCALE_EXPRESSIVE
+import `in`.jphe.storyvox.data.repository.playback.NOISE_SCALE_STEADY
+import `in`.jphe.storyvox.data.repository.playback.NOISE_SCALE_W_EXPRESSIVE
+import `in`.jphe.storyvox.data.repository.playback.NOISE_SCALE_W_STEADY
 import `in`.jphe.storyvox.data.repository.playback.PlaybackBufferConfig
 import `in`.jphe.storyvox.data.repository.playback.PlaybackChapter
 import `in`.jphe.storyvox.data.repository.playback.PlaybackModeConfig
+import `in`.jphe.storyvox.data.repository.playback.VoiceTuningConfig
 import `in`.jphe.storyvox.playback.PlaybackError
 import `in`.jphe.storyvox.playback.PlaybackState
 import `in`.jphe.storyvox.playback.PlaybackUiEvent
@@ -97,6 +102,7 @@ class EnginePlayer @AssistedInject constructor(
     private val volumeRamp: TtsVolumeRamp,
     private val bufferConfig: PlaybackBufferConfig,
     private val modeConfig: PlaybackModeConfig,
+    private val voiceTuningConfig: VoiceTuningConfig,
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
 
     @AssistedFactory
@@ -161,10 +167,28 @@ class EnginePlayer @AssistedInject constructor(
     @Volatile
     private var cachedCatchupPause: Boolean = true
 
+    /**
+     * Issue #85 — Voice-Determinism preset live cache. Mirrors the
+     * persisted DataStore Boolean (`true` = Steady, `false` = Expressive).
+     * Default `true` matches the persisted-default + the calmed VITS
+     * defaults VoxSherpa has shipped pre-#85, so a fresh install with no
+     * DataStore emission yet hits the same noise_scale values the engine
+     * defaults to (`VoiceEngine.DEFAULT_NOISE_SCALE` = 0.35).
+     *
+     * Applied to the live engine via [applyVoiceTuning] when the flow
+     * emits, NOT in the consumer/producer hot paths. Volatile because
+     * the writer is the collector coroutine on `scope` and the reader
+     * is [applyVoiceTuning] (also on `scope`); the cache is purely a
+     * "did this actually change?" gate so repeat emissions are cheap.
+     */
+    @Volatile
+    private var cachedVoiceSteady: Boolean = true
+
     init {
         observeActiveVoice()
         observeBufferConfig()
         observeModeConfig()
+        observeVoiceTuningConfig()
     }
 
     private fun observeBufferConfig() {
@@ -179,6 +203,70 @@ class EnginePlayer @AssistedInject constructor(
         scope.launch {
             modeConfig.catchupPause.collect { v ->
                 cachedCatchupPause = v
+            }
+        }
+    }
+
+    /**
+     * Issue #85 — Watches the persisted Voice-Determinism preset and
+     * applies it to the live VoxSherpa engine on every change.
+     *
+     * Each emission lands on the Main dispatcher (via `scope`'s default),
+     * but the actual setter call hops to [Dispatchers.IO] because
+     * `VoiceEngine.setNoiseScale*()` may destroy + reconstruct
+     * `OfflineTts` (a JNI sherpa-onnx call that takes ~1-3 s on Piper).
+     * We hold [engineMutex] during that work so it serializes against
+     * any in-flight `generateAudioPCM` in the producer — without it the
+     * producer's JNI generate could be running while we free `tts`,
+     * producing a SIGSEGV (the same hazard `loadModel` already handles
+     * by holding [engineMutex] in [loadAndPlay]).
+     *
+     * If no model is loaded yet, the setters still apply: VoxSherpa
+     * stores the values internally and applies them on the next
+     * `loadModel()`.
+     *
+     * Kokoro models ignore noise_scale (they're not VITS). The setters
+     * are no-ops on the Kokoro engine, but we still call them through
+     * `VoiceEngine` because `VoiceEngine` holds the cached config that
+     * applies to the next Piper voice the user picks.
+     */
+    private fun observeVoiceTuningConfig() {
+        scope.launch {
+            voiceTuningConfig.voiceSteady.collect { steady ->
+                if (cachedVoiceSteady == steady) return@collect
+                cachedVoiceSteady = steady
+                applyVoiceTuning(steady)
+            }
+        }
+    }
+
+    /**
+     * Hops to IO + holds [engineMutex] while pushing the (noise_scale,
+     * noise_scale_w) preset down to VoxSherpa's `VoiceEngine`. The setter
+     * itself decides whether a model reload is needed (no-op when the new
+     * value matches the active value, full destroy + reconstruct
+     * otherwise).
+     *
+     * The first emission on a fresh install carries the default `true`
+     * (Steady) which matches `VoiceEngine.DEFAULT_NOISE_SCALE` already —
+     * `cachedVoiceSteady` defaults to `true` and [observeVoiceTuningConfig]
+     * gates on inequality, so we never trigger a redundant first-pass
+     * reload.
+     */
+    private suspend fun applyVoiceTuning(steady: Boolean) {
+        val noiseScale = if (steady) NOISE_SCALE_STEADY else NOISE_SCALE_EXPRESSIVE
+        val noiseScaleW = if (steady) NOISE_SCALE_W_STEADY else NOISE_SCALE_W_EXPRESSIVE
+        withContext(Dispatchers.IO) {
+            engineMutex.withLock {
+                // VoiceEngine.setNoiseScale* are synchronized internally and
+                // each will reload the active model exactly once if the value
+                // changed. Calling both in sequence under engineMutex means
+                // worst-case we trigger two reloads — Piper goes 0.35→0.667
+                // then 0.667→0.8 — in practice still ≤6 s of warm-up. Could
+                // be batched into a single OfflineTts swap upstream later, but
+                // not worth the API surface in v1.
+                VoiceEngine.getInstance().setNoiseScale(noiseScale)
+                VoiceEngine.getInstance().setNoiseScaleW(noiseScaleW)
             }
         }
     }

@@ -90,6 +90,8 @@ class SettingsViewModel @Inject constructor(
     fun setWarmupWait(enabled: Boolean) = viewModelScope.launch { repo.setWarmupWait(enabled) }
     /** Issue #98 — Mode B toggle. */
     fun setCatchupPause(enabled: Boolean) = viewModelScope.launch { repo.setCatchupPause(enabled) }
+    /** Issue #85 — Voice-Determinism preset (Steady / Expressive). */
+    fun setVoiceSteady(enabled: Boolean) = viewModelScope.launch { repo.setVoiceSteady(enabled) }
     fun signIn() = viewModelScope.launch { repo.signIn() }
     fun signOut() = viewModelScope.launch { repo.signOut() }
     fun previewVoice(voice: UiVoice) = voices.previewVoice(voice)
