@@ -183,6 +183,71 @@ class EngineStreamingSourceTest {
         source.close()
     }
 
+    // ── trailingPauseMs cadence table ──────────────────────────────────
+    // Thalia's VoxSherpa P0 #3 (2026-05-08): bumped the ellipsis bucket
+    // (both ASCII `...` and Unicode `…`) from 350 to 380 ms — narrators
+    // audibly trail off on ellipsis vs a plain `.`. The other terminal
+    // punctuation values are unchanged.
+
+    @Test
+    fun `trailingPauseMs gives ASCII ellipsis a longer pause than period`() {
+        // Three-dot ASCII ellipsis (the shape that lands in HTML-decoded
+        // chapter text) should hit the new 380 ms bucket, not the 350 ms
+        // period bucket.
+        assertEquals(380, trailingPauseMs("Wait..."))
+        assertEquals(380, trailingPauseMs("She paused..."))
+        // With trailing whitespace + closer — the strip loop should still
+        // surface the ellipsis underneath.
+        assertEquals(380, trailingPauseMs("\"Wait...\" "))
+    }
+
+    @Test
+    fun `trailingPauseMs gives Unicode ellipsis the ellipsis pause`() {
+        assertEquals(380, trailingPauseMs("Wait…"))
+        assertEquals(380, trailingPauseMs("\"Wait…\""))
+    }
+
+    @Test
+    fun `trailingPauseMs preserves period question and bang at 350ms`() {
+        assertEquals(350, trailingPauseMs("Wait."))
+        assertEquals(350, trailingPauseMs("Really?"))
+        assertEquals(350, trailingPauseMs("Stop!"))
+    }
+
+    @Test
+    fun `trailingPauseMs preserves semicolon and colon at 200ms`() {
+        assertEquals(200, trailingPauseMs("First;"))
+        assertEquals(200, trailingPauseMs("Then:"))
+    }
+
+    @Test
+    fun `trailingPauseMs preserves comma and dashes at 120ms`() {
+        assertEquals(120, trailingPauseMs("Wait,"))
+        assertEquals(120, trailingPauseMs("Wait—"))
+        assertEquals(120, trailingPauseMs("Wait–"))
+        assertEquals(120, trailingPauseMs("Wait-"))
+    }
+
+    @Test
+    fun `trailingPauseMs falls through to 60ms for parentheticals`() {
+        // Documented behavior — the closer-stripping loop strips trailing
+        // ')' so `(parenthetical)` is evaluated against its inner content's
+        // terminal char. Here `l` falls through to the else branch.
+        // If narrators want a longer parenthetical pause, that's a separate
+        // enhancement (detect outermost closer before strip).
+        assertEquals(60, trailingPauseMs("(parenthetical)"))
+        assertEquals(60, trailingPauseMs("[bracketed]"))
+    }
+
+    @Test
+    fun `trailingPauseMs strips closers before classifying`() {
+        // Closers + whitespace are stripped before terminal-char lookup,
+        // so a quote-wrapped sentence still gets the period bucket.
+        assertEquals(350, trailingPauseMs("\"Wait.\""))
+        assertEquals(350, trailingPauseMs("'Wait.'"))
+        assertEquals(380, trailingPauseMs("\"Wait...\" "))
+    }
+
     @Test
     fun `bufferHeadroomMs reflects queued audio duration`() = runBlocking {
         val sentences = listOf(

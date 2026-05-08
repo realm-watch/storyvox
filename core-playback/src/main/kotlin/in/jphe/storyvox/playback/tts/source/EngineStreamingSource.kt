@@ -210,11 +210,22 @@ internal fun trailingPauseMs(sentenceText: String): Int {
     while (end > 0 && (sentenceText[end - 1].isWhitespace() ||
             sentenceText[end - 1] in closePunct)) end--
     if (end == 0) return 60
-    if (end >= 3 && sentenceText.regionMatches(end - 3, "...", 0, 3)) return 350
+    // Ellipsis (three-dot ASCII or Unicode U+2026) gets a longer pause than
+    // a plain '.' — narrators audibly trail off on "Wait..." vs "Wait."
+    // (Thalia's VoxSherpa P0 #3, 2026-05-08; matches AudioEmotionHelper's
+    // 380 ms ellipsis bucket.)
+    if (end >= 3 && sentenceText.regionMatches(end - 3, "...", 0, 3)) return 380
     return when (sentenceText[end - 1]) {
-        '.', '!', '?', '…' -> 350
+        '…' -> 380
+        '.', '!', '?' -> 350
         ';', ':' -> 200
         ',', '—', '–', '-' -> 120
+        // Sentences ending in a closer like ')' get the closer + whitespace
+        // stripped above, so a parenthetical like "(yes)" falls through to
+        // the inner content's terminal char ('s' here → 60ms fallback).
+        // Documented behavior; if narrators want a longer parenthetical
+        // pause, that's a separate enhancement (e.g. detect outermost
+        // closer before strip).
         else -> 60
     }
 }

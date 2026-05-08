@@ -215,7 +215,13 @@ class SettingsRepositoryUiImpl(
     }
 
     override suspend fun setDefaultPitch(pitch: Float) {
-        store.edit { it[Keys.DEFAULT_PITCH] = pitch.coerceIn(0.5f, 2.0f) }
+        // Persistence band matches the UI sliders (SettingsScreen +
+        // AudiobookView). Tightened from 0.5..2.0 → 0.6..1.4 in Thalia's
+        // VoxSherpa P0 #1 (2026-05-08): below ~0.7 Sonic introduces audible
+        // artifacts on Piper-medium voices, and above 1.4 the chipmunk
+        // territory is unlistenable. Stale prefs from before the widen
+        // (which covered 0.85..1.15) all sit comfortably inside the new band.
+        store.edit { it[Keys.DEFAULT_PITCH] = pitch.coerceIn(0.6f, 1.4f) }
     }
 
     override suspend fun setDefaultVoice(voiceId: String?) {
