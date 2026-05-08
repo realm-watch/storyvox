@@ -17,6 +17,7 @@ import `in`.jphe.storyvox.data.repository.ChapterRepository
 import `in`.jphe.storyvox.data.repository.FictionRepository
 import `in`.jphe.storyvox.data.repository.playback.PlaybackBufferConfig
 import `in`.jphe.storyvox.data.repository.playback.PlaybackModeConfig
+import `in`.jphe.storyvox.data.repository.playback.VoiceTuningConfig
 import `in`.jphe.storyvox.data.source.WebViewFetcher
 import `in`.jphe.storyvox.data.source.model.ContentWarning
 import `in`.jphe.storyvox.data.source.model.FictionResult
@@ -133,6 +134,15 @@ object AppBindings {
      */
     @Provides @Singleton
     fun providePlaybackModeConfig(impl: SettingsRepositoryUiImpl): PlaybackModeConfig = impl
+
+    /**
+     * Issue #85 — Voice-Determinism preset for the VoxSherpa engine. Same
+     * singleton instance as [provideSettingsRepositoryUi]; consumed by
+     * `core-playback`'s EnginePlayer to dispatch
+     * `VoiceEngine.setNoiseScale[W]()` calls on flips.
+     */
+    @Provides @Singleton
+    fun provideVoiceTuningConfig(impl: SettingsRepositoryUiImpl): VoiceTuningConfig = impl
 
     /**
      * Same singleton instance as [provideSettingsRepositoryUi], exposed

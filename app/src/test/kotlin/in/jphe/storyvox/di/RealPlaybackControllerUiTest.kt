@@ -215,6 +215,7 @@ class RealPlaybackControllerUiTest {
         override suspend fun setPlaybackBufferChunks(chunks: Int) = Unit
         override suspend fun setWarmupWait(enabled: Boolean) = Unit
         override suspend fun setCatchupPause(enabled: Boolean) = Unit
+        override suspend fun setVoiceSteady(enabled: Boolean) = Unit
         override suspend fun signIn() = Unit
         override suspend fun signOut() = Unit
         // Memory Palace stubs (#79) — playback-controller-test fixture

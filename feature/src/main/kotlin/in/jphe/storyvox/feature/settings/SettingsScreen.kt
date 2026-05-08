@@ -159,6 +159,33 @@ fun SettingsScreen(
             Switch(checked = s.catchupPause, onCheckedChange = viewModel::setCatchupPause)
         }
 
+        // Issue #85 — Voice Determinism preset. Toggle, default ON (Steady).
+        // ON  = VoxSherpa calmed VITS defaults (noise_scale 0.35 / 0.667).
+        //       Identical text re-renders sound nearly identical between runs;
+        //       best for audiobook listeners replaying chapters.
+        // OFF = sherpa-onnx upstream Piper defaults (0.667 / 0.8). Slightly
+        //       more variable prosody, fuller delivery, take-to-take variation.
+        // Flips force a model reload (~1-3s on Piper, ~30s on Kokoro). The
+        // reload is dispatched by EnginePlayer via VoxSherpa-TTS v2.7.4's
+        // VoiceEngine.setNoiseScale[W]() setters; the Settings UI itself
+        // doesn't need a spinner in v1 — the brief audible reload pause
+        // during playback is acceptable and a follow-up will polish UX.
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Voice Determinism", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    if (s.voiceSteady) {
+                        "Steady — identical text plays the same each time."
+                    } else {
+                        "Expressive — slight variation, fuller prosody."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = s.voiceSteady, onCheckedChange = viewModel::setVoiceSteady)
+        }
+
         // Buffer Headroom — migrated from the standalone "Audio buffer"
         // section. Same control, same #84 LMK-probe semantics.
         BufferSlider(

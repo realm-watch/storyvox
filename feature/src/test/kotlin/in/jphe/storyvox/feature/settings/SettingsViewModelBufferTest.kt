@@ -131,6 +131,9 @@ class SettingsViewModelBufferTest {
         override suspend fun setCatchupPause(enabled: Boolean) {
             state.value = state.value.copy(catchupPause = enabled)
         }
+        override suspend fun setVoiceSteady(enabled: Boolean) {
+            state.value = state.value.copy(voiceSteady = enabled)
+        }
         override suspend fun signIn() = Unit
         override suspend fun signOut() = Unit
         // Memory Palace stubs (#79) — buffer-test fixture doesn't exercise

@@ -144,6 +144,9 @@ class SettingsViewModelPunctuationPauseTest {
         override suspend fun setCatchupPause(enabled: Boolean) {
             state.value = state.value.copy(catchupPause = enabled)
         }
+        override suspend fun setVoiceSteady(enabled: Boolean) {
+            state.value = state.value.copy(voiceSteady = enabled)
+        }
         override suspend fun signIn() = Unit
         override suspend fun signOut() = Unit
         // Memory Palace stubs (#79) — punctuation-pause-test fixture doesn't
@@ -168,10 +171,15 @@ class SettingsViewModelPunctuationPauseTest {
         override suspend fun resetAiSettings() = Unit
     }
 
-    /** Construct an LlmRepository with three real-but-stubbed provider
-     *  instances. The punctuation-pause tests don't call any LLM methods,
-     *  so we just need an LlmRepository that doesn't blow up at
-     *  construction. Mirrors [SettingsViewModelBufferTest.fakeLlm]. */
+    private class FakeVoiceProvider : VoiceProviderUi {
+        override val installedVoices: Flow<List<UiVoice>> = flowOf(emptyList())
+        override fun previewVoice(voice: UiVoice) = Unit
+    }
+
+    /** Construct an LlmRepository with three real-but-stubbed
+     *  provider instances. The punctuation tests don't call any LLM
+     *  methods, so we just need an LlmRepository that doesn't blow up
+     *  at construction. Mirrors [SettingsViewModelBufferTest.fakeLlm]. */
     private fun fakeLlm(): LlmRepository {
         val cfg = flowOf(LlmConfig())
         val store = `in`.jphe.storyvox.llm.LlmCredentialsStore.forTesting()
@@ -183,10 +191,5 @@ class SettingsViewModelPunctuationPauseTest {
             openAi = OpenAiApiProvider(http, store, cfg, json),
             ollama = OllamaProvider(http, cfg, json),
         )
-    }
-
-    private class FakeVoiceProvider : VoiceProviderUi {
-        override val installedVoices: Flow<List<UiVoice>> = flowOf(emptyList())
-        override fun previewVoice(voice: UiVoice) = Unit
     }
 }

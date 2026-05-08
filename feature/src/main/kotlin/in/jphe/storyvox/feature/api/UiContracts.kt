@@ -385,6 +385,22 @@ data class UiSettings(
      * but never sees the buffering spinner.
      */
     val catchupPause: Boolean = true,
+    /**
+     * Issue #85 — Voice-Determinism preset for the VoxSherpa engine. When
+     * true (default), the engine runs with VoxSherpa's calmed VITS defaults
+     * (`noise_scale = 0.35`, `noise_scale_w = 0.667`); identical text
+     * re-renders sound nearly identical, best for audiobook listeners
+     * replaying chapters. When false, the engine runs with sherpa-onnx
+     * upstream's Piper defaults (`0.667` / `0.8`); slightly more variable
+     * prosody and fuller delivery, closer to vanilla Piper.
+     *
+     * Toggling forces a model reload — ~1-3s on Piper, ~30s on Kokoro
+     * (though Kokoro ignores noise_scale and the setter is a cheap no-op
+     * there). The reload is handled in `EnginePlayer` via VoxSherpa's
+     * `VoiceEngine.setNoiseScale()` / `setNoiseScaleW()` setters
+     * (introduced in `VoxSherpa-TTS` v2.7.4).
+     */
+    val voiceSteady: Boolean = true,
     /** Memory Palace daemon config (#79). Empty host = source disabled. */
     val palace: UiPalaceConfig = UiPalaceConfig(),
 )
@@ -512,6 +528,8 @@ interface SettingsRepositoryUi {
     suspend fun setWarmupWait(enabled: Boolean)
     /** Issue #98 — Mode B toggle. See [UiSettings.catchupPause]. */
     suspend fun setCatchupPause(enabled: Boolean)
+    /** Issue #85 — Voice-Determinism preset. See [UiSettings.voiceSteady]. */
+    suspend fun setVoiceSteady(enabled: Boolean)
     suspend fun signIn()
     suspend fun signOut()
     /** Memory Palace daemon mutators (#79). */

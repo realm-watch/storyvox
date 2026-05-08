@@ -3,6 +3,7 @@ package `in`.jphe.storyvox.feature.settings
 import `in`.jphe.storyvox.feature.api.BUFFER_DEFAULT_CHUNKS
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
+import `in`.jphe.storyvox.feature.api.UiAiSettings
 import `in`.jphe.storyvox.feature.api.UiLlmProvider
 import `in`.jphe.storyvox.feature.api.UiSettings
 import `in`.jphe.storyvox.feature.api.UiSigil
@@ -31,11 +32,12 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * Verifies the issue #98 Mode A / Mode B launchers on
- * [SettingsViewModel] forward the value to the repository contract and
- * that [SettingsUiState.settings] surfaces the repository's emissions.
+ * Verifies the issue #98 Mode A / Mode B + issue #85 Voice-Determinism
+ * launchers on [SettingsViewModel] forward the value to the repository
+ * contract and that [SettingsUiState.settings] surfaces the repository's
+ * emissions.
  *
- * Mirrors [SettingsViewModelBufferTest]'s shape so the pair stays
+ * Mirrors [SettingsViewModelBufferTest]'s shape so the trio stays
  * easy to compare side-by-side.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -94,7 +96,62 @@ class SettingsViewModelModesTest {
         assertEquals(listOf(false), repo.catchupPauseWrites)
     }
 
-    private fun baseSettings(warmupWait: Boolean, catchupPause: Boolean): UiSettings = UiSettings(
+    // ---- Issue #85 — Voice-Determinism preset ----
+
+    @Test
+    fun `setVoiceSteady true forwards to the repository`() = runTest {
+        val repo = FakeSettingsRepo(initial = baseSettings(voiceSteady = false))
+        val vm = SettingsViewModel(repo, FakeVoiceProvider(), fakeLlm())
+
+        vm.setVoiceSteady(true)
+
+        assertEquals(listOf(true), repo.voiceSteadyWrites)
+    }
+
+    @Test
+    fun `setVoiceSteady false forwards to the repository`() = runTest {
+        val repo = FakeSettingsRepo(initial = baseSettings(voiceSteady = true))
+        val vm = SettingsViewModel(repo, FakeVoiceProvider(), fakeLlm())
+
+        vm.setVoiceSteady(false)
+
+        assertEquals(listOf(false), repo.voiceSteadyWrites)
+    }
+
+    @Test
+    fun `viewmodel uiState surfaces voiceSteady value`() = runTest {
+        val repo = FakeSettingsRepo(initial = baseSettings(voiceSteady = false))
+        val vm = SettingsViewModel(repo, FakeVoiceProvider(), fakeLlm())
+
+        val emitted = vm.uiState.first { it.settings != null }
+        assertEquals(false, emitted.settings?.voiceSteady)
+    }
+
+    @Test
+    fun `voiceSteady and Mode toggles are independent`() = runTest {
+        // Catches a regression where copy(voiceSteady = ...) accidentally
+        // overlaps another field on UiSettings, or where the FakeSettingsRepo
+        // setters share a mutable list.
+        val repo = FakeSettingsRepo(initial = baseSettings(warmupWait = true, voiceSteady = true))
+        val vm = SettingsViewModel(repo, FakeVoiceProvider(), fakeLlm())
+
+        vm.setVoiceSteady(false)
+        vm.setWarmupWait(false)
+        vm.setVoiceSteady(true)
+
+        assertEquals(listOf(false, true), repo.voiceSteadyWrites)
+        assertEquals(listOf(false), repo.warmupWaitWrites)
+        // Final state surfaces both flips.
+        val final = vm.uiState.first { it.settings?.voiceSteady == true }.settings!!
+        assertEquals(true, final.voiceSteady)
+        assertEquals(false, final.warmupWait)
+    }
+
+    private fun baseSettings(
+        warmupWait: Boolean = true,
+        catchupPause: Boolean = true,
+        voiceSteady: Boolean = true,
+    ): UiSettings = UiSettings(
         ttsEngine = "VoxSherpa",
         defaultVoiceId = null,
         defaultSpeed = 1.0f,
@@ -107,6 +164,7 @@ class SettingsViewModelModesTest {
         playbackBufferChunks = BUFFER_DEFAULT_CHUNKS,
         warmupWait = warmupWait,
         catchupPause = catchupPause,
+        voiceSteady = voiceSteady,
     )
 
     private class FakeSettingsRepo(initial: UiSettings) : SettingsRepositoryUi {
@@ -114,6 +172,7 @@ class SettingsViewModelModesTest {
         override val settings: Flow<UiSettings> = state
         val warmupWaitWrites: MutableList<Boolean> = mutableListOf()
         val catchupPauseWrites: MutableList<Boolean> = mutableListOf()
+        val voiceSteadyWrites: MutableList<Boolean> = mutableListOf()
         override suspend fun setTheme(override: ThemeOverride) {
             state.value = state.value.copy(themeOverride = override)
         }
@@ -146,6 +205,10 @@ class SettingsViewModelModesTest {
             catchupPauseWrites += enabled
             state.value = state.value.copy(catchupPause = enabled)
         }
+        override suspend fun setVoiceSteady(enabled: Boolean) {
+            voiceSteadyWrites += enabled
+            state.value = state.value.copy(voiceSteady = enabled)
+        }
         override suspend fun signIn() = Unit
         override suspend fun signOut() = Unit
         // Memory Palace stubs (#79) — modes-test fixture doesn't exercise
@@ -170,10 +233,15 @@ class SettingsViewModelModesTest {
         override suspend fun resetAiSettings() = Unit
     }
 
-    /** Construct an LlmRepository with three real-but-stubbed provider
-     *  instances. The modes tests don't call any LLM methods, so we just
-     *  need an LlmRepository that doesn't blow up at construction.
-     *  Mirrors [SettingsViewModelBufferTest.fakeLlm]. */
+    private class FakeVoiceProvider : VoiceProviderUi {
+        override val installedVoices: Flow<List<UiVoice>> = flowOf(emptyList())
+        override fun previewVoice(voice: UiVoice) = Unit
+    }
+
+    /** Construct an LlmRepository with three real-but-stubbed
+     *  provider instances. The mode tests don't call any LLM
+     *  methods, so we just need an LlmRepository that doesn't blow
+     *  up at construction. Mirrors [SettingsViewModelBufferTest.fakeLlm]. */
     private fun fakeLlm(): LlmRepository {
         val cfg = flowOf(LlmConfig())
         val store = `in`.jphe.storyvox.llm.LlmCredentialsStore.forTesting()
@@ -185,10 +253,5 @@ class SettingsViewModelModesTest {
             openAi = OpenAiApiProvider(http, store, cfg, json),
             ollama = OllamaProvider(http, cfg, json),
         )
-    }
-
-    private class FakeVoiceProvider : VoiceProviderUi {
-        override val installedVoices: Flow<List<UiVoice>> = flowOf(emptyList())
-        override fun previewVoice(voice: UiVoice) = Unit
     }
 }
