@@ -1,5 +1,10 @@
 package `in`.jphe.storyvox.feature.reader
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,6 +58,8 @@ import `in`.jphe.storyvox.ui.component.BrassProgressTrack
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
 import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
 import `in`.jphe.storyvox.ui.component.MagicSpinner
+import `in`.jphe.storyvox.ui.theme.LocalMotion
+import `in`.jphe.storyvox.ui.theme.LocalReducedMotion
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 import kotlinx.coroutines.launch
 
@@ -76,6 +83,17 @@ fun AudiobookView(
     modifier: Modifier = Modifier,
 ) {
     val spacing = LocalSpacing.current
+    val motion = LocalMotion.current
+    val reducedMotion = LocalReducedMotion.current
+    // Spinner enter/exit transitions for the warmup state. Honors
+    // LocalReducedMotion: when true, visibility flips instantly (reduce
+    // motion = absent motion, not shorter motion — same pattern as
+    // cascadeReveal). Token vocabulary stays consistent with the rest
+    // of Library Nocturne via standardDurationMs + standardEasing.
+    val spinnerEnter = if (reducedMotion) EnterTransition.None else
+        fadeIn(animationSpec = tween(motion.standardDurationMs, easing = motion.standardEasing))
+    val spinnerExit = if (reducedMotion) ExitTransition.None else
+        fadeOut(animationSpec = tween(motion.standardDurationMs, easing = motion.standardEasing))
     var showSheet by remember { mutableStateOf(false) }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -118,8 +136,14 @@ fun AudiobookView(
                     )
                     // Subtle brass sigil ring orbiting the cover while the
                     // engine is producing the first sentence's audio. Fades
-                    // out as soon as audio actually starts (sentenceEnd > 0).
-                    if (warmingUp) {
+                    // in/out around the warmup transition rather than
+                    // popping — visual swap to the playing state stays
+                    // continuous instead of abrupt.
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = warmingUp,
+                        enter = spinnerEnter,
+                        exit = spinnerExit,
+                    ) {
                         MagicSpinner(modifier = Modifier.size(width = 240.dp, height = 350.dp))
                     }
                 }
@@ -168,7 +192,11 @@ fun AudiobookView(
                 // indicator the play button looks dead during that gap.
                 val warmingUp = state.isPlaying && state.sentenceEnd == 0
                 Box(contentAlignment = Alignment.Center) {
-                    if (warmingUp) {
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = warmingUp,
+                        enter = spinnerEnter,
+                        exit = spinnerExit,
+                    ) {
                         MagicSpinner(modifier = Modifier.size(96.dp))
                     }
                     FilledIconButton(
