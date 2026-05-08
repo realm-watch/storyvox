@@ -55,6 +55,7 @@ class SettingsRepositoryModesTest {
             // Test-only LlmCredentialsStore (#81) — bypasses encrypted prefs.
             // Modes tests don't touch AI fields, so a no-op store is fine.
             llmCreds = `in`.jphe.storyvox.llm.LlmCredentialsStore.forTesting(),
+            githubAuth = FakeGitHubAuth(),
         )
     }
 

@@ -24,6 +24,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
 import `in`.jphe.storyvox.auth.AuthWebViewScreen
+import `in`.jphe.storyvox.auth.github.GitHubSignInScreen
+import `in`.jphe.storyvox.source.github.auth.GitHubAuthConfig
 import `in`.jphe.storyvox.feature.browse.BrowseScreen
 import `in`.jphe.storyvox.feature.engine.VoicePickerGate
 import `in`.jphe.storyvox.feature.fiction.FictionDetailScreen
@@ -50,6 +52,8 @@ object StoryvoxRoutes {
     const val SETTINGS_VOICE = "settings/voice"
     const val VOICE_LIBRARY = "settings/voices"
     const val AUTH_WEBVIEW = "auth/webview"
+    /** Issue #91 — GitHub Device Flow sign-in modal. */
+    const val GITHUB_SIGN_IN = "auth/github/signin"
 
     // Encode ids: GitHubSource fictionIds contain `/` (e.g. "github:owner/repo")
     // and chapterIds contain even more (e.g. "github:owner/repo:src/chapter-01.md"),
@@ -275,9 +279,26 @@ private fun StoryvoxNavHostContent(
                 popEnterTransition = homeEnter,
                 popExitTransition = homeExit,
             ) {
+                val ctx = androidx.compose.ui.platform.LocalContext.current
                 SettingsScreen(
                     onOpenVoiceLibrary = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
                     onOpenSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
+                    onOpenGitHubSignIn = { navController.navigate(StoryvoxRoutes.GITHUB_SIGN_IN) },
+                    onOpenGitHubRevoke = {
+                        // Remote revoke deep-link — opens
+                        // `github.com/settings/applications` in the system
+                        // browser. Local sign-out alone leaves storyvox's
+                        // authorization recorded on GitHub's side; this is
+                        // how users tear it down fully. Issue #91.
+                        runCatching {
+                            ctx.startActivity(
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse(GitHubAuthConfig.SETTINGS_APPLICATIONS_URL),
+                                ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) },
+                            )
+                        }
+                    },
                 )
             }
             composable(
@@ -310,6 +331,18 @@ private fun StoryvoxNavHostContent(
                 popExitTransition = popExit,
             ) {
                 AuthWebViewScreen(
+                    onSignedIn = { navController.popBackStack() },
+                    onCancelled = { navController.popBackStack() },
+                )
+            }
+            composable(
+                StoryvoxRoutes.GITHUB_SIGN_IN,
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+            ) {
+                GitHubSignInScreen(
                     onSignedIn = { navController.popBackStack() },
                     onCancelled = { navController.popBackStack() },
                 )

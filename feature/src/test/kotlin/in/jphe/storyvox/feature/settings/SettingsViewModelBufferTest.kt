@@ -156,6 +156,7 @@ class SettingsViewModelBufferTest {
         override suspend fun setSendChapterTextEnabled(enabled: Boolean) = Unit
         override suspend fun acknowledgeAiPrivacy() = Unit
         override suspend fun resetAiSettings() = Unit
+        override suspend fun signOutGitHub() = Unit
     }
 
     /** Construct an LlmRepository with three real-but-stubbed

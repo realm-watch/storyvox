@@ -29,10 +29,13 @@ import `in`.jphe.storyvox.feature.api.PalaceProbeResult
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiAiSettings
+import `in`.jphe.storyvox.feature.api.UiGitHubAuthState
 import `in`.jphe.storyvox.feature.api.UiLlmProvider
 import `in`.jphe.storyvox.feature.api.UiPalaceConfig
 import `in`.jphe.storyvox.feature.api.UiSettings
 import `in`.jphe.storyvox.feature.api.UiSigil
+import `in`.jphe.storyvox.source.github.auth.GitHubAuthRepository
+import `in`.jphe.storyvox.source.github.auth.GitHubSession
 import `in`.jphe.storyvox.llm.LlmConfig
 import `in`.jphe.storyvox.llm.LlmConfigProvider
 import `in`.jphe.storyvox.llm.LlmCredentialsStore
@@ -150,6 +153,7 @@ class SettingsRepositoryUiImpl(
     private val palaceConfig: PalaceConfigImpl,
     private val palaceApi: PalaceDaemonApi,
     private val llmCreds: LlmCredentialsStore,
+    private val githubAuth: GitHubAuthRepository,
 ) : SettingsRepositoryUi, PlaybackBufferConfig, PlaybackModeConfig, VoiceTuningConfig, LlmConfigProvider {
 
     /** Hilt entry point — pulls the production DataStore from the app context.
@@ -163,12 +167,17 @@ class SettingsRepositoryUiImpl(
         palaceConfig: PalaceConfigImpl,
         palaceApi: PalaceDaemonApi,
         llmCreds: LlmCredentialsStore,
-    ) : this(context.settingsDataStore, auth, hydrator, palaceConfig, palaceApi, llmCreds)
+        githubAuth: GitHubAuthRepository,
+    ) : this(
+        context.settingsDataStore, auth, hydrator,
+        palaceConfig, palaceApi, llmCreds, githubAuth,
+    )
 
     override val settings: Flow<UiSettings> = combine(
         store.data,
         palaceConfig.state,
-    ) { prefs, palace ->
+        githubAuth.sessionState,
+    ) { prefs, palace, githubSession ->
         UiSettings(
             ttsEngine = "VoxSherpa",
             defaultVoiceId = prefs[Keys.DEFAULT_VOICE_ID],
@@ -188,6 +197,7 @@ class SettingsRepositoryUiImpl(
             catchupPause = prefs[Keys.CATCHUP_PAUSE] ?: true,
             voiceSteady = prefs[Keys.VOICE_STEADY] ?: true,
             palace = UiPalaceConfig(host = palace.host, apiKey = palace.apiKey),
+            github = githubSession.toUi(),
             ai = UiAiSettings(
                 provider = prefs[Keys.AI_PROVIDER]
                     ?.takeIf { it.isNotBlank() }
@@ -412,6 +422,17 @@ class SettingsRepositoryUiImpl(
         llmCreds.clearAll()
     }
 
+    // ── GitHub OAuth (#91) ─────────────────────────────────────────
+
+    override suspend fun signOutGitHub() {
+        // Remote revoke at github.com requires the client_secret we don't
+        // have (public client model — see GitHubAuthConfig kdoc). Local
+        // sign-out always works and clears the encrypted token + login +
+        // scopes from prefs. The Settings UI surfaces the deep-link to
+        // github.com/settings/applications for users who want full revoke.
+        githubAuth.clearSession()
+    }
+
     // ── LlmConfigProvider — bridge to :core-llm ────────────────────
 
     override val config: Flow<LlmConfig> = store.data.map { prefs ->
@@ -443,4 +464,18 @@ class SettingsRepositoryUiImpl(
             p[Keys.AI_SEND_CHAPTER_TEXT] = config.sendChapterTextEnabled
         }
     }
+}
+
+/**
+ * Source-internal [GitHubSession] → public [UiGitHubAuthState] projection.
+ * Strips the token before crossing into the feature/UI layer — Settings
+ * never needs the secret, only "are you signed in, who as." Issue #91.
+ */
+private fun GitHubSession.toUi(): UiGitHubAuthState = when (this) {
+    is GitHubSession.Anonymous -> UiGitHubAuthState.Anonymous
+    is GitHubSession.Authenticated -> UiGitHubAuthState.SignedIn(
+        login = login,
+        scopes = scopes,
+    )
+    is GitHubSession.Expired -> UiGitHubAuthState.Expired
 }

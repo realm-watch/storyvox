@@ -59,6 +59,7 @@ class SettingsRepositoryBufferTest {
             // The buffer-related tests don't touch AI fields, so a
             // no-op store is fine.
             llmCreds = `in`.jphe.storyvox.llm.LlmCredentialsStore.forTesting(),
+            githubAuth = FakeGitHubAuth(),
         )
     }
 

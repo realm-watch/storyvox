@@ -37,4 +37,10 @@ dependencies {
     ksp(libs.hilt.compiler)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    // MockWebServer for DeviceFlowApi + GitHubAuthInterceptor tests (#91).
+    // Pinned to the same OkHttp version that production uses; mirrors the
+    // pattern in :core-llm where the LLM provider tests pull mockwebserver
+    // explicitly because the base okhttp dep is implementation-scoped.
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 }

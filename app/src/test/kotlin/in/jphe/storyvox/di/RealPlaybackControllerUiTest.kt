@@ -239,6 +239,8 @@ class RealPlaybackControllerUiTest {
         override suspend fun setSendChapterTextEnabled(enabled: Boolean) = Unit
         override suspend fun acknowledgeAiPrivacy() = Unit
         override suspend fun resetAiSettings() = Unit
+        // ── GitHub OAuth no-op (#91) — playback-controller test doesn't auth. ──
+        override suspend fun signOutGitHub() = Unit
     }
 
     /** Chapter repo never invoked by the speed/pitch path under test. */
