@@ -14,14 +14,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -41,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import `in`.jphe.storyvox.playback.voice.EngineType
+import `in`.jphe.storyvox.playback.voice.QualityLevel
 import `in`.jphe.storyvox.playback.voice.UiVoiceInfo
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
@@ -72,9 +75,13 @@ fun VoiceLibraryScreen(
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         val featured = state.featured
-        val installed = state.installed
-        val available = state.available
-        val isEmpty = featured.isEmpty() && installed.isEmpty() && available.isEmpty()
+        val favorites = state.favorites
+        val installedByTier = state.installedByTier
+        val availableByTier = state.availableByTier
+        val installedTotal = installedByTier.values.sumOf { it.size }
+        val availableTotal = availableByTier.values.sumOf { it.size }
+        val isEmpty = featured.isEmpty() && favorites.isEmpty() &&
+            installedTotal == 0 && availableTotal == 0
 
         if (isEmpty) {
             EmptyState(modifier = Modifier.padding(padding).fillMaxSize().padding(spacing.md))
@@ -89,6 +96,30 @@ fun VoiceLibraryScreen(
             verticalArrangement = Arrangement.spacedBy(spacing.xs),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = spacing.md),
         ) {
+            // FAVOURITES — surfaces the user's pinned voices above
+            // everything else. Hidden entirely when empty so the screen
+            // doesn't render a "no favourites" stub for first-time users.
+            if (favorites.isNotEmpty()) {
+                item { SectionHeader("♥ Favourites", count = favorites.size) }
+                itemsIndexed(favorites, key = { _, item -> "fav-${item.id}" }) { index, voice ->
+                    val downloading = state.currentDownload
+                    val rowProgress = if (downloading?.voiceId == voice.id) downloading.progress ?: -1f else null
+                    VoiceRow(
+                        voice = voice,
+                        isActive = voice.id == state.activeVoiceId,
+                        isFavorite = true,
+                        downloadingProgress = rowProgress,
+                        onTap = { if (downloading == null || voice.isInstalled) viewModel.onRowTapped(voice) },
+                        onLongPress = if (voice.isInstalled) ({ viewModel.requestDelete(voice) }) else null,
+                        onToggleFavorite = { viewModel.toggleFavorite(voice.id) },
+                        modifier = Modifier
+                            .animateItem()
+                            .cascadeReveal(index = index, key = "fav-${voice.id}"),
+                    )
+                }
+                item { Spacer(modifier = Modifier.height(spacing.md)) }
+            }
+
             if (featured.isNotEmpty()) {
                 item { SectionHeader("⭐ Featured", count = featured.size) }
                 itemsIndexed(featured, key = { _, item -> "f-${item.id}" }) { index, voice ->
@@ -97,9 +128,11 @@ fun VoiceLibraryScreen(
                     VoiceRow(
                         voice = voice,
                         isActive = voice.id == state.activeVoiceId,
+                        isFavorite = voice.id in state.favoriteIds,
                         downloadingProgress = rowProgress,
                         onTap = { if (downloading == null || voice.isInstalled) viewModel.onRowTapped(voice) },
                         onLongPress = if (voice.isInstalled) ({ viewModel.requestDelete(voice) }) else null,
+                        onToggleFavorite = { viewModel.toggleFavorite(voice.id) },
                         modifier = Modifier
                             .animateItem()
                             .cascadeReveal(index = index, key = voice.id),
@@ -108,8 +141,13 @@ fun VoiceLibraryScreen(
                 item { Spacer(modifier = Modifier.height(spacing.md)) }
             }
 
-            item { SectionHeader("Installed", count = installed.size) }
-            if (installed.isEmpty()) {
+            // INSTALLED — split into tier sub-sections (Studio → Low). When
+            // the user has nothing installed and no favourites, surface
+            // a one-line nudge under the empty Installed header rather
+            // than skipping it entirely; preserves the screen's existing
+            // mental model.
+            item { SectionHeader("Installed", count = installedTotal) }
+            if (installedTotal == 0) {
                 item {
                     Text(
                         "No voices installed yet. Pick one below to get started.",
@@ -119,41 +157,58 @@ fun VoiceLibraryScreen(
                     )
                 }
             } else {
-                itemsIndexed(installed, key = { _, item -> "i-${item.id}" }) { index, voice ->
-                    VoiceRow(
-                        voice = voice,
-                        isActive = voice.id == state.activeVoiceId,
-                        downloadingProgress = null,
-                        onTap = { viewModel.onRowTapped(voice) },
-                        onLongPress = { viewModel.requestDelete(voice) },
-                        modifier = Modifier
-                            .animateItem()
-                            .cascadeReveal(index = index, key = voice.id),
-                    )
+                installedByTier.forEach { (tier, voicesInTier) ->
+                    item(key = "i-tier-${tier.name}") {
+                        TierSubHeader(tier = tier, count = voicesInTier.size)
+                    }
+                    itemsIndexed(voicesInTier, key = { _, item -> "i-${item.id}" }) { index, voice ->
+                        VoiceRow(
+                            voice = voice,
+                            isActive = voice.id == state.activeVoiceId,
+                            isFavorite = voice.id in state.favoriteIds,
+                            downloadingProgress = null,
+                            onTap = { viewModel.onRowTapped(voice) },
+                            onLongPress = { viewModel.requestDelete(voice) },
+                            onToggleFavorite = { viewModel.toggleFavorite(voice.id) },
+                            modifier = Modifier
+                                .animateItem()
+                                .cascadeReveal(index = index, key = voice.id),
+                        )
+                    }
                 }
             }
 
-            if (available.isNotEmpty()) {
+            if (availableTotal > 0) {
                 item {
                     Spacer(modifier = Modifier.height(spacing.md))
-                    SectionHeader("Available", count = available.size, dim = true)
+                    SectionHeader("Available", count = availableTotal, dim = true)
                 }
-                if (available.any { it.engineType is EngineType.Kokoro }) {
+                if (availableByTier.values.any { tier ->
+                        tier.any { it.engineType is EngineType.Kokoro }
+                    }
+                ) {
                     item { KokoroBundleNote() }
                 }
-                itemsIndexed(available, key = { _, item -> "a-${item.id}" }) { index, voice ->
+                availableByTier.forEach { (tier, voicesInTier) ->
+                    item(key = "a-tier-${tier.name}") {
+                        TierSubHeader(tier = tier, count = voicesInTier.size, dim = true)
+                    }
                     val downloading = state.currentDownload
-                    val rowProgress = if (downloading?.voiceId == voice.id) downloading.progress ?: -1f else null
-                    VoiceRow(
-                        voice = voice,
-                        isActive = false,
-                        downloadingProgress = rowProgress,
-                        onTap = { if (downloading == null) viewModel.onRowTapped(voice) },
-                        onLongPress = null,
-                        modifier = Modifier
-                            .animateItem()
-                            .cascadeReveal(index = index, key = voice.id),
-                    )
+                    itemsIndexed(voicesInTier, key = { _, item -> "a-${item.id}" }) { index, voice ->
+                        val rowProgress = if (downloading?.voiceId == voice.id) downloading.progress ?: -1f else null
+                        VoiceRow(
+                            voice = voice,
+                            isActive = false,
+                            isFavorite = voice.id in state.favoriteIds,
+                            downloadingProgress = rowProgress,
+                            onTap = { if (downloading == null) viewModel.onRowTapped(voice) },
+                            onLongPress = null,
+                            onToggleFavorite = { viewModel.toggleFavorite(voice.id) },
+                            modifier = Modifier
+                                .animateItem()
+                                .cascadeReveal(index = index, key = voice.id),
+                        )
+                    }
                 }
             }
         }
@@ -226,14 +281,63 @@ private fun SectionHeader(label: String, count: Int, dim: Boolean = false) {
     }
 }
 
+/** Tier label + count rendered under a [SectionHeader] (Studio /
+ *  High / Medium / Low). Visually quieter than the section header so the
+ *  Installed/Available grouping is still the primary read; the tier
+ *  label is a refinement, not a peer. */
+@Composable
+private fun TierSubHeader(tier: QualityLevel, count: Int, dim: Boolean = false) {
+    val baseColor = if (dim) {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    val (label, accent) = tierDisplay(tier)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+    ) {
+        if (accent.isNotEmpty()) {
+            Text(
+                accent,
+                style = MaterialTheme.typography.labelMedium,
+            )
+            Spacer(modifier = Modifier.size(4.dp))
+        }
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = baseColor.copy(alpha = 0.85f),
+            fontWeight = FontWeight.Medium,
+        )
+        Text(
+            "  ·  $count",
+            style = MaterialTheme.typography.labelSmall,
+            color = baseColor.copy(alpha = 0.55f),
+        )
+    }
+}
+
+/** Map a tier to its (display label, optional emoji accent). Studio
+ *  earns the trophy; the rest stay text-only so the visual hierarchy
+ *  reads top-to-bottom without competing decorations. */
+private fun tierDisplay(tier: QualityLevel): Pair<String, String> = when (tier) {
+    QualityLevel.Studio -> "Studio" to "🎙️"
+    QualityLevel.High -> "High" to ""
+    QualityLevel.Medium -> "Medium" to ""
+    QualityLevel.Low -> "Low" to ""
+}
+
 @Composable
 private fun VoiceRow(
     voice: UiVoiceInfo,
     isActive: Boolean,
+    isFavorite: Boolean,
     /** null = not downloading; -1f = indeterminate; 0..1 = determinate */
     downloadingProgress: Float?,
     onTap: () -> Unit,
     onLongPress: (() -> Unit)?,
+    onToggleFavorite: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = LocalSpacing.current
@@ -268,6 +372,10 @@ private fun VoiceRow(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(spacing.sm),
             ) {
+                FavoriteToggle(
+                    isFavorite = isFavorite,
+                    onToggle = onToggleFavorite,
+                )
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
@@ -308,6 +416,32 @@ private fun VoiceRow(
                 }
             }
         }
+    }
+}
+
+/** Heart-toggle leading the row. Filled = pinned to Favourites,
+ *  outlined = not. Tap stops at the toggle so it doesn't bubble up to
+ *  the row's combinedClickable (which would activate / download the
+ *  voice — definitely not what the user meant when they tapped a
+ *  heart). The IconButton's own click handling already swallows the
+ *  pointer event before the parent's clickable sees it. */
+@Composable
+private fun FavoriteToggle(
+    isFavorite: Boolean,
+    onToggle: () -> Unit,
+) {
+    val tint = if (isFavorite) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    IconButton(onClick = onToggle, modifier = Modifier.size(36.dp)) {
+        Icon(
+            imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+            contentDescription = if (isFavorite) "Remove from favourites" else "Add to favourites",
+            tint = tint,
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 

@@ -23,7 +23,22 @@ data class UiVoiceInfo(
     val engineType: EngineType,
 )
 
-enum class QualityLevel { Low, Medium, High }
+/**
+ * Voice quality tiers shown in the picker. Order in this enum is
+ * **ascending**, but the UI sorts **descending** (Studio first, Low last)
+ * so users see the best voices at the top.
+ *
+ * - **Piper** voices encode tier in their model filename suffix
+ *   (`*-low`, `*-medium`, `*-high`). [Studio] never applies to Piper —
+ *   it's reserved for the highest-graded Kokoro speakers.
+ * - **Kokoro** voices share one model with no per-voice quality
+ *   variants; tier is therefore a curated property keyed on voice id
+ *   (see [VoiceCatalog.kokoroEntries]). The [Studio] picks reflect
+ *   upstream `hexgrad/Kokoro-82M` voice grades — the handful of
+ *   speakers that reliably produce broadcast-grade audio without the
+ *   small artifacts that creep into the lower-graded speakers.
+ */
+enum class QualityLevel { Low, Medium, High, Studio }
 
 sealed interface EngineType {
     /** Piper voice — per-voice .onnx downloaded from rhasspy/piper-voices. */
