@@ -5,10 +5,16 @@ import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_DEFAULT_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_LONG_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
+import `in`.jphe.storyvox.feature.api.UiLlmProvider
 import `in`.jphe.storyvox.feature.api.UiSettings
 import `in`.jphe.storyvox.feature.api.UiSigil
 import `in`.jphe.storyvox.feature.api.UiVoice
 import `in`.jphe.storyvox.feature.api.VoiceProviderUi
+import `in`.jphe.storyvox.llm.LlmConfig
+import `in`.jphe.storyvox.llm.LlmRepository
+import `in`.jphe.storyvox.llm.provider.ClaudeApiProvider
+import `in`.jphe.storyvox.llm.provider.OllamaProvider
+import `in`.jphe.storyvox.llm.provider.OpenAiApiProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -19,6 +25,8 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.serialization.json.Json
+import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -50,7 +58,7 @@ class SettingsViewModelPunctuationPauseTest {
         val repo = FakeSettingsRepo(
             initial = baseSettings(multiplier = PUNCTUATION_PAUSE_DEFAULT_MULTIPLIER),
         )
-        val vm = SettingsViewModel(repo, FakeVoiceProvider())
+        val vm = SettingsViewModel(repo, FakeVoiceProvider(), fakeLlm())
 
         vm.setPunctuationPauseMultiplier(2.5f)
 
@@ -62,7 +70,7 @@ class SettingsViewModelPunctuationPauseTest {
         val repo = FakeSettingsRepo(
             initial = baseSettings(multiplier = PUNCTUATION_PAUSE_LONG_MULTIPLIER),
         )
-        val vm = SettingsViewModel(repo, FakeVoiceProvider())
+        val vm = SettingsViewModel(repo, FakeVoiceProvider(), fakeLlm())
 
         val emitted = vm.uiState.first { it.settings != null }
         assertEquals(
@@ -80,7 +88,7 @@ class SettingsViewModelPunctuationPauseTest {
         val repo = FakeSettingsRepo(
             initial = baseSettings(multiplier = PUNCTUATION_PAUSE_DEFAULT_MULTIPLIER),
         )
-        val vm = SettingsViewModel(repo, FakeVoiceProvider())
+        val vm = SettingsViewModel(repo, FakeVoiceProvider(), fakeLlm())
 
         vm.setPunctuationPauseMultiplier(3.5f)
 
@@ -146,6 +154,35 @@ class SettingsViewModelPunctuationPauseTest {
         override suspend fun testPalaceConnection():
             `in`.jphe.storyvox.feature.api.PalaceProbeResult =
             `in`.jphe.storyvox.feature.api.PalaceProbeResult.NotConfigured
+
+        // ── AI no-ops (#81) — punctuation-pause-test fixture doesn't exercise these. ──
+        override suspend fun setAiProvider(provider: UiLlmProvider?) = Unit
+        override suspend fun setClaudeApiKey(key: String?) = Unit
+        override suspend fun setClaudeModel(model: String) = Unit
+        override suspend fun setOpenAiApiKey(key: String?) = Unit
+        override suspend fun setOpenAiModel(model: String) = Unit
+        override suspend fun setOllamaBaseUrl(url: String) = Unit
+        override suspend fun setOllamaModel(model: String) = Unit
+        override suspend fun setSendChapterTextEnabled(enabled: Boolean) = Unit
+        override suspend fun acknowledgeAiPrivacy() = Unit
+        override suspend fun resetAiSettings() = Unit
+    }
+
+    /** Construct an LlmRepository with three real-but-stubbed provider
+     *  instances. The punctuation-pause tests don't call any LLM methods,
+     *  so we just need an LlmRepository that doesn't blow up at
+     *  construction. Mirrors [SettingsViewModelBufferTest.fakeLlm]. */
+    private fun fakeLlm(): LlmRepository {
+        val cfg = flowOf(LlmConfig())
+        val store = `in`.jphe.storyvox.llm.LlmCredentialsStore.forTesting()
+        val http = OkHttpClient()
+        val json = Json
+        return LlmRepository(
+            configFlow = cfg,
+            claude = ClaudeApiProvider(http, store, cfg, json),
+            openAi = OpenAiApiProvider(http, store, cfg, json),
+            ollama = OllamaProvider(http, cfg, json),
+        )
     }
 
     private class FakeVoiceProvider : VoiceProviderUi {
