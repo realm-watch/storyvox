@@ -60,6 +60,9 @@ class SettingsRepositoryPitchTest {
             palaceConfig = makeFakePalaceConfig(tempFolder.newFolder("palace_ds"), scope),
             palaceApi = makeFakePalaceApi(),
             llmCreds = `in`.jphe.storyvox.llm.LlmCredentialsStore.forTesting(),
+            // GitHubAuth fake (#91) — pitch tests don't touch GitHub state;
+            // mirrors the pattern in BufferTest / ModesTest / PunctuationPauseTest.
+            githubAuth = FakeGitHubAuth(),
         )
     }
 
