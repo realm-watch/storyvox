@@ -394,5 +394,6 @@ class VoiceManager @Inject constructor(
         isInstalled = installed,
         qualityLevel = qualityLevel,
         engineType = engineType,
+        gender = gender,
     )
 }

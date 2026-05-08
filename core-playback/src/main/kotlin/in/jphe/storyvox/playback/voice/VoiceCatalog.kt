@@ -5,9 +5,14 @@ object VoiceCatalog {
     fun byId(id: String): CatalogEntry? = voices.firstOrNull { it.id == id }
 
     /** The three voices we hand-picked as the strongest starters. Surfaced
-     *  on the first-launch picker AND highlighted in the Voice Library
-     *  under a "Featured" section so newcomers don't have to scroll the
-     *  98-voice catalog hunting for the good ones.
+     *  on the first-launch [VoicePickerGate] picker so newcomers don't
+     *  have to scroll the 98-voice catalog hunting for the good ones.
+     *
+     *  In the Voice Library these are marked with the inline ⭐ prefix
+     *  on their [CatalogEntry.displayName] (kept across #128's title
+     *  cleanup) — the dedicated "Featured" section was removed in #129
+     *  and these voices now appear in their natural Engine → Tier home
+     *  alongside every other entry, just visually marked.
      *
      *  Curated per JP's call (issue #10): Cori for en_GB Piper, Lessac
      *  for en_US Piper, Aoede for the multi-speaker Kokoro path. Three
@@ -20,7 +25,7 @@ object VoiceCatalog {
     private fun piperEntries(): List<CatalogEntry> = listOf(
         CatalogEntry(
             id = "piper_lessac_en_US_high",
-            displayName = "⭐ Lessac (High)",
+            displayName = "⭐ Lessac",
             language = "en_US",
             sizeBytes = 113895332L,
             qualityLevel = QualityLevel.High,
@@ -29,10 +34,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-lessac-high.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-lessac-high.tokens.txt",
             ),
+            gender = VoiceGender.Female,
         ),
         CatalogEntry(
             id = "piper_ryan_en_US_high",
-            displayName = "⭐ Ryan (High)",
+            displayName = "⭐ Ryan",
             language = "en_US",
             sizeBytes = 120786923L,
             qualityLevel = QualityLevel.High,
@@ -41,10 +47,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-ryan-high.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-ryan-high.tokens.txt",
             ),
+            gender = VoiceGender.Male,
         ),
         CatalogEntry(
             id = "piper_amy_en_US_medium",
-            displayName = "⭐ Amy (Medium)",
+            displayName = "⭐ Amy",
             language = "en_US",
             sizeBytes = 63201425L,
             qualityLevel = QualityLevel.Medium,
@@ -53,10 +60,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-amy-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-amy-medium.tokens.txt",
             ),
+            gender = VoiceGender.Female,
         ),
         CatalogEntry(
             id = "piper_alan_en_GB_low",
-            displayName = "Alan (Low)",
+            displayName = "Alan",
             language = "en_GB",
             sizeBytes = 63104662L,
             qualityLevel = QualityLevel.Low,
@@ -65,10 +73,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-alan-low.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-alan-low.tokens.txt",
             ),
+            gender = VoiceGender.Male,
         ),
         CatalogEntry(
             id = "piper_alan_en_GB_medium",
-            displayName = "Alan (Medium)",
+            displayName = "Alan",
             language = "en_GB",
             sizeBytes = 63201430L,
             qualityLevel = QualityLevel.Medium,
@@ -77,10 +86,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-alan-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-alan-medium.tokens.txt",
             ),
+            gender = VoiceGender.Male,
         ),
         CatalogEntry(
             id = "piper_alba_en_GB_medium",
-            displayName = "Alba (Medium)",
+            displayName = "Alba",
             language = "en_GB",
             sizeBytes = 63201430L,
             qualityLevel = QualityLevel.Medium,
@@ -89,10 +99,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-alba-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-alba-medium.tokens.txt",
             ),
+            gender = VoiceGender.Female,
         ),
         CatalogEntry(
             id = "piper_aru_en_GB_medium",
-            displayName = "Aru (Medium)",
+            displayName = "Aru",
             language = "en_GB",
             sizeBytes = 76754234L,
             qualityLevel = QualityLevel.Medium,
@@ -101,10 +112,12 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-aru-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-aru-medium.tokens.txt",
             ),
+            // Aru is a multi-speaker dataset — leave gender Unknown so
+            // the subtitle collapses cleanly to "Piper · Medium".
         ),
         CatalogEntry(
             id = "piper_cori_en_GB_medium",
-            displayName = "Cori (Medium)",
+            displayName = "Cori",
             language = "en_GB",
             sizeBytes = 63531507L,
             qualityLevel = QualityLevel.Medium,
@@ -113,10 +126,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-cori-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-cori-medium.tokens.txt",
             ),
+            gender = VoiceGender.Female,
         ),
         CatalogEntry(
             id = "piper_cori_en_GB_high",
-            displayName = "Cori (High)",
+            displayName = "Cori",
             language = "en_GB",
             sizeBytes = 114219480L,
             qualityLevel = QualityLevel.High,
@@ -125,10 +139,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-cori-high.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-cori-high.tokens.txt",
             ),
+            gender = VoiceGender.Female,
         ),
         CatalogEntry(
             id = "piper_dii_en_GB_high",
-            displayName = "Dii (High)",
+            displayName = "Dii",
             language = "en_GB",
             sizeBytes = 63511174L,
             qualityLevel = QualityLevel.High,
@@ -140,7 +155,7 @@ object VoiceCatalog {
         ),
         CatalogEntry(
             id = "piper_jenny_dioco_en_GB_medium",
-            displayName = "Jenny Dioco (Medium)",
+            displayName = "Jenny Dioco",
             language = "en_GB",
             sizeBytes = 63201430L,
             qualityLevel = QualityLevel.Medium,
@@ -149,10 +164,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-jenny_dioco-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-jenny_dioco-medium.tokens.txt",
             ),
+            gender = VoiceGender.Female,
         ),
         CatalogEntry(
             id = "piper_miro_en_GB_high",
-            displayName = "Miro (High)",
+            displayName = "Miro",
             language = "en_GB",
             sizeBytes = 63511174L,
             qualityLevel = QualityLevel.High,
@@ -161,10 +177,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-miro-high.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-miro-high.tokens.txt",
             ),
+            gender = VoiceGender.Male,
         ),
         CatalogEntry(
             id = "piper_northern_english_male_en_GB_medium",
-            displayName = "Northern English Male (Medium)",
+            displayName = "Northern English",
             language = "en_GB",
             sizeBytes = 63201430L,
             qualityLevel = QualityLevel.Medium,
@@ -173,10 +190,13 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-northern_english_male-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-northern_english_male-medium.tokens.txt",
             ),
+            // Gender lived in the title before #128 ("Northern English Male");
+            // it now lives in the subtitle, so the title drops the suffix.
+            gender = VoiceGender.Male,
         ),
         CatalogEntry(
             id = "piper_semaine_en_GB_medium",
-            displayName = "Semaine (Medium)",
+            displayName = "Semaine",
             language = "en_GB",
             sizeBytes = 76737847L,
             qualityLevel = QualityLevel.Medium,
@@ -185,10 +205,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-semaine-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-semaine-medium.tokens.txt",
             ),
+            // Semaine is a multi-speaker corpus — leave gender Unknown.
         ),
         CatalogEntry(
             id = "piper_southern_english_female_en_GB_low",
-            displayName = "Southern English Female (Low)",
+            displayName = "Southern English",
             language = "en_GB",
             sizeBytes = 63104662L,
             qualityLevel = QualityLevel.Low,
@@ -197,10 +218,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-southern_english_female-low.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-southern_english_female-low.tokens.txt",
             ),
+            gender = VoiceGender.Female,
         ),
         CatalogEntry(
             id = "piper_southern_english_female_en_GB_medium",
-            displayName = "Southern English Female (Medium)",
+            displayName = "Southern English",
             language = "en_GB",
             sizeBytes = 77059414L,
             qualityLevel = QualityLevel.Medium,
@@ -209,10 +231,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-southern_english_female-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-southern_english_female-medium.tokens.txt",
             ),
+            gender = VoiceGender.Female,
         ),
         CatalogEntry(
             id = "piper_southern_english_male_en_GB_medium",
-            displayName = "Southern English Male (Medium)",
+            displayName = "Southern English",
             language = "en_GB",
             sizeBytes = 77063512L,
             qualityLevel = QualityLevel.Medium,
@@ -221,10 +244,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-southern_english_male-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-southern_english_male-medium.tokens.txt",
             ),
+            gender = VoiceGender.Male,
         ),
         CatalogEntry(
             id = "piper_sweetbbak_amy_en_GB_high",
-            displayName = "Sweetbbak Amy (High)",
+            displayName = "Sweetbbak Amy",
             language = "en_GB",
             sizeBytes = 114199142L,
             qualityLevel = QualityLevel.High,
@@ -233,10 +257,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-sweetbbak-amy.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-sweetbbak-amy.tokens.txt",
             ),
+            gender = VoiceGender.Female,
         ),
         CatalogEntry(
             id = "piper_vctk_en_GB_medium",
-            displayName = "Vctk (Medium)",
+            displayName = "VCTK",
             language = "en_GB",
             sizeBytes = 76952891L,
             qualityLevel = QualityLevel.Medium,
@@ -245,10 +270,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-vctk-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_GB-vctk-medium.tokens.txt",
             ),
+            // VCTK is a multi-speaker corpus — leave gender Unknown.
         ),
         CatalogEntry(
             id = "piper_amy_en_US_low",
-            displayName = "Amy (Low)",
+            displayName = "Amy",
             language = "en_US",
             sizeBytes = 63104657L,
             qualityLevel = QualityLevel.Low,
@@ -257,10 +283,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-amy-low.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-amy-low.tokens.txt",
             ),
+            gender = VoiceGender.Female,
         ),
         CatalogEntry(
             id = "piper_arctic_en_US_medium",
-            displayName = "Arctic (Medium)",
+            displayName = "Arctic",
             language = "en_US",
             sizeBytes = 76715309L,
             qualityLevel = QualityLevel.Medium,
@@ -269,10 +296,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-arctic-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-arctic-medium.tokens.txt",
             ),
+            // CMU Arctic is a multi-speaker corpus — gender Unknown.
         ),
         CatalogEntry(
             id = "piper_bryce_en_US_medium",
-            displayName = "Bryce (Medium)",
+            displayName = "Bryce",
             language = "en_US",
             sizeBytes = 63152970L,
             qualityLevel = QualityLevel.Medium,
@@ -281,10 +309,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-bryce-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-bryce-medium.tokens.txt",
             ),
+            gender = VoiceGender.Male,
         ),
         CatalogEntry(
             id = "piper_danny_en_US_low",
-            displayName = "Danny (Low)",
+            displayName = "Danny",
             language = "en_US",
             sizeBytes = 63052430L,
             qualityLevel = QualityLevel.Low,
@@ -293,10 +322,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-danny-low.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-danny-low.tokens.txt",
             ),
+            gender = VoiceGender.Male,
         ),
         CatalogEntry(
             id = "piper_glados_en_US_high",
-            displayName = "GLaDOS (High)",
+            displayName = "GLaDOS",
             language = "en_US",
             sizeBytes = 113800584L,
             qualityLevel = QualityLevel.High,
@@ -305,10 +335,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-glados-high.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-glados-high.tokens.txt",
             ),
+            gender = VoiceGender.Female,
         ),
         CatalogEntry(
             id = "piper_glados_en_US_medium",
-            displayName = "GLaDOS (Medium)",
+            displayName = "GLaDOS",
             language = "en_US",
             sizeBytes = 63511169L,
             qualityLevel = QualityLevel.Medium,
@@ -317,10 +348,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-glados.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-glados.tokens.txt",
             ),
+            gender = VoiceGender.Female,
         ),
         CatalogEntry(
             id = "piper_hfc_female_en_US_medium",
-            displayName = "Hfc Female (Medium)",
+            displayName = "HFC",
             language = "en_US",
             sizeBytes = 63149198L,
             qualityLevel = QualityLevel.Medium,
@@ -329,10 +361,12 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-hfc_female-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-hfc_female-medium.tokens.txt",
             ),
+            // "Female" lived in the title before #128; now it lives only in the subtitle.
+            gender = VoiceGender.Female,
         ),
         CatalogEntry(
             id = "piper_hfc_male_en_US_medium",
-            displayName = "Hfc Male (Medium)",
+            displayName = "HFC",
             language = "en_US",
             sizeBytes = 63149198L,
             qualityLevel = QualityLevel.Medium,
@@ -341,10 +375,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-hfc_male-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-hfc_male-medium.tokens.txt",
             ),
+            gender = VoiceGender.Male,
         ),
         CatalogEntry(
             id = "piper_joe_en_US_medium",
-            displayName = "Joe (Medium)",
+            displayName = "Joe",
             language = "en_US",
             sizeBytes = 63149198L,
             qualityLevel = QualityLevel.Medium,
@@ -353,10 +388,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-joe-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-joe-medium.tokens.txt",
             ),
+            gender = VoiceGender.Male,
         ),
         CatalogEntry(
             id = "piper_john_en_US_medium",
-            displayName = "John (Medium)",
+            displayName = "John",
             language = "en_US",
             sizeBytes = 63152970L,
             qualityLevel = QualityLevel.Medium,
@@ -365,10 +401,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-john-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-john-medium.tokens.txt",
             ),
+            gender = VoiceGender.Male,
         ),
         CatalogEntry(
             id = "piper_kathleen_en_US_low",
-            displayName = "Kathleen (Low)",
+            displayName = "Kathleen",
             language = "en_US",
             sizeBytes = 63052430L,
             qualityLevel = QualityLevel.Low,
@@ -377,10 +414,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-kathleen-low.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-kathleen-low.tokens.txt",
             ),
+            gender = VoiceGender.Female,
         ),
         CatalogEntry(
             id = "piper_kristin_en_US_medium",
-            displayName = "Kristin (Medium)",
+            displayName = "Kristin",
             language = "en_US",
             sizeBytes = 63531507L,
             qualityLevel = QualityLevel.Medium,
@@ -389,10 +427,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-kristin-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-kristin-medium.tokens.txt",
             ),
+            gender = VoiceGender.Female,
         ),
         CatalogEntry(
             id = "piper_kusal_en_US_medium",
-            displayName = "Kusal (Medium)",
+            displayName = "Kusal",
             language = "en_US",
             sizeBytes = 63201425L,
             qualityLevel = QualityLevel.Medium,
@@ -401,10 +440,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-kusal-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-kusal-medium.tokens.txt",
             ),
+            gender = VoiceGender.Male,
         ),
         CatalogEntry(
             id = "piper_l2arctic_en_US_medium",
-            displayName = "L2Arctic (Medium)",
+            displayName = "L2 Arctic",
             language = "en_US",
             sizeBytes = 76778805L,
             qualityLevel = QualityLevel.Medium,
@@ -413,10 +453,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-l2arctic-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-l2arctic-medium.tokens.txt",
             ),
+            // L2-Arctic is a multi-speaker non-native-English corpus — gender Unknown.
         ),
         CatalogEntry(
             id = "piper_lessac_en_US_low",
-            displayName = "Lessac (Low)",
+            displayName = "Lessac",
             language = "en_US",
             sizeBytes = 63149198L,
             qualityLevel = QualityLevel.Low,
@@ -425,10 +466,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-lessac-low.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-lessac-low.tokens.txt",
             ),
+            gender = VoiceGender.Female,
         ),
         CatalogEntry(
             id = "piper_lessac_en_US_medium",
-            displayName = "Lessac (Medium)",
+            displayName = "Lessac",
             language = "en_US",
             sizeBytes = 63149198L,
             qualityLevel = QualityLevel.Medium,
@@ -437,10 +479,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-lessac-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-lessac-medium.tokens.txt",
             ),
+            gender = VoiceGender.Female,
         ),
         CatalogEntry(
             id = "piper_libritts_en_US_high",
-            displayName = "Libritts (High)",
+            displayName = "LibriTTS",
             language = "en_US",
             sizeBytes = 129438513L,
             qualityLevel = QualityLevel.High,
@@ -449,10 +492,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-libritts-high.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-libritts-high.tokens.txt",
             ),
+            // LibriTTS is a multi-speaker corpus — gender Unknown.
         ),
         CatalogEntry(
             id = "piper_libritts_r_en_US_medium",
-            displayName = "Libritts R (Medium)",
+            displayName = "LibriTTS R",
             language = "en_US",
             sizeBytes = 78529840L,
             qualityLevel = QualityLevel.Medium,
@@ -461,10 +505,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-libritts_r-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-libritts_r-medium.tokens.txt",
             ),
+            // LibriTTS-R is a multi-speaker corpus — gender Unknown.
         ),
         CatalogEntry(
             id = "piper_ljspeech_en_US_medium",
-            displayName = "Ljspeech (Medium)",
+            displayName = "LJ Speech",
             language = "en_US",
             sizeBytes = 63531507L,
             qualityLevel = QualityLevel.Medium,
@@ -473,10 +518,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-ljspeech-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-ljspeech-medium.tokens.txt",
             ),
+            gender = VoiceGender.Female,
         ),
         CatalogEntry(
             id = "piper_ljspeech_en_US_high",
-            displayName = "Ljspeech (High)",
+            displayName = "LJ Speech",
             language = "en_US",
             sizeBytes = 114199139L,
             qualityLevel = QualityLevel.High,
@@ -485,10 +531,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-ljspeech-high.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-ljspeech-high.tokens.txt",
             ),
+            gender = VoiceGender.Female,
         ),
         CatalogEntry(
             id = "piper_miro_en_US_high",
-            displayName = "Miro (High)",
+            displayName = "Miro",
             language = "en_US",
             sizeBytes = 63511169L,
             qualityLevel = QualityLevel.High,
@@ -497,10 +544,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-miro-high.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-miro-high.tokens.txt",
             ),
+            gender = VoiceGender.Male,
         ),
         CatalogEntry(
             id = "piper_norman_en_US_medium",
-            displayName = "Norman (Medium)",
+            displayName = "Norman",
             language = "en_US",
             sizeBytes = 63531507L,
             qualityLevel = QualityLevel.Medium,
@@ -509,10 +557,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-norman-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-norman-medium.tokens.txt",
             ),
+            gender = VoiceGender.Male,
         ),
         CatalogEntry(
             id = "piper_reza_ibrahim_en_US_medium",
-            displayName = "Reza Ibrahim (Medium)",
+            displayName = "Reza Ibrahim",
             language = "en_US",
             sizeBytes = 63511169L,
             qualityLevel = QualityLevel.Medium,
@@ -521,10 +570,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-reza_ibrahim-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-reza_ibrahim-medium.tokens.txt",
             ),
+            gender = VoiceGender.Male,
         ),
         CatalogEntry(
             id = "piper_ryan_en_US_low",
-            displayName = "Ryan (Low)",
+            displayName = "Ryan",
             language = "en_US",
             sizeBytes = 63052430L,
             qualityLevel = QualityLevel.Low,
@@ -533,10 +583,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-ryan-low.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-ryan-low.tokens.txt",
             ),
+            gender = VoiceGender.Male,
         ),
         CatalogEntry(
             id = "piper_ryan_en_US_medium",
-            displayName = "Ryan (Medium)",
+            displayName = "Ryan",
             language = "en_US",
             sizeBytes = 63149198L,
             qualityLevel = QualityLevel.Medium,
@@ -545,10 +596,11 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-ryan-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-ryan-medium.tokens.txt",
             ),
+            gender = VoiceGender.Male,
         ),
         CatalogEntry(
             id = "piper_sam_en_US_medium",
-            displayName = "Sam (Medium)",
+            displayName = "Sam",
             language = "en_US",
             sizeBytes = 62946438L,
             qualityLevel = QualityLevel.Medium,
@@ -557,6 +609,7 @@ object VoiceCatalog {
                 onnxUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-sam-medium.onnx",
                 tokensUrl = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/en_US-sam-medium.tokens.txt",
             ),
+            // "Sam" is unisex — leave gender Unknown.
         ),
     )
 
@@ -565,9 +618,15 @@ object VoiceCatalog {
      *  rather than hardcoded inline so the rule lives in one place and
      *  stays unit-testable. The vast majority resolve to [QualityLevel.High];
      *  a curated few (see [VoiceTier.STUDIO_KOKORO_IDS]) get bumped to
-     *  [QualityLevel.Studio]. */
+     *  [QualityLevel.Studio].
+     *
+     *  Display names are clean (no flag prefix, no "(Language Gender)"
+     *  parenthetical) per #128 — the Voice Library composes the on-screen
+     *  title as `<flag> <displayName>` and the subtitle as
+     *  `<Engine> · <Tier> · <Gender>`. Language is already represented by
+     *  the rendered flag, so we don't repeat it. */
     private fun kokoroEntries(): List<CatalogEntry> {
-        fun kokoro(id: String, displayName: String, language: String, speakerId: Int): CatalogEntry =
+        fun kokoro(id: String, displayName: String, language: String, speakerId: Int, gender: VoiceGender): CatalogEntry =
             CatalogEntry(
                 id = id,
                 displayName = displayName,
@@ -576,61 +635,64 @@ object VoiceCatalog {
                 qualityLevel = VoiceTier.forKokoroId(id),
                 engineType = EngineType.Kokoro(speakerId = speakerId),
                 piper = null,
+                gender = gender,
             )
+        val F = VoiceGender.Female
+        val M = VoiceGender.Male
         return listOf(
-            kokoro("kokoro_alloy_en_US_0", "🇺🇸 Alloy (English Female)", "en_US", 0),
-            kokoro("kokoro_aoede_en_US_1", "🇺🇸 Aoede (English Female)", "en_US", 1),
-            kokoro("kokoro_bella_en_US_2", "🇺🇸 Bella (English Female)", "en_US", 2),
-            kokoro("kokoro_heart_en_US_3", "🇺🇸 Heart (English Female)", "en_US", 3),
-            kokoro("kokoro_jessica_en_US_4", "🇺🇸 Jessica (English Female)", "en_US", 4),
-            kokoro("kokoro_kore_en_US_5", "🇺🇸 Kore (English Female)", "en_US", 5),
-            kokoro("kokoro_nicole_en_US_6", "🇺🇸 Nicole (English Female)", "en_US", 6),
-            kokoro("kokoro_nova_en_US_7", "🇺🇸 Nova (English Female)", "en_US", 7),
-            kokoro("kokoro_river_en_US_8", "🇺🇸 River (English Female)", "en_US", 8),
-            kokoro("kokoro_sarah_en_US_9", "🇺🇸 Sarah (English Female)", "en_US", 9),
-            kokoro("kokoro_sky_en_US_10", "🇺🇸 Sky (English Female)", "en_US", 10),
-            kokoro("kokoro_adam_en_US_11", "🇺🇸 Adam (English Male)", "en_US", 11),
-            kokoro("kokoro_echo_en_US_12", "🇺🇸 Echo (English Male)", "en_US", 12),
-            kokoro("kokoro_eric_en_US_13", "🇺🇸 Eric (English Male)", "en_US", 13),
-            kokoro("kokoro_fenrir_en_US_14", "🇺🇸 Fenrir (English Male)", "en_US", 14),
-            kokoro("kokoro_liam_en_US_15", "🇺🇸 Liam (English Male)", "en_US", 15),
-            kokoro("kokoro_michael_en_US_16", "🇺🇸 Michael (English Male)", "en_US", 16),
-            kokoro("kokoro_onyx_en_US_17", "🇺🇸 Onyx (English Male)", "en_US", 17),
-            kokoro("kokoro_puck_en_US_18", "🇺🇸 Puck (English Male)", "en_US", 18),
-            kokoro("kokoro_santa_en_US_19", "🇺🇸 Santa (English Male)", "en_US", 19),
-            kokoro("kokoro_alice_en_GB_20", "🇬🇧 Alice (English Female)", "en_GB", 20),
-            kokoro("kokoro_emma_en_GB_21", "🇬🇧 Emma (English Female)", "en_GB", 21),
-            kokoro("kokoro_isabella_en_GB_22", "🇬🇧 Isabella (English Female)", "en_GB", 22),
-            kokoro("kokoro_lily_en_GB_23", "🇬🇧 Lily (English Female)", "en_GB", 23),
-            kokoro("kokoro_daniel_en_GB_24", "🇬🇧 Daniel (English Male)", "en_GB", 24),
-            kokoro("kokoro_fable_en_GB_25", "🇬🇧 Fable (English Male)", "en_GB", 25),
-            kokoro("kokoro_george_en_GB_26", "🇬🇧 George (English Male)", "en_GB", 26),
-            kokoro("kokoro_lewis_en_GB_27", "🇬🇧 Lewis (English Male)", "en_GB", 27),
-            kokoro("kokoro_dora_es_ES_28", "🇪🇸 Dora (Spanish Female)", "es_ES", 28),
-            kokoro("kokoro_alex_es_ES_29", "🇪🇸 Alex (Spanish Male)", "es_ES", 29),
-            kokoro("kokoro_siwis_fr_FR_30", "🇫🇷 Siwis (French Female)", "fr_FR", 30),
-            kokoro("kokoro_alpha_hi_IN_31", "🇮🇳 Alpha (Hindi Female)", "hi_IN", 31),
-            kokoro("kokoro_beta_hi_IN_32", "🇮🇳 Beta (Hindi Female)", "hi_IN", 32),
-            kokoro("kokoro_omega_hi_IN_33", "🇮🇳 Omega (Hindi Male)", "hi_IN", 33),
-            kokoro("kokoro_psi_hi_IN_34", "🇮🇳 Psi (Hindi Male)", "hi_IN", 34),
-            kokoro("kokoro_sara_it_IT_35", "🇮🇹 Sara (Italian Female)", "it_IT", 35),
-            kokoro("kokoro_nicola_it_IT_36", "🇮🇹 Nicola (Italian Male)", "it_IT", 36),
-            kokoro("kokoro_alpha_ja_JP_37", "🇯🇵 Alpha (Japanese Female)", "ja_JP", 37),
-            kokoro("kokoro_gongitsune_ja_JP_38", "🇯🇵 Gongitsune (Japanese Female)", "ja_JP", 38),
-            kokoro("kokoro_nezumi_ja_JP_39", "🇯🇵 Nezumi (Japanese Female)", "ja_JP", 39),
-            kokoro("kokoro_tebukuro_ja_JP_40", "🇯🇵 Tebukuro (Japanese Female)", "ja_JP", 40),
-            kokoro("kokoro_kumo_ja_JP_41", "🇯🇵 Kumo (Japanese Male)", "ja_JP", 41),
-            kokoro("kokoro_dora_pt_PT_42", "🇵🇹 Dora (Portuguese Female)", "pt_PT", 42),
-            kokoro("kokoro_alex_pt_PT_43", "🇵🇹 Alex (Portuguese Male)", "pt_PT", 43),
-            kokoro("kokoro_santa_pt_PT_44", "🇵🇹 Santa (Portuguese Male)", "pt_PT", 44),
-            kokoro("kokoro_xiaobei_zh_CN_45", "🇨🇳 Xiaobei (Chinese Female)", "zh_CN", 45),
-            kokoro("kokoro_xiaoni_zh_CN_46", "🇨🇳 Xiaoni (Chinese Female)", "zh_CN", 46),
-            kokoro("kokoro_xiaoxiao_zh_CN_47", "🇨🇳 Xiaoxiao (Chinese Female)", "zh_CN", 47),
-            kokoro("kokoro_xiaoyi_zh_CN_48", "🇨🇳 Xiaoyi (Chinese Female)", "zh_CN", 48),
-            kokoro("kokoro_yunjian_zh_CN_49", "🇨🇳 Yunjian (Chinese Male)", "zh_CN", 49),
-            kokoro("kokoro_yunxi_zh_CN_50", "🇨🇳 Yunxi (Chinese Male)", "zh_CN", 50),
-            kokoro("kokoro_yunxia_zh_CN_51", "🇨🇳 Yunxia (Chinese Male)", "zh_CN", 51),
-            kokoro("kokoro_yunyang_zh_CN_52", "🇨🇳 Yunyang (Chinese Male)", "zh_CN", 52),
+            kokoro("kokoro_alloy_en_US_0", "Alloy", "en_US", 0, F),
+            kokoro("kokoro_aoede_en_US_1", "Aoede", "en_US", 1, F),
+            kokoro("kokoro_bella_en_US_2", "Bella", "en_US", 2, F),
+            kokoro("kokoro_heart_en_US_3", "Heart", "en_US", 3, F),
+            kokoro("kokoro_jessica_en_US_4", "Jessica", "en_US", 4, F),
+            kokoro("kokoro_kore_en_US_5", "Kore", "en_US", 5, F),
+            kokoro("kokoro_nicole_en_US_6", "Nicole", "en_US", 6, F),
+            kokoro("kokoro_nova_en_US_7", "Nova", "en_US", 7, F),
+            kokoro("kokoro_river_en_US_8", "River", "en_US", 8, F),
+            kokoro("kokoro_sarah_en_US_9", "Sarah", "en_US", 9, F),
+            kokoro("kokoro_sky_en_US_10", "Sky", "en_US", 10, F),
+            kokoro("kokoro_adam_en_US_11", "Adam", "en_US", 11, M),
+            kokoro("kokoro_echo_en_US_12", "Echo", "en_US", 12, M),
+            kokoro("kokoro_eric_en_US_13", "Eric", "en_US", 13, M),
+            kokoro("kokoro_fenrir_en_US_14", "Fenrir", "en_US", 14, M),
+            kokoro("kokoro_liam_en_US_15", "Liam", "en_US", 15, M),
+            kokoro("kokoro_michael_en_US_16", "Michael", "en_US", 16, M),
+            kokoro("kokoro_onyx_en_US_17", "Onyx", "en_US", 17, M),
+            kokoro("kokoro_puck_en_US_18", "Puck", "en_US", 18, M),
+            kokoro("kokoro_santa_en_US_19", "Santa", "en_US", 19, M),
+            kokoro("kokoro_alice_en_GB_20", "Alice", "en_GB", 20, F),
+            kokoro("kokoro_emma_en_GB_21", "Emma", "en_GB", 21, F),
+            kokoro("kokoro_isabella_en_GB_22", "Isabella", "en_GB", 22, F),
+            kokoro("kokoro_lily_en_GB_23", "Lily", "en_GB", 23, F),
+            kokoro("kokoro_daniel_en_GB_24", "Daniel", "en_GB", 24, M),
+            kokoro("kokoro_fable_en_GB_25", "Fable", "en_GB", 25, M),
+            kokoro("kokoro_george_en_GB_26", "George", "en_GB", 26, M),
+            kokoro("kokoro_lewis_en_GB_27", "Lewis", "en_GB", 27, M),
+            kokoro("kokoro_dora_es_ES_28", "Dora", "es_ES", 28, F),
+            kokoro("kokoro_alex_es_ES_29", "Alex", "es_ES", 29, M),
+            kokoro("kokoro_siwis_fr_FR_30", "Siwis", "fr_FR", 30, F),
+            kokoro("kokoro_alpha_hi_IN_31", "Alpha", "hi_IN", 31, F),
+            kokoro("kokoro_beta_hi_IN_32", "Beta", "hi_IN", 32, F),
+            kokoro("kokoro_omega_hi_IN_33", "Omega", "hi_IN", 33, M),
+            kokoro("kokoro_psi_hi_IN_34", "Psi", "hi_IN", 34, M),
+            kokoro("kokoro_sara_it_IT_35", "Sara", "it_IT", 35, F),
+            kokoro("kokoro_nicola_it_IT_36", "Nicola", "it_IT", 36, M),
+            kokoro("kokoro_alpha_ja_JP_37", "Alpha", "ja_JP", 37, F),
+            kokoro("kokoro_gongitsune_ja_JP_38", "Gongitsune", "ja_JP", 38, F),
+            kokoro("kokoro_nezumi_ja_JP_39", "Nezumi", "ja_JP", 39, F),
+            kokoro("kokoro_tebukuro_ja_JP_40", "Tebukuro", "ja_JP", 40, F),
+            kokoro("kokoro_kumo_ja_JP_41", "Kumo", "ja_JP", 41, M),
+            kokoro("kokoro_dora_pt_PT_42", "Dora", "pt_PT", 42, F),
+            kokoro("kokoro_alex_pt_PT_43", "Alex", "pt_PT", 43, M),
+            kokoro("kokoro_santa_pt_PT_44", "Santa", "pt_PT", 44, M),
+            kokoro("kokoro_xiaobei_zh_CN_45", "Xiaobei", "zh_CN", 45, F),
+            kokoro("kokoro_xiaoni_zh_CN_46", "Xiaoni", "zh_CN", 46, F),
+            kokoro("kokoro_xiaoxiao_zh_CN_47", "Xiaoxiao", "zh_CN", 47, F),
+            kokoro("kokoro_xiaoyi_zh_CN_48", "Xiaoyi", "zh_CN", 48, F),
+            kokoro("kokoro_yunjian_zh_CN_49", "Yunjian", "zh_CN", 49, M),
+            kokoro("kokoro_yunxi_zh_CN_50", "Yunxi", "zh_CN", 50, M),
+            kokoro("kokoro_yunxia_zh_CN_51", "Yunxia", "zh_CN", 51, M),
+            kokoro("kokoro_yunyang_zh_CN_52", "Yunyang", "zh_CN", 52, M),
         )
     }
 
@@ -724,6 +786,11 @@ object VoiceCatalog {
 
 data class CatalogEntry(
     val id: String,
+    /** Clean voice name only — e.g. "Lessac", "Aoede". No tier
+     *  parentheticals, no flag prefix, no engine/quality clutter. The
+     *  ⭐ marker on curated entries stays inline (see [VoiceCatalog.featuredIds]).
+     *  See #128 — the Voice Library composes the on-screen title as
+     *  `<flag> <displayName>` and the subtitle as `<Engine> · <Tier> · <Gender>`. */
     val displayName: String,
     val language: String,
     val sizeBytes: Long,
@@ -742,6 +809,10 @@ data class CatalogEntry(
      * one-line change here, not a UI hunt.
      */
     val cost: VoiceCost? = null,
+    /** Best-effort gender from upstream metadata. Defaults to
+     *  [VoiceGender.Unknown] for Piper voices whose filenames don't
+     *  encode gender (e.g. "lessac" — a name, not a gender marker). */
+    val gender: VoiceGender = VoiceGender.Unknown,
 )
 
 data class PiperPaths(val onnxUrl: String, val tokensUrl: String)
@@ -762,3 +833,21 @@ data class VoiceCost(
     val centsPer1MChars: Int,
     val billedBy: String,
 )
+
+/** Map a BCP-47-ish language code (the catalog uses POSIX-style
+ *  `xx_YY`) to a country flag emoji. Falls back to a globe glyph for
+ *  any code we haven't enumerated — keeps the title prefix non-empty
+ *  so layout doesn't shift when a new language lands in the catalog
+ *  before its flag mapping does. */
+fun flagForLanguage(language: String): String = when (language) {
+    "en_US" -> "🇺🇸"
+    "en_GB" -> "🇬🇧"
+    "es_ES" -> "🇪🇸"
+    "fr_FR" -> "🇫🇷"
+    "hi_IN" -> "🇮🇳"
+    "it_IT" -> "🇮🇹"
+    "ja_JP" -> "🇯🇵"
+    "pt_PT" -> "🇵🇹"
+    "zh_CN" -> "🇨🇳"
+    else -> "🌐"
+}

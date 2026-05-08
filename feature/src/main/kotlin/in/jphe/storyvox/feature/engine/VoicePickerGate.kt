@@ -44,6 +44,7 @@ import `in`.jphe.storyvox.playback.voice.UiVoiceInfo
 import `in`.jphe.storyvox.playback.voice.VoiceCatalog
 import `in`.jphe.storyvox.playback.voice.VoiceManager
 import `in`.jphe.storyvox.playback.voice.VoiceManager.DownloadProgress
+import `in`.jphe.storyvox.playback.voice.flagForLanguage
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
@@ -297,14 +298,19 @@ private fun VoiceTile(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                // Title gains the language flag prefix per #128 — the
+                // catalog [displayName] is now flag-free, so we
+                // re-prefix it at render time. Subtitle keeps tier +
+                // size since this picker drives a download decision;
+                // language is already encoded in the flag.
                 Text(
-                    voice.displayName,
+                    "${flagForLanguage(voice.language)} ${voice.displayName}",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    "${voice.language} · ${voice.qualityLevel.name.lowercase()} · ${sizeMb} MB",
+                    "${voice.qualityLevel.name.lowercase()} · ${sizeMb} MB",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

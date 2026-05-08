@@ -12,6 +12,13 @@ package `in`.jphe.storyvox.playback.voice
  * [sizeBytes] is the on-disk install size (catalog estimate for Piper;
  * 0 for Kokoro since the speaker selection is just an integer index into
  * the shared Kokoro model — no per-speaker download).
+ *
+ * [displayName] is the **clean** voice name, e.g. "Lessac" or "Aoede" —
+ * no tier parentheticals, no flag prefix, no engine/quality clutter.
+ * See #128: the Voice Library composes the on-screen title as
+ * `<flag> <displayName>` and the subtitle as `<Engine> · <Tier> · <Gender>`,
+ * so this field stays render-agnostic. (Curated picks keep their ⭐
+ * marker prefixed inline — see [VoiceCatalog.featuredIds].)
  */
 data class UiVoiceInfo(
     val id: String,
@@ -21,7 +28,20 @@ data class UiVoiceInfo(
     val isInstalled: Boolean,
     val qualityLevel: QualityLevel,
     val engineType: EngineType,
+    val gender: VoiceGender = VoiceGender.Unknown,
 )
+
+/**
+ * Voice gender as surfaced in the Voice Library subtitle. Best-effort
+ * — Piper's upstream filenames don't always encode it (e.g. "lessac",
+ * "ryan", "amy" name speakers but only some carry an explicit gender
+ * marker like `*_male` / `*_female`). [Unknown] renders as an empty
+ * subtitle segment so the line collapses cleanly to `Engine · Tier`.
+ *
+ * Kokoro voices all carry an upstream gender grade — every Kokoro
+ * entry resolves to [Female] or [Male].
+ */
+enum class VoiceGender { Female, Male, Unknown }
 
 /**
  * Voice quality tiers shown in the picker. Order in this enum is
