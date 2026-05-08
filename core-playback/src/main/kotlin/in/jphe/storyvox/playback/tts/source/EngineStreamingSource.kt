@@ -9,6 +9,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
@@ -69,11 +73,39 @@ class EngineStreamingSource(
     private val running = AtomicBoolean(true)
     private val queue = LinkedBlockingQueue<Item>(queueCapacity)
 
+    private val _bufferHeadroomMs = MutableStateFlow(0L)
+
+    /**
+     * Total ms of audio currently buffered in the queue (sum of pcm
+     * playback duration + cadence-silence duration across queued chunks).
+     * Updated atomically on every producer put and consumer take.
+     *
+     * The EnginePlayer consumer pauses AudioTrack and surfaces a
+     * "Buffering..." UI state when this drops below an underrun threshold,
+     * resumes at a higher hysteresis threshold. Lets the listener
+     * experience the gap as a clean pause rather than dribbling silence
+     * out of an underrunning AudioTrack ring buffer.
+     */
+    val bufferHeadroomMs: StateFlow<Long> = _bufferHeadroomMs.asStateFlow()
+
+    /** ms of audio represented by [bytes] of PCM at this source's sample rate.
+     *  16-bit signed mono → 2 bytes per sample, 1 channel. */
+    private fun pcmDurationMs(bytes: Int): Long =
+        bytes.toLong() * 1000L / (sampleRate.toLong() * 2L)
+
     private var producerJob: Job = startProducer(startSentenceIndex)
 
     override suspend fun nextChunk(): PcmChunk? = runInterruptible {
         val item = queue.take()
-        if (item === END_PILL) null else item.chunk
+        if (item === END_PILL) return@runInterruptible null
+        val chunk = item.chunk
+        // Decrement headroom by everything this chunk represented in the
+        // queue: PCM duration + the trailing cadence silence (consumer is
+        // about to write both into AudioTrack).
+        val durMs = pcmDurationMs(chunk.pcm.size) +
+            pcmDurationMs(chunk.trailingSilenceBytes)
+        _bufferHeadroomMs.update { (it - durMs).coerceAtLeast(0L) }
+        chunk
     }
 
     override suspend fun seekToCharOffset(charOffset: Int) {
@@ -112,6 +144,9 @@ class EngineStreamingSource(
                     trailingSilenceBytes = silenceBytes,
                 )
                 runInterruptible { queue.put(Item(chunk)) }
+                _bufferHeadroomMs.update {
+                    it + pcmDurationMs(pcm.size) + pcmDurationMs(silenceBytes)
+                }
             }
             // Natural end-of-chapter: push the pill so the consumer's
             // next nextChunk() returns null.

@@ -85,6 +85,39 @@ class EngineStreamingSourceTest {
         assertNull(result)
         assert(elapsed < 500) { "nextChunk after close took $elapsed ms" }
     }
+
+    @Test
+    fun `bufferHeadroomMs reflects queued audio duration`() = runBlocking {
+        val sentences = listOf(
+            Sentence(0, 0, 10, "One."),
+            Sentence(1, 11, 20, "Two."),
+        )
+        // 22050 Hz × 2 bytes per sample = 44100 bytes per second of audio.
+        // 44100 bytes ⇒ 1000 ms.
+        val fakeEngine = FakeVoiceEngine(22050) { _ -> ByteArray(44100) }
+        val source = EngineStreamingSource(sentences, 0, fakeEngine, 1f, 1f, Mutex())
+
+        // Wait for producer to fill the queue with both sentences.
+        val deadline = System.currentTimeMillis() + 2_000
+        while (System.currentTimeMillis() < deadline &&
+               source.bufferHeadroomMs.value < 2_000) {
+            delay(10)
+        }
+        // 2 sentences × (1000 ms PCM + 350 ms cadence) = 2700 ms expected
+        // (cadence is 350 ms because "One." / "Two." end in '.').
+        val before = source.bufferHeadroomMs.value
+        assert(before >= 2_000) { "expected ≥ 2000 ms headroom, got $before" }
+
+        val first = source.nextChunk()
+        assertEquals(0, first?.sentenceIndex)
+        val after = source.bufferHeadroomMs.value
+        // Headroom should drop by ~1350 ms (1000 ms PCM + 350 ms cadence).
+        assert(after < before - 1_000) {
+            "expected headroom to drop by > 1000 ms after take; was $before → $after"
+        }
+
+        source.close()
+    }
 }
 
 private class FakeVoiceEngine(
