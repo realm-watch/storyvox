@@ -31,6 +31,16 @@ android {
         jvmTarget = "17"
     }
 
+    testOptions {
+        unitTests {
+            // Robolectric needs Android resources on the unit-test classpath
+            // so VoiceManagerTest can spin up an ApplicationContext (filesDir +
+            // DataStore) without an emulator. Required for the #28 cleanup
+            // policy tests.
+            isIncludeAndroidResources = true
+        }
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -88,5 +98,9 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    // Robolectric supplies a JVM-resident ApplicationContext (filesDir +
+    // DataStore) for VoiceManagerTest, which exercises the #28 partial-file
+    // cleanup policy without needing an emulator.
+    testImplementation(libs.robolectric)
     androidTestImplementation(libs.androidx.junit)
 }

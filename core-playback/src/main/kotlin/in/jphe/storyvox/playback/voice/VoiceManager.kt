@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import androidx.annotation.VisibleForTesting
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.io.IOException
@@ -63,7 +64,7 @@ class VoiceManager @Inject constructor(
 ) {
 
     private val store: DataStore<Preferences> = context.voicesSettingsStore
-    private val http: OkHttpClient = OkHttpClient.Builder().build()
+    @VisibleForTesting internal var http: OkHttpClient = OkHttpClient.Builder().build()
     private val migrationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
@@ -249,9 +250,10 @@ class VoiceManager @Inject constructor(
                         // the completed sibling is the big saving.
                         throw ce
                     } catch (t: Throwable) {
-                        // Don't wipe the shared dir on real failure for the
-                        // same reason: any completed sibling shouldn't be
-                        // re-downloaded just because a later step failed.
+                        // Per #28: wipe shared dir on real failure to keep retries deterministic.
+                        // Trade-off: re-download cost (≤325 MB) vs. avoiding a corrupted partial onnx.
+                        // Cancel path keeps partials (#20/#26) — user expectation.
+                        sharedDir.deleteRecursively()
                         emit(DownloadProgress.Failed(t.message ?: t::class.java.simpleName))
                         return@flow
                     }
