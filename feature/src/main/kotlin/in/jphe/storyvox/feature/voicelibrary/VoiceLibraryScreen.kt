@@ -42,7 +42,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import `in`.jphe.storyvox.playback.voice.EngineType
 import `in`.jphe.storyvox.playback.voice.QualityLevel
 import `in`.jphe.storyvox.playback.voice.UiVoiceInfo
 import `in`.jphe.storyvox.ui.component.BrassButton
@@ -76,10 +75,11 @@ fun VoiceLibraryScreen(
     ) { padding ->
         val featured = state.featured
         val favorites = state.favorites
-        val installedByTier = state.installedByTier
-        val availableByTier = state.availableByTier
-        val installedTotal = installedByTier.values.sumOf { it.size }
-        val availableTotal = availableByTier.values.sumOf { it.size }
+        val installedByEngine = state.installedByEngine
+        val availableByEngine = state.availableByEngine
+        val installedTotal = installedByEngine.values.sumOf { tiers -> tiers.values.sumOf { it.size } }
+        val availableTotal = availableByEngine.values.sumOf { tiers -> tiers.values.sumOf { it.size } }
+        val availableHasKokoro = availableByEngine.containsKey(VoiceEngine.Kokoro)
         val isEmpty = featured.isEmpty() && favorites.isEmpty() &&
             installedTotal == 0 && availableTotal == 0
 
@@ -157,23 +157,32 @@ fun VoiceLibraryScreen(
                     )
                 }
             } else {
-                installedByTier.forEach { (tier, voicesInTier) ->
-                    item(key = "i-tier-${tier.name}") {
-                        TierSubHeader(tier = tier, count = voicesInTier.size)
+                installedByEngine.forEach { (engine, tiers) ->
+                    val engineCount = tiers.values.sumOf { it.size }
+                    item(key = "i-engine-${engine.name}") {
+                        EngineSubHeader(engine = engine, count = engineCount)
                     }
-                    itemsIndexed(voicesInTier, key = { _, item -> "i-${item.id}" }) { index, voice ->
-                        VoiceRow(
-                            voice = voice,
-                            isActive = voice.id == state.activeVoiceId,
-                            isFavorite = voice.id in state.favoriteIds,
-                            downloadingProgress = null,
-                            onTap = { viewModel.onRowTapped(voice) },
-                            onLongPress = { viewModel.requestDelete(voice) },
-                            onToggleFavorite = { viewModel.toggleFavorite(voice.id) },
-                            modifier = Modifier
-                                .animateItem()
-                                .cascadeReveal(index = index, key = voice.id),
-                        )
+                    tiers.forEach { (tier, voicesInTier) ->
+                        item(key = "i-${engine.name}-tier-${tier.name}") {
+                            TierSubHeader(tier = tier, count = voicesInTier.size)
+                        }
+                        itemsIndexed(
+                            voicesInTier,
+                            key = { _, item -> "i-${item.id}" },
+                        ) { index, voice ->
+                            VoiceRow(
+                                voice = voice,
+                                isActive = voice.id == state.activeVoiceId,
+                                isFavorite = voice.id in state.favoriteIds,
+                                downloadingProgress = null,
+                                onTap = { viewModel.onRowTapped(voice) },
+                                onLongPress = { viewModel.requestDelete(voice) },
+                                onToggleFavorite = { viewModel.toggleFavorite(voice.id) },
+                                modifier = Modifier
+                                    .animateItem()
+                                    .cascadeReveal(index = index, key = voice.id),
+                            )
+                        }
                     }
                 }
             }
@@ -183,31 +192,37 @@ fun VoiceLibraryScreen(
                     Spacer(modifier = Modifier.height(spacing.md))
                     SectionHeader("Available", count = availableTotal, dim = true)
                 }
-                if (availableByTier.values.any { tier ->
-                        tier.any { it.engineType is EngineType.Kokoro }
-                    }
-                ) {
+                if (availableHasKokoro) {
                     item { KokoroBundleNote() }
                 }
-                availableByTier.forEach { (tier, voicesInTier) ->
-                    item(key = "a-tier-${tier.name}") {
-                        TierSubHeader(tier = tier, count = voicesInTier.size, dim = true)
+                availableByEngine.forEach { (engine, tiers) ->
+                    val engineCount = tiers.values.sumOf { it.size }
+                    item(key = "a-engine-${engine.name}") {
+                        EngineSubHeader(engine = engine, count = engineCount, dim = true)
                     }
-                    val downloading = state.currentDownload
-                    itemsIndexed(voicesInTier, key = { _, item -> "a-${item.id}" }) { index, voice ->
-                        val rowProgress = if (downloading?.voiceId == voice.id) downloading.progress ?: -1f else null
-                        VoiceRow(
-                            voice = voice,
-                            isActive = false,
-                            isFavorite = voice.id in state.favoriteIds,
-                            downloadingProgress = rowProgress,
-                            onTap = { if (downloading == null) viewModel.onRowTapped(voice) },
-                            onLongPress = null,
-                            onToggleFavorite = { viewModel.toggleFavorite(voice.id) },
-                            modifier = Modifier
-                                .animateItem()
-                                .cascadeReveal(index = index, key = voice.id),
-                        )
+                    tiers.forEach { (tier, voicesInTier) ->
+                        item(key = "a-${engine.name}-tier-${tier.name}") {
+                            TierSubHeader(tier = tier, count = voicesInTier.size, dim = true)
+                        }
+                        val downloading = state.currentDownload
+                        itemsIndexed(
+                            voicesInTier,
+                            key = { _, item -> "a-${item.id}" },
+                        ) { index, voice ->
+                            val rowProgress = if (downloading?.voiceId == voice.id) downloading.progress ?: -1f else null
+                            VoiceRow(
+                                voice = voice,
+                                isActive = false,
+                                isFavorite = voice.id in state.favoriteIds,
+                                downloadingProgress = rowProgress,
+                                onTap = { if (downloading == null) viewModel.onRowTapped(voice) },
+                                onLongPress = null,
+                                onToggleFavorite = { viewModel.toggleFavorite(voice.id) },
+                                modifier = Modifier
+                                    .animateItem()
+                                    .cascadeReveal(index = index, key = voice.id),
+                            )
+                        }
                     }
                 }
             }
@@ -281,10 +296,44 @@ private fun SectionHeader(label: String, count: Int, dim: Boolean = false) {
     }
 }
 
-/** Tier label + count rendered under a [SectionHeader] (Studio /
- *  High / Medium / Low). Visually quieter than the section header so the
- *  Installed/Available grouping is still the primary read; the tier
- *  label is a refinement, not a peer. */
+/** Engine label + count rendered under a [SectionHeader] (Piper /
+ *  Kokoro). Visually slightly louder than the per-tier sub-header
+ *  beneath it so the read order is Section → Engine → Tier → Row.
+ *  Empty engine groups never reach this composable — the ViewModel's
+ *  [groupByEngineThenTier] drops them. */
+@Composable
+private fun EngineSubHeader(engine: VoiceEngine, count: Int, dim: Boolean = false) {
+    val baseColor = if (dim) {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
+    val label = when (engine) {
+        VoiceEngine.Piper -> "Piper"
+        VoiceEngine.Kokoro -> "Kokoro"
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            color = baseColor.copy(alpha = 0.95f),
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            "  ·  $count",
+            style = MaterialTheme.typography.labelMedium,
+            color = baseColor.copy(alpha = 0.65f),
+        )
+    }
+}
+
+/** Tier label + count rendered under an [EngineSubHeader] (Studio /
+ *  High / Medium / Low). Visually quieter than the engine sub-header so
+ *  the Section → Engine grouping reads first; the tier label is a
+ *  refinement, not a peer. */
 @Composable
 private fun TierSubHeader(tier: QualityLevel, count: Int, dim: Boolean = false) {
     val baseColor = if (dim) {
