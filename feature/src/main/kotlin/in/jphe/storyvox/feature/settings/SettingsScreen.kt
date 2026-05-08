@@ -690,13 +690,16 @@ private fun BufferSlider(
 }
 
 /**
- * A discrete label rendered at the slider's tick fraction. Two-row layout:
- *  - Spacer that takes up `tickFraction × parentWidth` on the left
- *  - Small caret-and-label group anchored at that x
+ * A discrete label rendered at the slider's tick fraction. Delegates
+ * placement to [SliderTickLabels] so the visual ▲ caret aligns with the
+ * Material3 Slider thumb position for the given value (rather than the
+ * raw row-width fraction, which the legacy weight-spacer layout used and
+ * which drifted by the label's intrinsic width — same root cause Tessa
+ * fixed for the punctuation slider in #146).
  *
  * Doesn't paint onto the slider canvas (Material3 Slider's track-painter
- * customization is verbose for what we need); just renders below the slider
- * at the correct horizontal offset.
+ * customization is verbose for what we need); renders below the slider
+ * at the thumb-anchored horizontal offset.
  */
 @Composable
 private fun TickMarker(
@@ -705,16 +708,7 @@ private fun TickMarker(
     max: Int,
 ) {
     val fraction = ((tickValue - min).toFloat() / (max - min).toFloat()).coerceIn(0f, 1f)
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        // Eat the left fraction of the row's width.
-        Box(modifier = Modifier.weight(fraction.coerceAtLeast(0.001f)))
-        Text(
-            text = "▲ $tickValue",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Box(modifier = Modifier.weight((1f - fraction).coerceAtLeast(0.001f)))
-    }
+    SliderTickLabels(ticks = listOf("▲ $tickValue" to fraction))
 }
 
 /**
@@ -787,38 +781,64 @@ private fun PunctuationPauseSlider(
 
 /**
  * Anchored row of legacy-stop labels under [PunctuationPauseSlider]. Each
- * label sits at its true fractional position along the [0..4] range using
- * a [Layout] composable, so the visual ▲ caret on each label aligns with
- * the slider thumb position for that value. Labels include the legacy stop
- * names (Off / Normal / Long) so users coming from the 3-stop selector
- * can find their preferred cadence at a glance.
- *
- * Why not the [TickMarker] weight-spacer trick? With multiple labels in a
- * single [Row], Compose's weight system divides only the *remaining* width
- * after measuring unweighted children (the Texts themselves), so each label
- * drifts right by the cumulative widths of preceding labels. With four
- * labels the drift visibly mismatches the thumb position (issue #139).
- *
- * We also account for the M3 [Slider]'s internal track padding (half the
- * thumb width = 10dp on each side), which the surrounding Column does not
- * inherit. Fraction 0 in the parent layout maps to track-x = 0 + padding,
- * not to the leftmost pixel of the parent.
+ * label sits at its true fractional position along the [0..4] range, with
+ * placement delegated to [SliderTickLabels]. Labels include the legacy
+ * stop names (Off / Normal / Long) so users coming from the 3-stop
+ * selector can find their preferred cadence at a glance.
  */
 @Composable
 private fun PunctuationPauseTickLabels() {
     val total = PUNCTUATION_PAUSE_MAX_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER
-    val ticks = listOf(
-        "▲ Off" to ((PUNCTUATION_PAUSE_OFF_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER) / total),
-        "▲ 1×" to ((PUNCTUATION_PAUSE_NORMAL_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER) / total),
-        "▲ Long" to ((PUNCTUATION_PAUSE_LONG_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER) / total),
-        "▲ 4×" to 1f,
+    SliderTickLabels(
+        ticks = listOf(
+            "▲ Off" to ((PUNCTUATION_PAUSE_OFF_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER) / total),
+            "▲ 1×" to ((PUNCTUATION_PAUSE_NORMAL_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER) / total),
+            "▲ Long" to ((PUNCTUATION_PAUSE_LONG_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER) / total),
+            "▲ 4×" to 1f,
+        ),
     )
+}
 
-    // M3 Slider reserves half the thumb diameter as track padding on each
-    // side (default thumb is 20dp, so 10dp). Hardcoded here because
-    // SliderDefaults doesn't expose this constant publicly. If the thumb
-    // size ever changes, the labels will drift by ≤10dp — visible only on
-    // the extreme ends — so this stays a load-bearing constant.
+/**
+ * Reusable row of slider tick labels, anchored to their true fractional
+ * positions along the slider track. Extracted from the punctuation
+ * slider (#139, Tessa's #146) so the buffer slider's `▲ N` recommended-
+ * max marker can share the same thumb-aligned placement math instead of
+ * the legacy weight-spacer trick.
+ *
+ * Why not [Row] with weight spacers? With multiple labels in a single
+ * [Row], Compose's weight system divides only the *remaining* width
+ * after measuring unweighted children (the Texts themselves), so each
+ * label drifts right by the cumulative widths of preceding labels.
+ * With four labels under the punctuation slider the drift visibly
+ * mismatched the thumb position (#139). Even the single-label
+ * [TickMarker] case for the buffer slider's `▲ 64` marker had the same
+ * intrinsic-width-leak — by 64-on-a-1500-wide-range the drift was
+ * subpixel, but at higher tick fractions or smaller parent widths the
+ * label slid right of the thumb just like the punctuation case.
+ *
+ * We also account for the M3 [Slider]'s internal track padding (half
+ * the thumb width = 10dp on each side), which the surrounding Column
+ * does not inherit. Fraction 0 in the parent layout maps to
+ * track-x = 0 + padding, not to the leftmost pixel of the parent.
+ *
+ * Each entry is `(label, fraction)` where `fraction ∈ [0, 1]` is the
+ * position along the slider track. Labels render in the order given;
+ * the last entry is right-aligned so its trailing characters don't
+ * overflow the parent edge.
+ */
+@Composable
+private fun SliderTickLabels(
+    ticks: List<Pair<String, Float>>,
+) {
+    if (ticks.isEmpty()) return
+
+    // M3 Slider reserves half the thumb diameter as track padding on
+    // each side (default thumb is 20dp, so 10dp). Hardcoded here
+    // because SliderDefaults doesn't expose this constant publicly. If
+    // the thumb size ever changes, the labels will drift by ≤10dp —
+    // visible only on the extreme ends — so this stays a load-bearing
+    // constant.
     val trackPaddingDp = SLIDER_TRACK_PADDING_DP
 
     Layout(
@@ -841,12 +861,21 @@ private fun PunctuationPauseTickLabels() {
         layout(rowWidth, height) {
             placeables.forEachIndexed { i, placeable ->
                 val frac = ticks[i].second
+                // The right-align rule exists to keep the rightmost-of-
+                // many label from running off the parent's right edge
+                // when its preceding labels have already consumed track
+                // space. With only one tick there's nothing preceding,
+                // so we anchor at the thumb-x just like a middle tick —
+                // this is what makes the buffer slider's `▲ 64` align
+                // with the thumb at value 64 instead of pinning to the
+                // right edge of the parent.
+                val isLast = ticks.size > 1 && i == ticks.lastIndex
                 val x = computeTickLabelX(
                     rowWidthPx = rowWidth,
                     trackPaddingPx = trackPaddingPx,
                     fraction = frac,
                     labelWidthPx = placeable.width,
-                    isLast = i == ticks.lastIndex,
+                    isLast = isLast,
                 )
                 placeable.place(x, 0)
             }
@@ -858,7 +887,7 @@ private fun PunctuationPauseTickLabels() {
 private const val SLIDER_TRACK_PADDING_DP: Int = 10
 
 /**
- * Pure placement math for [PunctuationPauseTickLabels], extracted for unit
+ * Pure placement math for [SliderTickLabels], extracted for unit
  * testing. Returns the integer x-offset (in pixels) at which a tick label
  * should be placed inside the parent so its visual ▲ caret sits at the
  * slider thumb position for the given [fraction].
