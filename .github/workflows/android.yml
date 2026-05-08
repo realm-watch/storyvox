@@ -76,7 +76,7 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          mv artifacts/app-debug.apk "artifacts/storyvox-${TAG}-debug.apk"
+          mv artifacts/app-debug.apk "artifacts/storyvox-${TAG}.apk"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
@@ -88,4 +88,4 @@ jobs:
             Debug APK build for `${{ github.ref_name }}`.
 
             > Unsigned debug build. Sideload at your own risk; signed release builds will arrive in a future version.
-          files: artifacts/storyvox-${{ github.ref_name }}-debug.apk
+          files: artifacts/storyvox-${{ github.ref_name }}.apk
