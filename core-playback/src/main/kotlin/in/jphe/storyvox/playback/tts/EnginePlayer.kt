@@ -571,6 +571,38 @@ class EnginePlayer @AssistedInject constructor(
                         }
                     }
 
+                    // While paused, DO NOT write into the AudioTrack —
+                    // a paused MODE_STREAM track does not drain its ring
+                    // buffer, so AudioTrack.write() returns 0 once the
+                    // buffer is full and the inner write loop spins at
+                    // URGENT_AUDIO priority forever (regression introduced
+                    // in PR #77, only surfaces with sub-realtime voices
+                    // like Piper-high on slow CPUs where headroom drops
+                    // below the underrun threshold). Park the consumer on
+                    // the headroom flow until the producer queues enough
+                    // audio to cross the resume threshold, then resume
+                    // the track and proceed with the write.
+                    if (paused) {
+                        try {
+                            runBlocking {
+                                source.bufferHeadroomMs.first {
+                                    it >= BUFFER_RESUME_THRESHOLD_MS || !pipelineRunning.get()
+                                }
+                            }
+                        } catch (_: Throwable) {
+                            // Interrupted by stopPlaybackPipeline (interrupt +
+                            // close). The pipelineRunning check below will
+                            // skip the resume; the outer while will exit.
+                        }
+                        if (pipelineRunning.get()) {
+                            runCatching { track.play() }
+                            paused = false
+                            scope.launch {
+                                _observableState.update { it.copy(isBuffering = false) }
+                            }
+                        }
+                    }
+
                     // Stamp the start of the AudioTrack-write phase for this
                     // chunk. Combined with the chunkEnd() below, this lets
                     // the perf lane log gap_ms = startN - endNm1, which is
