@@ -2,7 +2,6 @@ package `in`.jphe.storyvox.feature.settings
 
 import `in`.jphe.storyvox.feature.api.BUFFER_DEFAULT_CHUNKS
 import `in`.jphe.storyvox.feature.api.BUFFER_RECOMMENDED_MAX_CHUNKS
-import `in`.jphe.storyvox.feature.api.PunctuationPause
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiSettings
@@ -111,8 +110,8 @@ class SettingsViewModelBufferTest {
         override suspend fun setPollIntervalHours(hours: Int) {
             state.value = state.value.copy(pollIntervalHours = hours)
         }
-        override suspend fun setPunctuationPause(mode: PunctuationPause) {
-            state.value = state.value.copy(punctuationPause = mode)
+        override suspend fun setPunctuationPauseMultiplier(multiplier: Float) {
+            state.value = state.value.copy(punctuationPauseMultiplier = multiplier)
         }
         override suspend fun setPlaybackBufferChunks(chunks: Int) {
             bufferWrites += chunks
