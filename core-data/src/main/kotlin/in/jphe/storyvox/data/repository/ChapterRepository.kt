@@ -1,24 +1,13 @@
 package `in`.jphe.storyvox.data.repository
 
-import android.content.Context
-import androidx.work.BackoffPolicy
-import androidx.work.Constraints
-import androidx.work.Data
-import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import dagger.hilt.android.qualifiers.ApplicationContext
 import `in`.jphe.storyvox.data.db.dao.ChapterDao
 import `in`.jphe.storyvox.data.db.entity.Chapter
 import `in`.jphe.storyvox.data.db.entity.ChapterDownloadState
 import `in`.jphe.storyvox.data.repository.playback.PlaybackChapter
 import `in`.jphe.storyvox.data.source.model.ChapterContent
 import `in`.jphe.storyvox.data.source.model.ChapterInfo
-import `in`.jphe.storyvox.data.work.ChapterDownloadWorker
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import java.time.Duration
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -76,11 +65,9 @@ interface ChapterRepository {
 
 @Singleton
 class ChapterRepositoryImpl @Inject constructor(
-    @ApplicationContext private val context: Context,
     private val dao: ChapterDao,
+    private val scheduler: ChapterDownloadScheduler,
 ) : ChapterRepository {
-
-    private val workManager: WorkManager get() = WorkManager.getInstance(context)
 
     override fun observeChapters(fictionId: String): Flow<List<ChapterInfo>> =
         dao.observeChapterInfosByFiction(fictionId).map { rows -> rows.map(::toInfo) }
@@ -107,31 +94,10 @@ class ChapterRepositoryImpl @Inject constructor(
         chapterId: String,
         requireUnmetered: Boolean,
     ) {
+        // Mark QUEUED *before* dispatch so observers see the pending state
+        // immediately, even if the scheduler synchronously fast-paths.
         dao.setDownloadState(chapterId, ChapterDownloadState.QUEUED, System.currentTimeMillis(), null)
-
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(if (requireUnmetered) NetworkType.UNMETERED else NetworkType.CONNECTED)
-            .setRequiresBatteryNotLow(true)
-            .build()
-
-        val input = Data.Builder()
-            .putString(ChapterDownloadWorker.KEY_FICTION_ID, fictionId)
-            .putString(ChapterDownloadWorker.KEY_CHAPTER_ID, chapterId)
-            .putBoolean(ChapterDownloadWorker.KEY_REQUIRE_UNMETERED, requireUnmetered)
-            .build()
-
-        val request = OneTimeWorkRequestBuilder<ChapterDownloadWorker>()
-            .setConstraints(constraints)
-            .setInputData(input)
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, Duration.ofSeconds(30))
-            .addTag(ChapterDownloadWorker.TAG)
-            .build()
-
-        workManager.enqueueUniqueWork(
-            ChapterDownloadWorker.uniqueName(chapterId),
-            ExistingWorkPolicy.KEEP,
-            request,
-        )
+        scheduler.schedule(fictionId, chapterId, requireUnmetered)
     }
 
     override suspend fun queueAllMissing(fictionId: String, requireUnmetered: Boolean) {
