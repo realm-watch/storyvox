@@ -26,6 +26,7 @@ import `in`.jphe.storyvox.data.repository.ChapterRepository
 import `in`.jphe.storyvox.data.repository.PlaybackPositionRepository
 import `in`.jphe.storyvox.data.repository.playback.PlaybackBufferConfig
 import `in`.jphe.storyvox.data.repository.playback.PlaybackChapter
+import `in`.jphe.storyvox.data.repository.playback.PlaybackModeConfig
 import `in`.jphe.storyvox.playback.PlaybackError
 import `in`.jphe.storyvox.playback.PlaybackState
 import `in`.jphe.storyvox.playback.PlaybackUiEvent
@@ -95,6 +96,7 @@ class EnginePlayer @AssistedInject constructor(
     private val voiceManager: VoiceManager,
     private val volumeRamp: TtsVolumeRamp,
     private val bufferConfig: PlaybackBufferConfig,
+    private val modeConfig: PlaybackModeConfig,
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
 
     @AssistedFactory
@@ -146,15 +148,37 @@ class EnginePlayer @AssistedInject constructor(
     @Volatile
     private var cachedBufferChunks: Int = 8 // BUFFER_DEFAULT_CHUNKS — duplicated to avoid feature dep
 
+    /**
+     * Issue #98 — Mode B (Catch-up Pause) live cache. Gates the consumer
+     * thread's pause-buffer-resume branches in [startPlaybackPipeline].
+     * Volatile because the writer is the collector coroutine and the reader
+     * is the URGENT_AUDIO consumer thread; flips take effect on the next
+     * iteration of the consumer loop with no pipeline rebuild.
+     *
+     * Default true preserves PR #77's pause-buffer-resume contract; reading
+     * `true` until the first DataStore emission is the safe bias.
+     */
+    @Volatile
+    private var cachedCatchupPause: Boolean = true
+
     init {
         observeActiveVoice()
         observeBufferConfig()
+        observeModeConfig()
     }
 
     private fun observeBufferConfig() {
         scope.launch {
             bufferConfig.playbackBufferChunks.collect { v ->
                 cachedBufferChunks = v
+            }
+        }
+    }
+
+    private fun observeModeConfig() {
+        scope.launch {
+            modeConfig.catchupPause.collect { v ->
+                cachedCatchupPause = v
             }
         }
     }
@@ -503,7 +527,16 @@ class EnginePlayer @AssistedInject constructor(
                     // recovered above the resume threshold. If so, kick
                     // AudioTrack alive again so the next write lands in a
                     // playing track rather than a paused-then-played one.
-                    if (paused && source.bufferHeadroomMs.value >= BUFFER_RESUME_THRESHOLD_MS) {
+                    //
+                    // Issue #98 — Mode B gate. With Catch-up Pause off, this
+                    // branch never fires (paused is never true; see the
+                    // matching gate on the underrun pause branch below). The
+                    // `paused &&` short-circuit is the same fast-path either
+                    // way; the cached read is just for symmetry with the
+                    // pause branch.
+                    if (cachedCatchupPause &&
+                        paused &&
+                        source.bufferHeadroomMs.value >= BUFFER_RESUME_THRESHOLD_MS) {
                         runCatching { track.play() }
                         paused = false
                         scope.launch {
@@ -563,7 +596,14 @@ class EnginePlayer @AssistedInject constructor(
                     // write would land seconds before the listener hears
                     // silence, so the buffering UI needs to lead the audio
                     // by that margin.
-                    if (!paused && source.bufferHeadroomMs.value < BUFFER_UNDERRUN_THRESHOLD_MS) {
+                    //
+                    // Issue #98 — Mode B gate. With Catch-up Pause off, the
+                    // consumer drains through underruns without pausing:
+                    // listener may hear dead air, but never sees the
+                    // "Buffering…" UI. EngineStreamingSource is untouched.
+                    if (cachedCatchupPause &&
+                        !paused &&
+                        source.bufferHeadroomMs.value < BUFFER_UNDERRUN_THRESHOLD_MS) {
                         runCatching { track.pause() }
                         paused = true
                         scope.launch {

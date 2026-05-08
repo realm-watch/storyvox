@@ -13,6 +13,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import `in`.jphe.storyvox.data.auth.SessionHydrator
 import `in`.jphe.storyvox.data.repository.AuthRepository
 import `in`.jphe.storyvox.data.repository.playback.PlaybackBufferConfig
+import `in`.jphe.storyvox.data.repository.playback.PlaybackModeConfig
 import `in`.jphe.storyvox.feature.api.BUFFER_DEFAULT_CHUNKS
 import `in`.jphe.storyvox.feature.api.BUFFER_MAX_CHUNKS
 import `in`.jphe.storyvox.feature.api.BUFFER_MIN_CHUNKS
@@ -49,6 +50,15 @@ private object Keys {
      *  devices, so the persisted value is intentionally NOT clamped at a
      *  conservative ceiling; only the absolute mechanical bounds apply. */
     val PLAYBACK_BUFFER_CHUNKS = intPreferencesKey("pref_playback_buffer_chunks_v1")
+    /** Issue #98 — Mode A. Default true preserves the v0.4.30 spinner-on-warmup
+     *  behavior; OFF skips the warmup-wait UI and accepts silence at chapter
+     *  start. _v1 suffix matches PLAYBACK_BUFFER_CHUNKS' versioning so we can
+     *  rev defaults later without colliding with persisted v1 values. */
+    val WARMUP_WAIT = booleanPreferencesKey("pref_warmup_wait_v1")
+    /** Issue #98 — Mode B. Default true preserves PR #77's pause-buffer-resume
+     *  behavior on mid-stream underrun; OFF lets the consumer drain through
+     *  underruns without raising the "Buffering…" UI. */
+    val CATCHUP_PAUSE = booleanPreferencesKey("pref_catchup_pause_v1")
 }
 
 @Singleton
@@ -56,7 +66,7 @@ class SettingsRepositoryUiImpl(
     private val store: DataStore<Preferences>,
     private val auth: AuthRepository,
     private val hydrator: SessionHydrator,
-) : SettingsRepositoryUi, PlaybackBufferConfig {
+) : SettingsRepositoryUi, PlaybackBufferConfig, PlaybackModeConfig {
 
     /** Hilt entry point — pulls the production DataStore from the app context.
      *  The primary constructor takes the store directly so tests can swap in
@@ -84,6 +94,8 @@ class SettingsRepositoryUiImpl(
                 ?: PunctuationPause.Normal,
             playbackBufferChunks = (prefs[Keys.PLAYBACK_BUFFER_CHUNKS] ?: BUFFER_DEFAULT_CHUNKS)
                 .coerceIn(BUFFER_MIN_CHUNKS, BUFFER_MAX_CHUNKS),
+            warmupWait = prefs[Keys.WARMUP_WAIT] ?: true,
+            catchupPause = prefs[Keys.CATCHUP_PAUSE] ?: true,
             sigil = Sigil.current.let {
                 UiSigil(
                     name = it.name,
@@ -136,6 +148,14 @@ class SettingsRepositoryUiImpl(
         }
     }
 
+    override suspend fun setWarmupWait(enabled: Boolean) {
+        store.edit { it[Keys.WARMUP_WAIT] = enabled }
+    }
+
+    override suspend fun setCatchupPause(enabled: Boolean) {
+        store.edit { it[Keys.CATCHUP_PAUSE] = enabled }
+    }
+
     // --- PlaybackBufferConfig (consumed by core-playback's EnginePlayer) ---
 
     override val playbackBufferChunks: Flow<Int> = store.data.map { prefs ->
@@ -144,6 +164,13 @@ class SettingsRepositoryUiImpl(
     }
 
     override suspend fun currentBufferChunks(): Int = playbackBufferChunks.first()
+
+    // --- PlaybackModeConfig (issue #98) ---
+
+    override val warmupWait: Flow<Boolean> = store.data.map { it[Keys.WARMUP_WAIT] ?: true }
+    override val catchupPause: Flow<Boolean> = store.data.map { it[Keys.CATCHUP_PAUSE] ?: true }
+    override suspend fun currentWarmupWait(): Boolean = warmupWait.first()
+    override suspend fun currentCatchupPause(): Boolean = catchupPause.first()
 
     override suspend fun signIn() {
         // Just flips the persisted UI flag; the cookie capture is owned by

@@ -125,12 +125,22 @@ fun AudiobookView(
             // engine hasn't produced the first sentence yet (no sentence
             // range emitted). Sherpa-onnx model load + first synth can take
             // 5-15s on modest hardware.
-            val warmingUp = state.isPlaying && state.sentenceEnd == 0
+            //
+            // Issue #98 Mode A — `isWarmingUp` is gated server-side: when
+            // the user has Warm-up Wait off, this is always false even
+            // during the genuine warmup window, so the UI doesn't show the
+            // spinner. The listener trades visible feedback for silence at
+            // chapter start.
+            val warmingUp = state.isWarmingUp
             // "Buffering" = streaming pipeline ran out of generated PCM
             // mid-chapter (producer can't keep up — e.g. Piper-high on
             // Tab A7 Lite). Same brass spinner so the visual stays
             // consistent; status label distinguishes the two states so
             // the user knows what's happening.
+            //
+            // Issue #98 Mode B — `isBuffering` stays false through underrun
+            // when Catch-up Pause is off, so the consumer drains through
+            // the silence without surfacing a spinner.
             val showSpinner = warmingUp || state.isBuffering
             if (coverLoading) {
                 MagicSkeletonTile(
@@ -206,7 +216,7 @@ fun AudiobookView(
                 // "Buffering" = mid-chapter underrun on slow voice + slow
                 // device; same spinner so the play button stays visually
                 // consistent.
-                val warmingUp = state.isPlaying && state.sentenceEnd == 0
+                val warmingUp = state.isWarmingUp
                 val showSpinner = warmingUp || state.isBuffering
                 Box(contentAlignment = Alignment.Center) {
                     androidx.compose.animation.AnimatedVisibility(

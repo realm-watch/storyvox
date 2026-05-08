@@ -14,6 +14,7 @@ import `in`.jphe.storyvox.data.VoiceProviderUiImpl
 import `in`.jphe.storyvox.data.repository.ChapterRepository
 import `in`.jphe.storyvox.data.repository.FictionRepository
 import `in`.jphe.storyvox.data.repository.playback.PlaybackBufferConfig
+import `in`.jphe.storyvox.data.repository.playback.PlaybackModeConfig
 import `in`.jphe.storyvox.data.source.WebViewFetcher
 import `in`.jphe.storyvox.data.source.model.ContentWarning
 import `in`.jphe.storyvox.data.source.model.FictionResult
@@ -112,6 +113,14 @@ object AppBindings {
      */
     @Provides @Singleton
     fun providePlaybackBufferConfig(impl: SettingsRepositoryUiImpl): PlaybackBufferConfig = impl
+
+    /**
+     * Issue #98 — Mode A / Mode B contract for `core-playback`'s EnginePlayer.
+     * Same singleton instance as [provideSettingsRepositoryUi]; one DataStore,
+     * three contracts.
+     */
+    @Provides @Singleton
+    fun providePlaybackModeConfig(impl: SettingsRepositoryUiImpl): PlaybackModeConfig = impl
 
     /**
      * Stub WebViewFetcher — Selene's `:core-data` declares the interface; the
@@ -367,6 +376,15 @@ private class RealPlaybackControllerUi(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+    /**
+     * Issue #98 — Mode A live cache. Read by [toUi] when computing
+     * `isWarmingUp` + the wall-time freeze gate. Volatile because writers
+     * are coroutine collectors and readers are state-flow combine emissions
+     * on potentially different threads.
+     */
+    @Volatile
+    private var cachedWarmupWait: Boolean = true
+
     init {
         // Issue #90: keep the live engine's punctuation-pause multiplier in
         // sync with the persisted user preference. We do the observation here
@@ -384,6 +402,15 @@ private class RealPlaybackControllerUi(
                 .map { it.punctuationPause.multiplier }
                 .distinctUntilChanged()
                 .collect { controller.setPunctuationPauseMultiplier(it) }
+        }
+        // Issue #98 Mode A — mirror warmupWait into the volatile cache so the
+        // synchronous toUi mapper can read it without suspending. Same shape
+        // as EnginePlayer's cachedBufferChunks.
+        scope.launch {
+            settings.settings
+                .map { it.warmupWait }
+                .distinctUntilChanged()
+                .collect { cachedWarmupWait = it }
         }
     }
 
@@ -552,7 +579,14 @@ private class RealPlaybackControllerUi(
         // user hit play but no sentence audio has started yet. Otherwise the
         // scrubber slides forward during a 5-15s engine load even though no
         // audio has actually played.
-        val warmingUp = isPlaying && sentence == null
+        //
+        // Issue #98 Mode A — when Warm-up Wait is OFF, treat the warmup
+        // window as if playback had already started: the scrubber ticks from
+        // t=0 even though no audio plays, and `isWarmingUp` reports false
+        // so the UI doesn't show the spinner. The user trades the spinner
+        // for visible "playing" feedback + silence.
+        val rawWarmingUp = isPlaying && sentence == null
+        val warmingUp = rawWarmingUp && cachedWarmupWait
         val elapsedMs = if (isPlaying && !warmingUp) (nowMs - anchorElapsedMs).coerceAtLeast(0L) else 0L
         val positionMs = (baseMs + elapsedMs).coerceAtMost(durationEstimateMs.coerceAtLeast(baseMs))
         return UiPlaybackState(
@@ -563,6 +597,7 @@ private class RealPlaybackControllerUi(
             coverUrl = coverUri,
             isPlaying = isPlaying,
             isBuffering = isBuffering,
+            isWarmingUp = warmingUp,
             positionMs = positionMs,
             durationMs = durationEstimateMs,
             sentenceStart = sentence?.startCharInChapter ?: 0,

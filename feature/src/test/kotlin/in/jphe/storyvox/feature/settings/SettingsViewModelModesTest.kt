@@ -1,7 +1,6 @@
 package `in`.jphe.storyvox.feature.settings
 
 import `in`.jphe.storyvox.feature.api.BUFFER_DEFAULT_CHUNKS
-import `in`.jphe.storyvox.feature.api.BUFFER_RECOMMENDED_MAX_CHUNKS
 import `in`.jphe.storyvox.feature.api.PunctuationPause
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
@@ -25,12 +24,15 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * Verifies that [SettingsViewModel.setPlaybackBufferChunks] forwards the
- * value to the repository contract and that the ViewModel's exposed
- * [SettingsUiState.settings] reflects what the repository emits.
+ * Verifies the issue #98 Mode A / Mode B launchers on
+ * [SettingsViewModel] forward the value to the repository contract and
+ * that [SettingsUiState.settings] surfaces the repository's emissions.
+ *
+ * Mirrors [SettingsViewModelBufferTest]'s shape so the pair stays
+ * easy to compare side-by-side.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class SettingsViewModelBufferTest {
+class SettingsViewModelModesTest {
 
     @Before
     fun setUp() {
@@ -43,40 +45,49 @@ class SettingsViewModelBufferTest {
     }
 
     @Test
-    fun `setPlaybackBufferChunks forwards to the repository`() = runTest {
-        val repo = FakeSettingsRepo(initial = baseSettings(buffer = BUFFER_DEFAULT_CHUNKS))
+    fun `setWarmupWait forwards to the repository`() = runTest {
+        val repo = FakeSettingsRepo(initial = baseSettings(warmupWait = true, catchupPause = true))
         val vm = SettingsViewModel(repo, FakeVoiceProvider())
 
-        vm.setPlaybackBufferChunks(192)
+        vm.setWarmupWait(false)
 
-        assertEquals(listOf(192), repo.bufferWrites)
+        assertEquals(listOf(false), repo.warmupWaitWrites)
     }
 
     @Test
-    fun `viewmodel uiState surfaces repository's buffer value`() = runTest {
-        val repo = FakeSettingsRepo(initial = baseSettings(buffer = 256))
+    fun `setCatchupPause forwards to the repository`() = runTest {
+        val repo = FakeSettingsRepo(initial = baseSettings(warmupWait = true, catchupPause = true))
         val vm = SettingsViewModel(repo, FakeVoiceProvider())
 
-        // The shared flow's WhileSubscribed needs an active subscriber; first()
-        // covers that for the duration of the read.
+        vm.setCatchupPause(false)
+
+        assertEquals(listOf(false), repo.catchupPauseWrites)
+    }
+
+    @Test
+    fun `viewmodel uiState surfaces both mode values`() = runTest {
+        val repo = FakeSettingsRepo(initial = baseSettings(warmupWait = false, catchupPause = false))
+        val vm = SettingsViewModel(repo, FakeVoiceProvider())
+
         val emitted = vm.uiState.first { it.settings != null }
-        assertEquals(256, emitted.settings?.playbackBufferChunks)
+        assertEquals(false, emitted.settings?.warmupWait)
+        assertEquals(false, emitted.settings?.catchupPause)
     }
 
     @Test
-    fun `viewmodel allows past-the-tick values`() = runTest {
-        // Issue #84 — the ViewModel must not clamp at the recommended max;
-        // that's the whole point of the experimental probe. Repo is the only
-        // layer that applies the absolute mechanical bounds.
-        val repo = FakeSettingsRepo(initial = baseSettings(buffer = BUFFER_DEFAULT_CHUNKS))
+    fun `Mode A and Mode B writes are independent`() = runTest {
+        val repo = FakeSettingsRepo(initial = baseSettings(warmupWait = true, catchupPause = true))
         val vm = SettingsViewModel(repo, FakeVoiceProvider())
 
-        vm.setPlaybackBufferChunks(BUFFER_RECOMMENDED_MAX_CHUNKS * 8)
+        vm.setWarmupWait(false)
+        vm.setCatchupPause(false)
+        vm.setWarmupWait(true)
 
-        assertEquals(listOf(BUFFER_RECOMMENDED_MAX_CHUNKS * 8), repo.bufferWrites)
+        assertEquals(listOf(false, true), repo.warmupWaitWrites)
+        assertEquals(listOf(false), repo.catchupPauseWrites)
     }
 
-    private fun baseSettings(buffer: Int): UiSettings = UiSettings(
+    private fun baseSettings(warmupWait: Boolean, catchupPause: Boolean): UiSettings = UiSettings(
         ttsEngine = "VoxSherpa",
         defaultVoiceId = null,
         defaultSpeed = 1.0f,
@@ -86,13 +97,16 @@ class SettingsViewModelBufferTest {
         pollIntervalHours = 6,
         isSignedIn = false,
         sigil = UiSigil.UNKNOWN,
-        playbackBufferChunks = buffer,
+        playbackBufferChunks = BUFFER_DEFAULT_CHUNKS,
+        warmupWait = warmupWait,
+        catchupPause = catchupPause,
     )
 
     private class FakeSettingsRepo(initial: UiSettings) : SettingsRepositoryUi {
         private val state = MutableStateFlow(initial)
         override val settings: Flow<UiSettings> = state
-        val bufferWrites: MutableList<Int> = mutableListOf()
+        val warmupWaitWrites: MutableList<Boolean> = mutableListOf()
+        val catchupPauseWrites: MutableList<Boolean> = mutableListOf()
         override suspend fun setTheme(override: ThemeOverride) {
             state.value = state.value.copy(themeOverride = override)
         }
@@ -115,13 +129,14 @@ class SettingsViewModelBufferTest {
             state.value = state.value.copy(punctuationPause = mode)
         }
         override suspend fun setPlaybackBufferChunks(chunks: Int) {
-            bufferWrites += chunks
             state.value = state.value.copy(playbackBufferChunks = chunks)
         }
         override suspend fun setWarmupWait(enabled: Boolean) {
+            warmupWaitWrites += enabled
             state.value = state.value.copy(warmupWait = enabled)
         }
         override suspend fun setCatchupPause(enabled: Boolean) {
+            catchupPauseWrites += enabled
             state.value = state.value.copy(catchupPause = enabled)
         }
         override suspend fun signIn() = Unit
