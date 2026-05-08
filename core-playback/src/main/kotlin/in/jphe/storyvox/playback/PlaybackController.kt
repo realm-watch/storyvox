@@ -33,6 +33,8 @@ interface PlaybackController {
     fun setSpeed(speed: Float)
     fun setPitch(pitch: Float)
     fun setVoice(voiceId: String)
+    /** Issue #90 — see [in.jphe.storyvox.playback.tts.EnginePlayer.setPunctuationPauseMultiplier]. */
+    fun setPunctuationPauseMultiplier(multiplier: Float)
 
     fun startSleepTimer(mode: SleepTimerMode)
     fun cancelSleepTimer()
@@ -131,6 +133,10 @@ class DefaultPlaybackController @Inject constructor(
 
     override fun setVoice(voiceId: String) {
         player?.setVoice(voiceId)
+    }
+
+    override fun setPunctuationPauseMultiplier(multiplier: Float) {
+        player?.setPunctuationPauseMultiplier(multiplier)
     }
 
     override fun startSleepTimer(mode: SleepTimerMode) {

@@ -94,7 +94,8 @@ object AppBindings {
         @ApplicationContext context: Context,
         controller: PlaybackController,
         chapters: ChapterRepository,
-    ): PlaybackControllerUi = RealPlaybackControllerUi(context, controller, chapters)
+        settings: SettingsRepositoryUi,
+    ): PlaybackControllerUi = RealPlaybackControllerUi(context, controller, chapters, settings)
 
     @Provides @Singleton
     fun provideVoiceProviderUi(impl: VoiceProviderUiImpl): VoiceProviderUi = impl
@@ -351,9 +352,30 @@ private class RealPlaybackControllerUi(
     private val context: Context,
     private val controller: PlaybackController,
     private val chapters: ChapterRepository,
+    private val settings: SettingsRepositoryUi,
 ) : PlaybackControllerUi {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    init {
+        // Issue #90: keep the live engine's punctuation-pause multiplier in
+        // sync with the persisted user preference. We do the observation here
+        // (rather than in core-playback's StoryvoxPlaybackService) because
+        // SettingsRepositoryUi lives in feature/api — adding it as a dep on
+        // core-playback would invert the layering. This adapter is the
+        // first place both modules already meet, so it's the right seam.
+        //
+        // Distinct on the multiplier value (not the enum) so a no-op enum
+        // re-emission from DataStore hydration doesn't trigger a needless
+        // pipeline rebuild via setPunctuationPauseMultiplier (which calls
+        // startPlaybackPipeline if currently playing).
+        scope.launch {
+            settings.settings
+                .map { it.punctuationPause.multiplier }
+                .distinctUntilChanged()
+                .collect { controller.setPunctuationPauseMultiplier(it) }
+        }
+    }
 
     /**
      * Position interpolation: the underlying [PlaybackState.charOffset] only
@@ -420,6 +442,8 @@ private class RealPlaybackControllerUi(
     override fun setSpeed(speed: Float) = controller.setSpeed(speed)
     override fun setPitch(pitch: Float) = controller.setPitch(pitch)
     override fun setVoice(voiceId: String) = controller.setVoice(voiceId)
+    override fun setPunctuationPauseMultiplier(multiplier: Float) =
+        controller.setPunctuationPauseMultiplier(multiplier)
 
     override fun startSleepTimer(mode: UiSleepTimerMode) {
         val internal = when (mode) {

@@ -41,6 +41,13 @@ import kotlinx.coroutines.sync.withLock
  *  AND scales the trailing-cadence pause down at faster speeds so a 2× listener
  *  doesn't sit through 700 ms gaps.
  * @param pitch pitch multiplier, fed to engine.
+ * @param punctuationPauseMultiplier scales the inter-sentence silence
+ *  spliced after each sentence's PCM (issue #90). 0f = no trailing silence
+ *  at all; 1f = the audiobook-tuned default in [trailingPauseMs]; >1f
+ *  lengthens proportionally. Applied AFTER the speed scaling so the
+ *  semantic is "pause length the user wants to hear" — at 2× playback
+ *  with multiplier=1f the listener still gets a sensible 175 ms gap, and
+ *  at multiplier=0f they get no gap regardless of speed.
  * @param queueCapacity bounded queue depth; producer back-pressures when full.
  *  Defaults to 8 to match the prior EnginePlayer constant.
  */
@@ -56,6 +63,7 @@ class EngineStreamingSource(
      *  loadModel().destroy() while the prior source's generator is still
      *  inside the JNI generate(...) call, corrupting native state. */
     private val engineMutex: Mutex,
+    private val punctuationPauseMultiplier: Float = 1f,
     private val queueCapacity: Int = 8,
 ) : PcmSource {
 
@@ -135,7 +143,18 @@ class EngineStreamingSource(
                     engine.generateAudioPCM(s.text, speed, pitch)
                 } ?: continue
                 if (!running.get()) return@launch
-                val pauseMs = trailingPauseMs(s.text) / speed.coerceAtLeast(0.5f)
+                // Issue #90: the user-facing punctuation-pause selector
+                // (Off/Normal/Long) lands here as a multiplier. 0× kills
+                // the silence entirely, 1× preserves the pre-#90 default,
+                // 1.75× ("Long") stretches it. Speed scaling still applies
+                // on top so a 2× listener doesn't sit through long gaps
+                // even on Long. coerceAtLeast(0f) defends against a
+                // negative slipping in from a bad caller — silenceBytesFor
+                // already coerces non-positive durations to 0 but we also
+                // want the toInt() floor to behave.
+                val mult = punctuationPauseMultiplier.coerceAtLeast(0f)
+                val pauseMs =
+                    (trailingPauseMs(s.text) * mult) / speed.coerceAtLeast(0.5f)
                 val silenceBytes = silenceBytesFor(pauseMs.toInt(), sampleRate)
                 val chunk = PcmChunk(
                     sentenceIndex = i,

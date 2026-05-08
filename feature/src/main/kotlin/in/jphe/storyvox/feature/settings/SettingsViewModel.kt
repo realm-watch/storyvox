@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import `in`.jphe.storyvox.feature.api.PunctuationPause
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiSettings
@@ -41,6 +42,9 @@ class SettingsViewModel @Inject constructor(
     fun setDefaultVoice(id: String?) = viewModelScope.launch { repo.setDefaultVoice(id) }
     fun setWifiOnly(enabled: Boolean) = viewModelScope.launch { repo.setDownloadOnWifiOnly(enabled) }
     fun setPollHours(h: Int) = viewModelScope.launch { repo.setPollIntervalHours(h) }
+    /** Issue #90 — three-stop punctuation-pause selector. */
+    fun setPunctuationPause(mode: PunctuationPause) =
+        viewModelScope.launch { repo.setPunctuationPause(mode) }
     fun signIn() = viewModelScope.launch { repo.signIn() }
     fun signOut() = viewModelScope.launch { repo.signOut() }
     fun previewVoice(voice: UiVoice) = voices.previewVoice(voice)

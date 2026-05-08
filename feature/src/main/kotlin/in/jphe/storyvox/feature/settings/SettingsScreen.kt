@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import `in`.jphe.storyvox.feature.api.PunctuationPause
 import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
@@ -66,6 +67,22 @@ fun SettingsScreen(
             steps = 29, // 0.01 per step
         )
         Text("Pitch ${"%.2f".format(s.defaultPitch)}×", style = MaterialTheme.typography.bodySmall)
+
+        // Issue #90: three-stop selector for the inter-sentence silence
+        // splice. Same brass-button-row aesthetic as the Theme picker so
+        // it feels like a sibling control.
+        Text("Pause after . , ? ! ; :", style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "How long to pause between sentences. Off makes the reader sprint; Long gives narration room to breathe.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+            PunctuationPause.entries.forEach { mode ->
+                val variant = if (s.punctuationPause == mode) BrassButtonVariant.Primary else BrassButtonVariant.Secondary
+                BrassButton(label = mode.name, onClick = { viewModel.setPunctuationPause(mode) }, variant = variant)
+            }
+        }
 
         Divider()
         SectionHeader("Theme")

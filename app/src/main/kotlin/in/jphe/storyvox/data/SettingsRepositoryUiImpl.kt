@@ -12,6 +12,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import `in`.jphe.storyvox.data.auth.SessionHydrator
 import `in`.jphe.storyvox.data.repository.AuthRepository
+import `in`.jphe.storyvox.feature.api.PunctuationPause
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiSettings
@@ -32,6 +33,12 @@ private object Keys {
     val DOWNLOAD_WIFI_ONLY = booleanPreferencesKey("pref_download_wifi_only")
     val POLL_INTERVAL_HOURS = intPreferencesKey("pref_poll_interval_hours")
     val SIGNED_IN = booleanPreferencesKey("pref_signed_in")
+    /** Issue #90 — three-stop selector for inter-sentence silence. Stored
+     *  as the enum name (`OFF`/`NORMAL`/`LONG`) for forward-compat if we
+     *  add stops later (matches THEME_OVERRIDE encoding). Default = NORMAL
+     *  preserves pre-#90 audiobook cadence on first launch + on existing
+     *  installs that have no value persisted. */
+    val PUNCTUATION_PAUSE = stringPreferencesKey("pref_punctuation_pause")
 }
 
 @Singleton
@@ -54,6 +61,9 @@ class SettingsRepositoryUiImpl @Inject constructor(
             downloadOnWifiOnly = prefs[Keys.DOWNLOAD_WIFI_ONLY] ?: true,
             pollIntervalHours = prefs[Keys.POLL_INTERVAL_HOURS] ?: 6,
             isSignedIn = prefs[Keys.SIGNED_IN] ?: false,
+            punctuationPause = prefs[Keys.PUNCTUATION_PAUSE]
+                ?.let { runCatching { PunctuationPause.valueOf(it) }.getOrNull() }
+                ?: PunctuationPause.Normal,
             sigil = Sigil.current.let {
                 UiSigil(
                     name = it.name,
@@ -94,6 +104,10 @@ class SettingsRepositoryUiImpl @Inject constructor(
 
     override suspend fun setPollIntervalHours(hours: Int) {
         store.edit { it[Keys.POLL_INTERVAL_HOURS] = hours.coerceIn(1, 24) }
+    }
+
+    override suspend fun setPunctuationPause(mode: PunctuationPause) {
+        store.edit { it[Keys.PUNCTUATION_PAUSE] = mode.name }
     }
 
     override suspend fun signIn() {
