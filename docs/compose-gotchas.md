@@ -62,19 +62,70 @@ ColumnScope/RowScope.
 
 **Receipt.** PR #56 (spinner crossfade — both AudiobookView spinner sites).
 
-### Same trap, broader family: `AnimatedContent` and `Crossfade`
+### `Crossfade` — same shadowing, same fix
 
-The same scope-shadowing applies to:
+The shadowing applies identically to `Crossfade`. Same context (a `Box`
+inside a `Column` or `Row`), same compiler error pointing at the call
+site, same fix:
 
-- `ColumnScope.AnimatedContent` / `RowScope.AnimatedContent`
-- `Crossfade` overloads with scope-receiver variants
+```kotlin
+androidx.compose.animation.Crossfade(
+    targetState = isPlaying,
+    animationSpec = tween(motion.standardDurationMs, easing = motion.standardEasing),
+    label = "playPauseIcon",
+) { playing ->
+    if (playing) PauseIcon() else PlayIcon()
+}
+```
 
-If you hit "cannot be called in this context with an implicit receiver"
-on any of these inside a Box-in-Column or Box-in-Row, the fix is the same
-fully-qualified-package call. The pattern: a Compose function with both a
-scope-extension and a top-level form will silently pick the scope one if
-*any* enclosing scope makes it visible, even when your immediate
-receiver doesn't match.
+Crossfade's lambda contract matches the AnimatedVisibility family
+closely enough that the ergonomics don't change — it's purely a resolver
+disambiguation.
+
+### `AnimatedContent` — same shadowing, different lambda contract
+
+`AnimatedContent` shares the scope-shadowing trap but the rescue is
+slightly more involved because the lambda contract differs from
+`AnimatedVisibility`. The scoped overload's content lambda receives the
+**target value** (`T`), not a boolean — so a fully-qualified call still
+needs the lambda to consume the target:
+
+```kotlin
+androidx.compose.animation.AnimatedContent(
+    targetState = state.tab,
+    transitionSpec = { fadeIn() togetherWith fadeOut() },
+    label = "browseTab",
+) { tab ->
+    when (tab) {
+        BrowseTab.Popular -> PopularGrid(...)
+        BrowseTab.NewReleases -> NewReleasesGrid(...)
+        BrowseTab.BestRated -> BestRatedGrid(...)
+        BrowseTab.Search -> SearchResults(...)
+    }
+}
+```
+
+**Why the lambda contract matters here.** When `AnimatedVisibility` gets
+swapped for the Crossfade workaround, the body sees the same lexical
+state it always saw (you read your own `var` or state inside the
+lambda). With `AnimatedContent` the body MUST take the lambda parameter
+— forgetting it gives you a different compile error (`Cannot infer type
+parameter T`) that masquerades as a generics problem rather than the
+scope-shadowing problem it really is. If you see *that* error when
+adding `AnimatedContent`, suspect scope shadowing and add the
+lambda-arg first; the import disambiguation is the second half.
+
+### The pattern
+
+A Compose function with **both** a scope-extension form and a top-level
+form will silently pick the scope one if *any* enclosing scope makes it
+visible, even when your immediate receiver doesn't match. The fix is
+always fully-qualified import. The trap repeats for any future Compose
+animation primitive that ships with `BoxScope.X` / `ColumnScope.X` /
+`RowScope.X` extensions and a top-level fallback. When you see "cannot
+be called in this context with an implicit receiver" on a Compose
+primitive inside a nested layout, fully-qualified package is the first
+thing to try.
 
 ---
 
