@@ -126,6 +126,12 @@ fun AudiobookView(
             // range emitted). Sherpa-onnx model load + first synth can take
             // 5-15s on modest hardware.
             val warmingUp = state.isPlaying && state.sentenceEnd == 0
+            // "Buffering" = streaming pipeline ran out of generated PCM
+            // mid-chapter (producer can't keep up — e.g. Piper-high on
+            // Tab A7 Lite). Same brass spinner so the visual stays
+            // consistent; status label distinguishes the two states so
+            // the user knows what's happening.
+            val showSpinner = warmingUp || state.isBuffering
             if (coverLoading) {
                 MagicSkeletonTile(
                     modifier = Modifier.size(width = 220.dp, height = 330.dp),
@@ -146,7 +152,7 @@ fun AudiobookView(
                     // popping — visual swap to the playing state stays
                     // continuous instead of abrupt.
                     androidx.compose.animation.AnimatedVisibility(
-                        visible = warmingUp,
+                        visible = showSpinner,
                         enter = spinnerEnter,
                         exit = spinnerExit,
                     ) {
@@ -163,10 +169,11 @@ fun AudiobookView(
                 when {
                     state.chapterTitle.isBlank() -> "Loading voice + chapter text"
                     warmingUp -> "Voice waking up…"
+                    state.isBuffering -> "Buffering…"
                     else -> state.chapterTitle
                 },
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (warmingUp) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (showSpinner) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(spacing.xs))
             BrassProgressTrack(
@@ -174,7 +181,7 @@ fun AudiobookView(
                 durationMs = state.durationMs,
                 onSeekTo = onSeekTo,
                 modifier = Modifier.fillMaxWidth(),
-                loading = warmingUp,
+                loading = showSpinner,
             )
             if (state.sleepTimerRemainingMs != null) {
                 SleepTimerCountdownChip(remainingMs = state.sleepTimerRemainingMs, onCancel = onCancelSleepTimer)
@@ -196,10 +203,14 @@ fun AudiobookView(
                 // sentence range emitted). Sherpa-onnx model load + first
                 // synth can take 5-15s on modest hardware; without this
                 // indicator the play button looks dead during that gap.
+                // "Buffering" = mid-chapter underrun on slow voice + slow
+                // device; same spinner so the play button stays visually
+                // consistent.
                 val warmingUp = state.isPlaying && state.sentenceEnd == 0
+                val showSpinner = warmingUp || state.isBuffering
                 Box(contentAlignment = Alignment.Center) {
                     androidx.compose.animation.AnimatedVisibility(
-                        visible = warmingUp,
+                        visible = showSpinner,
                         enter = spinnerEnter,
                         exit = spinnerExit,
                     ) {

@@ -528,6 +528,7 @@ private class RealPlaybackControllerUi(
             fictionTitle = bookTitle.orEmpty(),
             coverUrl = coverUri,
             isPlaying = isPlaying,
+            isBuffering = isBuffering,
             positionMs = positionMs,
             durationMs = durationEstimateMs,
             sentenceStart = sentence?.startCharInChapter ?: 0,
