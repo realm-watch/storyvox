@@ -205,6 +205,11 @@ data class UiPlaybackState(
     val fictionTitle: String,
     val coverUrl: String?,
     val isPlaying: Boolean,
+    /** True when the streaming TTS pipeline has paused AudioTrack waiting
+     *  for the producer to refill the queue past the underrun threshold.
+     *  UI surfaces a "Buffering..." spinner; differs from `!isPlaying`
+     *  (user pause) and from initial voice warm-up (sentenceEnd == 0). */
+    val isBuffering: Boolean = false,
     val positionMs: Long,
     val durationMs: Long,
     /** Char index into the chapter text where the current sentence begins. */

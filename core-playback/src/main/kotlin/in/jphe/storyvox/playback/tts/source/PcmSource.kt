@@ -1,0 +1,73 @@
+package `in`.jphe.storyvox.playback.tts.source
+
+import `in`.jphe.storyvox.playback.SentenceRange
+
+/**
+ * Source of PCM chunks for the EnginePlayer consumer to write to AudioTrack.
+ *
+ * Two impls (PR-A only ships [EngineStreamingSource]; `CacheFileSource`
+ * follows in PR-E):
+ *  - [EngineStreamingSource] runs the VoxSherpa engine on a worker
+ *    coroutine, putting generated PCM into a queue. [nextChunk] blocks
+ *    on `queue.take`. Subject to producer-can't-keep-up underrun on
+ *    slow voice + slow device combos (Piper-high on Tab A7 Lite).
+ *  - `CacheFileSource` (PR-E) mmap-reads a pre-rendered chapter PCM file.
+ *    Never blocks for long.
+ *
+ * The consumer treats both uniformly. When the source is exhausted
+ * (chapter end), [nextChunk] returns null.
+ */
+sealed interface PcmSource {
+
+    /** Sample rate of every chunk this source yields. Stable for the
+     *  source's lifetime; the consumer sizes its AudioTrack from this. */
+    val sampleRate: Int
+
+    /**
+     * Pull the next chunk. Suspends if the source has no chunk ready
+     * (streaming impl: producer hasn't generated the next sentence yet;
+     * cache impl: never blocks meaningfully). Returns null when the
+     * chapter is fully drained.
+     *
+     * Cancellation: if the calling coroutine is cancelled, blocked
+     * impls must throw [kotlinx.coroutines.CancellationException]
+     * promptly so the consumer can shut down. The streaming impl
+     * achieves this via [kotlinx.coroutines.runInterruptible] around
+     * the underlying `queue.take`.
+     */
+    suspend fun nextChunk(): PcmChunk?
+
+    /**
+     * Re-anchor the source to the sentence containing [charOffset].
+     * Streaming impl cancels the producer and restarts at the new
+     * sentence index. Cache impl seeks the underlying file via the
+     * sidecar index.
+     */
+    suspend fun seekToCharOffset(charOffset: Int)
+
+    /** Release any resources (cancel producer, close mmap, etc).
+     *  Wakes any consumer blocked in [nextChunk] so it can exit. */
+    suspend fun close()
+}
+
+/**
+ * One chunk of PCM tagged with its sentence range. The trailing
+ * silence is intentional cadence; the consumer spools this many bytes
+ * of zero-PCM after the audible PCM to give sentences breathing
+ * room. See `EngineStreamingSource.trailingPauseMs` for the
+ * punctuation-driven sizing.
+ */
+data class PcmChunk(
+    val sentenceIndex: Int,
+    val range: SentenceRange,
+    val pcm: ByteArray,
+    val trailingSilenceBytes: Int,
+) {
+    /** Equality is identity-based to keep equals cheap; the consumer
+     *  never compares chunks, and the default equals on a data class
+     *  with a ByteArray field is structurally wrong (compares array
+     *  references) AND an O(N) cliff if we ever fix it to compare
+     *  contents. Identity is correct and trivial. */
+    override fun equals(other: Any?): Boolean = this === other
+    override fun hashCode(): Int = sentenceIndex
+}

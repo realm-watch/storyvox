@@ -9,6 +9,11 @@ data class PlaybackState(
     val charOffset: Int = 0,
     val durationEstimateMs: Long = 0L,
     val isPlaying: Boolean = false,
+    /** True when the AudioTrack is paused waiting for the producer to
+     *  refill the queue past the underrun threshold. UI surfaces a
+     *  "Buffering..." spinner; differs from `!isPlaying` (user pause)
+     *  and from `isPlaying && sentenceEnd == 0` (initial voice warm-up). */
+    val isBuffering: Boolean = false,
     val currentSentenceRange: SentenceRange? = null,
     val voiceId: String? = null,
     val speed: Float = 1.0f,
