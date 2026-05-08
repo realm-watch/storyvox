@@ -55,6 +55,21 @@ internal data class GhContent(
 )
 
 /**
+ * Decode [GhContent.content] to UTF-8 text. GitHub wraps base64 bodies
+ * at 60 cols with `\n` separators (RFC 2045), which `Base64.getDecoder`
+ * tolerates only with `getMimeDecoder`. Returns null when the content
+ * isn't a base64-encoded file (e.g. dir listing, oversized binary).
+ */
+internal fun GhContent.decodedText(): String? {
+    if (type != "file" || encoding != "base64" || content.isNullOrBlank()) return null
+    return runCatching {
+        java.util.Base64.getMimeDecoder()
+            .decode(content)
+            .toString(Charsets.UTF_8)
+    }.getOrNull()
+}
+
+/**
  * `GET /repos/{owner}/{repo}/compare/{base}...{head}`. Used for
  * commit-SHA-based new-chapter detection: the source stores the
  * last-seen commit, polls compare with that as base, and walks the

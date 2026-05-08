@@ -5,6 +5,7 @@ import `in`.jphe.storyvox.data.auth.SessionState
 import `in`.jphe.storyvox.data.db.dao.AuthDao
 import `in`.jphe.storyvox.data.db.entity.AuthCookie
 import `in`.jphe.storyvox.data.source.FictionSource
+import `in`.jphe.storyvox.data.source.SourceIds
 import `in`.jphe.storyvox.data.source.model.FictionResult
 import androidx.core.content.edit
 import kotlinx.coroutines.CoroutineScope
@@ -59,13 +60,15 @@ class AuthRepositoryImpl @Inject constructor(
     private val state = MutableStateFlow<SessionState>(SessionState.Anonymous)
     override val sessionState: StateFlow<SessionState> = state.asStateFlow()
 
-    // Auth is per-source. Today only one source binds a SessionHydrator
-    // (RoyalRoad), so we pin to the only bound FictionSource. When GitHub
-    // source lands with its own auth flow, this becomes a per-call lookup
-    // — the cookie store is already keyed `cookie:$sourceId` so the data
-    // layer doesn't need migration.
-    private val source: FictionSource = sources.values.singleOrNull()
-        ?: error("AuthRepository: expected exactly one FictionSource bound, got ${sources.keys}")
+    // Auth is per-source. Royal Road is the only source with a
+    // SessionHydrator wired today; GitHub source (3d-detail-and-chapter
+    // and beyond) has no auth flow until step 3f adds optional PAT
+    // support. Pin to Royal Road explicitly. When GitHub auth lands
+    // this becomes a per-call lookup — the cookie store is already
+    // keyed `cookie:$sourceId` so the data layer doesn't need
+    // migration.
+    private val source: FictionSource = sources[SourceIds.ROYAL_ROAD]
+        ?: error("AuthRepository: expected $sources to bind ${SourceIds.ROYAL_ROAD}; got ${sources.keys}")
     private val sourceId: String get() = source.id
     private val cookieKey: String get() = "cookie:$sourceId"
 

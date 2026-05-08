@@ -137,6 +137,7 @@ dependencies {
     implementation(project(":core-playback"))
     implementation(project(":core-ui"))
     implementation(project(":source-royalroad"))
+    implementation(project(":source-github"))
     implementation(project(":feature"))
 
     implementation(libs.androidx.core.ktx)
