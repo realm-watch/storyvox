@@ -28,7 +28,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SecondaryTabRow
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -66,15 +70,25 @@ fun BrowseScreen(
     var showFilterSheet by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize().padding(top = spacing.md)) {
+        // Top-level source picker. Switches the multibinding lookup in
+        // FictionRepository between Royal Road and GitHub. Tabs and the
+        // filter sheet rebind to whatever the chosen source supports.
+        BrowseSourcePicker(
+            selected = state.sourceKey,
+            onSelect = viewModel::selectSource,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.md),
+        )
+
+        val supportedTabs = remember(state.sourceKey) { state.sourceKey.supportedTabs() }
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             SecondaryTabRow(
-                selectedTabIndex = state.tab.ordinal,
+                selectedTabIndex = supportedTabs.indexOf(state.tab).coerceAtLeast(0),
                 modifier = Modifier.weight(1f),
             ) {
-                BrowseTab.entries.forEach { tab ->
+                supportedTabs.forEach { tab ->
                     Tab(
                         selected = tab == state.tab,
                         onClick = { viewModel.selectTab(tab) },
@@ -82,13 +96,18 @@ fun BrowseScreen(
                     )
                 }
             }
-            FilterButton(
-                activeCount = state.filter.activeCount(),
-                onClick = { showFilterSheet = true },
-            )
+            // Filter sheet is RR-shaped (its dimensions don't yet
+            // translate to GitHub registry entries) so hide on GitHub.
+            // Step 8b will introduce a GitHub-shaped filter sheet.
+            if (state.sourceKey == BrowseSourceKey.RoyalRoad) {
+                FilterButton(
+                    activeCount = state.filter.activeCount(),
+                    onClick = { showFilterSheet = true },
+                )
+            }
         }
 
-        if (state.tab == BrowseTab.Search) {
+        if (state.tab == BrowseTab.Search && state.sourceKey == BrowseSourceKey.RoyalRoad) {
             OutlinedTextField(
                 value = state.query,
                 onValueChange = viewModel::setQuery,
@@ -119,7 +138,7 @@ fun BrowseScreen(
                 // hands us a fresh items list anyway; we just nudge the
                 // viewport back to the start so the user doesn't land
                 // mid-scroll into a different listing.
-                LaunchedEffect(state.tab, state.query, state.filter) {
+                LaunchedEffect(state.sourceKey, state.tab, state.query, state.filter) {
                     if (gridState.firstVisibleItemIndex != 0) {
                         gridState.scrollToItem(0)
                     }
@@ -311,6 +330,41 @@ private val BrowseTab.label: String
         BrowseTab.BestRated -> "Best Rated"
         BrowseTab.Search -> "Search"
     }
+
+/**
+ * Two-segment source picker pinned above the tab row. Material 3
+ * `SingleChoiceSegmentedButtonRow` with brass-tinted selection so it
+ * reads as part of the realm aesthetic and not a generic Material
+ * widget. Adding a new source is one more `forEach` entry once
+ * `BrowseSourceKey` grows.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BrowseSourcePicker(
+    selected: BrowseSourceKey,
+    onSelect: (BrowseSourceKey) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val keys = remember { BrowseSourceKey.entries }
+    SingleChoiceSegmentedButtonRow(modifier = modifier) {
+        keys.forEachIndexed { index, key ->
+            SegmentedButton(
+                selected = key == selected,
+                onClick = { onSelect(key) },
+                shape = SegmentedButtonDefaults.itemShape(
+                    index = index,
+                    count = keys.size,
+                ),
+                colors = SegmentedButtonDefaults.colors(
+                    activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ),
+            ) {
+                Text(key.displayName, style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
+}
 
 /** Number of independent filter knobs the user has actively set. */
 private fun BrowseFilter.activeCount(): Int {
