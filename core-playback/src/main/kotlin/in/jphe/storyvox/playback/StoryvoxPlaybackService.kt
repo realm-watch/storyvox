@@ -1,5 +1,6 @@
 package `in`.jphe.storyvox.playback
 
+import android.app.ForegroundServiceStartNotAllowedException
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -7,7 +8,9 @@ import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.TaskStackBuilder
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -202,14 +205,39 @@ class StoryvoxPlaybackService : MediaSessionService() {
             .setOngoing(true)
             .setStyle(MediaStyleNotificationHelper.MediaStyle(session))
             .build()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID,
-                notif,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notif)
+        // Issue #37: on Android 12+ (API 31), startForeground can throw
+        // ForegroundServiceStartNotAllowedException when the OS denies
+        // the foreground promotion (battery-saver-killed media-button
+        // exemption, OEM customizations, long-paused-then-resume after
+        // FG attribution lapsed). The previous code crashed the service
+        // on that path. Catch it, log, post a regular (non-foreground)
+        // notification so the user has *some* signal, and stopSelf so
+        // the service doesn't linger waiting for a promotion that
+        // won't arrive.
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notif,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notif)
+            }
+        } catch (e: Exception) {
+            // Guard the catch with a runtime version check rather than a
+            // typed catch — ForegroundServiceStartNotAllowedException is
+            // API 31+, and a typed catch on pre-31 devices crashes the
+            // service at class-load time, not just when thrown.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                e is ForegroundServiceStartNotAllowedException
+            ) {
+                Log.w(TAG, "FG-start denied; posting regular notification + stopSelf", e)
+                runCatching { NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notif) }
+                stopSelf()
+            } else {
+                throw e
+            }
         }
     }
 
@@ -255,6 +283,7 @@ class StoryvoxPlaybackService : MediaSessionService() {
     }
 
     companion object {
+        private const val TAG = "StoryvoxPlaybackService"
         const val CHANNEL_PLAYBACK = "playback"
         const val NOTIFICATION_ID = 1042
         /** FQN of the launcher Activity. Hardcoded so :core-playback doesn't
