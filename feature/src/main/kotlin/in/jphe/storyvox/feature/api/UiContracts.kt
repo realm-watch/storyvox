@@ -245,6 +245,14 @@ interface PlaybackControllerUi {
     fun setSpeed(speed: Float)
     fun setPitch(pitch: Float)
     fun setVoice(voiceId: String)
+    /**
+     * Scale the inter-sentence punctuation pause (issue #90). 0f disables
+     * trailing silence entirely; 1f is the audiobook-tuned default; >1f
+     * lengthens. Applied to the next sentence the producer generates —
+     * the live pipeline rebuilds so the change takes effect on the next
+     * sentence boundary, mirroring [setSpeed]/[setPitch].
+     */
+    fun setPunctuationPauseMultiplier(multiplier: Float)
     fun startListening(fictionId: String, chapterId: String, charOffset: Int = 0)
     fun startSleepTimer(mode: UiSleepTimerMode)
     fun cancelSleepTimer()
@@ -278,8 +286,39 @@ data class UiSettings(
     val downloadOnWifiOnly: Boolean,
     val pollIntervalHours: Int,
     val isSignedIn: Boolean,
+    val punctuationPause: PunctuationPause = PunctuationPause.Normal,
     val sigil: UiSigil = UiSigil.UNKNOWN,
 )
+
+/**
+ * Three-stop selector for the inter-sentence silence storyvox splices after
+ * each TTS sentence (issue #90). The base pause table lives in
+ * `EngineStreamingSource.trailingPauseMs(...)` — `.`/`?`/`!` get 350 ms,
+ * `;`/`:` get 200 ms, `,`/dashes get 120 ms, fallback 60 ms. This enum
+ * scales every output by [multiplier]:
+ *
+ *  - **Off** (0×) — no inter-sentence silence at all. Engine boundary +
+ *    AudioTrack scheduling latency are the only pause. Useful for fast
+ *    re-listens or low-latency reads.
+ *  - **Normal** (1×) — the audiobook-tuned default; what storyvox shipped
+ *    pre-#90.
+ *  - **Long** (1.75×) — slightly more dramatic cadence; useful for narration
+ *    where the listener wants more time between sentences.
+ *
+ * The 1.75× ceiling is conservative — anything beyond that started feeling
+ * unnatural in JP's audiobook-ear test at 1× speed. A larger ceiling can be
+ * justified later if the user feedback warrants it.
+ */
+enum class PunctuationPause {
+    Off, Normal, Long;
+
+    val multiplier: Float
+        get() = when (this) {
+            Off -> 0f
+            Normal -> 1f
+            Long -> 1.75f
+        }
+}
 
 /**
  * Realm-sigil version metadata captured at build time. Surfaced in the
@@ -323,6 +362,7 @@ interface SettingsRepositoryUi {
     suspend fun setDefaultVoice(voiceId: String?)
     suspend fun setDownloadOnWifiOnly(enabled: Boolean)
     suspend fun setPollIntervalHours(hours: Int)
+    suspend fun setPunctuationPause(mode: PunctuationPause)
     suspend fun signIn()
     suspend fun signOut()
 }

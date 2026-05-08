@@ -87,6 +87,61 @@ class EngineStreamingSourceTest {
     }
 
     @Test
+    fun `punctuationPauseMultiplier scales trailing silence`() = runBlocking {
+        // Issue #90 — verify the multiplier we plumb down from the
+        // Settings selector actually changes the silence slot in each
+        // PcmChunk. Two sentences ending in '.', so the base
+        // trailingPauseMs is 350 ms each; speed=1f so no speed-scaling
+        // contribution. We check three points:
+        //   - multiplier=0f → silenceBytes == 0  (Off)
+        //   - multiplier=1f → silenceBytes ≈ baseline (Normal — pre-#90)
+        //   - multiplier=2f → silenceBytes ≈ 2× baseline (Long-ish)
+        val sentences = listOf(
+            Sentence(0, 0, 10, "First."),
+            Sentence(1, 11, 20, "Second."),
+        )
+        val sampleRate = 22050
+        val pcm = ByteArray(100) // small, doesn't matter for silence assertion
+        val fakeEngine = FakeVoiceEngine(sampleRate) { pcm }
+
+        suspend fun firstChunkSilenceBytes(multiplier: Float): Int {
+            val src = EngineStreamingSource(
+                sentences = sentences,
+                startSentenceIndex = 0,
+                engine = fakeEngine,
+                speed = 1f,
+                pitch = 1f,
+                engineMutex = Mutex(),
+                punctuationPauseMultiplier = multiplier,
+            )
+            val chunk = src.nextChunk()
+            src.close()
+            return chunk?.trailingSilenceBytes ?: -1
+        }
+
+        val off = firstChunkSilenceBytes(0f)
+        val normal = firstChunkSilenceBytes(1f)
+        val long = firstChunkSilenceBytes(2f)
+
+        // Off: zero silence regardless of terminal punctuation.
+        assertEquals(0, off)
+
+        // Normal: matches the pre-#90 baseline of trailingPauseMs(".")=350ms
+        // → silenceBytesFor(350, 22050) = (22050 * 350 / 1000).toInt() * 2
+        // = 7717 * 2 = 15434.
+        assertEquals(15_434, normal)
+
+        // Long-ish (2×): roughly twice normal. Allow a ±2-byte tolerance
+        // for the int floor in silenceBytesFor (700 ms × 22050 / 1000 =
+        // 15435; × 2 = 30870 vs 2 × normal = 30868).
+        val expected = silenceBytesFor(700, sampleRate)
+        assertEquals(expected, long)
+        assert(long >= normal * 2 - 4 && long <= normal * 2 + 4) {
+            "Long ($long) should be ≈ 2× normal ($normal); diff = ${long - normal * 2}"
+        }
+    }
+
+    @Test
     fun `bufferHeadroomMs reflects queued audio duration`() = runBlocking {
         val sentences = listOf(
             Sentence(0, 0, 10, "One."),

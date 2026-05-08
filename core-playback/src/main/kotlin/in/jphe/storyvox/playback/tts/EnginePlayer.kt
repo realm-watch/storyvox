@@ -107,6 +107,15 @@ class EnginePlayer @AssistedInject constructor(
     private var currentSpeed: Float = 1.0f
     private var currentPitch: Float = 1.0f
 
+    /** Issue #90 — multiplier on the inter-sentence silence the producer
+     *  splices after each sentence's PCM. 0f = no trailing silence at all,
+     *  1f = the audiobook-tuned default, >1f lengthens. Wired through to
+     *  [EngineStreamingSource] on every pipeline rebuild (same lifecycle
+     *  as [currentSpeed] and [currentPitch] — changing it via
+     *  [setPunctuationPauseMultiplier] rebuilds the pipeline if playing,
+     *  so the new value takes effect on the next sentence boundary). */
+    private var currentPunctuationPauseMultiplier: Float = 1f
+
     /** Engine type for the currently-loaded voice. Set in [loadAndPlay]
      *  after a successful model load; read by the producer in
      *  [startPlaybackPipeline] to decide which engine drives generation. */
@@ -436,6 +445,7 @@ class EnginePlayer @AssistedInject constructor(
             speed = currentSpeed,
             pitch = currentPitch,
             engineMutex = engineMutex,
+            punctuationPauseMultiplier = currentPunctuationPauseMultiplier,
         )
         pcmSource = source
         pipelineRunning.set(true)
@@ -883,6 +893,24 @@ class EnginePlayer @AssistedInject constructor(
     fun setPitch(pitch: Float) {
         currentPitch = pitch
         _observableState.update { it.copy(pitch = pitch) }
+        if (_observableState.value.isPlaying) startPlaybackPipeline()
+        invalidateState()
+    }
+
+    /**
+     * Issue #90 — set the inter-sentence silence multiplier. 0f disables
+     * the splice entirely; 1f restores the default. Coerced to [0, 4] to
+     * defend against bad callers (the UI hard-codes Off=0 / Normal=1 /
+     * Long=1.75 today, but a future slider could pass arbitrary values).
+     *
+     * Mirrors [setSpeed] / [setPitch]: stores the new value, then rebuilds
+     * the pipeline so the next sentence the producer generates picks up
+     * the new multiplier. The currently-playing sentence finishes with
+     * whatever silence it was queued with — we don't try to retro-edit
+     * audio already in the AudioTrack ring buffer.
+     */
+    fun setPunctuationPauseMultiplier(multiplier: Float) {
+        currentPunctuationPauseMultiplier = multiplier.coerceIn(0f, 4f)
         if (_observableState.value.isPlaying) startPlaybackPipeline()
         invalidateState()
     }
