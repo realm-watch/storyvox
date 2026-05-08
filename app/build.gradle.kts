@@ -117,6 +117,18 @@ android {
         getByName("main") {
             java.srcDirs("src/main/kotlin")
         }
+        getByName("test") {
+            java.srcDirs("src/test/kotlin")
+        }
+    }
+
+    testOptions {
+        unitTests {
+            // Robolectric needs Android resources visible to the test classpath
+            // so it can spin up a stub application context. Required for
+            // StoryvoxRoutesTest, which calls into android.net.Uri.
+            isIncludeAndroidResources = true
+        }
     }
 
     packaging {
@@ -171,6 +183,14 @@ dependencies {
     coreLibraryDesugaring(libs.android.desugar.jdk.libs)
 
     testImplementation(libs.junit)
+    // Robolectric supplies a real android.net.Uri implementation under JVM
+    // unit tests so StoryvoxRoutesTest can verify the v0.4.25 encoding fix
+    // (Uri.encode in the route-builder) — the framework stub jar throws
+    // "Method not mocked" on every Uri.* call and isReturnDefaultValues
+    // would just hand us null, which won't catch a regression. This is
+    // the only Robolectric-using test in the repo today; if more land
+    // they should reuse this dep, not add their own.
+    testImplementation(libs.robolectric)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }
