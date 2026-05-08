@@ -21,6 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -42,8 +44,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import `in`.jphe.storyvox.playback.voice.EngineKey
+import `in`.jphe.storyvox.playback.voice.EngineType
 import `in`.jphe.storyvox.playback.voice.QualityLevel
 import `in`.jphe.storyvox.playback.voice.UiVoiceInfo
+import `in`.jphe.storyvox.playback.voice.VoiceGender
+import `in`.jphe.storyvox.playback.voice.VoiceLibrarySection
+import `in`.jphe.storyvox.playback.voice.flagForLanguage
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
@@ -137,29 +144,40 @@ fun VoiceLibraryScreen(
             } else {
                 installedByEngine.forEach { (engine, tiers) ->
                     val engineCount = tiers.values.sumOf { it.size }
+                    val engineKey = EngineKey(VoiceLibrarySection.Installed, engine.toCoreId())
+                    val isCollapsed = engineKey in state.collapsedEngines
                     item(key = "i-engine-${engine.name}") {
-                        EngineSubHeader(engine = engine, count = engineCount)
+                        EngineSubHeader(
+                            engine = engine,
+                            count = engineCount,
+                            isCollapsed = isCollapsed,
+                            onToggle = {
+                                viewModel.toggleEngineCollapsed(VoiceLibrarySection.Installed, engine)
+                            },
+                        )
                     }
-                    tiers.forEach { (tier, voicesInTier) ->
-                        item(key = "i-${engine.name}-tier-${tier.name}") {
-                            TierSubHeader(tier = tier, count = voicesInTier.size)
-                        }
-                        itemsIndexed(
-                            voicesInTier,
-                            key = { _, item -> "i-${item.id}" },
-                        ) { index, voice ->
-                            VoiceRow(
-                                voice = voice,
-                                isActive = voice.id == state.activeVoiceId,
-                                isFavorite = voice.id in state.favoriteIds,
-                                downloadingProgress = null,
-                                onTap = { viewModel.onRowTapped(voice) },
-                                onLongPress = { viewModel.requestDelete(voice) },
-                                onToggleFavorite = { viewModel.toggleFavorite(voice.id) },
-                                modifier = Modifier
-                                    .animateItem()
-                                    .cascadeReveal(index = index, key = voice.id),
-                            )
+                    if (!isCollapsed) {
+                        tiers.forEach { (tier, voicesInTier) ->
+                            item(key = "i-${engine.name}-tier-${tier.name}") {
+                                TierSubHeader(tier = tier, count = voicesInTier.size)
+                            }
+                            itemsIndexed(
+                                voicesInTier,
+                                key = { _, item -> "i-${item.id}" },
+                            ) { index, voice ->
+                                VoiceRow(
+                                    voice = voice,
+                                    isActive = voice.id == state.activeVoiceId,
+                                    isFavorite = voice.id in state.favoriteIds,
+                                    downloadingProgress = null,
+                                    onTap = { viewModel.onRowTapped(voice) },
+                                    onLongPress = { viewModel.requestDelete(voice) },
+                                    onToggleFavorite = { viewModel.toggleFavorite(voice.id) },
+                                    modifier = Modifier
+                                        .animateItem()
+                                        .cascadeReveal(index = index, key = voice.id),
+                                )
+                            }
                         }
                     }
                 }
@@ -175,31 +193,43 @@ fun VoiceLibraryScreen(
                 }
                 availableByEngine.forEach { (engine, tiers) ->
                     val engineCount = tiers.values.sumOf { it.size }
+                    val engineKey = EngineKey(VoiceLibrarySection.Available, engine.toCoreId())
+                    val isCollapsed = engineKey in state.collapsedEngines
                     item(key = "a-engine-${engine.name}") {
-                        EngineSubHeader(engine = engine, count = engineCount, dim = true)
+                        EngineSubHeader(
+                            engine = engine,
+                            count = engineCount,
+                            dim = true,
+                            isCollapsed = isCollapsed,
+                            onToggle = {
+                                viewModel.toggleEngineCollapsed(VoiceLibrarySection.Available, engine)
+                            },
+                        )
                     }
-                    tiers.forEach { (tier, voicesInTier) ->
-                        item(key = "a-${engine.name}-tier-${tier.name}") {
-                            TierSubHeader(tier = tier, count = voicesInTier.size, dim = true)
-                        }
-                        val downloading = state.currentDownload
-                        itemsIndexed(
-                            voicesInTier,
-                            key = { _, item -> "a-${item.id}" },
-                        ) { index, voice ->
-                            val rowProgress = if (downloading?.voiceId == voice.id) downloading.progress ?: -1f else null
-                            VoiceRow(
-                                voice = voice,
-                                isActive = false,
-                                isFavorite = voice.id in state.favoriteIds,
-                                downloadingProgress = rowProgress,
-                                onTap = { if (downloading == null) viewModel.onRowTapped(voice) },
-                                onLongPress = null,
-                                onToggleFavorite = { viewModel.toggleFavorite(voice.id) },
-                                modifier = Modifier
-                                    .animateItem()
-                                    .cascadeReveal(index = index, key = voice.id),
-                            )
+                    if (!isCollapsed) {
+                        tiers.forEach { (tier, voicesInTier) ->
+                            item(key = "a-${engine.name}-tier-${tier.name}") {
+                                TierSubHeader(tier = tier, count = voicesInTier.size, dim = true)
+                            }
+                            val downloading = state.currentDownload
+                            itemsIndexed(
+                                voicesInTier,
+                                key = { _, item -> "a-${item.id}" },
+                            ) { index, voice ->
+                                val rowProgress = if (downloading?.voiceId == voice.id) downloading.progress ?: -1f else null
+                                VoiceRow(
+                                    voice = voice,
+                                    isActive = false,
+                                    isFavorite = voice.id in state.favoriteIds,
+                                    downloadingProgress = rowProgress,
+                                    onTap = { if (downloading == null) viewModel.onRowTapped(voice) },
+                                    onLongPress = null,
+                                    onToggleFavorite = { viewModel.toggleFavorite(voice.id) },
+                                    modifier = Modifier
+                                        .animateItem()
+                                        .cascadeReveal(index = index, key = voice.id),
+                                )
+                            }
                         }
                     }
                 }
@@ -278,9 +308,21 @@ private fun SectionHeader(label: String, count: Int, dim: Boolean = false) {
  *  Kokoro). Visually slightly louder than the per-tier sub-header
  *  beneath it so the read order is Section → Engine → Tier → Row.
  *  Empty engine groups never reach this composable — the ViewModel's
- *  [groupByEngineThenTier] drops them. */
+ *  [groupByEngineThenTier] drops them.
+ *
+ *  Tappable per #130 — the whole row toggles the collapse state and
+ *  the trailing chevron flips between [Icons.Outlined.ExpandMore]
+ *  (collapsed) and [Icons.Outlined.ExpandLess] (expanded). The
+ *  chevron lives at the row's end via a `Spacer(weight = 1f)` so
+ *  the label/count stay left-aligned even on wide screens. */
 @Composable
-private fun EngineSubHeader(engine: VoiceEngine, count: Int, dim: Boolean = false) {
+private fun EngineSubHeader(
+    engine: VoiceEngine,
+    count: Int,
+    isCollapsed: Boolean,
+    onToggle: () -> Unit,
+    dim: Boolean = false,
+) {
     val baseColor = if (dim) {
         MaterialTheme.colorScheme.onSurfaceVariant
     } else {
@@ -298,7 +340,10 @@ private fun EngineSubHeader(engine: VoiceEngine, count: Int, dim: Boolean = fals
     }
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle)
+            .padding(top = 6.dp, bottom = 2.dp),
     ) {
         Text(
             label,
@@ -310,6 +355,13 @@ private fun EngineSubHeader(engine: VoiceEngine, count: Int, dim: Boolean = fals
             "  ·  $count",
             style = MaterialTheme.typography.labelMedium,
             color = baseColor.copy(alpha = 0.65f),
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        Icon(
+            imageVector = if (isCollapsed) Icons.Outlined.ExpandMore else Icons.Outlined.ExpandLess,
+            contentDescription = if (isCollapsed) "Expand $label" else "Collapse $label",
+            tint = baseColor.copy(alpha = 0.7f),
+            modifier = Modifier.size(20.dp),
         )
     }
 }
@@ -411,8 +463,12 @@ private fun VoiceRow(
                 )
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Title: "<flag> <name>". Flag is derived from
+                        // language code at render time (see #128) so the
+                        // catalog stays render-agnostic and a flag mapping
+                        // change reaches every row in one edit.
                         Text(
-                            voice.displayName,
+                            "${flagForLanguage(voice.language)} ${voice.displayName}",
                             style = MaterialTheme.typography.titleMedium,
                             color = if (isAvailable && downloadingProgress == null) {
                                 MaterialTheme.colorScheme.onSurfaceVariant
@@ -424,8 +480,16 @@ private fun VoiceRow(
                             ActiveChip()
                         }
                     }
+                    // Subtitle: "<Engine> · <Tier> · <Gender>". Gender
+                    // segment is dropped when [VoiceGender.Unknown] so
+                    // the line collapses to "Engine · Tier" rather than
+                    // showing an empty trailing dot. Size/language data
+                    // moved out of the subtitle in #128 — language is
+                    // already encoded in the title flag, and per-voice
+                    // size is more useful in the delete-confirm dialog
+                    // (the only place it directly drives a decision).
                     Text(
-                        text = "${voice.language}  ·  ${formatBytes(voice.sizeBytes)}  ·  ${voice.qualityLevel}",
+                        text = voiceSubtitle(voice),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -517,6 +581,15 @@ private fun ActiveChip() {
     }
 }
 
+/** Trailing action surfaced on each [VoiceRow]. Three states only:
+ *  Downloading (text spinner copy), Installed-but-not-active (Activate
+ *  button), and Available (Download button). The active+installed case
+ *  used to render an "In use" Text — dropped in #127 because the brass
+ *  border + ACTIVE chip in the title row already mark active state, so
+ *  the trailing label was redundant clutter. Active+installed rows now
+ *  show no trailing action; the row is still tap-targeted via the
+ *  enclosing `combinedClickable` (a no-op while active, since
+ *  `onRowTapped` only switches if id != active). */
 @Composable
 private fun RowAction(
     voice: UiVoiceInfo,
@@ -530,11 +603,7 @@ private fun RowAction(
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.primary,
         )
-        voice.isInstalled && isActive -> Text(
-            "In use",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        voice.isInstalled && isActive -> Unit
         voice.isInstalled -> BrassButton(
             label = "Activate",
             onClick = onTap,
@@ -616,4 +685,32 @@ private fun formatBytes(bytes: Long): String = when {
     bytes >= 1_000_000L -> "%.0f MB".format(bytes / 1_000_000.0)
     bytes >= 1_000L -> "%.0f KB".format(bytes / 1_000.0)
     else -> "$bytes B"
+}
+
+/** Compose the per-row subtitle: `<Engine> · <Tier> · <Gender>`.
+ *  Gender is dropped from the line when [VoiceGender.Unknown] (a few
+ *  Piper multi-speaker corpora carry no gender metadata) so the
+ *  subtitle collapses cleanly to `<Engine> · <Tier>` rather than
+ *  showing an empty trailing segment. Pulled out of [VoiceRow] so
+ *  the format is unit-testable from a JVM test without spinning up
+ *  the screen — see [voicelibrary] tests. */
+internal fun voiceSubtitle(voice: UiVoiceInfo): String {
+    val engineLabel = when (voice.engineType) {
+        is EngineType.Piper -> "Piper"
+        is EngineType.Kokoro -> "Kokoro"
+        is EngineType.Azure -> "Azure"
+    }
+    val tierLabel = when (voice.qualityLevel) {
+        QualityLevel.Studio -> "Studio"
+        QualityLevel.High -> "High"
+        QualityLevel.Medium -> "Medium"
+        QualityLevel.Low -> "Low"
+    }
+    val genderLabel = when (voice.gender) {
+        VoiceGender.Female -> "Female"
+        VoiceGender.Male -> "Male"
+        VoiceGender.Unknown -> null
+    }
+    val parts = listOfNotNull(engineLabel, tierLabel, genderLabel)
+    return parts.joinToString(separator = "  ·  ")
 }

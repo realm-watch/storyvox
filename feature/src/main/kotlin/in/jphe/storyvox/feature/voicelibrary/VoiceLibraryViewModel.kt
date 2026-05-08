@@ -4,11 +4,15 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import `in`.jphe.storyvox.playback.voice.EngineKey
 import `in`.jphe.storyvox.playback.voice.EngineType
 import `in`.jphe.storyvox.playback.voice.QualityLevel
 import `in`.jphe.storyvox.playback.voice.UiVoiceInfo
 import `in`.jphe.storyvox.playback.voice.VoiceCatalog
+import `in`.jphe.storyvox.playback.voice.VoiceEngineId
 import `in`.jphe.storyvox.playback.voice.VoiceFavorites
+import `in`.jphe.storyvox.playback.voice.VoiceLibraryCollapse
+import `in`.jphe.storyvox.playback.voice.VoiceLibrarySection
 import `in`.jphe.storyvox.playback.voice.VoiceManager
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -54,6 +58,14 @@ data class VoiceLibraryUiState(
     val currentDownload: DownloadingVoice? = null,
     val pendingDelete: UiVoiceInfo? = null,
     val errorMessage: String? = null,
+    /** Engine sub-headers currently rendered as **collapsed** (#130).
+     *  Derived from [VoiceLibraryCollapse]'s flipped set + per-section
+     *  default policy in the ViewModel — the screen only needs to ask
+     *  "is this (section, engine) collapsed?" without knowing the
+     *  default rules. Empty on first launch for the Installed section
+     *  (defaults to expanded); will already include every Available
+     *  engine on first paint (Available defaults to collapsed). */
+    val collapsedEngines: Set<EngineKey> = emptySet(),
 )
 
 @Immutable
@@ -67,25 +79,28 @@ data class DownloadingVoice(
 class VoiceLibraryViewModel @Inject constructor(
     private val voiceManager: VoiceManager,
     private val voiceFavorites: VoiceFavorites,
+    private val voiceLibraryCollapse: VoiceLibraryCollapse,
 ) : ViewModel() {
 
     private val _currentDownload = MutableStateFlow<DownloadingVoice?>(null)
     private val _pendingDelete = MutableStateFlow<UiVoiceInfo?>(null)
     private val _error = MutableStateFlow<String?>(null)
 
-    private var downloadJob: Job? = null
-
     val uiState: StateFlow<VoiceLibraryUiState> = combine(
         voiceManager.installedVoices,
         flowOf(voiceManager.availableVoices),
         voiceManager.activeVoice,
         voiceFavorites.favoriteIds,
+        // Pack the three local mutable sources + collapse-store flipped
+        // set into one combined flow so the outer combine fits in 5 slots.
+        // Quintuple shape: download / pendingDelete / error / flipped.
         combine(
             _currentDownload.asStateFlow(),
             _pendingDelete.asStateFlow(),
             _error.asStateFlow(),
-        ) { d, p, e -> Triple(d, p, e) },
-    ) { installed, available, active, favIds, (downloading, pending, error) ->
+            voiceLibraryCollapse.flippedKeys,
+        ) { d, p, e, flipped -> CollapsedAndLocal(d, p, e, flipped) },
+    ) { installed, available, active, favIds, locals ->
         val installedIds = installed.mapTo(mutableSetOf()) { it.id }
         // Favourites pulls from installed first (preserving the
         // installed-flag) and falls back to the catalog for voices the
@@ -102,20 +117,38 @@ class VoiceLibraryViewModel @Inject constructor(
         val availableFiltered = available.filterNot {
             it.id in installedIds || it.id in favIds
         }
+        val installedGrouped = installedFiltered.groupByEngineThenTier()
+        val availableGrouped = availableFiltered.groupByEngineThenTier()
         VoiceLibraryUiState(
             favorites = favorites,
-            installedByEngine = installedFiltered.groupByEngineThenTier(),
-            availableByEngine = availableFiltered.groupByEngineThenTier(),
+            installedByEngine = installedGrouped,
+            availableByEngine = availableGrouped,
             favoriteIds = favIds,
             activeVoiceId = active?.id,
-            currentDownload = downloading,
-            pendingDelete = pending,
-            errorMessage = error,
+            currentDownload = locals.download,
+            pendingDelete = locals.pendingDelete,
+            errorMessage = locals.error,
+            collapsedEngines = computeCollapsedEngines(
+                installedEngines = installedGrouped.keys,
+                availableEngines = availableGrouped.keys,
+                flipped = locals.flipped,
+            ),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), VoiceLibraryUiState())
 
+    private var downloadJob: Job? = null
+
     fun toggleFavorite(voiceId: String) {
         viewModelScope.launch { voiceFavorites.toggle(voiceId) }
+    }
+
+    /** User tapped an engine sub-header — flip its collapsed state in
+     *  the persisted store. The new state propagates to [uiState] via
+     *  the [voiceLibraryCollapse.flippedKeys] flow combined into the
+     *  main pipeline; the screen re-renders with rows hidden/shown. */
+    fun toggleEngineCollapsed(section: VoiceLibrarySection, engine: VoiceEngine) {
+        val key = EngineKey(section, engine.toCoreId())
+        viewModelScope.launch { voiceLibraryCollapse.toggle(key) }
     }
 
     fun onRowTapped(voice: UiVoiceInfo) {
@@ -216,13 +249,64 @@ class VoiceLibraryViewModel @Inject constructor(
  *  surface above the cloud section, even though Azure's quality tier is
  *  Studio. The visual cue (engine header) matters more than the tier
  *  sort here: users should reach for a free local voice before
- *  considering a paid cloud voice. */
+ *  considering a paid cloud voice.
+ *
+ *  Mirrored as [VoiceEngineId] in core-playback for the collapse store
+ *  (which lives in core so it can be Hilt-injected without dragging the
+ *  feature module). The two enums are kept in lockstep — see
+ *  [toCoreId]. */
 enum class VoiceEngine { Piper, Kokoro, Azure }
+
+internal fun VoiceEngine.toCoreId(): VoiceEngineId = when (this) {
+    VoiceEngine.Piper -> VoiceEngineId.Piper
+    VoiceEngine.Kokoro -> VoiceEngineId.Kokoro
+    VoiceEngine.Azure -> VoiceEngineId.Azure
+}
+
+internal fun VoiceEngineId.toFeatureEngine(): VoiceEngine = when (this) {
+    VoiceEngineId.Piper -> VoiceEngine.Piper
+    VoiceEngineId.Kokoro -> VoiceEngine.Kokoro
+    VoiceEngineId.Azure -> VoiceEngine.Azure
+}
 
 private fun UiVoiceInfo.voiceEngine(): VoiceEngine = when (engineType) {
     is EngineType.Piper -> VoiceEngine.Piper
     is EngineType.Kokoro -> VoiceEngine.Kokoro
     is EngineType.Azure -> VoiceEngine.Azure
+}
+
+/** Tuple holding the four "local + collapse" flow values that get
+ *  packed into a single nested combine slot — the outer combine is
+ *  capped at 5 sources, so we group these here instead of using
+ *  positional destructuring. Named for readability at the call site. */
+private data class CollapsedAndLocal(
+    val download: DownloadingVoice?,
+    val pendingDelete: UiVoiceInfo?,
+    val error: String?,
+    val flipped: Set<String>,
+)
+
+/** Compute the rendered collapsed-engines set from the persisted
+ *  flipped keys + the engines actually present in each section. We
+ *  only emit keys for engines the user can see — there's no point
+ *  carrying "available:Piper" if the user has installed every Piper
+ *  voice. The screen treats `key in collapsedEngines` as the source
+ *  of truth for whether to skip emission of tier rows. */
+internal fun computeCollapsedEngines(
+    installedEngines: Set<VoiceEngine>,
+    availableEngines: Set<VoiceEngine>,
+    flipped: Set<String>,
+): Set<EngineKey> {
+    val out = mutableSetOf<EngineKey>()
+    for (engine in installedEngines) {
+        val key = EngineKey(VoiceLibrarySection.Installed, engine.toCoreId())
+        if (VoiceLibraryCollapse.isCollapsed(key, flipped)) out += key
+    }
+    for (engine in availableEngines) {
+        val key = EngineKey(VoiceLibrarySection.Available, engine.toCoreId())
+        if (VoiceLibraryCollapse.isCollapsed(key, flipped)) out += key
+    }
+    return out
 }
 
 /** Tier order **within Piper** — ascending (Low → Medium → High). Piper
