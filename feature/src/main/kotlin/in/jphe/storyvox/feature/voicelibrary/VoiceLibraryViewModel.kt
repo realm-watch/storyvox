@@ -24,16 +24,17 @@ import kotlinx.coroutines.launch
 
 @Immutable
 data class VoiceLibraryUiState(
-    /** Hand-picked best-of-catalog voices, shown above all other sections.
-     *  Always 3 entries (sourced from [VoiceCatalog.featuredIds]); each
-     *  carries its own installed flag so the row reflects current state. */
-    val featured: List<UiVoiceInfo> = emptyList(),
-    /** User-starred voices, surfaced under their own header above
-     *  Featured. Empty when nothing pinned, in which case the whole
-     *  section is hidden by the screen. The internal name "favorites"
-     *  is preserved from #89 (so is the DataStore key
-     *  `voice_favorites_v1`) — only the user-facing label changed to
-     *  "Starred" in #106. */
+    /** User-starred voices, surfaced under their own header at the top.
+     *  Empty when nothing pinned, in which case the whole section is
+     *  hidden by the screen. The internal name "favorites" is preserved
+     *  from #89 (so is the DataStore key `voice_favorites_v1`) — only
+     *  the user-facing label changed to "Starred" in #106.
+     *
+     *  The legacy "Featured" header above this section was removed in
+     *  #129 — the curated [VoiceCatalog.featuredIds] still feeds the
+     *  first-launch [VoicePickerGate], but the Voice Library now lets
+     *  those voices appear in their natural Engine → Tier home alongside
+     *  every other voice rather than re-pinning them to a top section. */
     val favorites: List<UiVoiceInfo> = emptyList(),
     /** Installed voices grouped first by engine (Piper, then Kokoro)
      *  and then by tier within each engine. Within Piper the tier order
@@ -86,30 +87,22 @@ class VoiceLibraryViewModel @Inject constructor(
         ) { d, p, e -> Triple(d, p, e) },
     ) { installed, available, active, favIds, (downloading, pending, error) ->
         val installedIds = installed.mapTo(mutableSetOf()) { it.id }
-        // Featured voices use the live installed flag so the row's CTA
-        // ("Activate" vs "Download") matches reality. We pull the entry from
-        // the installed list when present, otherwise from the catalog.
-        val featured = VoiceCatalog.featuredIds.mapNotNull { id ->
-            installed.firstOrNull { it.id == id }
-                ?: available.firstOrNull { it.id == id }
-        }
-        val featuredIdSet = featured.mapTo(mutableSetOf()) { it.id }
         // Favourites pulls from installed first (preserving the
         // installed-flag) and falls back to the catalog for voices the
         // user pinned but hasn't downloaded yet. Listed favourites are
         // EXCLUDED from the per-tier sections below to avoid showing the
-        // same row twice — featured rows follow the same exclusion rule.
+        // same row twice. (#129 removed the parallel exclusion for the
+        // legacy Featured set — those voices now flow into their natural
+        // Engine → Tier section like any other catalog entry.)
         val favorites = favIds.mapNotNull { id ->
             installed.firstOrNull { it.id == id }
                 ?: available.firstOrNull { it.id == id }
         }
-        val excludedFromTiers = favIds + featuredIdSet
-        val installedFiltered = installed.filterNot { it.id in excludedFromTiers }
+        val installedFiltered = installed.filterNot { it.id in favIds }
         val availableFiltered = available.filterNot {
-            it.id in installedIds || it.id in excludedFromTiers
+            it.id in installedIds || it.id in favIds
         }
         VoiceLibraryUiState(
-            featured = featured,
             favorites = favorites,
             installedByEngine = installedFiltered.groupByEngineThenTier(),
             availableByEngine = availableFiltered.groupByEngineThenTier(),
