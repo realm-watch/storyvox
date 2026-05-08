@@ -1,0 +1,45 @@
+title: storyvox
+description: A neural-voice audiobook player for serial fiction. Offline TTS, brass aesthetic, Royal Road and GitHub sources, no per-character billing.
+url: https://jphein.github.io
+baseurl: /storyvox
+
+# Use a minimal theme; we override most styling via _sass / assets/css.
+theme: minima
+minima:
+  skin: dark
+
+# Plugins available on GitHub Pages by default.
+plugins:
+  - jekyll-relative-links
+  - jekyll-seo-tag
+
+# Resolve relative .md links to .html so cross-page links keep working.
+relative_links:
+  enabled: true
+  collections: false
+
+# Don't surface specs / drafts as part of the public site.
+exclude:
+  - superpowers/
+  - ROADMAP.md
+  - compose-gotchas.md
+  - VOICES.md  # consolidated into voices.md, kept in repo for legacy links
+  - README.md
+  - Gemfile
+  - Gemfile.lock
+
+# Sensible defaults.
+markdown: kramdown
+kramdown:
+  syntax_highlighter: rouge
+  smart_quotes: ["apos", "apos", "quot", "quot"]
+
+# Author / SEO.
+author:
+  name: JP Hein
+  email: jp@jphein.com
+twitter:
+  card: summary_large_image
+
+# Pretty permalinks for the marketing pages.
+permalink: pretty

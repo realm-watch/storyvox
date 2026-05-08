@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="storyvox">
+  <defs>
+    <linearGradient id="brass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e8c98f"/>
+      <stop offset="0.55" stop-color="#d4a850"/>
+      <stop offset="1" stop-color="#8a5f17"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.65">
+      <stop offset="0" stop-color="#3a2c1a"/>
+      <stop offset="1" stop-color="#1a140d"/>
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="12" fill="url(#glow)"/>
+  <!-- diamond / sigil mark -->
+  <path d="M32 10 L52 32 L32 54 L12 32 Z"
+        fill="none"
+        stroke="url(#brass)"
+        stroke-width="3"
+        stroke-linejoin="round"/>
+  <!-- inner sentence highlight bar -->
+  <rect x="22" y="29" width="20" height="6" rx="2" fill="url(#brass)" opacity="0.85"/>
+</svg>
