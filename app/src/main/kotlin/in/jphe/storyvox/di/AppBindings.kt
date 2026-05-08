@@ -51,6 +51,7 @@ import `in`.jphe.storyvox.playback.StoryvoxPlaybackService
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -61,6 +62,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.CoroutineScope
@@ -408,23 +410,41 @@ private class RealPlaybackControllerUi(
      * advances on sentence boundaries (or per-word if VoxSherpa fires
      * `onRangeStart`). To keep the slider moving smoothly we anchor on each
      * `charOffset` change and interpolate forward at the current speed using
-     * wall-clock time, ticking every 250ms while playing. Pause freezes the
-     * displayed position; sentence boundaries snap it back to the engine's
-     * truth.
+     * the monotonic [SystemClock.elapsedRealtime] clock, ticking every 250ms
+     * while playing. Pause freezes the displayed position; sentence
+     * boundaries snap it back to the engine's truth.
+     *
+     * Shared across consumers so the `combine` + `toUi` allocation path runs
+     * once per emission regardless of subscriber count, and so a config
+     * change / screen recreation reattaches to the same upstream collector
+     * within the 5 s `WhileSubscribed` grace window instead of restarting
+     * the tick flow + re-running the anchor logic from scratch. `replay = 1`
+     * gives a new subscriber the most recent `UiPlaybackState` immediately —
+     * crucial for the reader UI, which would otherwise paint one frame of
+     * stale state during a recomposition before the first new emission.
      */
     override val state: Flow<UiPlaybackState> = combine(
         controller.state,
         tickWhilePlaying(controller.state),
     ) { s, nowMs ->
         s.toUi(nowMs)
-    }
+    }.shareIn(scope, SharingStarted.WhileSubscribed(5_000), replay = 1)
 
+    /**
+     * Chapter body stream. Shared so a screen recreation (config change,
+     * pane swap) doesn't restart the chapter-DB query — the upstream
+     * `observeChapter(id)` Room flow stays alive for the 5 s
+     * `WhileSubscribed` grace window. `replay = 1` lets the reader UI
+     * render the body immediately on resubscribe instead of flickering
+     * empty for the duration of one DB roundtrip.
+     */
     override val chapterText: Flow<String> = controller.state
         .map { it.currentChapterId }
         .distinctUntilChanged()
         .flatMapLatest { id ->
             if (id == null) flowOf("") else chapters.observeChapter(id).map { it?.plainBody.orEmpty() }
         }
+        .shareIn(scope, SharingStarted.WhileSubscribed(5_000), replay = 1)
 
     override fun play() = controller.resume()
     override fun pause() = controller.pause()
