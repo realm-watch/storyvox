@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -47,6 +48,12 @@ import `in`.jphe.storyvox.ui.theme.LocalSpacing
 @Composable
 fun FictionDetailScreen(
     onOpenReader: (String, String) -> Unit,
+    /** Issue #169 — the no-cache full-page error path was a dead-end
+     *  with no nav (no Back, no Retry, only OS back). AppNav wires
+     *  this so the user always has a way out. Default `{}` keeps
+     *  preview/test use working but should never be the production
+     *  callsite. */
+    onBack: () -> Unit = {},
     viewModel: FictionDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -59,17 +66,58 @@ fun FictionDetailScreen(
         }
     }
 
+    // Issue #169 — destructive removeFromLibrary used to fire on a
+    // single tap of the "In library" button (which reads as a status,
+    // not an action). User lost their fiction + read progress with
+    // zero confirmation. Gate the destructive path behind an
+    // AlertDialog; the additive add-to-library path stays single-tap.
+    var showRemoveConfirm by remember { mutableStateOf(false) }
+    if (showRemoveConfirm) {
+        val titleForDialog = state.fiction?.title ?: "this fiction"
+        AlertDialog(
+            onDismissRequest = { showRemoveConfirm = false },
+            title = { Text("Remove $titleForDialog from your library?") },
+            text = {
+                Text(
+                    "Your read progress will be lost. You can re-add it from " +
+                        "Browse anytime, but the position you've reached won't be restored.",
+                )
+            },
+            confirmButton = {
+                BrassButton(
+                    label = "Remove",
+                    onClick = {
+                        showRemoveConfirm = false
+                        viewModel.toggleFollow(false)
+                    },
+                    variant = BrassButtonVariant.Primary,
+                )
+            },
+            dismissButton = {
+                BrassButton(
+                    label = "Cancel",
+                    onClick = { showRemoveConfirm = false },
+                    variant = BrassButtonVariant.Secondary,
+                )
+            },
+        )
+    }
+
     val fiction = state.fiction
     Box(modifier = Modifier.fillMaxSize()) {
         if (fiction == null && state.error != null) {
-            // First-load failure with no cached fiction. No retry button —
-            // backing out and re-entering re-subscribes to fictionById,
-            // which triggers the underlying refreshDetail. Surfacing this
-            // path inside the error message keeps users from getting stuck.
+            // First-load failure with no cached fiction. Issue #169 —
+            // this path used to be a dead-end (no Back, no Retry, only
+            // OS back). Now wires onBack so the user always has a way
+            // out without leaning on the OS gesture. Still no Retry —
+            // the underlying refreshDetail re-fires when the user
+            // re-enters the screen via Back + re-tap, so a Retry CTA
+            // here would just blink the same error.
             ErrorBlock(
                 title = "Couldn't load this fiction",
                 message = state.error ?: "We couldn't reach Royal Road. Go back and try again in a moment.",
                 onRetry = null,
+                onBack = onBack,
                 placement = ErrorPlacement.FullScreen,
             )
         } else if (fiction == null) {
@@ -116,7 +164,15 @@ fun FictionDetailScreen(
 
             BottomBar(
                 isInLibrary = state.isInLibrary,
-                onFollow = { viewModel.toggleFollow(!state.isInLibrary) },
+                onFollow = {
+                    // Issue #169 — gate the destructive path behind a
+                    // confirm dialog; the additive path stays single-tap.
+                    if (state.isInLibrary) {
+                        showRemoveConfirm = true
+                    } else {
+                        viewModel.toggleFollow(true)
+                    }
+                },
                 onListen = { state.chapters.firstOrNull()?.id?.let(viewModel::listen) },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
@@ -150,7 +206,15 @@ fun FictionDetailScreen(
 
             BottomBar(
                 isInLibrary = state.isInLibrary,
-                onFollow = { viewModel.toggleFollow(!state.isInLibrary) },
+                onFollow = {
+                    // Issue #169 — gate the destructive path behind a
+                    // confirm dialog; the additive path stays single-tap.
+                    if (state.isInLibrary) {
+                        showRemoveConfirm = true
+                    } else {
+                        viewModel.toggleFollow(true)
+                    }
+                },
                 onListen = { state.chapters.firstOrNull()?.id?.let(viewModel::listen) },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )

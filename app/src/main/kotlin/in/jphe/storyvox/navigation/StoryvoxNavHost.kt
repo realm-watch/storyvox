@@ -237,6 +237,7 @@ private fun StoryvoxNavHostContent(
             ) {
                 FictionDetailScreen(
                     onOpenReader = { f, c -> navController.navigate(StoryvoxRoutes.reader(f, c)) },
+                    onBack = { navController.popBackStack() },
                 )
             }
 

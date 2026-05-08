@@ -47,7 +47,14 @@ enum class ErrorPlacement {
  * @param message body copy explaining what happened in plain English
  * @param onRetry primary action; pass null to omit the retry button
  *   (e.g. when the only retry path is to leave and re-enter the screen)
- * @param retryLabel button label, defaults to "Try again"
+ * @param retryLabel primary button label, defaults to "Try again"
+ * @param onBack optional secondary action — usually a Back nav. Issue
+ *   #169 fix: a full-screen error must never be a dead-end; if the
+ *   call site can't usefully retry (`onRetry = null`), it should at
+ *   least pass `onBack` so the user has a way out other than the OS
+ *   back gesture. Banner placement ignores `onBack` (the surrounding
+ *   screen still has its own nav).
+ * @param backLabel secondary button label, defaults to "Back"
  * @param placement [ErrorPlacement.FullScreen] or [ErrorPlacement.Banner]
  */
 @Composable
@@ -57,6 +64,8 @@ fun ErrorBlock(
     onRetry: (() -> Unit)?,
     modifier: Modifier = Modifier,
     retryLabel: String = "Try again",
+    onBack: (() -> Unit)? = null,
+    backLabel: String = "Back",
     placement: ErrorPlacement = ErrorPlacement.FullScreen,
 ) {
     val spacing = LocalSpacing.current
@@ -85,13 +94,26 @@ fun ErrorBlock(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
-            if (onRetry != null) {
+            if (onRetry != null || onBack != null) {
                 Spacer(Modifier.height(spacing.lg))
-                BrassButton(
-                    label = retryLabel,
-                    onClick = onRetry,
-                    variant = BrassButtonVariant.Primary,
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                ) {
+                    if (onBack != null) {
+                        BrassButton(
+                            label = backLabel,
+                            onClick = onBack,
+                            variant = BrassButtonVariant.Secondary,
+                        )
+                    }
+                    if (onRetry != null) {
+                        BrassButton(
+                            label = retryLabel,
+                            onClick = onRetry,
+                            variant = BrassButtonVariant.Primary,
+                        )
+                    }
+                }
             }
         }
 
