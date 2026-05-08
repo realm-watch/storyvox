@@ -183,6 +183,7 @@ dependencies {
     coreLibraryDesugaring(libs.android.desugar.jdk.libs)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
     // Robolectric supplies a real android.net.Uri implementation under JVM
     // unit tests so StoryvoxRoutesTest can verify the v0.4.25 encoding fix
     // (Uri.encode in the route-builder) — the framework stub jar throws

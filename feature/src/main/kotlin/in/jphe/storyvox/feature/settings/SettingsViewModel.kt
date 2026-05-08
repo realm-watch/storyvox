@@ -45,6 +45,7 @@ class SettingsViewModel @Inject constructor(
     /** Issue #90 — three-stop punctuation-pause selector. */
     fun setPunctuationPause(mode: PunctuationPause) =
         viewModelScope.launch { repo.setPunctuationPause(mode) }
+    fun setPlaybackBufferChunks(n: Int) = viewModelScope.launch { repo.setPlaybackBufferChunks(n) }
     fun signIn() = viewModelScope.launch { repo.signIn() }
     fun signOut() = viewModelScope.launch { repo.signOut() }
     fun previewVoice(voice: UiVoice) = voices.previewVoice(voice)

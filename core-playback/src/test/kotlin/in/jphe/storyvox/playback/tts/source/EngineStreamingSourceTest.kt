@@ -142,6 +142,48 @@ class EngineStreamingSourceTest {
     }
 
     @Test
+    fun `queueCapacity bounds outstanding pre-synth chunks`() = runBlocking {
+        // Issue #84 — verify the queueCapacity constructor parameter actually
+        // controls back-pressure. With capacity=2 and a producer racing ahead
+        // of any consumer, at most ~3 generate calls land before the
+        // LinkedBlockingQueue.put blocks (2 in queue + 1 currently inside
+        // generate). We give the producer plenty of wall time and confirm
+        // it doesn't run away past that bound.
+        val sentences = (0 until 50).map { i -> Sentence(i, i * 10, i * 10 + 5, "S$i.") }
+        val generated = java.util.concurrent.atomic.AtomicInteger(0)
+        val engine = object : EngineStreamingSource.VoiceEngineHandle {
+            override val sampleRate: Int = 22050
+            override fun generateAudioPCM(text: String, speed: Float, pitch: Float): ByteArray? {
+                generated.incrementAndGet()
+                return ByteArray(100)
+            }
+        }
+
+        val source = EngineStreamingSource(
+            sentences = sentences,
+            startSentenceIndex = 0,
+            engine = engine,
+            speed = 1f,
+            pitch = 1f,
+            engineMutex = Mutex(),
+            queueCapacity = 2,
+        )
+
+        // Give the producer a generous window to fill the bounded queue.
+        // Without back-pressure it would race through all 50 sentences in
+        // under 10 ms; with back-pressure it caps at ~3 (2 queued + 1 in
+        // flight at the put().
+        delay(200)
+
+        val produced = generated.get()
+        assert(produced in 2..4) {
+            "expected producer bounded by queueCapacity=2 (≈ 2-4 generate calls), got $produced"
+        }
+
+        source.close()
+    }
+
+    @Test
     fun `bufferHeadroomMs reflects queued audio duration`() = runBlocking {
         val sentences = listOf(
             Sentence(0, 0, 10, "One."),

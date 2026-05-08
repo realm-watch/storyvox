@@ -24,6 +24,7 @@ import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import `in`.jphe.storyvox.data.repository.ChapterRepository
 import `in`.jphe.storyvox.data.repository.PlaybackPositionRepository
+import `in`.jphe.storyvox.data.repository.playback.PlaybackBufferConfig
 import `in`.jphe.storyvox.data.repository.playback.PlaybackChapter
 import `in`.jphe.storyvox.playback.PlaybackError
 import `in`.jphe.storyvox.playback.PlaybackState
@@ -93,6 +94,7 @@ class EnginePlayer @AssistedInject constructor(
     private val sleepTimer: SleepTimer,
     private val voiceManager: VoiceManager,
     private val volumeRamp: TtsVolumeRamp,
+    private val bufferConfig: PlaybackBufferConfig,
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
 
     @AssistedFactory
@@ -133,8 +135,28 @@ class EnginePlayer @AssistedInject constructor(
      *  a fresh model load instead of restarting the existing pipeline. */
     private var voiceReloadPending: Boolean = false
 
+    /**
+     * Live-cached pre-synth queue depth. Driven by [bufferConfig.playbackBufferChunks];
+     * read by [startPlaybackPipeline] when constructing each new
+     * [EngineStreamingSource]. The cache exists because pipeline construction is a
+     * synchronous code path (called from [SimpleBasePlayer] handlers) and the
+     * underlying DataStore flow is suspending. Volatile because the writer is the
+     * collector coroutine and the readers are pipeline threads.
+     */
+    @Volatile
+    private var cachedBufferChunks: Int = 8 // BUFFER_DEFAULT_CHUNKS — duplicated to avoid feature dep
+
     init {
         observeActiveVoice()
+        observeBufferConfig()
+    }
+
+    private fun observeBufferConfig() {
+        scope.launch {
+            bufferConfig.playbackBufferChunks.collect { v ->
+                cachedBufferChunks = v
+            }
+        }
     }
 
     /**
@@ -438,6 +460,11 @@ class EnginePlayer @AssistedInject constructor(
         val track = createAudioTrack(sampleRate)
         audioTrack = track
 
+        // Snapshot the user's configured queue depth at pipeline-construction
+        // time. Mid-pipeline slider movements take effect on the next
+        // construction (next chapter / seek / voice swap); the bounded queue
+        // can't be resized live. Issue #84 — this is the LMK probe knob.
+        val queueCapacity = cachedBufferChunks.coerceIn(2, 1500)
         val source = EngineStreamingSource(
             sentences = sentences,
             startSentenceIndex = currentSentenceIndex,
@@ -446,6 +473,7 @@ class EnginePlayer @AssistedInject constructor(
             pitch = currentPitch,
             engineMutex = engineMutex,
             punctuationPauseMultiplier = currentPunctuationPauseMultiplier,
+            queueCapacity = queueCapacity,
         )
         pcmSource = source
         pipelineRunning.set(true)
