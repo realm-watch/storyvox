@@ -39,9 +39,15 @@ android {
 
     testOptions {
         unitTests {
-            // Lets `android.util.Log.w(...)` calls in production code (e.g.
-            // RealBrowsePaginator's failure-path logging) return a default
-            // 0 instead of throwing the "not mocked" RuntimeException.
+            // JVM unit tests run against android.jar's stub classes, where
+            // every Android-framework method throws "Method ... not mocked"
+            // by default. RealBrowsePaginator's failure-path calls
+            // android.util.Log.w(...) — production-correct logging that
+            // would otherwise crash JVM tests. Returning defaults for
+            // unmocked Android methods is the standard AGP pattern (see
+            // "Unit testing your app" docs), not lazy mocking — adding
+            // Robolectric just to mock android.util.Log would be heavier
+            // than the surface here justifies.
             isReturnDefaultValues = true
         }
     }
