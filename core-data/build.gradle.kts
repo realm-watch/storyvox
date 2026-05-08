@@ -72,6 +72,7 @@ dependencies {
     // EncryptedSharedPreferences
     implementation(libs.androidx.security.crypto)
 
-    // Test (deferred — YAGNI v1, leave hooks)
+    // Test
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
