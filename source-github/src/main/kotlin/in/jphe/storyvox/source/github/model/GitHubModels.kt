@@ -107,6 +107,24 @@ internal data class GhCommitAuthor(
     @SerialName("date") val date: String? = null,
 )
 
+/**
+ * `GET /search/repositories?q=...`. Search has its own rate limit
+ * (30 req/min unauthenticated) separate from the core API limit, so
+ * callers can typed-search safely with a 300 ms debounce.
+ *
+ * `incompleteResults` is GitHub's signal that the search timed out
+ * server-side and the items list is partial. Surfaced verbatim so
+ * the caller can choose to retry or accept the partial.
+ *
+ * https://docs.github.com/en/rest/search/search#search-repositories
+ */
+@Serializable
+internal data class GhSearchResponse(
+    @SerialName("total_count") val totalCount: Int,
+    @SerialName("incomplete_results") val incompleteResults: Boolean = false,
+    @SerialName("items") val items: List<GhRepo> = emptyList(),
+)
+
 @Serializable
 internal data class GhCommitFile(
     @SerialName("filename") val filename: String,

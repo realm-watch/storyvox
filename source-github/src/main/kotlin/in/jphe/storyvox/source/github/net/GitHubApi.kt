@@ -2,6 +2,7 @@ package `in`.jphe.storyvox.source.github.net
 
 import `in`.jphe.storyvox.source.github.di.GitHubHttp
 import `in`.jphe.storyvox.source.github.model.GhCompareResponse
+import `in`.jphe.storyvox.source.github.model.GhSearchResponse
 import `in`.jphe.storyvox.source.github.model.GhContent
 import `in`.jphe.storyvox.source.github.model.GhRepo
 import kotlinx.coroutines.Dispatchers
@@ -97,6 +98,28 @@ internal open class GitHubApi @Inject constructor(
         head: String,
     ): GitHubApiResult<GhCompareResponse> =
         get("$BASE_URL/repos/${owner.lowercase()}/${repo.lowercase()}/compare/$base...$head")
+
+    /**
+     * `GET /search/repositories?q=...&page=...&per_page=...`. The
+     * search endpoint has its own 30 req/min unauthenticated rate
+     * limit (separate from the core 60/hr limit), so a 300 ms
+     * debounced typed-search UX fits well under the cap.
+     *
+     * [query] should already include any qualifier prefixes
+     * (`topic:fiction`, `language:en`, etc.) — this method just URL-
+     * encodes and forwards. Caller is responsible for composing the
+     * fiction-targeting topics into [query].
+     */
+    open suspend fun searchRepositories(
+        query: String,
+        page: Int = 1,
+        perPage: Int = 20,
+    ): GitHubApiResult<GhSearchResponse> {
+        val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+        return get(
+            "$BASE_URL/search/repositories?q=$encoded&page=$page&per_page=$perPage",
+        )
+    }
 
     private suspend inline fun <reified T> get(url: String): GitHubApiResult<T> =
         withContext(Dispatchers.IO) {

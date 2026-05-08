@@ -44,8 +44,11 @@ enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
 }
 
 /** Tabs that are meaningful for [source]. GitHub registry doesn't
- *  yet support BestRated (no rating-ordered fetch) or Search (lands
- *  in step 8b), so those are hidden on GitHub. */
+ *  yet support BestRated (no rating-ordered fetch — registry stores
+ *  curator rating but doesn't yet sort by it), so it's hidden on
+ *  GitHub. Search is wired as of step 8b — flips
+ *  `GitHubSource.search()` to `/search/repositories?q=topic:fiction
+ *  +{userQuery}`. */
 fun BrowseSourceKey.supportedTabs(): List<BrowseTab> = when (this) {
     BrowseSourceKey.RoyalRoad -> listOf(
         BrowseTab.Popular,
@@ -56,6 +59,7 @@ fun BrowseSourceKey.supportedTabs(): List<BrowseTab> = when (this) {
     BrowseSourceKey.GitHub -> listOf(
         BrowseTab.Popular,
         BrowseTab.NewReleases,
+        BrowseTab.Search,
     )
 }
 

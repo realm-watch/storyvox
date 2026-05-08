@@ -298,15 +298,155 @@ class GitHubSourceTest {
         assertTrue("got $r", r is FictionResult.NotFound)
     }
 
-    // ─── Still-stubbed surfaces ────────────────────────────────────────
+    // ─── search ────────────────────────────────────────────────────────
 
-    @Test fun `search still throws NotImplementedError`() {
-        assertThrows(NotImplementedError::class.java) {
-            runBlocking {
-                source().search(`in`.jphe.storyvox.data.source.model.SearchQuery(term = "anything"))
-            }
-        }
+    @Test fun `search composes topic-filtered query and maps results to FictionSummary`() {
+        val api = FakeGitHubApi(
+            searches = listOf(
+                "archmage" to GitHubApiResult.Success(
+                    `in`.jphe.storyvox.source.github.model.GhSearchResponse(
+                        totalCount = 2,
+                        items = listOf(
+                            ghRepo(owner = "onedayokay", name = "the-archmage", desc = "An overpowered archmage."),
+                            ghRepo(owner = "another", name = "archmage-tales", topics = listOf("fiction", "fantasy")),
+                        ),
+                    ),
+                    etag = null,
+                ),
+            ),
+        )
+        val src = source(api = api)
+
+        val r = runBlocking {
+            src.search(`in`.jphe.storyvox.data.source.model.SearchQuery(term = "archmage"))
+        } as FictionResult.Success
+
+        assertEquals(2, r.value.items.size)
+        val first = r.value.items[0]
+        assertEquals("github:onedayokay/the-archmage", first.id)
+        assertEquals(SourceIds.GITHUB, first.sourceId)
+        assertEquals("the-archmage", first.title)
+        assertEquals("onedayokay", first.author)
+        assertEquals("An overpowered archmage.", first.description)
+        assertEquals(listOf("fiction", "fantasy"), r.value.items[1].tags)
     }
+
+    @Test fun `search with empty term still goes through topic-filter and returns generic fictions`() {
+        val api = FakeGitHubApi(
+            // The composed query for term="" is "(topic:fiction OR
+            // topic:fanfiction OR topic:webnovel)" — match on "topic:".
+            searches = listOf(
+                "topic:" to GitHubApiResult.Success(
+                    `in`.jphe.storyvox.source.github.model.GhSearchResponse(
+                        totalCount = 1,
+                        items = listOf(ghRepo(owner = "o", name = "fiction-repo")),
+                    ),
+                    etag = null,
+                ),
+            ),
+        )
+        val src = source(api = api)
+
+        val r = runBlocking {
+            src.search(`in`.jphe.storyvox.data.source.model.SearchQuery(term = "  "))
+        } as FictionResult.Success
+
+        assertEquals(1, r.value.items.size)
+        assertEquals("github:o/fiction-repo", r.value.items.single().id)
+    }
+
+    @Test fun `search hasNext is false when results are below the per-page count`() {
+        val items = (1..5).map { ghRepo(owner = "o", name = "repo-$it") }
+        val api = FakeGitHubApi(
+            searches = listOf(
+                "x" to GitHubApiResult.Success(
+                    `in`.jphe.storyvox.source.github.model.GhSearchResponse(totalCount = 5, items = items),
+                    etag = null,
+                ),
+            ),
+        )
+        val src = source(api = api)
+        val r = runBlocking {
+            src.search(`in`.jphe.storyvox.data.source.model.SearchQuery(term = "x"))
+        } as FictionResult.Success
+        assertEquals(5, r.value.items.size)
+        assertEquals(false, r.value.hasNext)
+    }
+
+    @Test fun `search hasNext is true when a full page comes back below page-50 cap`() {
+        val items = (1..20).map { ghRepo(owner = "o", name = "repo-$it") }
+        val api = FakeGitHubApi(
+            searches = listOf(
+                "many" to GitHubApiResult.Success(
+                    `in`.jphe.storyvox.source.github.model.GhSearchResponse(totalCount = 1000, items = items),
+                    etag = null,
+                ),
+            ),
+        )
+        val src = source(api = api)
+        val r = runBlocking {
+            src.search(`in`.jphe.storyvox.data.source.model.SearchQuery(term = "many", page = 1))
+        } as FictionResult.Success
+        assertEquals(20, r.value.items.size)
+        assertEquals(true, r.value.hasNext)
+    }
+
+    @Test fun `search NotFound surfaces as empty page hasNext-false`() {
+        val api = FakeGitHubApi(
+            searches = listOf("zilch" to GitHubApiResult.NotFound("nada")),
+        )
+        val src = source(api = api)
+        val r = runBlocking {
+            src.search(`in`.jphe.storyvox.data.source.model.SearchQuery(term = "zilch"))
+        } as FictionResult.Success
+        assertTrue(r.value.items.isEmpty())
+        assertEquals(false, r.value.hasNext)
+    }
+
+    @Test fun `search RateLimited propagates with retry-after`() {
+        val api = FakeGitHubApi(
+            searches = listOf(
+                "throttled" to GitHubApiResult.RateLimited(retryAfterSeconds = 60),
+            ),
+        )
+        val src = source(api = api)
+        val r = runBlocking {
+            src.search(`in`.jphe.storyvox.data.source.model.SearchQuery(term = "throttled"))
+        }
+        assertTrue("got $r", r is FictionResult.RateLimited)
+    }
+
+    @Test fun `search NetworkError propagates`() {
+        val api = FakeGitHubApi(
+            searches = listOf("offline" to GitHubApiResult.NetworkError(java.io.IOException("offline"))),
+        )
+        val src = source(api = api)
+        val r = runBlocking {
+            src.search(`in`.jphe.storyvox.data.source.model.SearchQuery(term = "offline"))
+        }
+        assertTrue("got $r", r is FictionResult.NetworkError)
+    }
+
+    @Test fun `archived repos in search results map to COMPLETED status`() {
+        val api = FakeGitHubApi(
+            searches = listOf(
+                "archived" to GitHubApiResult.Success(
+                    `in`.jphe.storyvox.source.github.model.GhSearchResponse(
+                        totalCount = 1,
+                        items = listOf(ghRepo(owner = "o", name = "old", archived = true)),
+                    ),
+                    etag = null,
+                ),
+            ),
+        )
+        val src = source(api = api)
+        val r = runBlocking {
+            src.search(`in`.jphe.storyvox.data.source.model.SearchQuery(term = "archived"))
+        } as FictionResult.Success
+        assertEquals(FictionStatus.COMPLETED, r.value.items.single().status)
+    }
+
+    // ─── Still-stubbed surfaces ────────────────────────────────────────
 
     @Test fun `followsList and setFollowed still throw NotImplementedError`() {
         assertThrows(NotImplementedError::class.java) { runBlocking { source().followsList() } }
@@ -411,6 +551,10 @@ class GitHubSourceTest {
         private val files: Map<Triple<String, String, String>, GhContent> = emptyMap(),
         private val dirs: Map<Triple<String, String, String>, List<GhContent>> = emptyMap(),
         private val rateLimitedFiles: Set<Triple<String, String, String>> = emptySet(),
+        /** Search-result lookup keyed by a substring match on the
+         *  composed query. First key whose substring is contained in
+         *  the actual query wins. */
+        private val searches: List<Pair<String, GitHubApiResult<`in`.jphe.storyvox.source.github.model.GhSearchResponse>>> = emptyList(),
     ) : GitHubApi(httpClient = OkHttpClient()) {
 
         override suspend fun getRepo(owner: String, repo: String): GitHubApiResult<GhRepo> =
@@ -440,6 +584,21 @@ class GitHubSourceTest {
             return dirs[Triple(owner, repo, path)]
                 ?.let { GitHubApiResult.Success(it, etag = null) }
                 ?: GitHubApiResult.NotFound("dir not found")
+        }
+
+        override suspend fun searchRepositories(
+            query: String,
+            page: Int,
+            perPage: Int,
+        ): GitHubApiResult<`in`.jphe.storyvox.source.github.model.GhSearchResponse> {
+            val match = searches.firstOrNull { (key, _) -> key in query }
+            return match?.second ?: GitHubApiResult.Success(
+                `in`.jphe.storyvox.source.github.model.GhSearchResponse(
+                    totalCount = 0,
+                    items = emptyList(),
+                ),
+                etag = null,
+            )
         }
     }
 
