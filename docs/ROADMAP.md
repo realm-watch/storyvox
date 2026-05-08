@@ -1,7 +1,9 @@
 # storyvox roadmap
 
 A short-form list of in-flight + planned work. Detailed designs live under
-`docs/superpowers/specs/`.
+`docs/superpowers/specs/`. Touching Compose? See
+[`docs/compose-gotchas.md`](compose-gotchas.md) for known scope-shadowing
+and stability traps before searching the internet for confusing errors.
 
 ## v0.4.0 — in-process VoxSherpa engine (in flight)
 
