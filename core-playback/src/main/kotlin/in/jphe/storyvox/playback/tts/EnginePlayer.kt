@@ -201,6 +201,12 @@ class EnginePlayer @AssistedInject constructor(
     private var pcmQueue: LinkedBlockingQueue<SentencePcm>? = null
     private var generationJob: Job? = null
 
+    /** Inter-chunk gap measurement (Tab A7 Lite TTS perf lane). Off by
+     *  default — reads a marker file at every chunkStart so a developer
+     *  can `adb shell touch /data/data/in.jphe.storyvox/files/chunk-gap-log`
+     *  and start collecting numbers without a build flip. See [ChunkGapLogger]. */
+    private val chunkGapLogger = ChunkGapLogger(context)
+
     /** Dedicated playback thread. The agent that gets URGENT_AUDIO and never
      *  yields back to a coroutine pool — see the comment on [startPlaybackPipeline]
      *  for why this can't be a coroutine. */
@@ -437,6 +443,10 @@ class EnginePlayer @AssistedInject constructor(
         val queue = LinkedBlockingQueue<SentencePcm>(QUEUE_CAPACITY)
         pcmQueue = queue
         pipelineRunning.set(true)
+        // Clear the prev-chunk-end anchor so the first chunk of this
+        // pipeline lifetime doesn't get a "gap" attributed to user
+        // pause time, seek time, or model load time.
+        chunkGapLogger.resetForNewPipeline()
 
         generationJob = ioScope.launch {
             // Inference is CPU-heavy on modest hardware (Tab A7 Lite); without
@@ -533,6 +543,16 @@ class EnginePlayer @AssistedInject constructor(
                         firstSentence = false
                     }
 
+                    // Stamp the start of the AudioTrack-write phase for this
+                    // chunk. Combined with the chunkEnd() below, this lets
+                    // the perf lane log gap_ms = startN - endNm1, which is
+                    // the audible silence between adjacent chunks (modulo
+                    // the constant ~130 ms minBuffer latency, see
+                    // ChunkGapLogger doc). No-op unless the marker file is
+                    // present, so this is free in normal operation.
+                    val gapVoiceId = loadedVoiceId ?: "unknown"
+                    chunkGapLogger.chunkStart(gapVoiceId, item.sentenceIndex)
+
                     // Apply the SleepTimer fade-out ramp to the live track.
                     // Polled per write iteration; AudioTrack.setVolume is a
                     // cheap JNI call but the lastVol guard skips it entirely
@@ -562,6 +582,12 @@ class EnginePlayer @AssistedInject constructor(
                         if (n < 0) break
                         remaining -= n
                     }
+
+                    // End-of-chunk: AudioTrack has accepted every byte of
+                    // pcm + trailing silence. The next iteration's blocking
+                    // queue.take() is where a slow producer shows up as a
+                    // logged gap.
+                    chunkGapLogger.chunkEnd(gapVoiceId, item.sentenceIndex)
                 }
             } finally {
                 // Release the AudioTrack from the same thread that owns
