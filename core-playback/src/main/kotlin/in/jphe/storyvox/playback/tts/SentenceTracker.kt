@@ -55,8 +55,13 @@ class SentenceTracker(
     }
 
     override fun onRangeStart(utteranceId: String, start: Int, end: Int, frame: Int) {
-        hasReceivedRange = true
+        // Parse first; only flip the "engine supports per-word ranges" flag
+        // on a parseable id (issue #43). A malformed id means the engine
+        // gave us a callback we can't act on — treating it as "ranges
+        // supported" would mislead the fallback path into thinking the
+        // engine works when it might not.
         val idx = parseIndex(utteranceId) ?: return
+        hasReceivedRange = true
         val s = sentences.getOrNull(idx) ?: return
         onSentence(
             SentenceRange(

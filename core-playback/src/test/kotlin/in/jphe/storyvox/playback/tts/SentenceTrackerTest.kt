@@ -93,19 +93,25 @@ class SentenceTrackerTest {
         assertEquals(SentenceRange(1, 14, 17), r.sentences[0])
     }
 
-    @Test fun `onRangeStart with malformed id is ignored but flips hasReceivedRange`() {
-        // The flag flip is unconditional in the current contract (ack of any
-        // onRangeStart call from the engine, not of a successful parse).
+    @Test fun `onRangeStart with malformed id is ignored AND does not flip hasReceivedRange`() {
+        // Issue #43: a parse failure means the engine sent us a callback we
+        // can't act on. The "engine supports per-word ranges" flag should
+        // NOT flip on garbage — treating it as supported misleads the
+        // whole-sentence fallback path into thinking the engine works.
         val r = Recorder()
         val tracker = r.newTracker(sample)
 
         tracker.onRangeStart("garbage", 0, 1, 0)
 
-        assertTrue(tracker.hasReceivedRange)
+        assertFalse(tracker.hasReceivedRange)
         assertEquals(0, r.sentences.size)
     }
 
-    @Test fun `onRangeStart with out-of-range index is ignored`() {
+    @Test fun `onRangeStart with out-of-range index flips hasReceivedRange but emits nothing`() {
+        // Distinct from the malformed case: parse succeeded (returns 99),
+        // we just have no sentence at that index (e.g. a stale callback
+        // after a seek). The engine demonstrably emits per-word ranges,
+        // so the flag flip is correct.
         val r = Recorder()
         val tracker = r.newTracker(sample)
 
