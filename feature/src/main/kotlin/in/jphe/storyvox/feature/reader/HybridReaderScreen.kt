@@ -15,9 +15,13 @@ import `in`.jphe.storyvox.ui.component.HybridReaderShell
 @Composable
 fun HybridReaderScreen(
     onPickVoice: () -> Unit,
+    /** Open Settings → AI when the recap modal hits a NotConfigured /
+     *  AuthFailed state. AppNav wires this. Issue #81. */
+    onOpenAiSettings: () -> Unit = {},
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val recapState by viewModel.recap.collectAsStateWithLifecycle()
     val playback = state.playback
 
     if (playback == null) {
@@ -46,6 +50,7 @@ fun HybridReaderScreen(
                 onPersistPitch = viewModel::persistPitch,
                 onStartSleepTimer = viewModel::startSleepTimer,
                 onCancelSleepTimer = viewModel::cancelSleepTimer,
+                onRequestRecap = viewModel::requestRecap,
             )
         },
         readerContent = {
@@ -55,6 +60,18 @@ fun HybridReaderScreen(
                 onPlayPause = viewModel::playPause,
                 onSeekToChar = viewModel::seekToChar,
             )
+        },
+    )
+
+    // Recap modal — overlays everything when not Hidden. Driven by
+    // ReaderViewModel.requestRecap().
+    RecapModal(
+        state = recapState,
+        onCancel = viewModel::cancelRecap,
+        onRetry = viewModel::requestRecap,
+        onOpenSettings = {
+            viewModel.cancelRecap()
+            onOpenAiSettings()
         },
     )
 }

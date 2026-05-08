@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -19,6 +20,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,10 +48,13 @@ import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_NORMAL_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_OFF_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.PalaceProbeResult
 import `in`.jphe.storyvox.feature.api.ThemeOverride
+import `in`.jphe.storyvox.feature.api.UiAiSettings
+import `in`.jphe.storyvox.feature.api.UiLlmProvider
 import `in`.jphe.storyvox.feature.api.UiPalaceConfig
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
+import kotlinx.coroutines.delay
 
 @Composable
 fun SettingsScreen(
@@ -167,6 +172,23 @@ fun SettingsScreen(
         PunctuationPauseSlider(
             multiplier = s.punctuationPauseMultiplier,
             onMultiplierChange = viewModel::setPunctuationPauseMultiplier,
+        )
+
+        Divider()
+        AiSection(
+            ai = s.ai,
+            probeOutcome = state.probeOutcome,
+            onSetProvider = viewModel::setAiProvider,
+            onSetClaudeKey = viewModel::setClaudeApiKey,
+            onSetClaudeModel = viewModel::setClaudeModel,
+            onSetOpenAiKey = viewModel::setOpenAiApiKey,
+            onSetOpenAiModel = viewModel::setOpenAiModel,
+            onSetOllamaBaseUrl = viewModel::setOllamaBaseUrl,
+            onSetOllamaModel = viewModel::setOllamaModel,
+            onSetSendChapterText = viewModel::setSendChapterTextEnabled,
+            onTestConnection = viewModel::testAiConnection,
+            onClearProbeOutcome = viewModel::clearProbeOutcome,
+            onResetAi = viewModel::resetAiSettings,
         )
 
         Divider()
@@ -647,4 +669,343 @@ private fun PunctuationPauseTickLabels() {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+/**
+ * Settings → AI section. Provider selector + per-provider config +
+ * Test connection + privacy toggle. Issue #81.
+ *
+ * Inline (not a sub-screen) for v1 — matches the existing Settings
+ * structure where every category is a section divider in one
+ * scrollable list. We can promote to a sub-screen if the AI
+ * controls cross ~5 toggles (matching where the Voices section is
+ * heading).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AiSection(
+    ai: UiAiSettings,
+    probeOutcome: ProbeOutcome?,
+    onSetProvider: (UiLlmProvider?) -> Unit,
+    onSetClaudeKey: (String?) -> Unit,
+    onSetClaudeModel: (String) -> Unit,
+    onSetOpenAiKey: (String?) -> Unit,
+    onSetOpenAiModel: (String) -> Unit,
+    onSetOllamaBaseUrl: (String) -> Unit,
+    onSetOllamaModel: (String) -> Unit,
+    onSetSendChapterText: (Boolean) -> Unit,
+    onTestConnection: (UiLlmProvider) -> Unit,
+    onClearProbeOutcome: () -> Unit,
+    onResetAi: () -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    SectionHeader("AI")
+    Text(
+        "Smart features (Recap, character lookup, …) ask an AI to answer " +
+            "questions about what you're reading. Pick a provider, then enable a feature. " +
+            "Local providers (Ollama) keep your text on your network; cloud providers " +
+            "(Claude, OpenAI) send it to that company's servers.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    // Provider three-stop. We surface only the implemented providers
+    // as live buttons; spec-only ones get a single "Coming soon"
+    // line below so the design intent is visible without those rows
+    // being tappable yet.
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        ProviderChip(label = "Off", selected = ai.provider == null) {
+            onSetProvider(null)
+        }
+        ProviderChip(label = "Claude", selected = ai.provider == UiLlmProvider.Claude) {
+            onSetProvider(UiLlmProvider.Claude)
+        }
+        ProviderChip(label = "OpenAI", selected = ai.provider == UiLlmProvider.OpenAi) {
+            onSetProvider(UiLlmProvider.OpenAi)
+        }
+        ProviderChip(label = "Ollama", selected = ai.provider == UiLlmProvider.Ollama) {
+            onSetProvider(UiLlmProvider.Ollama)
+        }
+    }
+    Text(
+        "Coming soon: AWS Bedrock, Google Vertex AI, Azure AI Foundry, Anthropic Teams. " +
+            "See the design spec at docs/superpowers/specs/2026-05-08-ai-integration-design.md.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    when (ai.provider) {
+        UiLlmProvider.Claude -> ClaudeProviderRows(
+            ai = ai,
+            onSetClaudeKey = onSetClaudeKey,
+            onSetClaudeModel = onSetClaudeModel,
+        )
+        UiLlmProvider.OpenAi -> OpenAiProviderRows(
+            ai = ai,
+            onSetOpenAiKey = onSetOpenAiKey,
+            onSetOpenAiModel = onSetOpenAiModel,
+        )
+        UiLlmProvider.Ollama -> OllamaProviderRows(
+            ai = ai,
+            onSetOllamaBaseUrl = onSetOllamaBaseUrl,
+            onSetOllamaModel = onSetOllamaModel,
+        )
+        UiLlmProvider.Bedrock,
+        UiLlmProvider.Vertex,
+        UiLlmProvider.Foundry,
+        UiLlmProvider.Teams -> {
+            // Selected via the (currently disabled) chip; defensive
+            // catch-all that surfaces a friendly message rather than
+            // letting the user fall into a half-built UI.
+            Text(
+                "${ai.provider!!.displayName} is in the design spec but not yet " +
+                    "implemented. Pick another provider for now.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        null -> { /* Off — nothing more to show */ }
+    }
+
+    if (ai.provider != null && ai.provider.implemented) {
+        BrassButton(
+            label = "Test connection",
+            onClick = { onTestConnection(ai.provider) },
+            variant = BrassButtonVariant.Secondary,
+        )
+        ProbeOutcomeMessage(probeOutcome, onClearProbeOutcome)
+    }
+
+    if (ai.provider != null) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Send chapter text to AI", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "Required for Recap. Off means the feature is disabled even with a provider configured.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = ai.sendChapterTextEnabled,
+                onCheckedChange = onSetSendChapterText,
+            )
+        }
+        BrassButton(
+            label = "Forget all AI settings",
+            onClick = onResetAi,
+            variant = BrassButtonVariant.Text,
+        )
+    }
+}
+
+@Composable
+private fun ProviderChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    BrassButton(
+        label = label,
+        onClick = onClick,
+        variant = if (selected) BrassButtonVariant.Primary else BrassButtonVariant.Secondary,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ClaudeProviderRows(
+    ai: UiAiSettings,
+    onSetClaudeKey: (String?) -> Unit,
+    onSetClaudeModel: (String) -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    var keyDraft by remember { mutableStateOf("") }
+    var showKey by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        Text(
+            if (ai.claudeKeyConfigured) "Claude API key — set"
+            else "Claude API key — not set",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        OutlinedTextField(
+            value = keyDraft,
+            onValueChange = { keyDraft = it },
+            label = { Text("Paste new Claude key") },
+            visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+            BrassButton(
+                label = if (showKey) "Hide" else "Show",
+                onClick = { showKey = !showKey },
+                variant = BrassButtonVariant.Text,
+            )
+            BrassButton(
+                label = "Save",
+                onClick = {
+                    if (keyDraft.isNotBlank()) {
+                        onSetClaudeKey(keyDraft)
+                        keyDraft = ""
+                        showKey = false
+                    }
+                },
+                variant = BrassButtonVariant.Primary,
+            )
+            if (ai.claudeKeyConfigured) {
+                BrassButton(
+                    label = "Clear",
+                    onClick = { onSetClaudeKey(null) },
+                    variant = BrassButtonVariant.Text,
+                )
+            }
+        }
+        Text(
+            "Model: ${ai.claudeModel}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        // Model picker as a row of Brass chips. Hardcoded list for v1.
+        Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+            listOf("claude-haiku-4.5", "claude-sonnet-4.6", "claude-opus-4.6").forEach { m ->
+                BrassButton(
+                    label = m.removePrefix("claude-"),
+                    onClick = { onSetClaudeModel(m) },
+                    variant = if (ai.claudeModel == m) BrassButtonVariant.Primary else BrassButtonVariant.Secondary,
+                )
+            }
+        }
+        Text(
+            "Estimated cost: ~\$0.005 per recap on Haiku 4.5. Anthropic console is the source of truth for usage.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OpenAiProviderRows(
+    ai: UiAiSettings,
+    onSetOpenAiKey: (String?) -> Unit,
+    onSetOpenAiModel: (String) -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    var keyDraft by remember { mutableStateOf("") }
+    var showKey by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        Text(
+            if (ai.openAiKeyConfigured) "OpenAI API key — set" else "OpenAI API key — not set",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        OutlinedTextField(
+            value = keyDraft,
+            onValueChange = { keyDraft = it },
+            label = { Text("Paste new OpenAI key") },
+            visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+            BrassButton(
+                label = if (showKey) "Hide" else "Show",
+                onClick = { showKey = !showKey },
+                variant = BrassButtonVariant.Text,
+            )
+            BrassButton(
+                label = "Save",
+                onClick = {
+                    if (keyDraft.isNotBlank()) {
+                        onSetOpenAiKey(keyDraft)
+                        keyDraft = ""
+                        showKey = false
+                    }
+                },
+                variant = BrassButtonVariant.Primary,
+            )
+            if (ai.openAiKeyConfigured) {
+                BrassButton(
+                    label = "Clear",
+                    onClick = { onSetOpenAiKey(null) },
+                    variant = BrassButtonVariant.Text,
+                )
+            }
+        }
+        Text(
+            "Model: ${ai.openAiModel}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+            listOf("gpt-4o-mini", "gpt-4o").forEach { m ->
+                BrassButton(
+                    label = m,
+                    onClick = { onSetOpenAiModel(m) },
+                    variant = if (ai.openAiModel == m) BrassButtonVariant.Primary else BrassButtonVariant.Secondary,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OllamaProviderRows(
+    ai: UiAiSettings,
+    onSetOllamaBaseUrl: (String) -> Unit,
+    onSetOllamaModel: (String) -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    var urlDraft by remember(ai.ollamaBaseUrl) { mutableStateOf(ai.ollamaBaseUrl) }
+    var modelDraft by remember(ai.ollamaModel) { mutableStateOf(ai.ollamaModel) }
+    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        OutlinedTextField(
+            value = urlDraft,
+            onValueChange = { urlDraft = it },
+            label = { Text("Ollama server URL") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        OutlinedTextField(
+            value = modelDraft,
+            onValueChange = { modelDraft = it },
+            label = { Text("Ollama model") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        BrassButton(
+            label = "Save",
+            onClick = {
+                onSetOllamaBaseUrl(urlDraft.trim())
+                onSetOllamaModel(modelDraft.trim())
+            },
+            variant = BrassButtonVariant.Primary,
+        )
+        Text(
+            "Default URL is intentionally a placeholder — fix it to your LAN host (e.g. " +
+                "http://10.0.6.50:11434) before testing.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun ProbeOutcomeMessage(probe: ProbeOutcome?, onClear: () -> Unit) {
+    if (probe == null) return
+    LaunchedEffect(probe) {
+        // Auto-clear after 8 seconds so the message doesn't linger
+        // forever after the user has read it.
+        delay(8_000)
+        onClear()
+    }
+    val color = when (probe) {
+        is ProbeOutcome.Ok -> MaterialTheme.colorScheme.primary
+        is ProbeOutcome.Failure -> MaterialTheme.colorScheme.error
+    }
+    val text = when (probe) {
+        is ProbeOutcome.Ok -> "Connection OK."
+        is ProbeOutcome.Failure -> probe.message
+    }
+    Text(text = text, style = MaterialTheme.typography.bodySmall, color = color)
 }

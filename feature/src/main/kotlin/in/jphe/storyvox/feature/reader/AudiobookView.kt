@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.MoreVert
@@ -86,6 +87,10 @@ fun AudiobookView(
     onPersistPitch: (Float) -> Unit,
     onStartSleepTimer: (UiSleepTimerMode) -> Unit,
     onCancelSleepTimer: () -> Unit,
+    /** Open the Chapter Recap modal. ReaderScreen wires this to
+     *  [`in`.jphe.storyvox.feature.reader.ReaderViewModel.requestRecap].
+     *  Issue #81. */
+    onRequestRecap: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val spacing = LocalSpacing.current
@@ -278,6 +283,11 @@ fun AudiobookView(
                         showSheet = false
                         onPickVoice()
                     },
+                    onRequestRecap = {
+                        coroutineScope.launch { sheetState.hide() }
+                        showSheet = false
+                        onRequestRecap()
+                    },
                 )
             }
         }
@@ -354,6 +364,7 @@ private fun PlayerOptionsSheet(
     onStartSleepTimer: (UiSleepTimerMode) -> Unit,
     onCancelSleepTimer: () -> Unit,
     onPickVoice: () -> Unit,
+    onRequestRecap: () -> Unit = {},
 ) {
     val spacing = LocalSpacing.current
     Column(
@@ -404,6 +415,36 @@ private fun PlayerOptionsSheet(
             }
             IconButton(onClick = onPickVoice) {
                 Icon(Icons.Outlined.ChevronRight, contentDescription = "Pick voice")
+            }
+        }
+
+        // ── Chapter Recap (issue #81) — opens the librarian modal ──
+        SheetHeader("Smart features", null)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Icon(
+                Icons.Outlined.AutoStories,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Recap so far", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "Ask the librarian to summarize the last few chapters",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(onClick = onRequestRecap) {
+                Icon(
+                    Icons.Outlined.ChevronRight,
+                    contentDescription = "Recap so far",
+                )
             }
         }
         Spacer(Modifier.height(spacing.md))

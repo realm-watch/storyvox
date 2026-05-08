@@ -24,4 +24,53 @@ val MIGRATION_1_2: Migration = object : Migration(1, 2) {
     }
 }
 
-val ALL_MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2)
+/**
+ * v3 — adds the multi-session AI tables (#81 AI integration). Pure
+ * additive: two new tables and one index, no existing data touched.
+ *
+ * Schema mirrors the entity definitions in
+ * `in.jphe.storyvox.data.db.entity.LlmSession` and
+ * `in.jphe.storyvox.data.db.entity.LlmStoredMessage`. The `provider`
+ * + `featureKind` columns are TEXT (storing enum names) for
+ * forward-compatibility — adding a new enum value doesn't require a
+ * migration.
+ */
+val MIGRATION_2_3: Migration = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `llm_session` (
+                `id` TEXT NOT NULL PRIMARY KEY,
+                `name` TEXT NOT NULL,
+                `provider` TEXT NOT NULL,
+                `model` TEXT NOT NULL,
+                `systemPrompt` TEXT,
+                `createdAt` INTEGER NOT NULL,
+                `lastUsedAt` INTEGER NOT NULL,
+                `featureKind` TEXT,
+                `anchorFictionId` TEXT,
+                `anchorChapterId` TEXT
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `llm_message` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `sessionId` TEXT NOT NULL,
+                `role` TEXT NOT NULL,
+                `content` TEXT NOT NULL,
+                `createdAt` INTEGER NOT NULL,
+                FOREIGN KEY(`sessionId`) REFERENCES `llm_session`(`id`)
+                  ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_llm_message_sessionId` " +
+                "ON `llm_message` (`sessionId`)",
+        )
+    }
+}
+
+val ALL_MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)

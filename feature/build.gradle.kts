@@ -56,6 +56,7 @@ android {
 dependencies {
     implementation(project(":core-ui"))
     implementation(project(":core-data"))
+    implementation(project(":core-llm"))
     implementation(project(":core-playback"))
 
     implementation(libs.androidx.core.ktx)
@@ -76,4 +77,5 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.kotlinx.serialization.json)
 }
