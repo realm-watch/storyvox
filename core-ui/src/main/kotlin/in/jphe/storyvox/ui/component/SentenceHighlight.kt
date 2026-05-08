@@ -1,6 +1,7 @@
 package `in`.jphe.storyvox.ui.component
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -22,6 +23,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import `in`.jphe.storyvox.ui.theme.LocalMotion
+import `in`.jphe.storyvox.ui.theme.LocalReducedMotion
 
 /**
  * Renders chapter text with a brass underline that animates over the currently-spoken sentence.
@@ -80,12 +82,44 @@ fun SentenceHighlight(
         }
     }
 
+    val reducedMotion = LocalReducedMotion.current
+
+    // The underline used to snap from one sentence's bounds to the next.
+    // Now we animate the bounds themselves: `animatedStart` and
+    // `animatedEnd` glide between consecutive sentence ranges over
+    // `sentenceDurationMs` (180ms via `sentenceEasing`). The drawBehind
+    // resolves these animated offsets to line positions, so within a line
+    // the underline literally slides its edges; crossing a line boundary
+    // reads as a continuous traversal of the offset space rather than a
+    // jump cut.
+    //
+    // Reduced motion: skip the int animations entirely, fall back to the
+    // raw values. Same contract as cascadeReveal / NavHost / spinner /
+    // sleep timer — absent motion, not shorter motion.
+    val animatedStart by animateIntAsState(
+        targetValue = highlightStart,
+        animationSpec = androidx.compose.animation.core.tween(motion.sentenceDurationMs, easing = motion.sentenceEasing),
+        label = "sentenceUnderlineStart",
+    )
+    val animatedEnd by animateIntAsState(
+        targetValue = highlightEnd,
+        animationSpec = androidx.compose.animation.core.tween(motion.sentenceDurationMs, easing = motion.sentenceEasing),
+        label = "sentenceUnderlineEnd",
+    )
+
+    // Fade the underline in on first appearance / out on disappearance.
+    // Held at 1f throughout sentence-to-sentence transitions because the
+    // underline is *moving*, not appearing — fading the brass would obscure
+    // the glide.
     val target = if (highlightEnd > highlightStart) 1f else 0f
     val animated by animateFloatAsState(
         targetValue = target,
         animationSpec = androidx.compose.animation.core.tween(motion.sentenceDurationMs, easing = motion.sentenceEasing),
         label = "sentenceUnderline",
     )
+
+    val drawStart = if (reducedMotion) highlightStart else animatedStart
+    val drawEnd = if (reducedMotion) highlightEnd else animatedEnd
 
     Text(
         text = annotated,
@@ -121,9 +155,9 @@ fun SentenceHighlight(
             )
             .drawBehind {
                 val l = layout ?: return@drawBehind
-                if (highlightEnd <= highlightStart) return@drawBehind
-                val safeStart = highlightStart.coerceIn(0, text.length)
-                val safeEnd = highlightEnd.coerceIn(safeStart, text.length)
+                if (drawEnd <= drawStart) return@drawBehind
+                val safeStart = drawStart.coerceIn(0, text.length)
+                val safeEnd = drawEnd.coerceIn(safeStart, text.length)
                 val firstLine = l.getLineForOffset(safeStart)
                 val lastLine = l.getLineForOffset(safeEnd.coerceAtLeast(safeStart + 1) - 1)
                 for (line in firstLine..lastLine) {
