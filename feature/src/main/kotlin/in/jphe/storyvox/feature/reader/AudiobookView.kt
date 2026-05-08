@@ -2,6 +2,11 @@ package `in`.jphe.storyvox.feature.reader
 
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -49,6 +54,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.unit.dp
@@ -261,6 +267,44 @@ fun AudiobookView(
 private fun SleepTimerCountdownChip(remainingMs: Long, onCancel: () -> Unit) {
     val mins = (remainingMs / 60_000L).toInt()
     val secs = ((remainingMs % 60_000L) / 1000L).toInt()
+    val reducedMotion = LocalReducedMotion.current
+    val motion = LocalMotion.current
+
+    // Last 60s: gentle alpha breath. Last 15s: cross-fade container toward
+    // errorContainer hue to signal "almost out of time" without alarm-bell
+    // urgency. Reduced motion → static at full alpha + base color.
+    val isPulsing = !reducedMotion && remainingMs in 1..60_000
+    val isUrgent = remainingMs in 1..15_000
+
+    val pulseAlpha = if (isPulsing) {
+        val transition = rememberInfiniteTransition(label = "sleep-timer-breath")
+        transition.animateFloat(
+            initialValue = 1f,
+            targetValue = 0.55f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1200, easing = motion.standardEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "sleep-timer-alpha",
+        ).value
+    } else 1f
+
+    val baseContainer = MaterialTheme.colorScheme.primaryContainer
+    val urgentContainer = MaterialTheme.colorScheme.errorContainer
+    val baseLabel = MaterialTheme.colorScheme.onPrimaryContainer
+    val urgentLabel = MaterialTheme.colorScheme.onErrorContainer
+
+    val containerColor by animateColorAsState(
+        targetValue = if (isUrgent && !reducedMotion) urgentContainer else baseContainer,
+        animationSpec = tween(motion.standardDurationMs, easing = motion.standardEasing),
+        label = "sleep-timer-container",
+    )
+    val labelColor by animateColorAsState(
+        targetValue = if (isUrgent && !reducedMotion) urgentLabel else baseLabel,
+        animationSpec = tween(motion.standardDurationMs, easing = motion.standardEasing),
+        label = "sleep-timer-label",
+    )
+
     AssistChip(
         onClick = onCancel,
         label = {
@@ -269,10 +313,11 @@ private fun SleepTimerCountdownChip(remainingMs: Long, onCancel: () -> Unit) {
         leadingIcon = {
             Icon(Icons.Outlined.Bedtime, contentDescription = null)
         },
+        modifier = Modifier.alpha(pulseAlpha),
         colors = AssistChipDefaults.assistChipColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            labelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            leadingIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            containerColor = containerColor,
+            labelColor = labelColor,
+            leadingIconContentColor = labelColor,
         ),
     )
 }
