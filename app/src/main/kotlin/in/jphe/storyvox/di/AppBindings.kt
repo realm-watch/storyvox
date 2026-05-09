@@ -355,16 +355,18 @@ private class RealBrowseRepositoryUi(
                     page = page,
                     sourceId = sourceId,
                 )
-                // #200 — auth-gated `/user/repos` listing. Bypasses the
-                // FictionRepository.search path because the endpoint
-                // shape doesn't fit `SearchQuery` (no qualifier syntax,
-                // affiliation filter only). Routes directly to the
-                // source surface, then funnels the result through
-                // `cacheBrowseListing` so each row lands in the DB with
-                // its `sourceId="github"` — without that, tapping a
-                // card hits `refreshDetail`'s "no row → fall back to
-                // RR source" branch and 404s on the github fictionId.
+                // #200/#201 — auth-gated `/user/repos` and `/user/starred`
+                // listings. Bypass the FictionRepository.search path
+                // because the endpoint shape doesn't fit `SearchQuery`
+                // (no qualifier syntax — affiliation/sort knobs only).
+                // Routes directly to the source surface, then funnels
+                // the result through `cacheBrowseListing` so each row
+                // lands in the DB with `sourceId="github"` — without
+                // that, tapping a card hits `refreshDetail`'s "no row
+                // → fall back to RR source" branch and 404s on the
+                // github fictionId.
                 BrowseSource.GitHubMyRepos -> repo.cacheBrowseListing(github.myRepos(page = page))
+                BrowseSource.GitHubStarred -> repo.cacheBrowseListing(github.starred(page = page))
             }
         }
 

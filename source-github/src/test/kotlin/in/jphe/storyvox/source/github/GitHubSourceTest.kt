@@ -530,6 +530,84 @@ class GitHubSourceTest {
         assertEquals(FictionStatus.COMPLETED, r.value.items.single().status)
     }
 
+    // ─── starred (#201, auth-only Browse → GitHub feed) ────────────────
+
+    @Test fun `starred filters to fiction-shaped topics, drops everything else`() {
+        val api = FakeGitHubApi(
+            starredPages = mapOf(
+                1 to GitHubApiResult.Success(
+                    listOf(
+                        ghRepo("o", "novella", topics = listOf("fiction")),
+                        ghRepo("o", "leetcode", topics = listOf("algorithms")),
+                        ghRepo("o", "fanfic", topics = listOf("Fanfiction")), // case-insensitive
+                        ghRepo("o", "tools", topics = emptyList()),
+                        ghRepo("o", "webnovel-thing", topics = listOf("webnovel", "litrpg")),
+                    ),
+                    etag = null,
+                ),
+            ),
+        )
+        val r = runBlocking { source(api = api).starred(page = 1) } as FictionResult.Success
+        assertEquals(
+            setOf("github:o/novella", "github:o/fanfic", "github:o/webnovel-thing"),
+            r.value.items.map { it.id }.toSet(),
+        )
+    }
+
+    @Test fun `starred hasNext is true when raw upstream page is full pre-filter`() {
+        // Upstream page is at perPage size — there's likely more even if
+        // the filter dropped most of them.
+        val api = FakeGitHubApi(
+            starredPages = mapOf(
+                1 to GitHubApiResult.Success(
+                    (1..20).map { ghRepo("o", "r-$it", topics = listOf("not-fiction")) },
+                    etag = null,
+                ),
+            ),
+        )
+        val r = runBlocking { source(api = api).starred(page = 1) } as FictionResult.Success
+        assertTrue(r.value.items.isEmpty())
+        assertEquals(true, r.value.hasNext)
+    }
+
+    @Test fun `starred hasNext is false when upstream page is below perPage`() {
+        val api = FakeGitHubApi(
+            starredPages = mapOf(
+                1 to GitHubApiResult.Success(
+                    listOf(ghRepo("o", "x", topics = listOf("fiction"))),
+                    etag = null,
+                ),
+            ),
+        )
+        val r = runBlocking { source(api = api).starred(page = 1) } as FictionResult.Success
+        assertEquals(false, r.value.hasNext)
+    }
+
+    @Test fun `starred RateLimited propagates with retry-after`() {
+        val api = FakeGitHubApi(
+            starredPages = mapOf(
+                1 to GitHubApiResult.RateLimited(retryAfterSeconds = 30),
+            ),
+        )
+        val r = runBlocking { source(api = api).starred(page = 1) }
+        assertTrue("got $r", r is FictionResult.RateLimited)
+    }
+
+    @Test fun `starred 401 surfaces as NetworkError so caller can branch on auth state`() {
+        // Auth interceptor routes the bearer header on signed-in calls;
+        // an unauthenticated /user/starred answers 401. The source
+        // currently maps that to NetworkError(message=GitHub error 401)
+        // — Browse uses the empty/error state. (A typed AuthRequired
+        // variant could land later if we want to surface a sign-in CTA.)
+        val api = FakeGitHubApi(
+            starredPages = mapOf(
+                1 to GitHubApiResult.HttpError(code = 401, message = "Unauthorized"),
+            ),
+        )
+        val r = runBlocking { source(api = api).starred(page = 1) }
+        assertTrue("got $r", r is FictionResult.NetworkError)
+    }
+
     // ─── Still-stubbed surfaces ────────────────────────────────────────
 
     @Test fun `followsList and setFollowed still throw NotImplementedError`() {
@@ -698,6 +776,9 @@ class GitHubSourceTest {
          *  drop in a `GitHubApiResult.RateLimited` etc. instead of
          *  Success. */
         private val myReposByPage: Map<Int, GitHubApiResult<List<GhRepo>>> = emptyMap(),
+        /** Per-page `/user/starred` response (#201). Same shape as
+         *  `myReposByPage`; missing page returns Success(emptyList). */
+        private val starredPages: Map<Int, GitHubApiResult<List<GhRepo>>> = emptyMap(),
     ) : GitHubApi(httpClient = OkHttpClient()) {
 
         override suspend fun getRepo(owner: String, repo: String): GitHubApiResult<GhRepo> =
@@ -744,6 +825,12 @@ class GitHubSourceTest {
                 etag = null,
             )
         }
+
+        override suspend fun starredRepos(
+            page: Int,
+            perPage: Int,
+        ): GitHubApiResult<List<GhRepo>> = starredPages[page]
+            ?: GitHubApiResult.Success(emptyList(), etag = null)
 
         override suspend fun searchRepositories(
             query: String,

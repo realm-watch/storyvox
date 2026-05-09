@@ -144,6 +144,14 @@ sealed interface BrowseSource {
      * the tab visibility, the adapter routes to `GitHubAuthedSource`.
      */
     data object GitHubMyRepos : BrowseSource
+
+    /**
+     * Auth-gated `/user/starred?sort=updated` listing for the signed-in
+     * GitHub user (#201). Filtered to fiction-shaped repos client-side.
+     * Same gating as [GitHubMyRepos] — Browse tab visibility is driven
+     * by `UiSettings.github`; the adapter routes to `GitHubAuthedSource`.
+     */
+    data object GitHubStarred : BrowseSource
 }
 
 /** A page-by-page accumulating cursor over a remote fiction listing.

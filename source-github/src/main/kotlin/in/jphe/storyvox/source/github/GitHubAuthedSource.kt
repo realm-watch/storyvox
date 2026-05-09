@@ -31,4 +31,12 @@ interface GitHubAuthedSource {
      * registry.
      */
     suspend fun myRepos(page: Int): FictionResult<ListPage<FictionSummary>>
+
+    /**
+     * `/user/starred?sort=updated`. One page of the signed-in user's
+     * stars, filtered to fiction-shaped repos (`topic:fiction OR
+     * topic:fanfiction OR topic:webnovel` — same set the public Browse
+     * → GitHub uses). Drives the Browse → Starred tab (#201).
+     */
+    suspend fun starred(page: Int): FictionResult<ListPage<FictionSummary>>
 }
