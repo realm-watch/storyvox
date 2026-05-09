@@ -82,7 +82,9 @@ fun BrowseScreen(
             modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.md),
         )
 
-        val supportedTabs = remember(state.sourceKey) { state.sourceKey.supportedTabs() }
+        val supportedTabs = remember(state.sourceKey, state.githubSignedIn) {
+            state.sourceKey.supportedTabs(state.githubSignedIn)
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -391,6 +393,7 @@ private val BrowseTab.label: String
         BrowseTab.NewReleases -> "New"
         BrowseTab.BestRated -> "Best Rated"
         BrowseTab.Search -> "Search"
+        BrowseTab.MyRepos -> "My Repos"
     }
 
 /**

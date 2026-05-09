@@ -53,7 +53,7 @@ internal class GitHubSource @Inject constructor(
     private val api: GitHubApi,
     private val registry: Registry,
     private val markdownRenderer: MarkdownChapterRenderer,
-) : FictionSource {
+) : FictionSource, GitHubAuthedSource {
 
     override val id: String = SourceIds.GITHUB
     override val displayName: String = "GitHub"
@@ -148,6 +148,47 @@ internal class GitHubSource @Inject constructor(
             )
         }
     }
+
+    /**
+     * `GET /user/repos` — auth-gated listing of the signed-in user's
+     * repos (#200). Maps each row through [toFictionSummary] so they
+     * route through the same `fictionDetail(github:owner/repo)` path
+     * as curated-registry entries; manifest detection still applies,
+     * so a repo without `book.toml` falls back to the bare-repo dir
+     * listing. `hasNext` infers from page-fill (no Link-header parsing
+     * yet) — a full page strongly implies another exists; a short
+     * page is always the last one.
+     */
+    override suspend fun myRepos(page: Int): FictionResult<ListPage<FictionSummary>> =
+        when (val r = api.myRepos(page = page, perPage = MY_REPOS_PER_PAGE)) {
+            is GitHubApiResult.Success -> {
+                val items = r.value.map { it.toFictionSummary() }
+                FictionResult.Success(
+                    ListPage(
+                        items = items,
+                        page = page,
+                        hasNext = items.size >= MY_REPOS_PER_PAGE,
+                    ),
+                )
+            }
+            is GitHubApiResult.NotFound -> FictionResult.Success(
+                ListPage(items = emptyList(), page = page, hasNext = false),
+            )
+            is GitHubApiResult.RateLimited -> FictionResult.RateLimited(
+                retryAfter = r.retryAfterSeconds?.let { it.toDuration(DurationUnit.SECONDS) },
+            )
+            is GitHubApiResult.HttpError -> FictionResult.NetworkError(
+                message = "GitHub error ${r.code}: ${r.message}",
+            )
+            is GitHubApiResult.NetworkError -> FictionResult.NetworkError(
+                message = "Could not reach GitHub",
+                cause = r.cause,
+            )
+            is GitHubApiResult.ParseError -> FictionResult.NetworkError(
+                message = "Malformed /user/repos response",
+                cause = r.cause,
+            )
+        }
 
     /**
      * Map a GitHub repo into the cross-source [FictionSummary]. Cover
@@ -516,5 +557,9 @@ internal class GitHubSource @Inject constructor(
 
     private companion object {
         const val STEP_3F_AUTH = "GitHub source auth-gated calls not implemented yet — lands in step 3f (optional PAT support)"
+        /** `/user/repos` per_page. 20 mirrors the search endpoint default
+         *  used elsewhere in the source so the BrowsePaginator hands the
+         *  user a consistent grid density across tabs. */
+        const val MY_REPOS_PER_PAGE: Int = 20
     }
 }

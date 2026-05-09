@@ -446,6 +446,90 @@ class GitHubSourceTest {
         assertEquals(FictionStatus.COMPLETED, r.value.items.single().status)
     }
 
+    // ─── myRepos (#200) ────────────────────────────────────────────────
+
+    @Test fun `myRepos maps each repo to a github FictionSummary`() = runBlocking {
+        val api = FakeGitHubApi(
+            myReposByPage = mapOf(
+                1 to GitHubApiResult.Success(
+                    listOf(
+                        ghRepo(owner = "octocat", name = "private-novel", desc = "WIP."),
+                        ghRepo(owner = "octocat", name = "side-saga", topics = listOf("fiction")),
+                    ),
+                    etag = null,
+                ),
+            ),
+        )
+        val r = source(api = api).myRepos(page = 1) as FictionResult.Success
+        assertEquals(2, r.value.items.size)
+        val first = r.value.items.first()
+        assertEquals("github:octocat/private-novel", first.id)
+        assertEquals(SourceIds.GITHUB, first.sourceId)
+        assertEquals("private-novel", first.title)
+        assertEquals("octocat", first.author)
+        assertEquals("WIP.", first.description)
+    }
+
+    @Test fun `myRepos hasNext is true when a full page comes back`() = runBlocking {
+        val items = (1..20).map { ghRepo(owner = "me", name = "repo-$it") }
+        val api = FakeGitHubApi(
+            myReposByPage = mapOf(1 to GitHubApiResult.Success(items, etag = null)),
+        )
+        val r = source(api = api).myRepos(page = 1) as FictionResult.Success
+        assertEquals(20, r.value.items.size)
+        assertEquals(true, r.value.hasNext)
+    }
+
+    @Test fun `myRepos hasNext is false on a short page`() = runBlocking {
+        val items = (1..5).map { ghRepo(owner = "me", name = "r-$it") }
+        val api = FakeGitHubApi(
+            myReposByPage = mapOf(1 to GitHubApiResult.Success(items, etag = null)),
+        )
+        val r = source(api = api).myRepos(page = 1) as FictionResult.Success
+        assertEquals(5, r.value.items.size)
+        assertEquals(false, r.value.hasNext)
+    }
+
+    @Test fun `myRepos NotFound surfaces as empty page hasNext-false`() = runBlocking {
+        val r = source(api = FakeGitHubApi()).myRepos(page = 1) as FictionResult.Success
+        assertTrue(r.value.items.isEmpty())
+        assertEquals(false, r.value.hasNext)
+    }
+
+    @Test fun `myRepos RateLimited propagates with retry-after`() = runBlocking {
+        val api = FakeGitHubApi(
+            myReposByPage = mapOf(1 to GitHubApiResult.RateLimited(retryAfterSeconds = 30)),
+        )
+        val r = source(api = api).myRepos(page = 1)
+        assertTrue("got $r", r is FictionResult.RateLimited)
+    }
+
+    @Test fun `myRepos HttpError 401 propagates as NetworkError so UI surfaces auth issue`() = runBlocking {
+        // The auth interceptor is what fires `markExpired()` on 401; the
+        // source-level mapping just produces a generic NetworkError with
+        // the GitHub error code embedded so the Browse paginator can
+        // display it. The Settings row shows "session expired"
+        // independently from the interceptor's side-effect.
+        val api = FakeGitHubApi(
+            myReposByPage = mapOf(1 to GitHubApiResult.HttpError(401, "Bad credentials")),
+        )
+        val r = source(api = api).myRepos(page = 1)
+        assertTrue("got $r", r is FictionResult.NetworkError)
+    }
+
+    @Test fun `myRepos archived repos map to COMPLETED status`() = runBlocking {
+        val api = FakeGitHubApi(
+            myReposByPage = mapOf(
+                1 to GitHubApiResult.Success(
+                    listOf(ghRepo(owner = "me", name = "old", archived = true)),
+                    etag = null,
+                ),
+            ),
+        )
+        val r = source(api = api).myRepos(page = 1) as FictionResult.Success
+        assertEquals(FictionStatus.COMPLETED, r.value.items.single().status)
+    }
+
     // ─── Still-stubbed surfaces ────────────────────────────────────────
 
     @Test fun `followsList and setFollowed still throw NotImplementedError`() {
@@ -608,6 +692,12 @@ class GitHubSourceTest {
          *  composed query. First key whose substring is contained in
          *  the actual query wins. */
         private val searches: List<Pair<String, GitHubApiResult<`in`.jphe.storyvox.source.github.model.GhSearchResponse>>> = emptyList(),
+        /** Per-page `/user/repos` response. Page 1 returns
+         *  `myReposByPage[1]` (or NotFound if absent); page 2 returns
+         *  `myReposByPage[2]`; etc. Tests covering hasNext/RateLimited
+         *  drop in a `GitHubApiResult.RateLimited` etc. instead of
+         *  Success. */
+        private val myReposByPage: Map<Int, GitHubApiResult<List<GhRepo>>> = emptyMap(),
     ) : GitHubApi(httpClient = OkHttpClient()) {
 
         override suspend fun getRepo(owner: String, repo: String): GitHubApiResult<GhRepo> =
@@ -669,6 +759,12 @@ class GitHubSourceTest {
                 etag = null,
             )
         }
+
+        override suspend fun myRepos(
+            page: Int,
+            perPage: Int,
+        ): GitHubApiResult<List<GhRepo>> =
+            myReposByPage[page] ?: GitHubApiResult.NotFound("no /user/repos page $page")
     }
 
 }
