@@ -303,7 +303,8 @@ enum class UiLlmProvider {
     /** Whether this provider has a real implementation.
      *  Matches `ProviderId.implemented`. */
     val implemented: Boolean
-        get() = this == Claude || this == OpenAi || this == Ollama || this == Vertex
+        get() = this == Claude || this == OpenAi || this == Ollama ||
+            this == Vertex || this == Foundry
 
     val displayName: String
         get() = when (this) {
@@ -331,6 +332,18 @@ data class UiAiSettings(
     val ollamaModel: String = "llama3.3",
     val vertexModel: String = "gemini-2.5-flash",
     val vertexKeyConfigured: Boolean = false,
+    /** Azure Foundry endpoint URL the user pasted (e.g.
+     *  `https://my-resource.openai.azure.com`). Empty = not set. */
+    val foundryEndpoint: String = "",
+    /** Deployment name (deployed mode) or catalog model id
+     *  (serverless mode). The same field is reused across both modes
+     *  because the URL builder reads it differently per mode. */
+    val foundryDeployment: String = "",
+    /** True selects Azure's serverless `/models/...` URL shape;
+     *  false selects the per-model `/openai/deployments/{name}/...`
+     *  shape (default — matches "Azure OpenAI Service" deployments). */
+    val foundryServerless: Boolean = false,
+    val foundryKeyConfigured: Boolean = false,
     val privacyAcknowledged: Boolean = false,
     val sendChapterTextEnabled: Boolean = true,
 )
@@ -581,6 +594,13 @@ interface SettingsRepositoryUi {
     suspend fun setOllamaModel(model: String)
     suspend fun setVertexApiKey(key: String?)   // null = clear
     suspend fun setVertexModel(model: String)
+    /** Azure Foundry mutators (this PR). [setFoundryApiKey] with `null`
+     *  clears the encrypted key. [setFoundryServerless] flips the URL
+     *  template + body shape — see `AzureFoundryProvider.buildUrl`. */
+    suspend fun setFoundryApiKey(key: String?)
+    suspend fun setFoundryEndpoint(url: String)
+    suspend fun setFoundryDeployment(deployment: String)
+    suspend fun setFoundryServerless(serverless: Boolean)
     suspend fun setSendChapterTextEnabled(enabled: Boolean)
     suspend fun acknowledgeAiPrivacy()
     /** Wipe all AI configuration — provider/keys/URLs. */

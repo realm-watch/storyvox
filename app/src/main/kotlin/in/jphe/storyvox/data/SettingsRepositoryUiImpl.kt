@@ -147,6 +147,16 @@ private object Keys {
     val AI_OLLAMA_BASE_URL = stringPreferencesKey("pref_ai_ollama_base_url")
     val AI_OLLAMA_MODEL = stringPreferencesKey("pref_ai_ollama_model")
     val AI_VERTEX_MODEL = stringPreferencesKey("pref_ai_vertex_model")
+    /** Azure Foundry — endpoint URL the user pasted (e.g.
+     *  `https://my-resource.openai.azure.com`). Empty/missing = not
+     *  configured. */
+    val AI_FOUNDRY_ENDPOINT = stringPreferencesKey("pref_ai_foundry_endpoint")
+    /** Azure Foundry — deployment name (deployed mode) or catalog
+     *  model id (serverless mode). */
+    val AI_FOUNDRY_DEPLOYMENT = stringPreferencesKey("pref_ai_foundry_deployment")
+    /** Azure Foundry — true selects the serverless URL shape;
+     *  default (false) selects per-model deployed URLs. */
+    val AI_FOUNDRY_SERVERLESS = booleanPreferencesKey("pref_ai_foundry_serverless")
     val AI_PRIVACY_ACK = booleanPreferencesKey("pref_ai_privacy_ack")
     val AI_SEND_CHAPTER_TEXT = booleanPreferencesKey("pref_ai_send_chapter_text")
 
@@ -235,6 +245,10 @@ class SettingsRepositoryUiImpl(
                 ollamaModel = prefs[Keys.AI_OLLAMA_MODEL] ?: "llama3.3",
                 vertexModel = prefs[Keys.AI_VERTEX_MODEL] ?: "gemini-2.5-flash",
                 vertexKeyConfigured = llmCreds.hasVertexKey,
+                foundryEndpoint = prefs[Keys.AI_FOUNDRY_ENDPOINT] ?: "",
+                foundryDeployment = prefs[Keys.AI_FOUNDRY_DEPLOYMENT] ?: "",
+                foundryServerless = prefs[Keys.AI_FOUNDRY_SERVERLESS] ?: false,
+                foundryKeyConfigured = llmCreds.hasFoundryKey,
                 privacyAcknowledged = prefs[Keys.AI_PRIVACY_ACK] ?: false,
                 sendChapterTextEnabled = prefs[Keys.AI_SEND_CHAPTER_TEXT] ?: true,
             ),
@@ -437,6 +451,23 @@ class SettingsRepositoryUiImpl(
         store.edit { it[Keys.AI_VERTEX_MODEL] = model }
     }
 
+    override suspend fun setFoundryApiKey(key: String?) {
+        if (key == null) llmCreds.clearFoundryApiKey()
+        else llmCreds.setFoundryApiKey(key)
+    }
+
+    override suspend fun setFoundryEndpoint(url: String) {
+        store.edit { it[Keys.AI_FOUNDRY_ENDPOINT] = url }
+    }
+
+    override suspend fun setFoundryDeployment(deployment: String) {
+        store.edit { it[Keys.AI_FOUNDRY_DEPLOYMENT] = deployment }
+    }
+
+    override suspend fun setFoundryServerless(serverless: Boolean) {
+        store.edit { it[Keys.AI_FOUNDRY_SERVERLESS] = serverless }
+    }
+
     override suspend fun setSendChapterTextEnabled(enabled: Boolean) {
         store.edit { it[Keys.AI_SEND_CHAPTER_TEXT] = enabled }
     }
@@ -453,6 +484,9 @@ class SettingsRepositoryUiImpl(
             it.remove(Keys.AI_OLLAMA_BASE_URL)
             it.remove(Keys.AI_OLLAMA_MODEL)
             it.remove(Keys.AI_VERTEX_MODEL)
+            it.remove(Keys.AI_FOUNDRY_ENDPOINT)
+            it.remove(Keys.AI_FOUNDRY_DEPLOYMENT)
+            it.remove(Keys.AI_FOUNDRY_SERVERLESS)
             it.remove(Keys.AI_PRIVACY_ACK)
             it.remove(Keys.AI_SEND_CHAPTER_TEXT)
         }
@@ -534,6 +568,9 @@ class SettingsRepositoryUiImpl(
             ollamaBaseUrl = prefs[Keys.AI_OLLAMA_BASE_URL] ?: "http://10.0.0.1:11434",
             ollamaModel = prefs[Keys.AI_OLLAMA_MODEL] ?: "llama3.3",
             vertexModel = prefs[Keys.AI_VERTEX_MODEL] ?: "gemini-2.5-flash",
+            foundryEndpoint = prefs[Keys.AI_FOUNDRY_ENDPOINT] ?: "",
+            foundryDeployment = prefs[Keys.AI_FOUNDRY_DEPLOYMENT] ?: "",
+            foundryServerless = prefs[Keys.AI_FOUNDRY_SERVERLESS] ?: false,
             privacyAcknowledged = prefs[Keys.AI_PRIVACY_ACK] ?: false,
             sendChapterTextEnabled = prefs[Keys.AI_SEND_CHAPTER_TEXT] ?: true,
         )
@@ -551,6 +588,9 @@ class SettingsRepositoryUiImpl(
             p[Keys.AI_OLLAMA_BASE_URL] = config.ollamaBaseUrl
             p[Keys.AI_OLLAMA_MODEL] = config.ollamaModel
             p[Keys.AI_VERTEX_MODEL] = config.vertexModel
+            p[Keys.AI_FOUNDRY_ENDPOINT] = config.foundryEndpoint
+            p[Keys.AI_FOUNDRY_DEPLOYMENT] = config.foundryDeployment
+            p[Keys.AI_FOUNDRY_SERVERLESS] = config.foundryServerless
             p[Keys.AI_PRIVACY_ACK] = config.privacyAcknowledged
             p[Keys.AI_SEND_CHAPTER_TEXT] = config.sendChapterTextEnabled
         }

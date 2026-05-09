@@ -255,6 +255,10 @@ fun SettingsScreen(
             onSetOllamaModel = viewModel::setOllamaModel,
             onSetVertexKey = viewModel::setVertexApiKey,
             onSetVertexModel = viewModel::setVertexModel,
+            onSetFoundryKey = viewModel::setFoundryApiKey,
+            onSetFoundryEndpoint = viewModel::setFoundryEndpoint,
+            onSetFoundryDeployment = viewModel::setFoundryDeployment,
+            onSetFoundryServerless = viewModel::setFoundryServerless,
             onSetSendChapterText = viewModel::setSendChapterTextEnabled,
             onTestConnection = viewModel::testAiConnection,
             onClearProbeOutcome = viewModel::clearProbeOutcome,
@@ -985,6 +989,10 @@ private fun AiSection(
     onSetOllamaModel: (String) -> Unit,
     onSetVertexKey: (String?) -> Unit,
     onSetVertexModel: (String) -> Unit,
+    onSetFoundryKey: (String?) -> Unit,
+    onSetFoundryEndpoint: (String) -> Unit,
+    onSetFoundryDeployment: (String) -> Unit,
+    onSetFoundryServerless: (Boolean) -> Unit,
     onSetSendChapterText: (Boolean) -> Unit,
     onTestConnection: (UiLlmProvider) -> Unit,
     onClearProbeOutcome: () -> Unit,
@@ -1021,9 +1029,12 @@ private fun AiSection(
         ProviderChip(label = "Vertex", selected = ai.provider == UiLlmProvider.Vertex) {
             onSetProvider(UiLlmProvider.Vertex)
         }
+        ProviderChip(label = "Foundry", selected = ai.provider == UiLlmProvider.Foundry) {
+            onSetProvider(UiLlmProvider.Foundry)
+        }
     }
     Text(
-        "Coming soon: AWS Bedrock, Azure AI Foundry, Anthropic Teams. " +
+        "Coming soon: AWS Bedrock, Anthropic Teams. " +
             "See the design spec at docs/superpowers/specs/2026-05-08-ai-integration-design.md.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1050,8 +1061,14 @@ private fun AiSection(
             onSetVertexKey = onSetVertexKey,
             onSetVertexModel = onSetVertexModel,
         )
+        UiLlmProvider.Foundry -> AzureFoundryProviderRows(
+            ai = ai,
+            onSetFoundryKey = onSetFoundryKey,
+            onSetFoundryEndpoint = onSetFoundryEndpoint,
+            onSetFoundryDeployment = onSetFoundryDeployment,
+            onSetFoundryServerless = onSetFoundryServerless,
+        )
         UiLlmProvider.Bedrock,
-        UiLlmProvider.Foundry,
         UiLlmProvider.Teams -> {
             // Selected via the (currently disabled) chip; defensive
             // catch-all that surfaces a friendly message rather than
@@ -1359,6 +1376,146 @@ private fun VertexProviderRows(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AzureFoundryProviderRows(
+    ai: UiAiSettings,
+    onSetFoundryKey: (String?) -> Unit,
+    onSetFoundryEndpoint: (String) -> Unit,
+    onSetFoundryDeployment: (String) -> Unit,
+    onSetFoundryServerless: (Boolean) -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    var keyDraft by remember { mutableStateOf("") }
+    var showKey by remember { mutableStateOf(false) }
+    var endpointDraft by remember(ai.foundryEndpoint) { mutableStateOf(ai.foundryEndpoint) }
+    var deploymentDraft by remember(ai.foundryDeployment) { mutableStateOf(ai.foundryDeployment) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        // ── Mode toggle ────────────────────────────────────────────
+        // Picked first so the deployment-id field's hint copy can
+        // adapt. Default is Deployed (the more common Azure path —
+        // an Azure OpenAI Service resource with named deployments).
+        Text(
+            "Mode",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+            ProviderChip(
+                label = "Deployed",
+                selected = !ai.foundryServerless,
+            ) { onSetFoundryServerless(false) }
+            ProviderChip(
+                label = "Serverless",
+                selected = ai.foundryServerless,
+            ) { onSetFoundryServerless(true) }
+        }
+        Text(
+            if (ai.foundryServerless)
+                "Serverless: one /models/chat/completions URL, model id in the body. " +
+                    "Use for the Azure model catalog (Llama / Phi / DeepSeek / Grok / …)."
+            else
+                "Deployed: per-deployment /openai/deployments/{name}/... URL. " +
+                    "Use for an Azure OpenAI Service resource — type the deployment name " +
+                    "you set in the Azure portal.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        // ── Endpoint URL ──────────────────────────────────────────
+        OutlinedTextField(
+            value = endpointDraft,
+            onValueChange = { endpointDraft = it },
+            label = { Text("Endpoint URL") },
+            placeholder = {
+                Text(
+                    if (ai.foundryServerless) "https://my-project.services.ai.azure.com"
+                    else "https://my-resource.openai.azure.com",
+                )
+            },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+
+        // ── API key (encrypted) ───────────────────────────────────
+        Text(
+            if (ai.foundryKeyConfigured) "Foundry API key — set"
+            else "Foundry API key — not set",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        OutlinedTextField(
+            value = keyDraft,
+            onValueChange = { keyDraft = it },
+            label = { Text("Paste new Foundry api-key") },
+            visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+
+        // ── Deployment / model id ─────────────────────────────────
+        OutlinedTextField(
+            value = deploymentDraft,
+            onValueChange = { deploymentDraft = it },
+            label = {
+                Text(if (ai.foundryServerless) "Model id" else "Deployment name")
+            },
+            placeholder = {
+                Text(if (ai.foundryServerless) "gpt-4o" else "gpt-4o-prod")
+            },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        if (ai.foundryServerless) {
+            // Catalog model chips for serverless. Deployed mode shows
+            // no chips — the deployment name is entirely the user's
+            // (it's whatever they typed in the Azure portal).
+            Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                listOf("gpt-4o", "gpt-4o-mini", "Llama-3.3-70B-Instruct").forEach { m ->
+                    BrassButton(
+                        label = m,
+                        onClick = { deploymentDraft = m; onSetFoundryDeployment(m) },
+                        variant = if (ai.foundryDeployment == m)
+                            BrassButtonVariant.Primary
+                        else
+                            BrassButtonVariant.Secondary,
+                    )
+                }
+            }
+        }
+
+        // ── Save / clear ──────────────────────────────────────────
+        Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+            BrassButton(
+                label = if (showKey) "Hide" else "Show",
+                onClick = { showKey = !showKey },
+                variant = BrassButtonVariant.Text,
+            )
+            BrassButton(
+                label = "Save",
+                onClick = {
+                    onSetFoundryEndpoint(endpointDraft.trim())
+                    onSetFoundryDeployment(deploymentDraft.trim())
+                    if (keyDraft.isNotBlank()) {
+                        onSetFoundryKey(keyDraft)
+                        keyDraft = ""
+                        showKey = false
+                    }
+                },
+                variant = BrassButtonVariant.Primary,
+            )
+            if (ai.foundryKeyConfigured) {
+                BrassButton(
+                    label = "Clear key",
+                    onClick = { onSetFoundryKey(null) },
+                    variant = BrassButtonVariant.Text,
+                )
+            }
+        }
     }
 }
 

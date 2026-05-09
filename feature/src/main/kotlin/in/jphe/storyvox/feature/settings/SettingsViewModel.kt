@@ -142,6 +142,12 @@ class SettingsViewModel @Inject constructor(
     fun setOllamaModel(model: String) = viewModelScope.launch { repo.setOllamaModel(model) }
     fun setVertexApiKey(key: String?) = viewModelScope.launch { repo.setVertexApiKey(key) }
     fun setVertexModel(model: String) = viewModelScope.launch { repo.setVertexModel(model) }
+    fun setFoundryApiKey(key: String?) = viewModelScope.launch { repo.setFoundryApiKey(key) }
+    fun setFoundryEndpoint(url: String) = viewModelScope.launch { repo.setFoundryEndpoint(url) }
+    fun setFoundryDeployment(deployment: String) =
+        viewModelScope.launch { repo.setFoundryDeployment(deployment) }
+    fun setFoundryServerless(serverless: Boolean) =
+        viewModelScope.launch { repo.setFoundryServerless(serverless) }
     fun setSendChapterTextEnabled(enabled: Boolean) =
         viewModelScope.launch { repo.setSendChapterTextEnabled(enabled) }
     fun acknowledgeAiPrivacy() = viewModelScope.launch { repo.acknowledgeAiPrivacy() }

@@ -1,5 +1,6 @@
 package `in`.jphe.storyvox.llm
 
+import `in`.jphe.storyvox.llm.provider.AzureFoundryProvider
 import `in`.jphe.storyvox.llm.provider.ClaudeApiProvider
 import `in`.jphe.storyvox.llm.provider.OllamaProvider
 import `in`.jphe.storyvox.llm.provider.OpenAiApiProvider
@@ -28,6 +29,7 @@ class LlmRepository @Inject constructor(
     private val openAi: OpenAiApiProvider,
     private val ollama: OllamaProvider,
     private val vertex: VertexProvider,
+    private val foundry: AzureFoundryProvider,
 ) {
 
     /** The provider currently picked in Settings, or null when AI
@@ -76,8 +78,8 @@ class LlmRepository @Inject constructor(
         ProviderId.OpenAi -> openAi
         ProviderId.Ollama -> ollama
         ProviderId.Vertex -> vertex
+        ProviderId.Foundry -> foundry
         ProviderId.Bedrock,
-        ProviderId.Foundry,
         ProviderId.Teams ->
             throw LlmError.NotConfigured(id)
     }
