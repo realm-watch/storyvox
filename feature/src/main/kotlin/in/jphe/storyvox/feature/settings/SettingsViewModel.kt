@@ -101,6 +101,19 @@ class SettingsViewModel @Inject constructor(
      *  the user re-runs Device Flow. */
     fun setGitHubPrivateReposEnabled(enabled: Boolean) =
         viewModelScope.launch { repo.setGitHubPrivateReposEnabled(enabled) }
+
+    /** Issue #221 — per-backend on/off. Hides the corresponding chip
+     *  from the Browse source picker; if the user disables their
+     *  currently-selected backend, BrowseViewModel snaps to the first
+     *  remaining one. Disabling all three is allowed (Browse degrades
+     *  to the empty-picker state) — Settings doesn't gatekeep. */
+    fun setSourceRoyalRoadEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setSourceRoyalRoadEnabled(enabled) }
+    fun setSourceGitHubEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setSourceGitHubEnabled(enabled) }
+    fun setSourceMemPalaceEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setSourceMemPalaceEnabled(enabled) }
+
     fun previewVoice(voice: UiVoice) = voices.previewVoice(voice)
 
     // ─── Memory Palace (#79) ────────────────────────────────────────────

@@ -143,7 +143,11 @@ private fun StoryvoxNavHostContent(
                         }
                         if (target != currentRoute) {
                             navController.navigate(target) {
-                                popUpTo(StoryvoxRoutes.LIBRARY) { saveState = true }
+                                // popUpTo targets the start destination so the
+                                // back stack stays anchored on Playing — tab
+                                // switches don't accumulate, and Back from
+                                // any home tab returns to Playing then exits.
+                                popUpTo(StoryvoxRoutes.PLAYING) { saveState = true }
                                 launchSingleTop = true
                                 restoreState = true
                             }
@@ -205,7 +209,10 @@ private fun StoryvoxNavHostContent(
 
         NavHost(
             navController = navController,
-            startDestination = StoryvoxRoutes.LIBRARY,
+            // Default to the Playing tab on launch — when the user
+            // returns to the app they almost always want to resume what
+            // they were listening to, not browse the library shelf.
+            startDestination = StoryvoxRoutes.PLAYING,
             modifier = Modifier.padding(padding),
         ) {
             composable(

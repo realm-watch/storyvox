@@ -172,6 +172,11 @@ private object Keys {
      *  versioning convention used by other v1-tagged keys here. */
     val GITHUB_PRIVATE_REPOS_ENABLED = booleanPreferencesKey("pref_github_private_repos_enabled_v1")
 
+    // ── Per-source on/off (issue #221) ─────────────────────────────
+    val SOURCE_ROYALROAD_ENABLED = booleanPreferencesKey("pref_source_royalroad_enabled")
+    val SOURCE_GITHUB_ENABLED = booleanPreferencesKey("pref_source_github_enabled")
+    val SOURCE_MEMPALACE_ENABLED = booleanPreferencesKey("pref_source_mempalace_enabled")
+
     // ── Chat grounding (issue #212) ────────────────────────────────
     /** Defaults match pre-#212 ChatViewModel behaviour: chapter title
      *  on, every more-expensive level off. */
@@ -258,6 +263,9 @@ class SettingsRepositoryUiImpl(
             palace = UiPalaceConfig(host = palace.host, apiKey = palace.apiKey),
             github = githubSession.toUi(),
             githubPrivateReposEnabled = prefs[Keys.GITHUB_PRIVATE_REPOS_ENABLED] ?: false,
+            sourceRoyalRoadEnabled = prefs[Keys.SOURCE_ROYALROAD_ENABLED] ?: true,
+            sourceGitHubEnabled = prefs[Keys.SOURCE_GITHUB_ENABLED] ?: true,
+            sourceMemPalaceEnabled = prefs[Keys.SOURCE_MEMPALACE_ENABLED] ?: true,
             ai = UiAiSettings(
                 provider = prefs[Keys.AI_PROVIDER]
                     ?.takeIf { it.isNotBlank() }
@@ -630,6 +638,18 @@ class SettingsRepositoryUiImpl(
 
     override suspend fun setGitHubPrivateReposEnabled(enabled: Boolean) {
         store.edit { it[Keys.GITHUB_PRIVATE_REPOS_ENABLED] = enabled }
+    }
+
+    override suspend fun setSourceRoyalRoadEnabled(enabled: Boolean) {
+        store.edit { it[Keys.SOURCE_ROYALROAD_ENABLED] = enabled }
+    }
+
+    override suspend fun setSourceGitHubEnabled(enabled: Boolean) {
+        store.edit { it[Keys.SOURCE_GITHUB_ENABLED] = enabled }
+    }
+
+    override suspend fun setSourceMemPalaceEnabled(enabled: Boolean) {
+        store.edit { it[Keys.SOURCE_MEMPALACE_ENABLED] = enabled }
     }
 
     /**

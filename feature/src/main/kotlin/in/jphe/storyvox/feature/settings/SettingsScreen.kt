@@ -264,6 +264,29 @@ fun SettingsScreen(
         // background to keep the library current."
         SettingsSectionHeader("Library & Sync", icon = Icons.AutoMirrored.Outlined.LibraryBooks)
         SettingsGroupCard {
+            // Per-backend Browse-picker visibility (#221). The picker
+            // chip strip filters out disabled backends; if the user
+            // turns them all off, Browse shows the empty-picker state
+            // and Library is still readable. Enabled-by-default so a
+            // fresh install matches pre-#221 behavior.
+            SettingsSwitchRow(
+                title = "Royal Road",
+                subtitle = "Show in Browse picker.",
+                checked = s.sourceRoyalRoadEnabled,
+                onCheckedChange = viewModel::setSourceRoyalRoadEnabled,
+            )
+            SettingsSwitchRow(
+                title = "GitHub",
+                subtitle = "Show in Browse picker.",
+                checked = s.sourceGitHubEnabled,
+                onCheckedChange = viewModel::setSourceGitHubEnabled,
+            )
+            SettingsSwitchRow(
+                title = "Memory Palace",
+                subtitle = "Show in Browse picker.",
+                checked = s.sourceMemPalaceEnabled,
+                onCheckedChange = viewModel::setSourceMemPalaceEnabled,
+            )
             SettingsSwitchRow(
                 title = "Wi-Fi only",
                 subtitle = "Don't poll on cellular.",

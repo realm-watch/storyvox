@@ -79,6 +79,7 @@ fun BrowseScreen(
         BrowseSourcePicker(
             selected = state.sourceKey,
             onSelect = viewModel::selectSource,
+            enabledKeys = state.enabledSources,
             modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.md),
         )
 
@@ -411,9 +412,17 @@ private val BrowseTab.label: String
 private fun BrowseSourcePicker(
     selected: BrowseSourceKey,
     onSelect: (BrowseSourceKey) -> Unit,
+    enabledKeys: Set<BrowseSourceKey>,
     modifier: Modifier = Modifier,
 ) {
-    val keys = remember { BrowseSourceKey.entries }
+    // Filter to user-enabled sources (#221) — when a backend is toggled
+    // off in Settings, drop it from the picker entirely so Browse stops
+    // trying to talk to it. If the user disables their currently-selected
+    // source, BrowseViewModel snaps back to the first enabled one.
+    val keys = remember(enabledKeys) {
+        BrowseSourceKey.entries.filter { it in enabledKeys }
+    }
+    if (keys.isEmpty()) return
     SingleChoiceSegmentedButtonRow(modifier = modifier) {
         keys.forEachIndexed { index, key ->
             SegmentedButton(

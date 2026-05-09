@@ -140,6 +140,11 @@ data class BrowseUiState(
      *  qualifiers are only meaningful for callers with private-repo
      *  access. */
     val hasGitHubRepoScope: Boolean = false,
+    /** Sources the user has enabled in Settings (#221). Drives the
+     *  BrowseSourcePicker membership — disabled sources are hidden from
+     *  the chip strip. Default to all three so a fresh-install user sees
+     *  the full picker. */
+    val enabledSources: Set<BrowseSourceKey> = BrowseSourceKey.entries.toSet(),
 )
 
 /** Typed view of a paginator's five state flows. Lifted into its own
@@ -173,6 +178,10 @@ private data class ControlsView(
      *  in [BrowseUiState]. */
     val githubSignedIn: Boolean,
     val hasGitHubRepoScope: Boolean,
+    /** Backends the user has not toggled off in Settings (#221).
+     *  Drives [BrowseSourcePicker] membership and an auto-snap when the
+     *  currently-selected source disappears. */
+    val enabledSources: Set<BrowseSourceKey>,
 )
 
 /**
@@ -233,6 +242,24 @@ class BrowseViewModel @Inject constructor(
             }
             .distinctUntilChanged()
 
+    /** Per-backend on/off projection (#221). The Settings screen exposes
+     *  three switches; this collapses them to a [Set] of enabled keys so
+     *  Browse can filter the source picker to the user's preference. A
+     *  fresh install defaults to all three, matching pre-#221 behavior.
+     *  StateFlow (not cold Flow) so [selectSource]'s init-block snap can
+     *  read .value synchronously. */
+    private val enabledSources: StateFlow<Set<BrowseSourceKey>> =
+        settings.settings
+            .map { s ->
+                buildSet {
+                    if (s.sourceRoyalRoadEnabled) add(BrowseSourceKey.RoyalRoad)
+                    if (s.sourceGitHubEnabled) add(BrowseSourceKey.GitHub)
+                    if (s.sourceMemPalaceEnabled) add(BrowseSourceKey.MemPalace)
+                }
+            }
+            .distinctUntilChanged()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BrowseSourceKey.entries.toSet())
+
     /** Active paginator for the current tuple; null when the search tab
      *  has neither a query nor active filters (the empty search hint is
      *  shown instead). Multi-step combine: the 5-arg overload is full
@@ -286,6 +313,20 @@ class BrowseViewModel @Inject constructor(
                 }
             }
         }
+        // Auto-snap source selection when the user disables the current
+        // backend in Settings (#221). The picker filters disabled keys
+        // out, but `_sourceKey` is the source-of-truth for the paginator
+        // and would otherwise keep firing requests against a backend the
+        // user just told us to ignore. Snap to the first enabled key, or
+        // RoyalRoad as a sentinel if the user disabled everything (the
+        // empty-picker branch in BrowseSourcePicker handles the visual).
+        viewModelScope.launch {
+            enabledSources.collectLatest { enabled ->
+                if (_sourceKey.value !in enabled) {
+                    _sourceKey.value = enabled.firstOrNull() ?: BrowseSourceKey.RoyalRoad
+                }
+            }
+        }
     }
 
     /** All user-controlled knobs collapsed into one typed record. The
@@ -299,7 +340,17 @@ class BrowseViewModel @Inject constructor(
         ) { sourceKey, tab, q, filter, ghFilter ->
             ResolveTuple(sourceKey, tab, q, filter, ghFilter)
         }
-        combine(baseTuple, _palaceFilter, githubSignedIn, hasGitHubRepoScope) { tup, palaceFilter, signedIn, repoScope ->
+        // 5-arg combine — at the overload ceiling. If a 6th controls
+        // flow ever needs to land, lift one of these into a side
+        // StateFlow consumed inside the lambda rather than reaching for
+        // the variadic overload.
+        combine(
+            baseTuple,
+            _palaceFilter,
+            githubSignedIn,
+            hasGitHubRepoScope,
+            enabledSources,
+        ) { tup, palaceFilter, signedIn, repoScope, enabled ->
             ControlsView(
                 sourceKey = tup.sourceKey,
                 tab = tup.tab,
@@ -309,6 +360,7 @@ class BrowseViewModel @Inject constructor(
                 palaceFilter = palaceFilter,
                 githubSignedIn = signedIn,
                 hasGitHubRepoScope = repoScope,
+                enabledSources = enabled,
             )
         }
     }
@@ -335,6 +387,7 @@ class BrowseViewModel @Inject constructor(
                     palaceWings = wings,
                     githubSignedIn = c.githubSignedIn,
                     hasGitHubRepoScope = c.hasGitHubRepoScope,
+                    enabledSources = c.enabledSources,
                 )
             }
         } else {
@@ -369,6 +422,7 @@ class BrowseViewModel @Inject constructor(
                     palaceWings = wings,
                     githubSignedIn = c.githubSignedIn,
                     hasGitHubRepoScope = c.hasGitHubRepoScope,
+                    enabledSources = c.enabledSources,
                 )
             }
         }

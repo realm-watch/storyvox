@@ -261,6 +261,9 @@ class RealPlaybackControllerUiTest {
         // ── GitHub OAuth no-op (#91) — playback-controller test doesn't auth. ──
         override suspend fun signOutGitHub() = Unit
         override suspend fun setGitHubPrivateReposEnabled(enabled: Boolean) = Unit
+        override suspend fun setSourceRoyalRoadEnabled(enabled: Boolean) = Unit
+        override suspend fun setSourceGitHubEnabled(enabled: Boolean) = Unit
+        override suspend fun setSourceMemPalaceEnabled(enabled: Boolean) = Unit
         override suspend fun signOutTeams() = Unit
     }
 

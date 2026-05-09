@@ -595,6 +595,16 @@ data class UiSettings(
      * keeps its original scopes until then.
      */
     val githubPrivateReposEnabled: Boolean = false,
+    /**
+     * Per-source on/off toggles (#221). When false, the corresponding
+     * source is hidden from `BrowseSourcePicker` and any catalog/poll
+     * call short-circuits. Default true — every source ships enabled.
+     * Library and Follows aren't affected; the toggles only gate Browse
+     * surface area.
+     */
+    val sourceRoyalRoadEnabled: Boolean = true,
+    val sourceGitHubEnabled: Boolean = true,
+    val sourceMemPalaceEnabled: Boolean = true,
 )
 
 /**
@@ -817,6 +827,11 @@ interface SettingsRepositoryUi {
      * user re-signs-in.
      */
     suspend fun setGitHubPrivateReposEnabled(enabled: Boolean)
+
+    /** Per-source on/off toggles (#221). */
+    suspend fun setSourceRoyalRoadEnabled(enabled: Boolean)
+    suspend fun setSourceGitHubEnabled(enabled: Boolean)
+    suspend fun setSourceMemPalaceEnabled(enabled: Boolean)
 }
 
 /** Outcome of [`SettingsRepositoryUi.testPalaceConnection`]. */
