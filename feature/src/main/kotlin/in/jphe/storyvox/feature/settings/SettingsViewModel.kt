@@ -160,6 +160,9 @@ class SettingsViewModel @Inject constructor(
     fun setSendChapterTextEnabled(enabled: Boolean) =
         viewModelScope.launch { repo.setSendChapterTextEnabled(enabled) }
     fun acknowledgeAiPrivacy() = viewModelScope.launch { repo.acknowledgeAiPrivacy() }
+    /** Anthropic Teams (OAuth) — local sign-out. Remote revoke deep-links
+     *  to claude.ai/settings. (#181) */
+    fun signOutTeams() = viewModelScope.launch { repo.signOutTeams() }
     fun resetAiSettings() = viewModelScope.launch {
         repo.resetAiSettings()
         _probe.value = null

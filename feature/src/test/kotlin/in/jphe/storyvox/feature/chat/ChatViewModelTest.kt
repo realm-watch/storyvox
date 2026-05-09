@@ -307,6 +307,7 @@ private fun unreachableLlmRepository(): LlmRepository {
         vertex = unreachableVertex(),
         foundry = unreachableFoundry(),
         bedrock = unreachableBedrock(),
+        teams = unreachableTeams(),
     )
 }
 
@@ -369,6 +370,19 @@ private fun unreachableBedrock(): `in`.jphe.storyvox.llm.provider.BedrockProvide
         http = okhttp3.OkHttpClient(),
         store = NullStore,
         configFlow = flowOf(LlmConfig()),
+        json = kotlinx.serialization.json.Json,
+    ) {
+        override fun stream(messages: List<LlmMessage>, systemPrompt: String?, model: String?) =
+            error("unreachable")
+    }
+
+private fun unreachableTeams(): `in`.jphe.storyvox.llm.provider.AnthropicTeamsProvider =
+    object : `in`.jphe.storyvox.llm.provider.AnthropicTeamsProvider(
+        http = okhttp3.OkHttpClient(),
+        store = NullStore,
+        configFlow = flowOf(LlmConfig()),
+        authApi = `in`.jphe.storyvox.llm.auth.AnthropicTeamsAuthApi(okhttp3.OkHttpClient()),
+        authRepo = `in`.jphe.storyvox.llm.auth.AnthropicTeamsAuthRepository(NullStore),
         json = kotlinx.serialization.json.Json,
     ) {
         override fun stream(messages: List<LlmMessage>, systemPrompt: String?, model: String?) =

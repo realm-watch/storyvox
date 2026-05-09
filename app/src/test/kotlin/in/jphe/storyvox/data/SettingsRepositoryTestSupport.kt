@@ -5,6 +5,8 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import `in`.jphe.storyvox.data.auth.SessionHydrator
 import `in`.jphe.storyvox.data.auth.SessionState
 import `in`.jphe.storyvox.data.repository.AuthRepository
+import `in`.jphe.storyvox.llm.LlmCredentialsStore
+import `in`.jphe.storyvox.llm.auth.AnthropicTeamsAuthRepository
 import `in`.jphe.storyvox.source.github.auth.GitHubAuthRepository
 import `in`.jphe.storyvox.source.github.auth.GitHubSession
 import `in`.jphe.storyvox.source.mempalace.config.PalaceConfig
@@ -70,6 +72,15 @@ internal class FakeGitHubAuth : GitHubAuthRepository {
     override suspend fun clearSession() { state.value = GitHubSession.Anonymous }
     override fun markExpired() { state.value = GitHubSession.Expired }
 }
+
+/**
+ * In-memory [AnthropicTeamsAuthRepository] for the settings tests (#181).
+ * Wraps the existing [LlmCredentialsStore.forTesting] no-op store —
+ * captureSession / clearSession just flip the in-memory state flow.
+ */
+internal fun fakeTeamsAuth(
+    store: LlmCredentialsStore = LlmCredentialsStore.forTesting(),
+): AnthropicTeamsAuthRepository = AnthropicTeamsAuthRepository(store)
 
 /**
  * Real [PalaceConfigImpl] backed by a temp DataStore + an in-memory

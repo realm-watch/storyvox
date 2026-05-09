@@ -416,6 +416,16 @@ data class UiAiSettings(
     val bedrockSecretKeyConfigured: Boolean = false,
     val bedrockRegion: String = "us-east-1",
     val bedrockModel: String = "claude-haiku-4.5",
+    /**
+     * Anthropic Teams (OAuth) session state (#181). The bearer token
+     * itself never crosses into the UI — Settings only needs to know
+     * whether the user has signed in and (optionally) which scopes
+     * the workspace granted. Token refresh is handled inside the
+     * provider; the UI flips to "not signed in" only when the refresh
+     * token also gets revoked (mid-session expiry rotates the bearer
+     * silently). */
+    val teamsSignedIn: Boolean = false,
+    val teamsScopes: String = "",
     val privacyAcknowledged: Boolean = false,
     val sendChapterTextEnabled: Boolean = true,
 )
@@ -696,6 +706,13 @@ interface SettingsRepositoryUi {
     suspend fun setBedrockModel(model: String)
     suspend fun setSendChapterTextEnabled(enabled: Boolean)
     suspend fun acknowledgeAiPrivacy()
+    /**
+     * Anthropic Teams (OAuth) — local sign-out. Wipes the bearer +
+     * refresh + scope cache. Remote revoke at console.anthropic.com
+     * requires a client_secret we don't have (public-client posture);
+     * Settings UI deep-links the user to manage sessions there. (#181)
+     */
+    suspend fun signOutTeams()
     /** Wipe all AI configuration — provider/keys/URLs. */
     suspend fun resetAiSettings()
 
