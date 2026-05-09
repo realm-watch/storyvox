@@ -79,4 +79,13 @@ object LlmModels {
         "mistral",
         "phi3",
     )
+
+    /** Mirrors cloud-chat-assistant's Gemini list. The `-lite` tier is
+     *  the cheapest; `-pro` is the smartest; `-flash` is the default
+     *  middle ground. */
+    val vertex = listOf(
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-2.5-flash-lite",
+    )
 }

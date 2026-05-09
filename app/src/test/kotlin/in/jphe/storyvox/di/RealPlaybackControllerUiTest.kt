@@ -236,6 +236,8 @@ class RealPlaybackControllerUiTest {
         override suspend fun setOpenAiModel(model: String) = Unit
         override suspend fun setOllamaBaseUrl(url: String) = Unit
         override suspend fun setOllamaModel(model: String) = Unit
+        override suspend fun setVertexApiKey(key: String?) = Unit
+        override suspend fun setVertexModel(model: String) = Unit
         override suspend fun setSendChapterTextEnabled(enabled: Boolean) = Unit
         override suspend fun acknowledgeAiPrivacy() = Unit
         override suspend fun resetAiSettings() = Unit

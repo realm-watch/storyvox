@@ -125,7 +125,9 @@ class ClaudeApiProviderTest {
 internal class FakeStore(
     private val claude: String? = null,
     private val openAi: String? = null,
+    private val vertex: String? = null,
 ) : LlmCredentialsStore() {
     override fun claudeApiKey(): String? = claude
     override fun openAiApiKey(): String? = openAi
+    override fun vertexApiKey(): String? = vertex
 }

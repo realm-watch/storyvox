@@ -4,13 +4,13 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Wire-format data classes for the three implemented providers.
- * Anthropic and OpenAI/Ollama have different shapes; both are kept
- * narrow (only the fields we send) so we don't accidentally
- * over-specify and break on minor API changes.
+ * Wire-format data classes for the implemented providers.
+ * Anthropic, OpenAI/Ollama, and Vertex/Gemini all have distinct
+ * shapes; each is kept narrow (only the fields we send) so we don't
+ * accidentally over-specify and break on minor API changes.
  *
- * Spec-only providers (Bedrock, Vertex, Foundry, Teams) get their
- * own wire types when those classes ship.
+ * Spec-only providers (Bedrock, Foundry, Teams) get their own wire
+ * types when those classes ship.
  */
 
 // ── Anthropic Messages API ──────────────────────────────────────────
@@ -44,4 +44,32 @@ internal data class OpenAiRequest(
 internal data class OpenAiMessage(
     val role: String,        // "system", "user", or "assistant"
     val content: String,
+)
+
+// ── Google Vertex AI / Gemini ───────────────────────────────────────
+
+@Serializable
+internal data class VertexRequest(
+    val contents: List<VertexContent>,
+    @SerialName("system_instruction") val systemInstruction: VertexContent? = null,
+    val generationConfig: VertexGenerationConfig? = null,
+)
+
+@Serializable
+internal data class VertexContent(
+    /** "user" or "model" — Gemini calls the assistant role "model".
+     *  Optional on `system_instruction` (Gemini ignores it there). */
+    val role: String? = null,
+    val parts: List<VertexPart>,
+)
+
+@Serializable
+internal data class VertexPart(
+    val text: String,
+)
+
+@Serializable
+internal data class VertexGenerationConfig(
+    val temperature: Float? = null,
+    @SerialName("maxOutputTokens") val maxOutputTokens: Int? = null,
 )
