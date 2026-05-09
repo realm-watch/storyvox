@@ -14,7 +14,14 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -24,9 +31,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import `in`.jphe.storyvox.feature.api.UiRecapPlaybackState
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.MagicSpinner
@@ -43,19 +55,25 @@ import `in`.jphe.storyvox.ui.theme.LocalSpacing
  *  - Hidden — modal not rendered.
  *  - Loading — "Asking the librarian…" + spinner; Cancel is live.
  *  - Streaming — partial text + blinking cursor; Cancel is live.
- *  - Done — full text + Close button (and a "Read aloud" button
- *    that's greyed out with "coming soon" tooltip — the synth-from-
- *    arbitrary-text path lands in a follow-up PR).
+ *  - Done — full text + Close button + Read-aloud icon button (#189).
  *  - Error — error message + recovery action (Settings link / Try
  *    again / Close).
+ *
+ * The Read-aloud icon button (issue #189) appears in the Done state.
+ * Tap toggles between Play and Pause according to [recapPlayback]
+ * (Idle → tap → Speaking; Speaking → tap → Idle). The TTS pipeline
+ * lives in :core-playback so the audio survives modal recomposition;
+ * the button is just the toggle UI.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecapModal(
     state: RecapUiState,
+    recapPlayback: UiRecapPlaybackState,
     onCancel: () -> Unit,
     onRetry: () -> Unit,
     onOpenSettings: () -> Unit,
+    onToggleReadAloud: () -> Unit,
 ) {
     if (state is RecapUiState.Hidden) return
 
@@ -134,10 +152,10 @@ fun RecapModal(
                             onClick = onCancel,
                             variant = BrassButtonVariant.Secondary,
                         )
-                        // Read-aloud is P1 — surfaced greyed-out with a
-                        // tooltip-on-press in a follow-up PR. For PR-1
-                        // we leave the slot empty so the modal doesn't
-                        // promise something we don't deliver.
+                        ReadAloudIconButton(
+                            playbackState = recapPlayback,
+                            onClick = onToggleReadAloud,
+                        )
                     }
                     is RecapUiState.Error -> {
                         when (state.kind) {
@@ -173,6 +191,41 @@ fun RecapModal(
                 }
             }
         }
+    }
+}
+
+/**
+ * Issue #189 — brass-tinted icon button toggling the recap-aloud TTS.
+ * Renders a Play icon when [playbackState] is Idle, Pause when Speaking.
+ * Driven by `ReaderViewModel.toggleRecapAloud`; the audio pipeline lives
+ * in :core-playback so the button is purely a state toggle.
+ */
+@Composable
+private fun ReadAloudIconButton(
+    playbackState: UiRecapPlaybackState,
+    onClick: () -> Unit,
+) {
+    val isSpeaking = playbackState == UiRecapPlaybackState.Speaking
+    val brass = MaterialTheme.colorScheme.primary
+    val (icon, label) = if (isSpeaking) {
+        Icons.Filled.Pause to "Pause read aloud"
+    } else {
+        Icons.Filled.PlayArrow to "Read aloud"
+    }
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .clip(CircleShape)
+            .semantics { role = Role.Button },
+        colors = IconButtonDefaults.iconButtonColors(
+            // Tonal brass background so the button reads as a primary
+            // action without competing with the BrassButton "Close"
+            // sibling (which is already brass-outlined Secondary).
+            containerColor = brass.copy(alpha = 0.16f),
+            contentColor = brass,
+        ),
+    ) {
+        Icon(imageVector = icon, contentDescription = label)
     }
 }
 

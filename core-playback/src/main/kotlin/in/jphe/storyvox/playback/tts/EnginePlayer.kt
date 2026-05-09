@@ -93,6 +93,14 @@ import kotlinx.coroutines.withContext
  * Pause/seek tear down the AudioTrack and re-create on resume; cheaper than
  * trying to keep state coherent across a `pause()` call.
  */
+/**
+ * Issue #189 — playback state for the one-shot recap-aloud TTS pipeline.
+ * Distinct from [PlaybackState] because the recap is a transient utterance
+ * with its own AudioTrack; conflating the two would force every chapter
+ * playback observer to also reason about recap state.
+ */
+enum class RecapPlaybackState { Idle, Speaking }
+
 @UnstableApi
 class EnginePlayer @AssistedInject constructor(
     @Assisted private val context: Context,
@@ -401,6 +409,26 @@ class EnginePlayer @AssistedInject constructor(
 
     private val _uiEvents = MutableSharedFlow<PlaybackUiEvent>(extraBufferCapacity = 4)
     val uiEvents: SharedFlow<PlaybackUiEvent> = _uiEvents.asSharedFlow()
+
+    /** Issue #189 — one-shot recap-aloud TTS pipeline state. Distinct from
+     *  the chapter pipeline because the recap is a transient utterance, not
+     *  a chapter: it doesn't update charOffset, doesn't bind to a fiction
+     *  id, doesn't persist a position. The two pipelines share the engine
+     *  (via [engineMutex]) but have independent AudioTrack + consumer-thread
+     *  state. The chapter pipeline must be paused before [speak] starts —
+     *  the caller does that, this state is purely for the recap UI's
+     *  play/pause toggle. */
+    private val _recapPlayback = MutableStateFlow(RecapPlaybackState.Idle)
+    val recapPlayback: StateFlow<RecapPlaybackState> = _recapPlayback.asStateFlow()
+
+    /** Recap-only AudioTrack. Lives independently from [audioTrack] so a
+     *  recap doesn't tear down chapter playback state. Released by the
+     *  recap consumer thread on its own finally block, matching the
+     *  chapter-pipeline shape (release-from-writer-thread, no JNI race). */
+    private var recapAudioTrack: AudioTrack? = null
+    private var recapPcmSource: PcmSource? = null
+    private var recapConsumerThread: Thread? = null
+    private val recapPipelineRunning = AtomicBoolean(false)
 
     override fun getState(): State {
         val s = _observableState.value
@@ -1209,8 +1237,194 @@ class EnginePlayer @AssistedInject constructor(
 
     fun releaseEngine() {
         kotlinx.coroutines.runBlocking { persistPosition() }
+        stopRecapPipeline()
         stopPlaybackPipeline()
         scope.cancel()
+    }
+
+    // ----- Issue #189: one-shot recap-aloud TTS -----
+
+    /**
+     * Issue #189 — synthesize and play [text] as a one-shot utterance via
+     * the active voice. Used by the chapter-recap modal to read the
+     * AI-generated recap aloud. Distinct from [loadAndPlay] in that:
+     *  - No fiction/chapter binding; doesn't move charOffset.
+     *  - Uses a dedicated [recapAudioTrack] + consumer thread; chapter
+     *    pipeline state is left untouched (chapter pause is the caller's
+     *    job — see ReaderViewModel.toggleRecapAloud).
+     *  - When playback ends naturally, [recapPlayback] flips to Idle. The
+     *    caller decides whether to auto-resume the fiction (we don't —
+     *    the UX is "fiction stays paused so the listener can absorb").
+     *
+     * Reuses [engineMutex] so the engine isn't entered twice — a recap
+     * starting while a chapter generator's JNI call is in flight will
+     * wait for it to complete (or for the caller's pause to tear it down).
+     *
+     * No-op if a voice can't be activated (returns silently; the UI will
+     * see [recapPlayback] never leaves Idle and can choose its own
+     * fallback). Existing recap playback is stopped before a new one
+     * starts.
+     */
+    suspend fun speak(text: String) {
+        if (text.isBlank()) return
+        stopRecapPipeline()
+        if (!ensureVoiceLoaded()) return
+        val recapSentences = chunker.chunk(text)
+        if (recapSentences.isEmpty()) return
+        startRecapPipeline(recapSentences)
+    }
+
+    /** Issue #189 — stop an in-flight recap utterance. Idempotent. */
+    fun stopSpeaking() {
+        stopRecapPipeline()
+    }
+
+    /**
+     * Issue #189 — extracted from [loadAndPlay]'s model-load path so
+     * [speak] can warm up the active voice without going through the
+     * chapter-binding flow. Returns true if a model is loaded and the
+     * engine is ready to generate; false if no active voice or load
+     * failed (caller renders the failure however it wants — for recap
+     * we silently bail and the UI's Read-aloud button stays in its
+     * pre-tap state).
+     *
+     * Skips the load if the same voice is already loaded — the chapter
+     * pipeline's [loadedVoiceId] is the canonical signal.
+     */
+    private suspend fun ensureVoiceLoaded(): Boolean {
+        val active = voiceManager.activeVoice.first() ?: return false
+        // Already loaded? Nothing to do — the engine is hot.
+        if (loadedVoiceId == active.id && activeEngineType != null) return true
+
+        val loadResult: String = withContext(Dispatchers.IO) {
+            engineMutex.withLock {
+                when (active.engineType) {
+                    EngineType.Piper -> {
+                        val voiceDir = voiceManager.voiceDirFor(active.id)
+                        val onnx = File(voiceDir, "model.onnx").absolutePath
+                        val tokens = File(voiceDir, "tokens.txt").absolutePath
+                        VoiceEngine.getInstance().loadModel(context, onnx, tokens)
+                            ?: "Error: load returned null"
+                    }
+                    is EngineType.Kokoro -> {
+                        val sharedDir = voiceManager.kokoroSharedDir()
+                        val onnx = File(sharedDir, "model.onnx").absolutePath
+                        val tokens = File(sharedDir, "tokens.txt").absolutePath
+                        val voicesBin = File(sharedDir, "voices.bin").absolutePath
+                        KokoroEngine.getInstance().setActiveSpeakerId(
+                            (active.engineType as EngineType.Kokoro).speakerId,
+                        )
+                        KokoroEngine.getInstance().loadModel(context, onnx, tokens, voicesBin)
+                            ?: "Error: load returned null"
+                    }
+                    is EngineType.Azure -> return@withContext "Error: Azure unsupported in recap"
+                }
+            }
+        }
+        if (loadResult != "Success") return false
+        activeEngineType = active.engineType
+        loadedVoiceId = active.id
+        return true
+    }
+
+    /**
+     * Issue #189 — recap-only producer/consumer pair. Lifted shape from
+     * [startPlaybackPipeline] but stripped to the essentials:
+     *  - No buffering UI (a 200-word recap is short; underrun is fine).
+     *  - No catchup-pause / sleep-timer plumbing.
+     *  - On natural end, flips [recapPlayback] back to Idle. No chapter
+     *    advance, no position persistence.
+     */
+    private fun startRecapPipeline(recapSentences: List<Sentence>) {
+        val engineType = activeEngineType
+        val sampleRate = when (engineType) {
+            is EngineType.Kokoro -> KokoroEngine.getInstance().sampleRate
+            else -> VoiceEngine.getInstance().sampleRate
+        }.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
+        val track = createAudioTrack(sampleRate)
+        recapAudioTrack = track
+
+        val source = EngineStreamingSource(
+            sentences = recapSentences,
+            startSentenceIndex = 0,
+            engine = activeVoiceEngineHandle(engineType),
+            speed = currentSpeed,
+            pitch = currentPitch,
+            engineMutex = engineMutex,
+            punctuationPauseMultiplier = currentPunctuationPauseMultiplier,
+            queueCapacity = cachedBufferChunks.coerceIn(2, 1500),
+            pronunciationDictApply = cachedPronunciationDict::apply,
+        )
+        recapPcmSource = source
+        recapPipelineRunning.set(true)
+        _recapPlayback.value = RecapPlaybackState.Speaking
+
+        recapConsumerThread = Thread({
+            AndroidProcess.setThreadPriority(AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO)
+            var firstSentence = true
+            try {
+                runCatching { track.play() }
+                while (recapPipelineRunning.get()) {
+                    val chunk = try {
+                        runBlocking { source.nextChunk() }
+                    } catch (_: Throwable) {
+                        null
+                    } ?: break
+
+                    if (firstSentence) {
+                        runCatching { track.setVolume(1f) }
+                        firstSentence = false
+                    }
+
+                    var written = 0
+                    while (written < chunk.pcm.size && recapPipelineRunning.get()) {
+                        val n = track.write(chunk.pcm, written, chunk.pcm.size - written)
+                        if (n < 0) break
+                        written += n
+                    }
+                    var remaining = chunk.trailingSilenceBytes
+                    while (remaining > 0 && recapPipelineRunning.get()) {
+                        val sz = remaining.coerceAtMost(SILENCE_CHUNK.size)
+                        val n = track.write(SILENCE_CHUNK, 0, sz)
+                        if (n < 0) break
+                        remaining -= n
+                    }
+                }
+            } finally {
+                runCatching { track.pause() }
+                runCatching { track.flush() }
+                runCatching { track.release() }
+                // Only flip back to Idle if we're still the active recap
+                // pipeline — a stop-then-start race could otherwise have
+                // the dying old thread reset state for the new one.
+                if (recapPipelineRunning.compareAndSet(true, false)) {
+                    scope.launch { _recapPlayback.value = RecapPlaybackState.Idle }
+                }
+            }
+        }, "storyvox-recap-out").apply {
+            isDaemon = true
+            start()
+        }
+    }
+
+    private fun stopRecapPipeline() {
+        recapPipelineRunning.set(false)
+        val track = recapAudioTrack
+        recapAudioTrack = null
+        track?.let {
+            runCatching { it.pause() }
+            runCatching { it.flush() }
+        }
+        val src = recapPcmSource
+        recapPcmSource = null
+        if (src != null) runBlocking { src.close() }
+        val t = recapConsumerThread
+        recapConsumerThread = null
+        if (t != null && t !== Thread.currentThread()) {
+            t.interrupt()
+            try { t.join(2_000) } catch (_: InterruptedException) {}
+        }
+        _recapPlayback.value = RecapPlaybackState.Idle
     }
 
     private companion object {
