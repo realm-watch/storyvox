@@ -15,8 +15,8 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.LibraryBooks
-import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -146,7 +146,7 @@ fun SettingsScreen(
         // ── 2. Reading ───────────────────────────────────────────────
         // Visual reading knobs. Theme today; future home for font size
         // override, sentence highlight intensity, page-turn animation.
-        SettingsSectionHeader("Reading", icon = Icons.Outlined.MenuBook)
+        SettingsSectionHeader("Reading", icon = Icons.AutoMirrored.Outlined.MenuBook)
         SettingsGroupCard {
             SettingsSegmentedBlock(
                 title = "Theme",
@@ -254,7 +254,7 @@ fun SettingsScreen(
         // from "Downloads" — "Library & Sync" matches storyvox's bottom-
         // tab language and reads as "what storyvox does in the
         // background to keep the library current."
-        SettingsSectionHeader("Library & Sync", icon = Icons.Outlined.LibraryBooks)
+        SettingsSectionHeader("Library & Sync", icon = Icons.AutoMirrored.Outlined.LibraryBooks)
         SettingsGroupCard {
             SettingsSwitchRow(
                 title = "Wi-Fi only",
@@ -958,7 +958,7 @@ internal fun computeTickLabelX(
  * controls cross ~5 toggles (matching where the Voices section is
  * heading).
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun AiSection(
     ai: UiAiSettings,
@@ -1128,7 +1128,7 @@ private fun ProviderChip(label: String, selected: Boolean, onClick: () -> Unit) 
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ClaudeProviderRows(
     ai: UiAiSettings,
@@ -1184,7 +1184,7 @@ private fun ClaudeProviderRows(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         // Model picker as a row of Brass chips. Hardcoded list for v1.
-        Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(spacing.xs), verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
             listOf("claude-haiku-4.5", "claude-sonnet-4.6", "claude-opus-4.6").forEach { m ->
                 BrassButton(
                     label = m.removePrefix("claude-"),
@@ -1201,7 +1201,7 @@ private fun ClaudeProviderRows(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun OpenAiProviderRows(
     ai: UiAiSettings,
@@ -1255,7 +1255,7 @@ private fun OpenAiProviderRows(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(spacing.xs), verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
             listOf("gpt-4o-mini", "gpt-4o").forEach { m ->
                 BrassButton(
                     label = m,
@@ -1267,7 +1267,7 @@ private fun OpenAiProviderRows(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun OllamaProviderRows(
     ai: UiAiSettings,
@@ -1310,7 +1310,7 @@ private fun OllamaProviderRows(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun VertexProviderRows(
     ai: UiAiSettings,
@@ -1365,7 +1365,7 @@ private fun VertexProviderRows(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(spacing.xs), verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
             listOf("gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite").forEach { m ->
                 BrassButton(
                     label = m.removePrefix("gemini-"),
@@ -1383,7 +1383,7 @@ private fun VertexProviderRows(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun AzureFoundryProviderRows(
     ai: UiAiSettings,
@@ -1478,7 +1478,7 @@ private fun AzureFoundryProviderRows(
             // Catalog model chips for serverless. Deployed mode shows
             // no chips — the deployment name is entirely the user's
             // (it's whatever they typed in the Azure portal).
-            Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(spacing.xs), verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
                 listOf("gpt-4o", "gpt-4o-mini", "Llama-3.3-70B-Instruct").forEach { m ->
                     BrassButton(
                         label = m,
@@ -1523,7 +1523,7 @@ private fun AzureFoundryProviderRows(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun BedrockProviderRows(
     ai: UiAiSettings,
@@ -1626,7 +1626,7 @@ private fun BedrockProviderRows(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(spacing.xs), verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
             // Hardcoded Bedrock regions — see BedrockModels.regions in :core-llm.
             listOf("us-east-1", "us-west-2", "eu-central-1", "ap-northeast-1").forEach { r ->
                 BrassButton(
@@ -1643,7 +1643,7 @@ private fun BedrockProviderRows(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(spacing.xs), verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
             // Curated subset of cloud-chat-assistant's BEDROCK_MODELS map.
             listOf(
                 "claude-haiku-4.5",
