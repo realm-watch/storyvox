@@ -256,5 +256,9 @@ private fun EntryEditorDialog(
 
 private fun MatchType.label(): String = when (this) {
     MatchType.WORD -> "Word"
+    MatchType.ANYWHERE -> "Anywhere"
+    MatchType.START_OF_WORD -> "Starts"
+    MatchType.END_OF_WORD -> "Ends"
+    MatchType.GLOB -> "Glob"
     MatchType.REGEX -> "Regex"
 }

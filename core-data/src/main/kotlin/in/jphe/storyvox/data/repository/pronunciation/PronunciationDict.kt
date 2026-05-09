@@ -18,10 +18,14 @@ import java.util.regex.PatternSyntaxException
  * uses for character ranges) is left alone; only the `String` passed
  * into `generateAudioPCM` is rewritten.
  *
- * Phase 1 MVP — only [MatchType.WORD] (whole-word, default match) and
- * [MatchType.REGEX] (Java regex syntax). The other five NVDA modes
- * (anywhere, start-of-word, end-of-word, part-of-word, unix-glob) are
- * deferred to phase 2.
+ * Match modes (#135 + #199): [MatchType.WORD] (whole-word, the default)
+ * and [MatchType.REGEX] (raw Java regex) shipped in Phase 1; Phase 2
+ * adds [MatchType.ANYWHERE], [MatchType.START_OF_WORD],
+ * [MatchType.END_OF_WORD], and [MatchType.GLOB] (NVDA-style `*`/`?`
+ * glob, internally compiled to a regex). Five modes total — the
+ * "part-of-word" combinator from NVDA is dropped because START + END
+ * cover its behavior asymmetrically and adding it would create three
+ * adjacent picker entries that confuse rather than clarify.
  *
  * Inspiration:
  *  - **epub_to_audiobook** (p0n1, MIT) —
@@ -61,6 +65,23 @@ enum class MatchType {
      *  user's input stay literal) then wrapped with `\b…\b`. Matches
      *  NVDA's `WORD` entry type. The 90% case for proper-noun fixes. */
     WORD,
+    /** Substring match — pattern matches anywhere in the text. Useful
+     *  for "fix every occurrence of 'lvl' to 'level'" without word
+     *  boundaries. Pattern is regex-quoted; mirrors NVDA's `ANYWHERE`. */
+    ANYWHERE,
+    /** Pattern matches when it appears at the start of a word (after
+     *  `\b` left, no boundary right). Use case: "every word starting
+     *  with 'Astar'" pronounced as a prefix block. */
+    START_OF_WORD,
+    /** Pattern matches when it appears at the end of a word (no
+     *  boundary left, `\b` right). Use case: "every plural 'aria'
+     *  ending pronounced ah-ree-ah". */
+    END_OF_WORD,
+    /** NVDA-style glob. `*` matches any run of characters, `?` matches
+     *  exactly one character; everything else is literal. Compiled
+     *  internally to a regex with `\b…\b` boundaries to keep behavior
+     *  word-shaped (the WORD case generalised). */
+    GLOB,
     /** Power-user mode — `pattern` is compiled as a raw Java regex.
      *  Backreferences in `replacement` work as in `Matcher.replaceAll`.
      *  Bad patterns are dropped on compile; the rest of the list still
@@ -208,6 +229,10 @@ internal fun compileEntries(
             // which we set below so non-ASCII proper nouns (the entire
             // point of the feature) match correctly.
             MatchType.WORD -> "\\b" + Pattern.quote(e.pattern) + "\\b"
+            MatchType.ANYWHERE -> Pattern.quote(e.pattern)
+            MatchType.START_OF_WORD -> "\\b" + Pattern.quote(e.pattern)
+            MatchType.END_OF_WORD -> Pattern.quote(e.pattern) + "\\b"
+            MatchType.GLOB -> "\\b" + globToRegex(e.pattern) + "\\b"
             MatchType.REGEX -> e.pattern
         }
         val flags = (if (e.caseSensitive) 0 else Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE) or
@@ -223,4 +248,34 @@ internal fun compileEntries(
         out.add(compiled to e.replacement)
     }
     return out
+}
+
+/**
+ * Convert NVDA-style glob (`*` = any run, `?` = single char) into a
+ * Java regex. Everything else is treated as a literal — the user's
+ * input is regex-quoted in chunks separated by the wildcard chars.
+ *
+ * Empty input yields an empty regex (callers add the `\b…\b` boundary
+ * outside, so an empty glob becomes `\b\b` which matches nothing —
+ * intentional, mirrors NVDA's behavior on a blank GLOB pattern).
+ */
+internal fun globToRegex(glob: String): String {
+    if (glob.isEmpty()) return ""
+    val sb = StringBuilder(glob.length + 8)
+    val chunk = StringBuilder()
+    fun flushChunk() {
+        if (chunk.isNotEmpty()) {
+            sb.append(Pattern.quote(chunk.toString()))
+            chunk.clear()
+        }
+    }
+    for (c in glob) {
+        when (c) {
+            '*' -> { flushChunk(); sb.append(".*") }
+            '?' -> { flushChunk(); sb.append('.') }
+            else -> chunk.append(c)
+        }
+    }
+    flushChunk()
+    return sb.toString()
 }
