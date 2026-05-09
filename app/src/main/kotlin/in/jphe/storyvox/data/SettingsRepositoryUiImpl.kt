@@ -34,6 +34,7 @@ import `in`.jphe.storyvox.feature.api.PalaceProbeResult
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiAiSettings
+import `in`.jphe.storyvox.feature.api.UiChatGrounding
 import `in`.jphe.storyvox.feature.api.UiGitHubAuthState
 import `in`.jphe.storyvox.feature.api.UiLlmProvider
 import `in`.jphe.storyvox.feature.api.UiPalaceConfig
@@ -169,6 +170,14 @@ private object Keys {
      *  versioning convention used by other v1-tagged keys here. */
     val GITHUB_PRIVATE_REPOS_ENABLED = booleanPreferencesKey("pref_github_private_repos_enabled_v1")
 
+    // ── Chat grounding (issue #212) ────────────────────────────────
+    /** Defaults match pre-#212 ChatViewModel behaviour: chapter title
+     *  on, every more-expensive level off. */
+    val AI_CHAT_GROUND_CHAPTER_TITLE = booleanPreferencesKey("pref_ai_chat_ground_chapter_title")
+    val AI_CHAT_GROUND_CURRENT_SENTENCE = booleanPreferencesKey("pref_ai_chat_ground_current_sentence")
+    val AI_CHAT_GROUND_ENTIRE_CHAPTER = booleanPreferencesKey("pref_ai_chat_ground_entire_chapter")
+    val AI_CHAT_GROUND_ENTIRE_BOOK = booleanPreferencesKey("pref_ai_chat_ground_entire_book")
+
     /** Issue #135 — JSON-serialized [PronunciationDict] (list of
      *  pattern/replacement/matchType entries). _v1 suffix lets us
      *  rev the schema later without a destructive migration; an
@@ -266,6 +275,12 @@ class SettingsRepositoryUiImpl(
                 bedrockModel = prefs[Keys.AI_BEDROCK_MODEL] ?: "claude-haiku-4.5",
                 privacyAcknowledged = prefs[Keys.AI_PRIVACY_ACK] ?: false,
                 sendChapterTextEnabled = prefs[Keys.AI_SEND_CHAPTER_TEXT] ?: true,
+                chatGrounding = UiChatGrounding(
+                    includeChapterTitle = prefs[Keys.AI_CHAT_GROUND_CHAPTER_TITLE] ?: true,
+                    includeCurrentSentence = prefs[Keys.AI_CHAT_GROUND_CURRENT_SENTENCE] ?: false,
+                    includeEntireChapter = prefs[Keys.AI_CHAT_GROUND_ENTIRE_CHAPTER] ?: false,
+                    includeEntireBookSoFar = prefs[Keys.AI_CHAT_GROUND_ENTIRE_BOOK] ?: false,
+                ),
             ),
             sigil = Sigil.current.let {
                 UiSigil(
@@ -534,6 +549,24 @@ class SettingsRepositoryUiImpl(
         store.edit { it[Keys.AI_SEND_CHAPTER_TEXT] = enabled }
     }
 
+    // ── Chat grounding (#212) ──────────────────────────────────────
+
+    override suspend fun setChatGroundChapterTitle(enabled: Boolean) {
+        store.edit { it[Keys.AI_CHAT_GROUND_CHAPTER_TITLE] = enabled }
+    }
+
+    override suspend fun setChatGroundCurrentSentence(enabled: Boolean) {
+        store.edit { it[Keys.AI_CHAT_GROUND_CURRENT_SENTENCE] = enabled }
+    }
+
+    override suspend fun setChatGroundEntireChapter(enabled: Boolean) {
+        store.edit { it[Keys.AI_CHAT_GROUND_ENTIRE_CHAPTER] = enabled }
+    }
+
+    override suspend fun setChatGroundEntireBookSoFar(enabled: Boolean) {
+        store.edit { it[Keys.AI_CHAT_GROUND_ENTIRE_BOOK] = enabled }
+    }
+
     override suspend fun acknowledgeAiPrivacy() {
         store.edit { it[Keys.AI_PRIVACY_ACK] = true }
     }
@@ -553,6 +586,10 @@ class SettingsRepositoryUiImpl(
             it.remove(Keys.AI_BEDROCK_MODEL)
             it.remove(Keys.AI_PRIVACY_ACK)
             it.remove(Keys.AI_SEND_CHAPTER_TEXT)
+            it.remove(Keys.AI_CHAT_GROUND_CHAPTER_TITLE)
+            it.remove(Keys.AI_CHAT_GROUND_CURRENT_SENTENCE)
+            it.remove(Keys.AI_CHAT_GROUND_ENTIRE_CHAPTER)
+            it.remove(Keys.AI_CHAT_GROUND_ENTIRE_BOOK)
         }
         llmCreds.clearAll()
     }

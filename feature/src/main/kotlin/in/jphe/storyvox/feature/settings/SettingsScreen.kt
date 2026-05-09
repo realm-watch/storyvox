@@ -65,6 +65,7 @@ import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_OFF_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.PalaceProbeResult
 import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiAiSettings
+import `in`.jphe.storyvox.feature.api.UiChatGrounding
 import `in`.jphe.storyvox.feature.api.UiGitHubAuthState
 import `in`.jphe.storyvox.feature.api.UiLlmProvider
 import `in`.jphe.storyvox.feature.api.UiPalaceConfig
@@ -243,6 +244,10 @@ fun SettingsScreen(
             onSetBedrockRegion = viewModel::setBedrockRegion,
             onSetBedrockModel = viewModel::setBedrockModel,
             onSetSendChapterText = viewModel::setSendChapterTextEnabled,
+            onSetChatGroundChapterTitle = viewModel::setChatGroundChapterTitle,
+            onSetChatGroundCurrentSentence = viewModel::setChatGroundCurrentSentence,
+            onSetChatGroundEntireChapter = viewModel::setChatGroundEntireChapter,
+            onSetChatGroundEntireBookSoFar = viewModel::setChatGroundEntireBookSoFar,
             onTestConnection = viewModel::testAiConnection,
             onClearProbeOutcome = viewModel::clearProbeOutcome,
             onResetAi = viewModel::resetAiSettings,
@@ -1015,6 +1020,10 @@ private fun AiSection(
     onSetBedrockRegion: (String) -> Unit,
     onSetBedrockModel: (String) -> Unit,
     onSetSendChapterText: (Boolean) -> Unit,
+    onSetChatGroundChapterTitle: (Boolean) -> Unit,
+    onSetChatGroundCurrentSentence: (Boolean) -> Unit,
+    onSetChatGroundEntireChapter: (Boolean) -> Unit,
+    onSetChatGroundEntireBookSoFar: (Boolean) -> Unit,
     onTestConnection: (UiLlmProvider) -> Unit,
     onClearProbeOutcome: () -> Unit,
     onResetAi: () -> Unit,
@@ -1140,12 +1149,89 @@ private fun AiSection(
             checked = ai.sendChapterTextEnabled,
             onCheckedChange = onSetSendChapterText,
         )
+        // Issue #212 — chat grounding-level toggles. The fiction title
+        // is always sent (no toggle); each row below adds a layer of
+        // context to the chat ViewModel's system prompt. Token estimates
+        // assume the rough chars / 4 ≈ tokens convention.
+        ChatGroundingSubsection(
+            grounding = ai.chatGrounding,
+            enabled = ai.sendChapterTextEnabled,
+            onSetChapterTitle = onSetChatGroundChapterTitle,
+            onSetCurrentSentence = onSetChatGroundCurrentSentence,
+            onSetEntireChapter = onSetChatGroundEntireChapter,
+            onSetEntireBookSoFar = onSetChatGroundEntireBookSoFar,
+        )
         BrassButton(
             label = "Forget all AI settings",
             onClick = onResetAi,
             variant = BrassButtonVariant.Text,
         )
     }
+    }
+}
+
+/**
+ * Issue #212 — chat grounding-level subsection. Four switches that
+ * decide what context the chat ViewModel injects into its system
+ * prompt. Disabled (greyed out) when the parent "Allow chapter text
+ * to AI" toggle is off, since none of these can ship to the model
+ * with that gate closed.
+ *
+ * Subtitles include rough token-cost estimates so a user weighing
+ * the privacy / latency / quota trade-off can decide. Estimates
+ * assume the standard chars / 4 ≈ tokens English text rule.
+ */
+@Composable
+private fun ChatGroundingSubsection(
+    grounding: UiChatGrounding,
+    enabled: Boolean,
+    onSetChapterTitle: (Boolean) -> Unit,
+    onSetCurrentSentence: (Boolean) -> Unit,
+    onSetEntireChapter: (Boolean) -> Unit,
+    onSetEntireBookSoFar: (Boolean) -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        Text(
+            "Chat grounding — what context the chat AI sees",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            "The fiction title is always included. Each layer below adds " +
+                "more text to every chat turn — better answers, more tokens.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SettingsSwitchRow(
+            title = "Include current chapter title",
+            subtitle = "~10 tokens. \"The reader is currently on …\" prefix.",
+            checked = grounding.includeChapterTitle,
+            onCheckedChange = onSetChapterTitle,
+            enabled = enabled,
+        )
+        SettingsSwitchRow(
+            title = "Include current sentence",
+            subtitle = "~50 tokens. The exact sentence the listener is on.",
+            checked = grounding.includeCurrentSentence,
+            onCheckedChange = onSetCurrentSentence,
+            enabled = enabled,
+        )
+        SettingsSwitchRow(
+            title = "Include entire current chapter",
+            subtitle = "~2 000–5 000 tokens. Full chapter text in every turn.",
+            checked = grounding.includeEntireChapter,
+            onCheckedChange = onSetEntireChapter,
+            enabled = enabled,
+        )
+        SettingsSwitchRow(
+            title = "Include entire book so far",
+            subtitle = "50 000+ tokens on long fictions. Chapter 1 → current sentence. " +
+                "Cloud providers (Claude, OpenAI) only — local models will run out of context.",
+            checked = grounding.includeEntireBookSoFar,
+            onCheckedChange = onSetEntireBookSoFar,
+            enabled = enabled,
+        )
     }
 }
 

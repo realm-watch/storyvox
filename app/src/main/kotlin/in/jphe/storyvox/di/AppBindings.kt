@@ -90,8 +90,10 @@ import kotlinx.coroutines.launch
 object AppBindings {
 
     @Provides @Singleton
-    fun provideFictionRepositoryUi(repo: FictionRepository): FictionRepositoryUi =
-        RealFictionRepositoryUi(repo)
+    fun provideFictionRepositoryUi(
+        repo: FictionRepository,
+        chapters: ChapterRepository,
+    ): FictionRepositoryUi = RealFictionRepositoryUi(repo, chapters)
 
     @Provides @Singleton
     fun provideBrowseRepositoryUi(
@@ -210,6 +212,7 @@ object AppBindings {
  */
 private class RealFictionRepositoryUi(
     private val repo: FictionRepository,
+    private val chapters: ChapterRepository,
 ) : FictionRepositoryUi {
 
     override val library: Flow<List<UiFiction>> =
@@ -242,6 +245,9 @@ private class RealFictionRepositoryUi(
     }
 
     override fun fictionLoadError(id: String): Flow<String?> = errorState(id).asStateFlow()
+
+    override suspend fun chapterTextById(chapterId: String): String? =
+        chapters.getChapter(chapterId)?.text
 
     override fun chaptersFor(fictionId: String): Flow<List<UiChapter>> =
         repo.observeFiction(fictionId).map { detail ->

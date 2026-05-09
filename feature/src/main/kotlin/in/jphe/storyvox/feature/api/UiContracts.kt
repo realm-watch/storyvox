@@ -66,6 +66,14 @@ interface FictionRepositoryUi {
      */
     fun fictionLoadError(id: String): Flow<String?>
     fun chaptersFor(fictionId: String): Flow<List<UiChapter>>
+    /**
+     * Issue #212 — fetch the plain-text body of a downloaded chapter
+     * for AI grounding. Returns null if the chapter row doesn't exist
+     * or its body hasn't been downloaded yet. Suspends because the
+     * underlying DAO read is suspending; callers should treat this
+     * as a one-shot, not a stream.
+     */
+    suspend fun chapterTextById(chapterId: String): String?
     suspend fun setDownloadMode(fictionId: String, mode: DownloadMode)
     suspend fun follow(fictionId: String, follow: Boolean)
     suspend fun markAllCaughtUp()
@@ -418,6 +426,39 @@ data class UiAiSettings(
     val bedrockModel: String = "claude-haiku-4.5",
     val privacyAcknowledged: Boolean = false,
     val sendChapterTextEnabled: Boolean = true,
+    /**
+     * Issue #212 — what the chat ViewModel injects into its system
+     * prompt to ground replies in what the user is currently reading.
+     * The fiction title is always sent (no toggle); the four fields
+     * here are the per-grounding-level opt-ins.
+     *
+     * Token cost ramps fast on the bottom two: "entire chapter" is
+     * a few thousand tokens per turn; "entire book so far" can hit
+     * 50k+ tokens on long fictions, which is fine on Claude / OpenAI
+     * but blows past Ollama's default 8k context. The Settings UI
+     * surfaces a per-toggle estimate so users understand the cost.
+     */
+    val chatGrounding: UiChatGrounding = UiChatGrounding(),
+)
+
+/**
+ * Per-toggle grounding settings for the Q&A chat ViewModel
+ * ([in.jphe.storyvox.feature.chat.ChatViewModel.buildSystemPrompt]).
+ * Issue #212.
+ *
+ * Defaults match the pre-#212 behaviour: only the chapter title is
+ * included (when the user is actively listening to the same fiction);
+ * everything more expensive is opt-in.
+ */
+data class UiChatGrounding(
+    /** Pre-#212 default behaviour. Cheap (a few words). */
+    val includeChapterTitle: Boolean = true,
+    /** ~50 tokens. The exact sentence the listener is on right now. */
+    val includeCurrentSentence: Boolean = false,
+    /** ~2-5k tokens depending on chapter length. */
+    val includeEntireChapter: Boolean = false,
+    /** Chapter 1 → current sentence. 50k+ tokens on long fictions. */
+    val includeEntireBookSoFar: Boolean = false,
 )
 
 data class UiSettings(
@@ -695,6 +736,11 @@ interface SettingsRepositoryUi {
     suspend fun setBedrockRegion(region: String)
     suspend fun setBedrockModel(model: String)
     suspend fun setSendChapterTextEnabled(enabled: Boolean)
+    /** Issue #212 — chat grounding-level toggles. See [UiChatGrounding]. */
+    suspend fun setChatGroundChapterTitle(enabled: Boolean)
+    suspend fun setChatGroundCurrentSentence(enabled: Boolean)
+    suspend fun setChatGroundEntireChapter(enabled: Boolean)
+    suspend fun setChatGroundEntireBookSoFar(enabled: Boolean)
     suspend fun acknowledgeAiPrivacy()
     /** Wipe all AI configuration — provider/keys/URLs. */
     suspend fun resetAiSettings()

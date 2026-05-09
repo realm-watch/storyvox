@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import `in`.jphe.storyvox.feature.api.FictionRepositoryUi
 import `in`.jphe.storyvox.feature.api.PlaybackControllerUi
+import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
+import `in`.jphe.storyvox.feature.api.UiChatGrounding
 import `in`.jphe.storyvox.llm.FeatureKind
 import `in`.jphe.storyvox.llm.LlmConfig
 import `in`.jphe.storyvox.llm.LlmError
@@ -104,6 +106,7 @@ class ChatViewModel @Inject constructor(
     private val fictionRepo: FictionRepositoryUi,
     private val playback: PlaybackControllerUi,
     private val configFlow: Flow<LlmConfig>,
+    private val settingsRepo: SettingsRepositoryUi,
     private val savedState: SavedStateHandle,
 ) : ViewModel() {
 
@@ -185,6 +188,11 @@ class ChatViewModel @Inject constructor(
             }
 
             ensureSession(cfg, provider)
+            // Issue #212 — rebuild the system prompt from the live
+            // grounding settings before every send. Lets the user
+            // flip a toggle and have the next reply use the new
+            // context level immediately, without restarting the chat.
+            sessionRepo.updateSystemPrompt(sessionId, buildSystemPrompt())
 
             val buf = StringBuilder()
             _streaming.value = ""
@@ -232,38 +240,112 @@ class ChatViewModel @Inject constructor(
     }
 
     /**
-     * Build the librarian system prompt. Pulls the live playback
-     * state to learn what chapter the user is on right now — if they
-     * happen to be reading the same fiction this chat is about, we
-     * ground the AI in the chapter title. If not (chat opened from
-     * the fiction detail screen, no playback), we ground in the
-     * fiction itself only.
+     * Build the librarian system prompt. The fiction title is always
+     * included — it's the bare minimum context. Everything else is
+     * gated by user-controlled grounding toggles in Settings → AI
+     * (issue #212): chapter title, current sentence, entire chapter,
+     * and entire-book-so-far. Token cost ramps fast on the bottom
+     * two; users opt in based on their provider's context window.
+     *
+     * Grounding only injects book content when the user is actively
+     * listening to *this* fiction. A chat opened from the fiction
+     * detail screen with no playback active falls back to the
+     * title-only prompt — there's no "current sentence" without
+     * playback state, and grabbing chapter 1 unprompted would
+     * surprise the user.
      *
      * Spoiler-prevention is a soft hint, not a hard wall: the AI
-     * doesn't actually have future-chapter text in context anyway,
-     * but the prompt makes its limits explicit so users get a
-     * coherent "I can only speak to what I've read with you" voice.
+     * doesn't have future-chapter text in context anyway, but the
+     * prompt makes its limits explicit so users get a coherent
+     * "I can only speak to what I've read with you" voice.
      */
     private suspend fun buildSystemPrompt(): String {
         val fictionTitle = fictionRepo.fictionById(fictionId).first()?.title
             ?: "this fiction"
+        val grounding = settingsRepo.settings.first().ai.chatGrounding
         val pb = playback.state.first()
         val onSameFiction = pb.fictionId == fictionId
-        val chapterClause = if (onSameFiction && pb.chapterTitle.isNotBlank()) {
-            "The reader is currently on \"${pb.chapterTitle}\". "
-        } else {
-            ""
-        }
+
         return buildString {
             append("You are a careful, literate librarian-companion ")
             append("to a reader of \"")
             append(fictionTitle)
             append("\". ")
-            append(chapterClause)
+
+            if (onSameFiction) {
+                appendGroundingClauses(grounding, pb)
+            }
+
             append("Answer questions about plot, characters, pacing, ")
             append("and writing craft. Quote sparingly. Don't invent ")
             append("details. Don't spoil future chapters — speak only ")
             append("to what the reader has likely read so far.")
+        }
+    }
+
+    /**
+     * Append per-toggle context clauses. Order matters — coarse to
+     * fine: book-so-far → entire chapter → current sentence →
+     * chapter title. Models tend to weight later context more, so
+     * the most-precise "what they're on right now" clause goes last.
+     *
+     * Each section is delimited with markdown-ish headers so the
+     * model can tell prefixes apart from the text it's grounding in.
+     */
+    private suspend fun StringBuilder.appendGroundingClauses(
+        grounding: UiChatGrounding,
+        pb: `in`.jphe.storyvox.feature.api.UiPlaybackState,
+    ) {
+        val chapterId = pb.chapterId
+
+        if (grounding.includeEntireBookSoFar && chapterId != null) {
+            val all = fictionRepo.chaptersFor(fictionId).first()
+            val currentIdx = all.indexOfFirst { it.id == chapterId }
+            if (currentIdx >= 0) {
+                val priorChapters = all.subList(0, currentIdx)
+                val priorTexts = priorChapters.mapNotNull { ch ->
+                    fictionRepo.chapterTextById(ch.id)?.let { text -> ch.title to text }
+                }
+                if (priorTexts.isNotEmpty()) {
+                    append("\n\n## Story so far (chapters before the current one)\n\n")
+                    priorTexts.forEach { (title, text) ->
+                        append("### ").append(title).append("\n")
+                        append(text).append("\n\n")
+                    }
+                }
+            }
+        }
+
+        if (grounding.includeEntireChapter && chapterId != null) {
+            val chapterText = fictionRepo.chapterTextById(chapterId)
+            if (!chapterText.isNullOrBlank()) {
+                append("\n\n## Current chapter (\"")
+                    .append(pb.chapterTitle)
+                    .append("\") in full\n\n")
+                append(chapterText).append("\n\n")
+            }
+        }
+
+        if (grounding.includeCurrentSentence) {
+            // chapterText flow exposes the live chapter body the
+            // playback layer is reading. Slicing with sentenceStart..
+            // sentenceEnd matches the highlighted sentence in the
+            // reader UI, so "current sentence" means exactly what the
+            // user sees on-screen.
+            val text = playback.chapterText.first()
+            val end = pb.sentenceEnd.coerceAtMost(text.length)
+            val start = pb.sentenceStart.coerceIn(0, end)
+            if (end > start) {
+                append("The reader is currently on this sentence: \"")
+                append(text.substring(start, end).trim())
+                append("\". ")
+            }
+        }
+
+        if (grounding.includeChapterTitle && pb.chapterTitle.isNotBlank()) {
+            append("The reader is in the chapter \"")
+            append(pb.chapterTitle)
+            append("\". ")
         }
     }
 

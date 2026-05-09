@@ -167,6 +167,10 @@ class SettingsViewModelBufferTest {
         override suspend fun setBedrockRegion(region: String) = Unit
         override suspend fun setBedrockModel(model: String) = Unit
         override suspend fun setSendChapterTextEnabled(enabled: Boolean) = Unit
+        override suspend fun setChatGroundChapterTitle(enabled: Boolean) = Unit
+        override suspend fun setChatGroundCurrentSentence(enabled: Boolean) = Unit
+        override suspend fun setChatGroundEntireChapter(enabled: Boolean) = Unit
+        override suspend fun setChatGroundEntireBookSoFar(enabled: Boolean) = Unit
         override suspend fun acknowledgeAiPrivacy() = Unit
         override suspend fun resetAiSettings() = Unit
         override suspend fun signOutGitHub() = Unit
