@@ -251,6 +251,7 @@ class RealPlaybackControllerUiTest {
         override suspend fun resetAiSettings() = Unit
         // ── GitHub OAuth no-op (#91) — playback-controller test doesn't auth. ──
         override suspend fun signOutGitHub() = Unit
+        override suspend fun setGitHubPrivateReposEnabled(enabled: Boolean) = Unit
     }
 
     /** Chapter repo never invoked by the speed/pitch path under test. */

@@ -4,6 +4,7 @@ import `in`.jphe.storyvox.source.github.auth.DeviceCodeResult
 import `in`.jphe.storyvox.source.github.auth.DeviceFlowApi
 import `in`.jphe.storyvox.source.github.auth.GitHubAuthRepository
 import `in`.jphe.storyvox.source.github.auth.GitHubProfileService
+import `in`.jphe.storyvox.source.github.auth.GitHubScopePreferences
 import `in`.jphe.storyvox.source.github.auth.GitHubSession
 import `in`.jphe.storyvox.source.github.auth.ProfileResult
 import `in`.jphe.storyvox.source.github.auth.TokenPollResult
@@ -55,9 +56,11 @@ class GitHubSignInViewModelTest {
         deviceFlow: DeviceFlowApi,
         auth: GitHubAuthRepository = FakeAuth(),
         profile: GitHubProfileService = FakeProfile(ProfileResult.Success("octocat", "Octo Cat", 1L)),
-    ): GitHubSignInViewModel = GitHubSignInViewModel(deviceFlow, auth, profile).also {
-        it.clientIdOverride = "test-client"
-    }
+        scopePrefs: GitHubScopePreferences = FakeScopePrefs(),
+    ): GitHubSignInViewModel =
+        GitHubSignInViewModel(deviceFlow, auth, profile, scopePrefs).also {
+            it.clientIdOverride = "test-client"
+        }
 
     @Test
     fun `successful flow transitions Idle to AwaitingUser to Captured`() = runTest(dispatcher) {
@@ -225,6 +228,46 @@ class GitHubSignInViewModelTest {
         assertEquals(SignInState.Idle, vm.state.value)
     }
 
+    // ── #203 Private repos toggle ──────────────────────────────────
+
+    @Test
+    fun `private repos disabled requests public_repo scope`() = runTest(dispatcher) {
+        val flow = ScriptedDeviceFlow(
+            deviceCode = DeviceCodeResult.Success(
+                deviceCode = "dev-1",
+                userCode = "ABCD-EFGH",
+                verificationUri = "https://github.com/login/device",
+                verificationUriComplete = null,
+                expiresInSeconds = 900,
+                intervalSeconds = 5,
+            ),
+            tokenPolls = arrayListOf(TokenPollResult.Denied),
+        )
+        val vm = makeVm(flow, scopePrefs = FakeScopePrefs(privateRepos = false))
+        vm.start()
+        advanceUntilIdle()
+        assertEquals("read:user public_repo", flow.lastRequestedScopes)
+    }
+
+    @Test
+    fun `private repos enabled requests repo scope`() = runTest(dispatcher) {
+        val flow = ScriptedDeviceFlow(
+            deviceCode = DeviceCodeResult.Success(
+                deviceCode = "dev-1",
+                userCode = "ABCD-EFGH",
+                verificationUri = "https://github.com/login/device",
+                verificationUriComplete = null,
+                expiresInSeconds = 900,
+                intervalSeconds = 5,
+            ),
+            tokenPolls = arrayListOf(TokenPollResult.Denied),
+        )
+        val vm = makeVm(flow, scopePrefs = FakeScopePrefs(privateRepos = true))
+        vm.start()
+        advanceUntilIdle()
+        assertEquals("read:user repo", flow.lastRequestedScopes)
+    }
+
     // ── Test fakes ──────────────────────────────────────────────────
 
     /**
@@ -241,8 +284,14 @@ class GitHubSignInViewModelTest {
         private val polls = LinkedBlockingDeque(tokenPolls)
         private var lastPoll: TokenPollResult? = null
 
-        override suspend fun requestDeviceCode(clientId: String, scopes: String): DeviceCodeResult =
-            deviceCode
+        /** Captures the scopes argument of the most recent [requestDeviceCode] call. */
+        var lastRequestedScopes: String? = null
+            private set
+
+        override suspend fun requestDeviceCode(clientId: String, scopes: String): DeviceCodeResult {
+            lastRequestedScopes = scopes
+            return deviceCode
+        }
 
         override suspend fun pollAccessToken(clientId: String, deviceCode: String): TokenPollResult {
             val next = polls.pollFirst() ?: lastPoll ?: TokenPollResult.Pending
@@ -263,5 +312,11 @@ class GitHubSignInViewModelTest {
 
     private class FakeProfile(private val result: ProfileResult) : GitHubProfileService(OkHttpClient()) {
         override suspend fun getCurrentUser(): ProfileResult = result
+    }
+
+    private class FakeScopePrefs(
+        private val privateRepos: Boolean = false,
+    ) : GitHubScopePreferences {
+        override suspend fun privateReposEnabled(): Boolean = privateRepos
     }
 }
