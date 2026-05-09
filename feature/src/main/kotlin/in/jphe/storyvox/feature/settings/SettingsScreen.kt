@@ -644,7 +644,8 @@ private fun BufferSlider(
 ) {
     val spacing = LocalSpacing.current
     val pastTick = chunks > BUFFER_RECOMMENDED_MAX_CHUNKS
-    val danger = chunks > BUFFER_RECOMMENDED_MAX_CHUNKS * BUFFER_DANGER_MULTIPLIER
+    val dangerThreshold = BUFFER_RECOMMENDED_MAX_CHUNKS * BUFFER_DANGER_MULTIPLIER
+    val danger = chunks > dangerThreshold
 
     // Two distinct color states above the tick (amber → red) so the user has
     // a tactile sense of "I'm in unknown territory" → "I'm in dangerous
@@ -660,6 +661,17 @@ private fun BufferSlider(
 
     val approxSeconds = (chunks * AVG_SENTENCE_SEC).toInt()
     val approxMb = (chunks.toLong() * APPROX_BYTES_PER_CHUNK / 1_048_576L).toInt()
+
+    // Experimental-zone gate (#138). Default-locked: slider clamps at the
+    // danger threshold (recommended max × danger multiplier = 256) so a
+    // casual drag can't walk into the LMK kill zone. JP wants the past-
+    // danger range available for probing; tap "Unlock experimental zone"
+    // and the slider extends to BUFFER_MAX_CHUNKS. Lock state is
+    // composition-local — leaving Settings re-locks it, an intentional
+    // friction so the buffer doesn't stay unlocked across sessions and
+    // catch a future user off-guard.
+    var unlocked by remember { mutableStateOf(chunks > dangerThreshold) }
+    val effectiveMax = if (unlocked) BUFFER_MAX_CHUNKS else dangerThreshold
 
     Column(
         modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
@@ -678,43 +690,78 @@ private fun BufferSlider(
                 color = MaterialTheme.colorScheme.primary,
             )
         }
-        // Caption below: stacked recommended-max marker on its own line
-        // so narrow screens never have to choose which text to truncate.
         Text(
-            text = "Recommended max: $BUFFER_RECOMMENDED_MAX_CHUNKS chunks",
+            text = if (unlocked) {
+                "Recommended max: $BUFFER_RECOMMENDED_MAX_CHUNKS chunks · experimental zone unlocked"
+            } else {
+                "Recommended max: $BUFFER_RECOMMENDED_MAX_CHUNKS chunks · capped at ${dangerThreshold} (4× recommended)"
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
         Slider(
-            value = chunks.toFloat(),
-            onValueChange = { onChunksChange(it.toInt().coerceIn(BUFFER_MIN_CHUNKS, BUFFER_MAX_CHUNKS)) },
-            valueRange = BUFFER_MIN_CHUNKS.toFloat()..BUFFER_MAX_CHUNKS.toFloat(),
+            value = chunks.toFloat().coerceAtMost(effectiveMax.toFloat()),
+            onValueChange = { onChunksChange(it.toInt().coerceIn(BUFFER_MIN_CHUNKS, effectiveMax)) },
+            valueRange = BUFFER_MIN_CHUNKS.toFloat()..effectiveMax.toFloat(),
             colors = SliderDefaults.colors(
                 thumbColor = activeColor,
                 activeTrackColor = activeColor,
                 inactiveTrackColor = inactiveColor,
             ),
-            // TalkBack #160 — sighted users see the live readout above the
-            // slider; TalkBack users get the same information here. The
-            // recommended-max ceiling matters for the past-tick warning, so
-            // it's spelled out in the state description.
             modifier = Modifier.semantics {
                 contentDescription = "Playback buffer size"
-                stateDescription = "$chunks chunks, recommended max $BUFFER_RECOMMENDED_MAX_CHUNKS"
+                stateDescription = if (unlocked) {
+                    "$chunks chunks, recommended max $BUFFER_RECOMMENDED_MAX_CHUNKS, experimental zone unlocked"
+                } else {
+                    "$chunks chunks, recommended max $BUFFER_RECOMMENDED_MAX_CHUNKS, capped at $dangerThreshold"
+                }
             },
         )
 
-        // Recommended-max tick label, spatially anchored to its position
-        // along the slider via a leading spacer. Material3 Slider doesn't
-        // expose tick rendering for non-stepped sliders; this gives the
-        // user a visible "this is where the line is" without painting onto
-        // the slider's canvas.
+        // Recommended-max tick label — anchored to its proportional position
+        // on the slider via SliderTickLabels' weighted-spacer trick.
         TickMarker(
             tickValue = BUFFER_RECOMMENDED_MAX_CHUNKS,
             min = BUFFER_MIN_CHUNKS,
-            max = BUFFER_MAX_CHUNKS,
+            max = effectiveMax,
         )
+
+        // Lock/unlock toggle. Always rendered so the affordance is visible
+        // even before the user reaches the cap — they can choose to enter
+        // experimental mode pre-emptively. When locked + at the cap, copy
+        // intensifies to "tap to unlock and probe further."
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(top = spacing.xs),
+        ) {
+            Text(
+                text = if (unlocked) {
+                    "⚠️ Past ${dangerThreshold}, Android may kill the app. " +
+                        "Probing helps us find the exact line."
+                } else if (chunks >= dangerThreshold) {
+                    "Tap to probe past ${dangerThreshold} chunks (Android may kill the app)."
+                } else {
+                    "Locked at ${dangerThreshold} chunks (4× recommended)."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (unlocked) red else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            BrassButton(
+                label = if (unlocked) "Re-lock" else "Unlock",
+                onClick = {
+                    val nowUnlocked = !unlocked
+                    unlocked = nowUnlocked
+                    if (!nowUnlocked && chunks > dangerThreshold) {
+                        // Re-lock pulls the value back to the threshold so
+                        // a stale past-danger value doesn't sit hidden.
+                        onChunksChange(dangerThreshold)
+                    }
+                },
+                variant = if (unlocked) BrassButtonVariant.Text else BrassButtonVariant.Secondary,
+            )
+        }
 
         // One-liner explainer — full multi-paragraph rationale lives in
         // #84 + #138 issue bodies, not the Settings card.
