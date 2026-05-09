@@ -19,6 +19,8 @@ import androidx.compose.material.icons.outlined.LibraryBooks
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -125,7 +127,6 @@ fun SettingsScreen(
                         // Narration-friendly band — matches AudiobookView. Hard
                         // floor at 0.6: Sonic introduces artifacts below ~0.7.
                         valueRange = 0.6f..1.4f,
-                        steps = 79,
                         modifier = Modifier.semantics {
                             contentDescription = "Default pitch"
                             stateDescription = "%.2f, neutral at one".format(s.defaultPitch)
@@ -267,7 +268,6 @@ fun SettingsScreen(
                         value = s.pollIntervalHours.toFloat(),
                         onValueChange = { viewModel.setPollHours(it.toInt().coerceIn(1, 24)) },
                         valueRange = 1f..24f,
-                        steps = 22,
                         modifier = Modifier.semantics {
                             contentDescription = "Update check interval"
                             stateDescription = "Every ${s.pollIntervalHours} hours"
@@ -386,10 +386,13 @@ private fun GitHubSignInRow(
     onOpenRevokePage: () -> Unit,
 ) {
     val spacing = LocalSpacing.current
+    Column(
+        modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+    ) {
     Text(
         "GitHub",
         style = MaterialTheme.typography.titleSmall,
-        modifier = Modifier.padding(top = spacing.sm),
     )
     when (state) {
         UiGitHubAuthState.Anonymous -> {
@@ -450,6 +453,7 @@ private fun GitHubSignInRow(
             )
         }
     }
+    }
 }
 
 /**
@@ -473,8 +477,13 @@ private fun MemoryPalaceSection(
     onTest: () -> Unit,
 ) {
     val spacing = LocalSpacing.current
-    // Header is now emitted by the call site (SettingsScreen) so it can sit
-    // outside the SettingsGroupCard. Internal copy + controls follow.
+    // Header is now emitted by the call site (SettingsScreen). Body
+    // wrapped in a padded Column so it sits within the
+    // SettingsGroupCard's row-style padding instead of breaking out.
+    Column(
+        modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+    ) {
     Text(
         "Browse and listen to your local MemPalace as fictions. Home network only — " +
             "the palace stays put when you're off the LAN.",
@@ -568,6 +577,7 @@ private fun MemoryPalaceSection(
             )
         }
     }
+    }
 }
 
 /** Average sentence duration in seconds at 1.0× speed. Empirical, used only
@@ -619,7 +629,10 @@ private fun BufferSlider(
     val approxSeconds = (chunks * AVG_SENTENCE_SEC).toInt()
     val approxMb = (chunks.toLong() * APPROX_BYTES_PER_CHUNK / 1_048_576L).toInt()
 
-    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+    Column(
+        modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+    ) {
         // Header row: current value + recommended-max indicator.
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text(
@@ -758,7 +771,10 @@ private fun PunctuationPauseSlider(
 ) {
     val spacing = LocalSpacing.current
 
-    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+    Column(
+        modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+    ) {
         Text("Pause after . , ? ! ; :", style = MaterialTheme.typography.bodyMedium)
         Text(
             "How long to pause between sentences. 0× makes the reader sprint; " +
@@ -990,22 +1006,29 @@ private fun AiSection(
     onResetAi: () -> Unit,
 ) {
     val spacing = LocalSpacing.current
-    // Header is now emitted by the call site (SettingsScreen) so it can sit
-    // outside the SettingsGroupCard. Internal copy + controls follow.
+    // Header is now emitted by the call site (SettingsScreen). Indent
+    // body to match the SettingsGroupCard's row-style padding so we
+    // don't break out of the card visually.
+    Column(
+        modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+    ) {
     Text(
-        "Smart features (Recap, character lookup, …) ask an AI to answer " +
+        "Smart features (Recap, character lookup, chat) ask an AI to answer " +
             "questions about what you're reading. Pick a provider, then enable a feature. " +
             "Local providers (Ollama) keep your text on your network; cloud providers " +
-            "(Claude, OpenAI) send it to that company's servers.",
+            "send it to that company's servers.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
-    // Provider three-stop. We surface only the implemented providers
-    // as live buttons; spec-only ones get a single "Coming soon"
-    // line below so the design intent is visible without those rows
-    // being tappable yet.
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+    // Provider chip strip. FlowRow so seven providers wrap on the
+    // 800-px tablet rather than wrapping mid-word ("Foundr / y").
+    @OptIn(ExperimentalLayoutApi::class)
+    FlowRow(
+        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+    ) {
         ProviderChip(label = "Off", selected = ai.provider == null) {
             onSetProvider(null)
         }
@@ -1029,8 +1052,7 @@ private fun AiSection(
         }
     }
     Text(
-        "Coming soon: Anthropic Teams. " +
-            "See the design spec at docs/superpowers/specs/2026-05-08-ai-integration-design.md.",
+        "Anthropic Teams (OAuth) coming soon.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -1113,6 +1135,7 @@ private fun AiSection(
             onClick = onResetAi,
             variant = BrassButtonVariant.Text,
         )
+    }
     }
 }
 
