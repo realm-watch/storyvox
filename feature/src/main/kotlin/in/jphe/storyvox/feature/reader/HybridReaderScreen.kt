@@ -24,6 +24,11 @@ fun HybridReaderScreen(
      *  but any new production callsite *must* pass a real navigation
      *  callback or the unconfigured-AI user has no path forward. */
     onOpenAiSettings: () -> Unit = {},
+    /** Open the Q&A chat surface for the currently-loaded fiction
+     *  (#81 follow-up). No-op default is preview/test-only — production
+     *  callsites pass a real `navController.navigate(chat(fictionId))`.
+     *  Surfaced in the player-options sheet's "Smart features" group. */
+    onOpenChat: (fictionId: String) -> Unit = {},
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -57,6 +62,9 @@ fun HybridReaderScreen(
                 onStartSleepTimer = viewModel::startSleepTimer,
                 onCancelSleepTimer = viewModel::cancelSleepTimer,
                 onRequestRecap = viewModel::requestRecap,
+                onOpenChat = {
+                    playback.fictionId?.let(onOpenChat)
+                },
             )
         },
         readerContent = {

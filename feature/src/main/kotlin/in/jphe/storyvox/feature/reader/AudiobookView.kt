@@ -94,6 +94,11 @@ fun AudiobookView(
      *  [`in`.jphe.storyvox.feature.reader.ReaderViewModel.requestRecap].
      *  Issue #81. */
     onRequestRecap: () -> Unit = {},
+    /** Open the Q&A chat surface for the currently-loaded fiction
+     *  (#81 follow-up). HybridReaderScreen guards this against null
+     *  fictionId on the playback state, so callees can rely on it
+     *  being a fully-routed navigation. */
+    onOpenChat: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val spacing = LocalSpacing.current
@@ -303,6 +308,11 @@ fun AudiobookView(
                         showSheet = false
                         onRequestRecap()
                     },
+                    onOpenChat = {
+                        coroutineScope.launch { sheetState.hide() }
+                        showSheet = false
+                        onOpenChat()
+                    },
                 )
             }
         }
@@ -380,6 +390,7 @@ private fun PlayerOptionsSheet(
     onCancelSleepTimer: () -> Unit,
     onPickVoice: () -> Unit,
     onRequestRecap: () -> Unit = {},
+    onOpenChat: () -> Unit = {},
 ) {
     val spacing = LocalSpacing.current
     Column(
@@ -475,6 +486,35 @@ private fun PlayerOptionsSheet(
                 Icon(
                     Icons.Outlined.ChevronRight,
                     contentDescription = "Recap so far",
+                )
+            }
+        }
+
+        // ── Q&A chat (#81 follow-up) — opens the librarian chat surface ──
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Icon(
+                Icons.Outlined.AutoStories,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Ask the AI", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "Chat about plot, characters, pacing, and craft",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(onClick = onOpenChat) {
+                Icon(
+                    Icons.Outlined.ChevronRight,
+                    contentDescription = "Ask the AI",
                 )
             }
         }
