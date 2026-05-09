@@ -70,6 +70,12 @@ fun ChatScreen(
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    // Input prefill seeded by the reader's long-press character lookup
+    // (#188). The VM emits this once via the `prefill` StateFlow; the
+    // ChatInput observes it, copies into its local TextFieldValue, then
+    // calls `consumePrefill()` so a subsequent recomposition can't
+    // overwrite the user's edits.
+    val prefill by viewModel.prefill.collectAsStateWithLifecycle()
     val spacing = LocalSpacing.current
     val listState = rememberLazyListState()
 
@@ -151,6 +157,8 @@ fun ChatScreen(
                 ChatInput(
                     enabled = state.streaming == null,
                     onSend = viewModel::send,
+                    prefill = prefill,
+                    onPrefillConsumed = viewModel::consumePrefill,
                 )
             }
         }
@@ -332,9 +340,24 @@ private val QuickActionPrompts: List<String> = listOf(
 private fun ChatInput(
     enabled: Boolean,
     onSend: (String) -> Unit,
+    /** One-shot starter text from the long-press lookup deep-link
+     *  (#188). When non-null+non-blank, the input field is seeded with
+     *  this value (replacing whatever the user had typed — but this
+     *  only fires on first emission per nav, so a typing user never
+     *  sees their text wiped mid-flow). After applying we call
+     *  [onPrefillConsumed] so the VM clears the latch. */
+    prefill: String? = null,
+    onPrefillConsumed: () -> Unit = {},
 ) {
     val spacing = LocalSpacing.current
     var text by remember { mutableStateOf("") }
+
+    LaunchedEffect(prefill) {
+        if (!prefill.isNullOrBlank()) {
+            text = prefill
+            onPrefillConsumed()
+        }
+    }
 
     androidx.compose.foundation.layout.Column(modifier = Modifier.fillMaxWidth()) {
         if (enabled && text.isBlank()) {

@@ -14,12 +14,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -57,6 +60,12 @@ fun ReaderTextView(
     chapterText: String,
     onPlayPause: () -> Unit,
     onSeekToChar: (Int) -> Unit = {},
+    /** Long-press a word in the chapter body → open the chat surface
+     *  with `Who is <word>?` pre-filled in the input field. The reader
+     *  doesn't know about navigation, so HybridReaderScreen wires this
+     *  to `navController.navigate(StoryvoxRoutes.chat(fId, prefill = q))`.
+     *  No-op default keeps preview/test callsites working unchanged. */
+    onAskAiAbout: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val spacing = LocalSpacing.current
@@ -68,6 +77,14 @@ fun ReaderTextView(
     var bodyTopPx by remember { mutableFloatStateOf(0f) }
     var viewportHeightPx by remember { mutableFloatStateOf(0f) }
     var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+
+    // Long-press lookup state. When non-null, the dialog is showing for
+    // this word — tapping its primary action navigates to the chat
+    // surface with `Who is <word>?` pre-filled. The state lives on
+    // ReaderTextView (not the SentenceHighlight) because the SentenceHighlight
+    // is a low-level rendering primitive shared with the audiobook view —
+    // putting the popup here keeps that primitive stateless.
+    var lookupWord by remember { mutableStateOf<String?>(null) }
 
     // Manual-scroll grace: each time the user starts dragging we stamp wall-clock time;
     // auto-scroll respects the grace window before resuming.
@@ -128,6 +145,7 @@ fun ReaderTextView(
                         highlightStart = state.sentenceStart,
                         highlightEnd = state.sentenceEnd,
                         onTapWord = onSeekToChar,
+                        onLongPressWord = { word -> lookupWord = word },
                         onLayout = { layout -> textLayout = layout },
                     )
                 }
@@ -170,6 +188,56 @@ fun ReaderTextView(
                     )
                 }
             }
+        }
+
+        // Character-lookup popup (#188). Long-press a word → AlertDialog
+        // with the librarian sigil + a primary "Ask AI" action. We use
+        // AlertDialog rather than a popup-at-position because the M3 dialog
+        // already gives us the brass scrim, dismiss-on-outside-tap, and
+        // back-button handling for free; pinning a popup to the press
+        // coordinate would ride on top of the moving sentence underline
+        // and obscure the very word the user just selected.
+        lookupWord?.let { word ->
+            AlertDialog(
+                onDismissRequest = { lookupWord = null },
+                icon = {
+                    Icon(
+                        Icons.Outlined.AutoAwesome,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                },
+                title = {
+                    Text(
+                        text = "Ask AI: who is \"$word\"?",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                },
+                text = {
+                    Text(
+                        text = "The librarian-companion will answer based on what you've " +
+                            "read so far — no spoilers from later chapters.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val q = "Who is $word?"
+                            lookupWord = null
+                            onAskAiAbout(q)
+                        },
+                    ) {
+                        Text("Ask AI")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { lookupWord = null }) {
+                        Text("Cancel")
+                    }
+                },
+            )
         }
     }
 }
