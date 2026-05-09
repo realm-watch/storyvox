@@ -1,5 +1,6 @@
 package `in`.jphe.storyvox.feature.browse
 
+import `in`.jphe.storyvox.feature.api.GitHubArchivedStatus
 import `in`.jphe.storyvox.feature.api.GitHubPushedSince
 import `in`.jphe.storyvox.feature.api.GitHubSearchFilter
 import `in`.jphe.storyvox.feature.api.GitHubSort
@@ -18,15 +19,16 @@ import java.time.format.DateTimeFormatter
  * when this layer has already added one (see the `topic:` check
  * there); we don't add a topic here unless the user asks for it.
  *
- * Spec lines 199-211. Today's lands: minStars, language, pushedSince,
- * sort. Tag-multi-select and status are deferred to a follow-up; they
- * map onto GitHub's `topic:` and `archived:` qualifiers when added.
+ * Spec lines 199-211. Lands today: minStars, language, pushedSince,
+ * sort, tags (#205), archivedStatus (#205).
  *
  * Format examples:
  *  - empty filter, term="archmage" → `"archmage"`
  *  - empty term, minStars=10, language="en" → `"stars:>=10 language:en"`
  *  - term="dragon", pushedSince=Last30Days, sort=Stars (today=2026-05-08) →
  *    `"dragon pushed:>=2026-04-08 sort:stars"`
+ *  - tags={litrpg, fantasy}, archivedStatus=ActiveOnly →
+ *    `"topic:litrpg topic:fantasy archived:false"`
  */
 fun composeGitHubQuery(
     term: String,
@@ -53,6 +55,23 @@ fun composeGitHubQuery(
         append("pushed:>=").append(ISO_DATE.format(cutoff))
     }
 
+    // Tags as repeated topic: qualifiers — GitHub ANDs them. Sanitized:
+    // lowercase + strip whitespace + drop blanks. The fiction-prefix
+    // 'topic:fiction OR topic:fanfiction OR topic:webnovel' added in
+    // GitHubSource.search() is suppressed when this layer has already
+    // added a topic, so user-selected tags fully replace the prefix.
+    filter.tags.forEach { tag ->
+        val clean = tag.trim().lowercase()
+        if (clean.isEmpty()) return@forEach
+        if (isNotEmpty()) append(' ')
+        append("topic:").append(clean)
+    }
+
+    filter.archivedStatus.toQualifier()?.let { archQ ->
+        if (isNotEmpty()) append(' ')
+        append(archQ)
+    }
+
     filter.sort.toQualifier()?.let { sortQ ->
         if (isNotEmpty()) append(' ')
         append(sortQ)
@@ -65,7 +84,9 @@ fun GitHubSearchFilter.isActive(): Boolean =
     (minStars != null && minStars > 0) ||
         !language.isNullOrBlank() ||
         pushedSince != GitHubPushedSince.Any ||
-        sort != GitHubSort.BestMatch
+        sort != GitHubSort.BestMatch ||
+        tags.isNotEmpty() ||
+        archivedStatus != GitHubArchivedStatus.Any
 
 fun GitHubSearchFilter.activeCount(): Int {
     var n = 0
@@ -73,7 +94,15 @@ fun GitHubSearchFilter.activeCount(): Int {
     if (!language.isNullOrBlank()) n++
     if (pushedSince != GitHubPushedSince.Any) n++
     if (sort != GitHubSort.BestMatch) n++
+    if (tags.isNotEmpty()) n++
+    if (archivedStatus != GitHubArchivedStatus.Any) n++
     return n
+}
+
+private fun GitHubArchivedStatus.toQualifier(): String? = when (this) {
+    GitHubArchivedStatus.Any -> null
+    GitHubArchivedStatus.ActiveOnly -> "archived:false"
+    GitHubArchivedStatus.ArchivedOnly -> "archived:true"
 }
 
 private fun GitHubPushedSince.toCutoffDate(today: LocalDate): LocalDate? = when (this) {

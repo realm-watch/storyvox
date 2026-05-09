@@ -27,9 +27,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import `in`.jphe.storyvox.feature.api.GitHubArchivedStatus
 import `in`.jphe.storyvox.feature.api.GitHubPushedSince
 import `in`.jphe.storyvox.feature.api.GitHubSearchFilter
 import `in`.jphe.storyvox.feature.api.GitHubSort
+import `in`.jphe.storyvox.ui.component.BrassButton
+import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
 /**
@@ -110,6 +113,46 @@ fun GitHubFilterSheet(
 
             HorizontalDivider()
 
+            // Topic tags (#205). Free-text comma-separated input, parsed
+            // into a Set<String> on every keystroke. Each tag emits a
+            // `topic:X` qualifier; multiple AND together. We avoid a
+            // chip-based picker for v1 because GitHub has no public
+            // topic-suggestion API — users type what they know.
+            SectionLabel("Topic tags (comma-separated, e.g. litrpg, fantasy)")
+            var tagsDraft by remember(local.tags) { mutableStateOf(local.tags.joinToString(", ")) }
+            OutlinedTextField(
+                value = tagsDraft,
+                onValueChange = { v ->
+                    tagsDraft = v
+                    local = local.copy(
+                        tags = v.split(',').map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet(),
+                    )
+                },
+                placeholder = { Text("e.g. litrpg, fantasy") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            HorizontalDivider()
+
+            // Archive status (#205). Default `Any` returns both kinds;
+            // ActiveOnly is the most common power-user filter (skip
+            // deprecated forks); ArchivedOnly is for retro-archeology.
+            SectionLabel("Repository state")
+            Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                ArchivedChip("Any", local.archivedStatus == GitHubArchivedStatus.Any) {
+                    local = local.copy(archivedStatus = GitHubArchivedStatus.Any)
+                }
+                ArchivedChip("Active only", local.archivedStatus == GitHubArchivedStatus.ActiveOnly) {
+                    local = local.copy(archivedStatus = GitHubArchivedStatus.ActiveOnly)
+                }
+                ArchivedChip("Archived only", local.archivedStatus == GitHubArchivedStatus.ArchivedOnly) {
+                    local = local.copy(archivedStatus = GitHubArchivedStatus.ArchivedOnly)
+                }
+            }
+
+            HorizontalDivider()
+
             SectionLabel("Sort by")
             SortDropdown(
                 value = local.sort,
@@ -132,6 +175,15 @@ fun GitHubFilterSheet(
             }
         }
     }
+}
+
+@Composable
+private fun ArchivedChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    BrassButton(
+        label = label,
+        onClick = onClick,
+        variant = if (selected) BrassButtonVariant.Primary else BrassButtonVariant.Secondary,
+    )
 }
 
 @Composable

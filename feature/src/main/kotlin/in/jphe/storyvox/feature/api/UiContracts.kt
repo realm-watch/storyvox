@@ -189,6 +189,14 @@ data class GitHubSearchFilter(
     val language: String? = null,
     val pushedSince: GitHubPushedSince = GitHubPushedSince.Any,
     val sort: GitHubSort = GitHubSort.BestMatch,
+    /** Topics to require (#205). Each maps to a `topic:X` qualifier;
+     *  multiple topics AND together (GitHub's default for repeated
+     *  topic qualifiers). Empty set omits the qualifier entirely. */
+    val tags: Set<String> = emptySet(),
+    /** Repository archive state (#205). Default `Any` omits the
+     *  qualifier. `ActiveOnly` adds `archived:false`; `ArchivedOnly`
+     *  adds `archived:true`. */
+    val archivedStatus: GitHubArchivedStatus = GitHubArchivedStatus.Any,
 )
 
 /** GitHub `pushed:>YYYY-MM-DD` cutoffs. `Any` omits the qualifier. */
@@ -197,6 +205,10 @@ enum class GitHubPushedSince { Any, Last7Days, Last30Days, Last90Days, LastYear 
 /** GitHub `sort=` axis. `BestMatch` is the API default and omits the
  *  `sort=` parameter; the others map directly to GitHub's values. */
 enum class GitHubSort { BestMatch, Stars, Updated }
+
+/** GitHub `archived:` qualifier (#205). `Any` omits the qualifier and
+ *  returns both active and archived repos (the GitHub default). */
+enum class GitHubArchivedStatus { Any, ActiveOnly, ArchivedOnly }
 
 data class UiPlaybackState(
     val fictionId: String?,
