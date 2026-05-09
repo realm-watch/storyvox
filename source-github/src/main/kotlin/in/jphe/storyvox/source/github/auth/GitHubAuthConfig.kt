@@ -30,6 +30,24 @@ object GitHubAuthConfig {
      */
     const val DEFAULT_SCOPES: String = "read:user public_repo"
 
+    /**
+     * Scopes requested when the user has opted in to "Enable private
+     * repos" in Settings (#203). The `repo` scope is a strict superset
+     * of `public_repo` (full repo: read/write to private + public),
+     * so flipping ON re-runs Device Flow and the new token replaces
+     * the old. Flipping OFF on next sign-in downgrades back to
+     * [DEFAULT_SCOPES].
+     */
+    const val PRIVATE_REPO_SCOPES: String = "read:user repo"
+
+    /**
+     * Resolve the scope string for a fresh Device Flow request given the
+     * user's "Enable private repos" preference. Centralised so the
+     * ViewModel and any tests pick the same value off one switch.
+     */
+    fun scopesFor(privateReposEnabled: Boolean): String =
+        if (privateReposEnabled) PRIVATE_REPO_SCOPES else DEFAULT_SCOPES
+
     /** Device Flow endpoints live on the *website* domain, not api.github.com. */
     const val DEVICE_CODE_URL: String = "https://github.com/login/device/code"
     const val ACCESS_TOKEN_URL: String = "https://github.com/login/oauth/access_token"

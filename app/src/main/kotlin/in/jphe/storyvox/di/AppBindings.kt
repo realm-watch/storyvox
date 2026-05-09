@@ -158,6 +158,17 @@ object AppBindings {
     ): PronunciationDictRepository = impl
 
     /**
+     * Issue #203 — narrow [GitHubScopePreferences] surface for the
+     * `GitHubSignInViewModel`. Same singleton as the rest; the
+     * `:source-github` module reads only the toggle flag, never the
+     * full settings repo.
+     */
+    @Provides @Singleton
+    fun provideGitHubScopePreferences(
+        impl: SettingsRepositoryUiImpl,
+    ): `in`.jphe.storyvox.source.github.auth.GitHubScopePreferences = impl
+
+    /**
      * Same singleton instance as [provideSettingsRepositoryUi], exposed
      * under the [`in`.jphe.storyvox.llm.LlmConfigProvider] contract so
      * `core-llm`'s provider classes can read the user's chosen

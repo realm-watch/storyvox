@@ -40,6 +40,7 @@ import `in`.jphe.storyvox.feature.api.UiPalaceConfig
 import `in`.jphe.storyvox.feature.api.UiSettings
 import `in`.jphe.storyvox.feature.api.UiSigil
 import `in`.jphe.storyvox.source.github.auth.GitHubAuthRepository
+import `in`.jphe.storyvox.source.github.auth.GitHubScopePreferences
 import `in`.jphe.storyvox.source.github.auth.GitHubSession
 import `in`.jphe.storyvox.llm.LlmConfig
 import `in`.jphe.storyvox.llm.LlmConfigProvider
@@ -162,6 +163,12 @@ private object Keys {
     val AI_BEDROCK_REGION = stringPreferencesKey("pref_ai_bedrock_region")
     val AI_BEDROCK_MODEL = stringPreferencesKey("pref_ai_bedrock_model")
 
+    /** Issue #203 — "Enable private repos" toggle. Default false keeps
+     *  the least-privilege public-only baseline; ON makes the next
+     *  Device Flow request the `repo` scope. _v1 suffix matches the
+     *  versioning convention used by other v1-tagged keys here. */
+    val GITHUB_PRIVATE_REPOS_ENABLED = booleanPreferencesKey("pref_github_private_repos_enabled_v1")
+
     /** Issue #135 — JSON-serialized [PronunciationDict] (list of
      *  pattern/replacement/matchType entries). _v1 suffix lets us
      *  rev the schema later without a destructive migration; an
@@ -191,7 +198,8 @@ class SettingsRepositoryUiImpl(
     PlaybackModeConfig,
     VoiceTuningConfig,
     PronunciationDictRepository,
-    LlmConfigProvider {
+    LlmConfigProvider,
+    GitHubScopePreferences {
 
     /** Hilt entry point — pulls the production DataStore from the app context.
      *  The primary constructor takes the store directly so tests can swap in
@@ -235,6 +243,7 @@ class SettingsRepositoryUiImpl(
             voiceSteady = prefs[Keys.VOICE_STEADY] ?: true,
             palace = UiPalaceConfig(host = palace.host, apiKey = palace.apiKey),
             github = githubSession.toUi(),
+            githubPrivateReposEnabled = prefs[Keys.GITHUB_PRIVATE_REPOS_ENABLED] ?: false,
             ai = UiAiSettings(
                 provider = prefs[Keys.AI_PROVIDER]
                     ?.takeIf { it.isNotBlank() }
@@ -558,6 +567,19 @@ class SettingsRepositoryUiImpl(
         // github.com/settings/applications for users who want full revoke.
         githubAuth.clearSession()
     }
+
+    override suspend fun setGitHubPrivateReposEnabled(enabled: Boolean) {
+        store.edit { it[Keys.GITHUB_PRIVATE_REPOS_ENABLED] = enabled }
+    }
+
+    /**
+     * Issue #203 — [GitHubScopePreferences] surface for the
+     * `GitHubSignInViewModel`. Read at the moment Device Flow starts so
+     * a freshly-flipped toggle takes effect on the next sign-in
+     * attempt. Defaults false to match the least-privilege baseline.
+     */
+    override suspend fun privateReposEnabled(): Boolean =
+        store.data.map { it[Keys.GITHUB_PRIVATE_REPOS_ENABLED] ?: false }.first()
 
     // ── PronunciationDictRepository (issue #135) ───────────────────
 

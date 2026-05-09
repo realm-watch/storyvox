@@ -96,6 +96,11 @@ class SettingsViewModel @Inject constructor(
     fun signOut() = viewModelScope.launch { repo.signOut() }
     /** GitHub OAuth (#91) — local sign-out. Remote revoke deep-links to github.com. */
     fun signOutGitHub() = viewModelScope.launch { repo.signOutGitHub() }
+    /** Issue #203 — toggle "Enable private repos." Takes effect on the
+     *  next sign-in; existing sessions keep their original scope until
+     *  the user re-runs Device Flow. */
+    fun setGitHubPrivateReposEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setGitHubPrivateReposEnabled(enabled) }
     fun previewVoice(voice: UiVoice) = voices.previewVoice(voice)
 
     // ─── Memory Palace (#79) ────────────────────────────────────────────

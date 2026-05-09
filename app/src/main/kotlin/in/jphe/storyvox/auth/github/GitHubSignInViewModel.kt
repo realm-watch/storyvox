@@ -8,6 +8,7 @@ import `in`.jphe.storyvox.source.github.auth.DeviceFlowApi
 import `in`.jphe.storyvox.source.github.auth.GitHubAuthConfig
 import `in`.jphe.storyvox.source.github.auth.GitHubAuthRepository
 import `in`.jphe.storyvox.source.github.auth.GitHubProfileService
+import `in`.jphe.storyvox.source.github.auth.GitHubScopePreferences
 import `in`.jphe.storyvox.source.github.auth.ProfileResult
 import `in`.jphe.storyvox.source.github.auth.TokenPollResult
 import javax.inject.Inject
@@ -48,6 +49,7 @@ class GitHubSignInViewModel @Inject constructor(
     private val deviceFlow: DeviceFlowApi,
     private val auth: GitHubAuthRepository,
     private val profile: GitHubProfileService,
+    private val scopePrefs: GitHubScopePreferences,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<SignInState>(SignInState.Idle)
@@ -69,9 +71,15 @@ class GitHubSignInViewModel @Inject constructor(
         cancelPolling()
         _state.value = SignInState.RequestingCode
         viewModelScope.launch {
+            // #203 — pick the scope set off the user's persisted "Enable
+            // private repos" toggle. ON re-runs Device Flow with the
+            // `repo` scope (full repo, includes private); OFF stays on
+            // `public_repo`. Read at sign-in time so a freshly-flipped
+            // toggle takes effect on the next attempt.
+            val scopes = GitHubAuthConfig.scopesFor(scopePrefs.privateReposEnabled())
             when (val result = deviceFlow.requestDeviceCode(
                 clientId = clientId,
-                scopes = GitHubAuthConfig.DEFAULT_SCOPES,
+                scopes = scopes,
             )) {
                 is DeviceCodeResult.Success -> {
                     _state.value = SignInState.AwaitingUser(

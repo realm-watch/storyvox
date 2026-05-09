@@ -245,6 +245,7 @@ class SettingsViewModelModesTest {
         override suspend fun acknowledgeAiPrivacy() = Unit
         override suspend fun resetAiSettings() = Unit
         override suspend fun signOutGitHub() = Unit
+        override suspend fun setGitHubPrivateReposEnabled(enabled: Boolean) = Unit
     }
 
     private class FakeVoiceProvider : VoiceProviderUi {

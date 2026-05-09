@@ -316,9 +316,11 @@ fun SettingsScreen(
             // (lifts the anon 60 req/hr cap to 5,000 req/hr).
             GitHubSignInRow(
                 state = s.github,
+                privateReposEnabled = s.githubPrivateReposEnabled,
                 onSignIn = onOpenGitHubSignIn,
                 onSignOut = viewModel::signOutGitHub,
                 onOpenRevokePage = onOpenGitHubRevoke,
+                onSetPrivateReposEnabled = viewModel::setGitHubPrivateReposEnabled,
             )
         }
 
@@ -386,14 +388,22 @@ fun SettingsScreen(
  *  - SignedIn → "Signed in as @login" + Sign-out button + revoke deep-link.
  *  - Expired → "Session expired — sign in again" CTA + same revoke link.
  *
+ * Issue #203 adds an "Enable private repos" SettingsSwitchRow that's
+ * only visible when signed in. Toggling it doesn't auto-upgrade the
+ * live token — the user has to sign out + back in for the new scope
+ * to take effect; the subtitle nudges them when their current scope
+ * doesn't match the requested scope.
+ *
  * Spec § Settings UI surface, lines 384-395 of the design doc.
  */
 @Composable
 private fun GitHubSignInRow(
     state: UiGitHubAuthState,
+    privateReposEnabled: Boolean,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
     onOpenRevokePage: () -> Unit,
+    onSetPrivateReposEnabled: (Boolean) -> Unit,
 ) {
     when (state) {
         UiGitHubAuthState.Anonymous -> {
@@ -422,6 +432,30 @@ private fun GitHubSignInRow(
                         variant = BrassButtonVariant.Secondary,
                     )
                 },
+            )
+            // #203 — "Enable private repos" toggle. Only visible
+            // signed-in. Token-scope upgrade is opt-in and triggered
+            // by the user re-running sign-in; the subtitle calls that
+            // out when the live session's scope doesn't yet match.
+            val tokenHasRepoScope = state.scopes.split(' ', ',').any { it.trim() == "repo" }
+            val needsResign = privateReposEnabled && !tokenHasRepoScope
+            val downgradePending = !privateReposEnabled && tokenHasRepoScope
+            SettingsSwitchRow(
+                title = "Enable private repos",
+                subtitle = when {
+                    needsResign ->
+                        "ON. Sign out and back in to upgrade to the `repo` scope " +
+                            "(read/write to private + public repos)."
+                    downgradePending ->
+                        "OFF. Current token still carries the `repo` scope; sign out " +
+                            "and back in to drop down to `public_repo`."
+                    privateReposEnabled ->
+                        "Sign-in requests `repo` (full repo, read/write, includes private)."
+                    else ->
+                        "Sign-in requests `public_repo` only (least privilege)."
+                },
+                checked = privateReposEnabled,
+                onCheckedChange = onSetPrivateReposEnabled,
             )
             SettingsLinkRow(
                 title = "Revoke at github.com",

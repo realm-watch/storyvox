@@ -488,6 +488,16 @@ data class UiSettings(
      * only the login + state. See [UiGitHubAuthState].
      */
     val github: UiGitHubAuthState = UiGitHubAuthState.Anonymous,
+    /**
+     * Issue #203 — when true, the next GitHub Device Flow run requests
+     * the `repo` scope (full repo, read/write, includes private). When
+     * false (default), Device Flow uses [`GitHubAuthConfig.DEFAULT_SCOPES`]
+     * (`read:user public_repo`). Toggling this on a signed-in account
+     * doesn't auto-upgrade the live token — the user has to re-run
+     * sign-in for the new scope to take effect; the existing session
+     * keeps its original scopes until then.
+     */
+    val githubPrivateReposEnabled: Boolean = false,
 )
 
 /**
@@ -689,6 +699,15 @@ interface SettingsRepositoryUi {
      * `github.com/settings/applications` if they want to revoke fully.
      */
     suspend fun signOutGitHub()
+
+    /**
+     * Issue #203 — toggle "Enable private repos" preference. ON makes the
+     * next Device Flow request the `repo` scope; OFF goes back to
+     * `public_repo`. The currently-signed-in token is unaffected —
+     * existing sessions keep the scopes they were granted with until the
+     * user re-signs-in.
+     */
+    suspend fun setGitHubPrivateReposEnabled(enabled: Boolean)
 }
 
 /** Outcome of [`SettingsRepositoryUi.testPalaceConnection`]. */
