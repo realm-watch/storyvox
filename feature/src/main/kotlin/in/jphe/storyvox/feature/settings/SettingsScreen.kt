@@ -340,29 +340,37 @@ fun SettingsScreen(
         }
 
         // ── 8. About ─────────────────────────────────────────────────
-        // Trailing metadata. Realm-sigil "name" is a deterministic
-        // adjective+noun drawn from the fantasy realm word list, keyed
-        // on the build's git hash. Same hash → same name across
-        // rebuilds. The sigil is the brass payoff at the bottom of the
-        // screen — give it the trailing slot for that beat.
+        // Realm-sigil "name" is deterministic adjective+noun from the
+        // fantasy realm word list, keyed on the build's git hash. Same
+        // hash → same name across rebuilds. The brass sigil name is
+        // the visual sign-off — full-width below the version line so
+        // it doesn't crowd narrow screens.
         SettingsSectionHeader("About", icon = Icons.Outlined.Info)
         SettingsGroupCard {
-            SettingsRow(
-                title = "storyvox v${s.sigil.versionName}",
-                subtitle = buildString {
-                    append(s.sigil.branch)
-                    if (s.sigil.dirty) append(" · dirty")
-                    append(" · built ")
-                    append(s.sigil.built.take(10))
-                },
-                trailing = {
-                    Text(
-                        text = s.sigil.name,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                },
-            )
+            Column(
+                modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.md),
+                verticalArrangement = Arrangement.spacedBy(spacing.xxs),
+            ) {
+                Text(
+                    text = "storyvox v${s.sigil.versionName}",
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Text(
+                    text = s.sigil.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = buildString {
+                        append(s.sigil.branch)
+                        if (s.sigil.dirty) append(" · dirty")
+                        append(" · built ")
+                        append(s.sigil.built.take(10))
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         Box(modifier = Modifier.fillMaxWidth().padding(top = spacing.lg))
@@ -387,74 +395,54 @@ private fun GitHubSignInRow(
     onSignOut: () -> Unit,
     onOpenRevokePage: () -> Unit,
 ) {
-    val spacing = LocalSpacing.current
-    Column(
-        modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
-        verticalArrangement = Arrangement.spacedBy(spacing.xs),
-    ) {
-    Text(
-        "GitHub",
-        style = MaterialTheme.typography.titleSmall,
-    )
     when (state) {
         UiGitHubAuthState.Anonymous -> {
-            BrassButton(
-                label = "Sign in to GitHub",
-                onClick = onSignIn,
-                variant = BrassButtonVariant.Primary,
-            )
-            Text(
-                "Lifts the anonymous 60 req/hr cap to 5,000 req/hr and unlocks your repository " +
-                    "readmes as fictions. We ask for read:user public_repo only — never write " +
-                    "access, never private repos by default.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            SettingsRow(
+                title = "GitHub",
+                subtitle = "Sign in lifts the 60 req/hr anon cap to 5,000 req/hr and " +
+                    "unlocks repository READMEs as fictions. read:user + public_repo only.",
+                trailing = {
+                    BrassButton(
+                        label = "Sign in",
+                        onClick = onSignIn,
+                        variant = BrassButtonVariant.Primary,
+                    )
+                },
             )
         }
         is UiGitHubAuthState.SignedIn -> {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = state.login?.let { "Signed in as @$it" } ?: "Signed in",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.weight(1f),
-                )
-                BrassButton(
-                    label = "Sign out",
-                    onClick = onSignOut,
-                    variant = BrassButtonVariant.Secondary,
-                )
-            }
-            Text(
-                text = "Granted scope: ${state.scopes}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            SettingsRow(
+                title = "GitHub",
+                subtitle = state.login?.let { "Signed in as @$it · scope ${state.scopes}" }
+                    ?: "Signed in · scope ${state.scopes}",
+                trailing = {
+                    BrassButton(
+                        label = "Sign out",
+                        onClick = onSignOut,
+                        variant = BrassButtonVariant.Secondary,
+                    )
+                },
             )
-            BrassButton(
-                label = "Revoke at github.com…",
+            SettingsLinkRow(
+                title = "Revoke at github.com",
+                subtitle = "Sign-out clears the local token; use this to revoke storyvox's " +
+                    "authorization on GitHub's side too.",
                 onClick = onOpenRevokePage,
-                variant = BrassButtonVariant.Text,
-            )
-            Text(
-                "Sign-out clears the token from this device. To remove storyvox's authorization " +
-                    "on GitHub's side, use the link above.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         UiGitHubAuthState.Expired -> {
-            Text(
-                "Session expired — sign in again to recover.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error,
-            )
-            BrassButton(
-                label = "Sign in to GitHub",
-                onClick = onSignIn,
-                variant = BrassButtonVariant.Primary,
+            SettingsRow(
+                title = "GitHub",
+                subtitle = "Session expired — sign in again to recover.",
+                trailing = {
+                    BrassButton(
+                        label = "Sign in",
+                        onClick = onSignIn,
+                        variant = BrassButtonVariant.Primary,
+                    )
+                },
             )
         }
-    }
     }
 }
 
@@ -635,19 +623,26 @@ private fun BufferSlider(
         modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
         verticalArrangement = Arrangement.spacedBy(spacing.xs),
     ) {
-        // Header row: current value + recommended-max indicator.
+        // Title + brass value, matching SettingsSliderBlock.
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text(
-                text = "Buffer: $chunks chunks (~${approxSeconds}s, ~${approxMb} MB)",
-                style = MaterialTheme.typography.bodyMedium,
+                text = "Buffer",
+                style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.weight(1f),
             )
             Text(
-                text = "Recommended max: $BUFFER_RECOMMENDED_MAX_CHUNKS",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = "$chunks chunks · ~${approxSeconds}s · ~${approxMb} MB",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
             )
         }
+        // Caption below: stacked recommended-max marker on its own line
+        // so narrow screens never have to choose which text to truncate.
+        Text(
+            text = "Recommended max: $BUFFER_RECOMMENDED_MAX_CHUNKS chunks",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         Slider(
             value = chunks.toFloat(),
