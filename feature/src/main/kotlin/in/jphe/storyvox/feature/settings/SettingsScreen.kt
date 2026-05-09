@@ -78,171 +78,125 @@ fun SettingsScreen(
     Scaffold { padding ->
     Column(
         modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(spacing.md),
-        verticalArrangement = Arrangement.spacedBy(spacing.md),
+        verticalArrangement = Arrangement.spacedBy(spacing.lg),
     ) {
-        SectionHeader("Voices")
-        Text(
-            "Storyvox uses an in-process neural TTS engine. Pick a voice or download more in the library.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        BrassButton(label = "Voice library", onClick = onOpenVoiceLibrary, variant = BrassButtonVariant.Primary)
-
-        Divider()
-        SectionHeader("Reading")
-        Slider(
-            value = s.defaultSpeed,
-            onValueChange = viewModel::setSpeed,
-            valueRange = 0.5f..3.0f,
-            // TalkBack #160 — without these, the slider announces a raw
-            // float ("1.25") instead of "Default speech speed, 1.25 times".
-            modifier = Modifier.semantics {
-                contentDescription = "Default speech speed"
-                stateDescription = "%.2f times".format(s.defaultSpeed)
-            },
-        )
-        Text("Speed ${"%.2f".format(s.defaultSpeed)}×", style = MaterialTheme.typography.bodySmall)
-        Slider(
-            value = s.defaultPitch,
-            onValueChange = viewModel::setPitch,
-            // Narration-friendly band — matches the in-context pitch slider
-            // in AudiobookView. Widened from 0.85..1.15 (Thalia's VoxSherpa
-            // P0 #1, 2026-05-08) to give listeners headroom for narrator-
-            // baritone settings. Hard floor at 0.6 — below ~0.7 Sonic starts
-            // introducing audible artifacts on Piper-medium voices.
-            valueRange = 0.6f..1.4f,
-            steps = 79, // 0.01 per step
-            modifier = Modifier.semantics {
-                contentDescription = "Default pitch"
-                stateDescription = "%.2f, neutral at one".format(s.defaultPitch)
-            },
-        )
-        Text("Pitch ${"%.2f".format(s.defaultPitch)}×", style = MaterialTheme.typography.bodySmall)
-
-        // Issue #135 — Pronunciation dictionary entry point. Sub-screen
-        // owns the list editor; the row here is a one-liner so the
-        // Settings screen stays scannable. Sits in the Reading section
-        // because it shapes how chapters sound, not how they buffer.
-        Text(
-            "Pronunciation",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Text(
-            "Teach the voice how to say specific names and words.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        BrassButton(
-            label = "Edit pronunciations",
-            onClick = onOpenPronunciationDict,
-            variant = BrassButtonVariant.Secondary,
-        )
-
-        Divider()
-        // Issue #98 — "Performance & buffering" home for every setting that
-        // trades upfront wait + memory for smoother playback on slow devices.
-        // Order intentionally goes from the cheapest knobs (boolean modes) to
-        // the most exploratory (the buffer slider, which goes well past the
-        // recommended max for the LMK probe in #84). Punctuation cadence sits
-        // at the bottom because it's a cadence preference more than a perf
-        // trade-off, but it also lives in the perf trade space (Off skips
-        // synthesis time per sentence boundary).
-        SectionHeader("Performance & buffering")
-        Text(
-            "Settings that trade upfront wait + memory for smoother playback. Useful on slower devices.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontStyle = FontStyle.Italic,
-        )
-
-        // Mode A — Warm-up Wait. Toggle, default ON. When ON the UI shows a
-        // brass spinner + freezes the scrubber while the voice engine is
-        // loading + producing the first sentence. When OFF the UI behaves as
-        // if playback started immediately; listener accepts silence at chapter
-        // start. Wired through PlaybackModeConfig + AppBindings.toUi.
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Warm-up Wait", style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    if (s.warmupWait) {
-                        "Wait for the voice to warm up before playback starts."
-                    } else {
-                        "Start playback immediately; accept silence at chapter start."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Switch(checked = s.warmupWait, onCheckedChange = viewModel::setWarmupWait)
+        // ── Voices ───────────────────────────────────────────────────
+        SettingsSectionHeader("Voices")
+        SettingsGroupCard {
+            SettingsLinkRow(
+                title = "Voice library",
+                subtitle = "Pick a voice or download more.",
+                onClick = onOpenVoiceLibrary,
+            )
         }
 
-        // Mode B — Catch-up Pause. Toggle, default ON. When ON, mid-stream
-        // underrun pauses AudioTrack and surfaces "Buffering…" until the
-        // queue refills (PR #77's pause-buffer-resume). When OFF the consumer
-        // drains through the underrun: listener may hear dead air, but never
-        // sees the buffering spinner. EngineStreamingSource is untouched.
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Catch-up Pause", style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    if (s.catchupPause) {
-                        "Pause briefly when the voice falls behind, then resume cleanly."
-                    } else {
-                        "Drain through underruns; no buffering spinner."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Switch(checked = s.catchupPause, onCheckedChange = viewModel::setCatchupPause)
+        // ── Reading ──────────────────────────────────────────────────
+        SettingsSectionHeader("Reading")
+        SettingsGroupCard {
+            SettingsSliderBlock(
+                title = "Speed",
+                valueLabel = "${"%.2f".format(s.defaultSpeed)}×",
+                slider = {
+                    Slider(
+                        value = s.defaultSpeed,
+                        onValueChange = viewModel::setSpeed,
+                        valueRange = 0.5f..3.0f,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Default speech speed"
+                            stateDescription = "%.2f times".format(s.defaultSpeed)
+                        },
+                    )
+                },
+            )
+            SettingsSliderBlock(
+                title = "Pitch",
+                valueLabel = "${"%.2f".format(s.defaultPitch)}×",
+                slider = {
+                    Slider(
+                        value = s.defaultPitch,
+                        onValueChange = viewModel::setPitch,
+                        // Narration-friendly band — matches AudiobookView. Hard
+                        // floor at 0.6: Sonic introduces artifacts below ~0.7.
+                        valueRange = 0.6f..1.4f,
+                        steps = 79,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Default pitch"
+                            stateDescription = "%.2f, neutral at one".format(s.defaultPitch)
+                        },
+                    )
+                },
+            )
+            // Issue #135 — Pronunciation dictionary entry. Sits in
+            // Reading because it shapes how chapters *sound*, not how
+            // they buffer.
+            SettingsLinkRow(
+                title = "Pronunciation",
+                subtitle = "Teach the voice how to say specific names and words.",
+                onClick = onOpenPronunciationDict,
+            )
         }
 
-        // Issue #85 — Voice Determinism preset. Toggle, default ON (Steady).
-        // ON  = VoxSherpa calmed VITS defaults (noise_scale 0.35 / 0.667).
-        //       Identical text re-renders sound nearly identical between runs;
-        //       best for audiobook listeners replaying chapters.
-        // OFF = sherpa-onnx upstream Piper defaults (0.667 / 0.8). Slightly
-        //       more variable prosody, fuller delivery, take-to-take variation.
-        // Flips force a model reload (~1-3s on Piper, ~30s on Kokoro). The
-        // reload is dispatched by EnginePlayer via VoxSherpa-TTS v2.7.4's
-        // VoiceEngine.setNoiseScale[W]() setters; the Settings UI itself
-        // doesn't need a spinner in v1 — the brief audible reload pause
-        // during playback is acceptable and a follow-up will polish UX.
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Voice Determinism", style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    if (s.voiceSteady) {
-                        "Steady — identical text plays the same each time."
-                    } else {
-                        "Expressive — slight variation, fuller prosody."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Switch(checked = s.voiceSteady, onCheckedChange = viewModel::setVoiceSteady)
+        // ── Performance & buffering ──────────────────────────────────
+        // Order: cheapest knobs (booleans) → most exploratory (buffer
+        // slider). Punctuation cadence sits last — it's a cadence
+        // preference but also lives in the perf trade space.
+        SettingsSectionHeader("Performance & buffering")
+        SettingsGroupCard {
+            // Mode A — Warm-up Wait. Default ON. ON: brass spinner +
+            // frozen scrubber while engine warms up. OFF: silent start.
+            SettingsSwitchRow(
+                title = "Warm-up Wait",
+                subtitle = if (s.warmupWait) {
+                    "Wait for the voice to warm up before playback starts."
+                } else {
+                    "Start playback immediately; accept silence at chapter start."
+                },
+                checked = s.warmupWait,
+                onCheckedChange = viewModel::setWarmupWait,
+            )
+            // Mode B — Catch-up Pause. Default ON. ON: pause+resume on
+            // underrun (PR #77). OFF: drain through underrun.
+            SettingsSwitchRow(
+                title = "Catch-up Pause",
+                subtitle = if (s.catchupPause) {
+                    "Pause briefly when the voice falls behind, then resume cleanly."
+                } else {
+                    "Drain through underruns; no buffering spinner."
+                },
+                checked = s.catchupPause,
+                onCheckedChange = viewModel::setCatchupPause,
+            )
+            // Issue #85 — Voice Determinism preset. ON = VoxSherpa
+            // calmed VITS defaults (replay-stable). OFF = sherpa-onnx
+            // upstream Piper defaults (more variable prosody). Flips
+            // force a model reload — handled by EnginePlayer.
+            SettingsSwitchRow(
+                title = "Voice Determinism",
+                subtitle = if (s.voiceSteady) {
+                    "Steady — identical text plays the same each time."
+                } else {
+                    "Expressive — slight variation, fuller prosody."
+                },
+                checked = s.voiceSteady,
+                onCheckedChange = viewModel::setVoiceSteady,
+            )
+            // Buffer slider keeps its custom rendering — colored
+            // amber/red past the recommended tick is the whole point.
+            BufferSlider(
+                chunks = s.playbackBufferChunks,
+                onChunksChange = viewModel::setPlaybackBufferChunks,
+            )
+            // Punctuation cadence — #109 continuous slider (was 3-stop
+            // in #93). Range 0..4× matches the engine's internal clamp.
+            PunctuationPauseSlider(
+                multiplier = s.punctuationPauseMultiplier,
+                onMultiplierChange = viewModel::setPunctuationPauseMultiplier,
+            )
         }
 
-        // Buffer Headroom — migrated from the standalone "Audio buffer"
-        // section. Same control, same #84 LMK-probe semantics.
-        BufferSlider(
-            chunks = s.playbackBufferChunks,
-            onChunksChange = viewModel::setPlaybackBufferChunks,
-        )
-
-        // Punctuation Cadence — issue #109 widened the original 3-stop
-        // selector (#93) into a continuous slider so users who want
-        // slower-than-Long or faster-than-Off-style cadence can dial it in.
-        // Range 0×..4× matches the engine's existing internal clamp; tick
-        // labels anchor the legacy stops (Off, Normal, Long) and the new
-        // 4× ceiling.
-        PunctuationPauseSlider(
-            multiplier = s.punctuationPauseMultiplier,
-            onMultiplierChange = viewModel::setPunctuationPauseMultiplier,
-        )
-
-        Divider()
+        // ── AI ───────────────────────────────────────────────────────
+        SettingsSectionHeader("AI")
+        SettingsGroupCard {
         AiSection(
             ai = s.ai,
             probeOutcome = state.probeOutcome,
@@ -268,122 +222,133 @@ fun SettingsScreen(
             onClearProbeOutcome = viewModel::clearProbeOutcome,
             onResetAi = viewModel::resetAiSettings,
         )
-
-        Divider()
-        SectionHeader("Theme")
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
-            ThemeOverride.entries.forEach { mode ->
-                val variant = if (s.themeOverride == mode) BrassButtonVariant.Primary else BrassButtonVariant.Secondary
-                BrassButton(label = mode.name, onClick = { viewModel.setTheme(mode) }, variant = variant)
-            }
         }
 
-        Divider()
-        SectionHeader("Downloads")
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Text("Wi-Fi only", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            Switch(checked = s.downloadOnWifiOnly, onCheckedChange = viewModel::setWifiOnly)
-        }
-        Text("Poll every ${s.pollIntervalHours}h", style = MaterialTheme.typography.bodyMedium)
-        Slider(
-            value = s.pollIntervalHours.toFloat(),
-            onValueChange = { viewModel.setPollHours(it.toInt().coerceIn(1, 24)) },
-            valueRange = 1f..24f,
-            steps = 22,
-            // TalkBack #160 — units matter: raw "6" without context reads
-            // ambiguous ("6 minutes? days?"). State description spells it.
-            modifier = Modifier.semantics {
-                contentDescription = "Update check interval"
-                stateDescription = "Every ${s.pollIntervalHours} hours"
-            },
-        )
-
-        Divider()
-        SectionHeader("Sources")
-        // Royal Road row — preserves the v0.4.x "Account" surface, just
-        // labelled per-source so GitHub can sit beside it. Issue #91.
-        Text("Royal Road", style = MaterialTheme.typography.titleSmall)
-        if (s.isSignedIn) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "Signed in",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.weight(1f),
-                )
-                BrassButton(
-                    label = "Sign out",
-                    onClick = viewModel::signOut,
-                    variant = BrassButtonVariant.Secondary,
-                )
-            }
-        } else {
-            BrassButton(
-                label = "Sign in",
-                onClick = onOpenSignIn,
-                variant = BrassButtonVariant.Primary,
-            )
-            Text(
-                "Sign-in unlocks Premium chapters and your Follows list. Anonymous browsing works for all public chapters.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        // ── Theme ────────────────────────────────────────────────────
+        SettingsSectionHeader("Theme")
+        SettingsGroupCard {
+            SettingsSegmentedBlock(
+                title = "Theme override",
+                options = ThemeOverride.entries.map { it.name },
+                selectedIndex = ThemeOverride.entries.indexOf(s.themeOverride).coerceAtLeast(0),
+                onSelected = { idx -> viewModel.setTheme(ThemeOverride.entries[idx]) },
             )
         }
 
-        // GitHub row (#91). Always shown — sign-in is additive (lifts the
-        // anonymous 60 req/hr cap to 5,000 req/hr) so it's useful even
-        // before the user has any GitHub fictions in their library.
-        GitHubSignInRow(
-            state = s.github,
-            onSignIn = onOpenGitHubSignIn,
-            onSignOut = viewModel::signOutGitHub,
-            onOpenRevokePage = onOpenGitHubRevoke,
-        )
+        // ── Downloads ────────────────────────────────────────────────
+        SettingsSectionHeader("Downloads")
+        SettingsGroupCard {
+            SettingsSwitchRow(
+                title = "Wi-Fi only",
+                subtitle = "Don't poll on cellular.",
+                checked = s.downloadOnWifiOnly,
+                onCheckedChange = viewModel::setWifiOnly,
+            )
+            SettingsSliderBlock(
+                title = "Update check interval",
+                valueLabel = "Every ${s.pollIntervalHours}h",
+                slider = {
+                    Slider(
+                        value = s.pollIntervalHours.toFloat(),
+                        onValueChange = { viewModel.setPollHours(it.toInt().coerceIn(1, 24)) },
+                        valueRange = 1f..24f,
+                        steps = 22,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Update check interval"
+                            stateDescription = "Every ${s.pollIntervalHours} hours"
+                        },
+                    )
+                },
+            )
+        }
 
-        Divider()
-        MemoryPalaceSection(
-            palace = s.palace,
-            probe = state.palaceProbe,
-            probing = state.palaceProbing,
-            onSetHost = viewModel::setPalaceHost,
-            onSetApiKey = viewModel::setPalaceApiKey,
-            onClear = viewModel::clearPalaceConfig,
-            onTest = viewModel::testPalaceConnection,
-        )
+        // ── Sources ──────────────────────────────────────────────────
+        // Royal Road sign-in is a two-state affair (signed in vs out)
+        // and GitHubSignInRow has its own composable for OAuth Device
+        // Flow state. Both render inside one card.
+        SettingsSectionHeader("Sources")
+        SettingsGroupCard {
+            // Royal Road row — preserves the v0.4.x "Account" surface,
+            // labeled per-source so GitHub can sit beside it. Issue #91.
+            if (s.isSignedIn) {
+                SettingsRow(
+                    title = "Royal Road",
+                    subtitle = "Signed in",
+                    trailing = {
+                        BrassButton(
+                            label = "Sign out",
+                            onClick = viewModel::signOut,
+                            variant = BrassButtonVariant.Secondary,
+                        )
+                    },
+                )
+            } else {
+                SettingsRow(
+                    title = "Royal Road",
+                    subtitle = "Sign-in unlocks Premium chapters and your Follows list.",
+                    trailing = {
+                        BrassButton(
+                            label = "Sign in",
+                            onClick = onOpenSignIn,
+                            variant = BrassButtonVariant.Primary,
+                        )
+                    },
+                )
+            }
+            // GitHub row (#91). Always shown — sign-in is additive
+            // (lifts the anon 60 req/hr cap to 5,000 req/hr).
+            GitHubSignInRow(
+                state = s.github,
+                onSignIn = onOpenGitHubSignIn,
+                onSignOut = viewModel::signOutGitHub,
+                onOpenRevokePage = onOpenGitHubRevoke,
+            )
+        }
 
-        Divider()
-        SectionHeader("About")
-        // Realm-sigil version. The "name" field is a deterministic
-        // adjective+noun drawn from the fantasy realm word list, keyed on
-        // the build's git hash. Same hash → same name across rebuilds.
-        Text(
-            text = "storyvox v${s.sigil.versionName}",
-            style = MaterialTheme.typography.titleSmall,
-        )
-        Text(
-            text = s.sigil.name,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        Text(
-            text = buildString {
-                append(s.sigil.branch)
-                if (s.sigil.dirty) append(" · dirty")
-                append(" · built ")
-                append(s.sigil.built.take(10)) // YYYY-MM-DD only
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        // ── Memory Palace ────────────────────────────────────────────
+        SettingsSectionHeader("Memory Palace")
+        SettingsGroupCard {
+            MemoryPalaceSection(
+                palace = s.palace,
+                probe = state.palaceProbe,
+                probing = state.palaceProbing,
+                onSetHost = viewModel::setPalaceHost,
+                onSetApiKey = viewModel::setPalaceApiKey,
+                onClear = viewModel::clearPalaceConfig,
+                onTest = viewModel::testPalaceConnection,
+            )
+        }
+
+        // ── About ────────────────────────────────────────────────────
+        // Realm-sigil version. "name" is a deterministic adjective+noun
+        // drawn from the fantasy realm word list, keyed on the build's
+        // git hash. Same hash → same name across rebuilds.
+        SettingsSectionHeader("About")
+        SettingsGroupCard {
+            SettingsRow(
+                title = "storyvox v${s.sigil.versionName}",
+                subtitle = s.sigil.name + " · " + buildString {
+                    append(s.sigil.branch)
+                    if (s.sigil.dirty) append(" · dirty")
+                    append(" · built ")
+                    append(s.sigil.built.take(10))
+                },
+            )
+        }
 
         Box(modifier = Modifier.fillMaxWidth().padding(top = spacing.lg))
     }
     }
 }
 
+/**
+ * Local shim that forwards to [SettingsSectionHeader] (Saga's brass-styled
+ * header, [SettingsComposables]). Kept so [MemoryPalaceSection] + [AiSection]
+ * still compile while their card-wrap refactor is deferred to a follow-up.
+ */
 @Composable
 private fun SectionHeader(label: String) {
-    Text(label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+    SettingsSectionHeader(label)
 }
 
 /**
@@ -491,7 +456,8 @@ private fun MemoryPalaceSection(
     onTest: () -> Unit,
 ) {
     val spacing = LocalSpacing.current
-    SectionHeader("Memory Palace")
+    // Header is now emitted by the call site (SettingsScreen) so it can sit
+    // outside the SettingsGroupCard. Internal copy + controls follow.
     Text(
         "Browse and listen to your local MemPalace as fictions. Home network only — " +
             "the palace stays put when you're off the LAN.",
@@ -1007,7 +973,8 @@ private fun AiSection(
     onResetAi: () -> Unit,
 ) {
     val spacing = LocalSpacing.current
-    SectionHeader("AI")
+    // Header is now emitted by the call site (SettingsScreen) so it can sit
+    // outside the SettingsGroupCard. Internal copy + controls follow.
     Text(
         "Smart features (Recap, character lookup, …) ask an AI to answer " +
             "questions about what you're reading. Pick a provider, then enable a feature. " +

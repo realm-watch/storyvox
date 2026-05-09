@@ -303,6 +303,9 @@ private fun unreachableLlmRepository(): LlmRepository {
         claude = unreachableClaude(),
         openAi = unreachableOpenAi(),
         ollama = unreachableOllama(),
+        vertex = unreachableVertex(),
+        foundry = unreachableFoundry(),
+        bedrock = unreachableBedrock(),
     )
 }
 
@@ -331,6 +334,39 @@ private fun unreachableOpenAi(): OpenAiApiProvider =
 private fun unreachableOllama(): OllamaProvider =
     object : OllamaProvider(
         http = okhttp3.OkHttpClient(),
+        configFlow = flowOf(LlmConfig()),
+        json = kotlinx.serialization.json.Json,
+    ) {
+        override fun stream(messages: List<LlmMessage>, systemPrompt: String?, model: String?) =
+            error("unreachable")
+    }
+
+private fun unreachableVertex(): `in`.jphe.storyvox.llm.provider.VertexProvider =
+    object : `in`.jphe.storyvox.llm.provider.VertexProvider(
+        http = okhttp3.OkHttpClient(),
+        store = NullStore,
+        configFlow = flowOf(LlmConfig()),
+        json = kotlinx.serialization.json.Json,
+    ) {
+        override fun stream(messages: List<LlmMessage>, systemPrompt: String?, model: String?) =
+            error("unreachable")
+    }
+
+private fun unreachableFoundry(): `in`.jphe.storyvox.llm.provider.AzureFoundryProvider =
+    object : `in`.jphe.storyvox.llm.provider.AzureFoundryProvider(
+        http = okhttp3.OkHttpClient(),
+        store = NullStore,
+        configFlow = flowOf(LlmConfig()),
+        json = kotlinx.serialization.json.Json,
+    ) {
+        override fun stream(messages: List<LlmMessage>, systemPrompt: String?, model: String?) =
+            error("unreachable")
+    }
+
+private fun unreachableBedrock(): `in`.jphe.storyvox.llm.provider.BedrockProvider =
+    object : `in`.jphe.storyvox.llm.provider.BedrockProvider(
+        http = okhttp3.OkHttpClient(),
+        store = NullStore,
         configFlow = flowOf(LlmConfig()),
         json = kotlinx.serialization.json.Json,
     ) {
