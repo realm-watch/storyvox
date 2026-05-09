@@ -59,6 +59,7 @@ class SettingsRepositoryVoiceSteadyTest {
             // GitHubAuth fake (#91) — voice-tuning tests don't touch GitHub
             // state; mirrors the pattern in BufferTest / ModesTest / etc.
             githubAuth = FakeGitHubAuth(),
+            teamsAuth = fakeTeamsAuth(),
         )
     }
 

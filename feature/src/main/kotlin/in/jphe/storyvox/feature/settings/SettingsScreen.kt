@@ -80,6 +80,7 @@ fun SettingsScreen(
     onOpenSignIn: () -> Unit,
     onOpenGitHubSignIn: () -> Unit,
     onOpenGitHubRevoke: () -> Unit = {},
+    onOpenTeamsSignIn: () -> Unit = {},
     onOpenPronunciationDict: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
@@ -251,6 +252,8 @@ fun SettingsScreen(
             onTestConnection = viewModel::testAiConnection,
             onClearProbeOutcome = viewModel::clearProbeOutcome,
             onResetAi = viewModel::resetAiSettings,
+            onOpenTeamsSignIn = onOpenTeamsSignIn,
+            onSignOutTeams = viewModel::signOutTeams,
         )
         }
 
@@ -1027,6 +1030,8 @@ private fun AiSection(
     onTestConnection: (UiLlmProvider) -> Unit,
     onClearProbeOutcome: () -> Unit,
     onResetAi: () -> Unit,
+    onOpenTeamsSignIn: () -> Unit,
+    onSignOutTeams: () -> Unit,
 ) {
     val spacing = LocalSpacing.current
     // Header is now emitted by the call site (SettingsScreen). Indent
@@ -1073,12 +1078,10 @@ private fun AiSection(
         ProviderChip(label = "Bedrock", selected = ai.provider == UiLlmProvider.Bedrock) {
             onSetProvider(UiLlmProvider.Bedrock)
         }
+        ProviderChip(label = "Teams", selected = ai.provider == UiLlmProvider.Teams) {
+            onSetProvider(UiLlmProvider.Teams)
+        }
     }
-    Text(
-        "Anthropic Teams (OAuth) coming soon.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 
     when (ai.provider) {
         UiLlmProvider.Claude -> ClaudeProviderRows(
@@ -1115,17 +1118,11 @@ private fun AiSection(
             onSetRegion = onSetBedrockRegion,
             onSetModel = onSetBedrockModel,
         )
-        UiLlmProvider.Teams -> {
-            // Selected via the (currently disabled) chip; defensive
-            // catch-all that surfaces a friendly message rather than
-            // letting the user fall into a half-built UI.
-            Text(
-                "${ai.provider!!.displayName} is in the design spec but not yet " +
-                    "implemented. Pick another provider for now.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        UiLlmProvider.Teams -> AnthropicTeamsProviderRows(
+            ai = ai,
+            onOpenSignIn = onOpenTeamsSignIn,
+            onSignOut = onSignOutTeams,
+        )
         null -> { /* Off — nothing more to show */ }
     }
 
@@ -1803,4 +1800,73 @@ private fun ProbeOutcomeMessage(probe: ProbeOutcome?, onClear: () -> Unit) {
         is ProbeOutcome.Failure -> probe.message
     }
     Text(text = text, style = MaterialTheme.typography.bodySmall, color = color)
+}
+
+/**
+ * Anthropic Teams (OAuth) provider rows (#181). Replaces the
+ * "coming soon" stub with a real sign-in entry. The bearer token
+ * round-trips through OAuth — there's nothing to paste, so the
+ * row is just a button + a status line that flips between
+ * "Sign in to Teams" and "Signed in" once the flow completes.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun AnthropicTeamsProviderRows(
+    ai: UiAiSettings,
+    onOpenSignIn: () -> Unit,
+    onSignOut: () -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        Text(
+            "Anthropic Teams uses your Claude.ai workspace login — no API key " +
+                "to paste. Tap the button below to authorize storyvox in your " +
+                "browser; we'll capture the bearer token and refresh it as needed.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (ai.teamsSignedIn) {
+            Text(
+                "Signed in to Anthropic Teams",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            if (ai.teamsScopes.isNotBlank()) {
+                Text(
+                    "Granted scopes: ${ai.teamsScopes}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                BrassButton(
+                    label = "Sign out",
+                    onClick = onSignOut,
+                    variant = BrassButtonVariant.Secondary,
+                )
+                BrassButton(
+                    label = "Re-authorize",
+                    onClick = onOpenSignIn,
+                    variant = BrassButtonVariant.Text,
+                )
+            }
+        } else {
+            BrassButton(
+                label = "Sign in to Teams",
+                onClick = onOpenSignIn,
+                variant = BrassButtonVariant.Primary,
+            )
+        }
+        Text(
+            "Model: ${ai.claudeModel}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            "Costs are covered by your Teams subscription — Anthropic counts " +
+                "tokens against your workspace quota at console.anthropic.com.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }

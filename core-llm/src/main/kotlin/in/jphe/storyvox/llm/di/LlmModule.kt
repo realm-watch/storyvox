@@ -2,6 +2,7 @@ package `in`.jphe.storyvox.llm.di
 
 import `in`.jphe.storyvox.llm.LlmConfig
 import `in`.jphe.storyvox.llm.LlmConfigProvider
+import `in`.jphe.storyvox.llm.auth.AnthropicTeamsAuthApi
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -69,4 +70,15 @@ object LlmModule {
     @Singleton
     fun provideConfigFlow(provider: LlmConfigProvider): Flow<LlmConfig> =
         provider.config
+
+    /**
+     * Anthropic Teams OAuth client (#181). Reuses the [LlmHttp] vanilla
+     * OkHttpClient — that one has no Bearer interceptor, which is
+     * exactly what the token endpoint needs (it takes the bearer in
+     * the JSON body, not as an Authorization header).
+     */
+    @Provides
+    @Singleton
+    fun provideAnthropicTeamsAuthApi(@LlmHttp http: OkHttpClient): AnthropicTeamsAuthApi =
+        AnthropicTeamsAuthApi(http)
 }

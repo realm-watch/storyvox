@@ -45,6 +45,8 @@ import `in`.jphe.storyvox.source.github.auth.GitHubScopePreferences
 import `in`.jphe.storyvox.source.github.auth.GitHubSession
 import `in`.jphe.storyvox.llm.LlmConfig
 import `in`.jphe.storyvox.llm.LlmConfigProvider
+import `in`.jphe.storyvox.llm.auth.AnthropicTeamsAuthRepository
+import `in`.jphe.storyvox.llm.auth.TeamsSession
 import `in`.jphe.storyvox.llm.LlmCredentialsStore
 import `in`.jphe.storyvox.llm.ProviderId
 import `in`.jphe.storyvox.sigil.Sigil
@@ -202,6 +204,7 @@ class SettingsRepositoryUiImpl(
     private val palaceApi: PalaceDaemonApi,
     private val llmCreds: LlmCredentialsStore,
     private val githubAuth: GitHubAuthRepository,
+    private val teamsAuth: AnthropicTeamsAuthRepository,
 ) : SettingsRepositoryUi,
     PlaybackBufferConfig,
     PlaybackModeConfig,
@@ -222,16 +225,18 @@ class SettingsRepositoryUiImpl(
         palaceApi: PalaceDaemonApi,
         llmCreds: LlmCredentialsStore,
         githubAuth: GitHubAuthRepository,
+        teamsAuth: AnthropicTeamsAuthRepository,
     ) : this(
         context.settingsDataStore, auth, hydrator,
-        palaceConfig, palaceApi, llmCreds, githubAuth,
+        palaceConfig, palaceApi, llmCreds, githubAuth, teamsAuth,
     )
 
     override val settings: Flow<UiSettings> = combine(
         store.data,
         palaceConfig.state,
         githubAuth.sessionState,
-    ) { prefs, palace, githubSession ->
+        teamsAuth.sessionState,
+    ) { prefs, palace, githubSession, teamsSession ->
         UiSettings(
             ttsEngine = "VoxSherpa",
             defaultVoiceId = prefs[Keys.DEFAULT_VOICE_ID],
@@ -273,6 +278,9 @@ class SettingsRepositoryUiImpl(
                 bedrockSecretKeyConfigured = !llmCreds.bedrockSecretKey().isNullOrBlank(),
                 bedrockRegion = prefs[Keys.AI_BEDROCK_REGION] ?: "us-east-1",
                 bedrockModel = prefs[Keys.AI_BEDROCK_MODEL] ?: "claude-haiku-4.5",
+                teamsSignedIn = teamsSession is TeamsSession.SignedIn,
+                teamsScopes = (teamsSession as? TeamsSession.SignedIn)?.scopes
+                    ?: llmCreds.teamsScopes().orEmpty(),
                 privacyAcknowledged = prefs[Keys.AI_PRIVACY_ACK] ?: false,
                 sendChapterTextEnabled = prefs[Keys.AI_SEND_CHAPTER_TEXT] ?: true,
                 chatGrounding = UiChatGrounding(
@@ -571,6 +579,17 @@ class SettingsRepositoryUiImpl(
         store.edit { it[Keys.AI_PRIVACY_ACK] = true }
     }
 
+    override suspend fun signOutTeams() {
+        // Local sign-out — wipes the bearer + refresh + scope cache.
+        // Remote revoke at console.anthropic.com requires the
+        // client_secret we don't have (public-client posture). The
+        // Settings UI surfaces a deep-link to claude.ai if the user
+        // wants to fully revoke the session there. Going through the
+        // repo (not llmCreds directly) keeps the in-memory StateFlow
+        // in sync, which is what the Settings UI subscribes to.
+        teamsAuth.clearSession()
+    }
+
     override suspend fun resetAiSettings() {
         store.edit {
             it.remove(Keys.AI_PROVIDER)
@@ -592,6 +611,10 @@ class SettingsRepositoryUiImpl(
             it.remove(Keys.AI_CHAT_GROUND_ENTIRE_BOOK)
         }
         llmCreds.clearAll()
+        // llmCreds.clearAll() wipes the Teams encrypted-prefs entries;
+        // refresh the in-memory session flow so the UI flips to
+        // SignedOut without waiting for a separate emission.
+        teamsAuth.refreshFromStore()
     }
 
     // ── GitHub OAuth (#91) ─────────────────────────────────────────

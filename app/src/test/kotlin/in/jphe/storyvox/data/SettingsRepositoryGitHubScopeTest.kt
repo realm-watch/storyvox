@@ -53,6 +53,7 @@ class SettingsRepositoryGitHubScopeTest {
             palaceApi = makeFakePalaceApi(),
             llmCreds = `in`.jphe.storyvox.llm.LlmCredentialsStore.forTesting(),
             githubAuth = FakeGitHubAuth(),
+            teamsAuth = fakeTeamsAuth(),
         )
     }
 

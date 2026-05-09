@@ -63,6 +63,7 @@ class SettingsRepositoryPitchTest {
             // GitHubAuth fake (#91) — pitch tests don't touch GitHub state;
             // mirrors the pattern in BufferTest / ModesTest / PunctuationPauseTest.
             githubAuth = FakeGitHubAuth(),
+            teamsAuth = fakeTeamsAuth(),
         )
     }
 

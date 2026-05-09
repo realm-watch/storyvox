@@ -24,6 +24,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
 import `in`.jphe.storyvox.auth.AuthWebViewScreen
+import `in`.jphe.storyvox.auth.anthropic.AnthropicTeamsSignInScreen
 import `in`.jphe.storyvox.auth.github.GitHubSignInScreen
 import `in`.jphe.storyvox.source.github.auth.GitHubAuthConfig
 import `in`.jphe.storyvox.feature.browse.BrowseScreen
@@ -57,6 +58,8 @@ object StoryvoxRoutes {
     const val AUTH_WEBVIEW = "auth/webview"
     /** Issue #91 — GitHub Device Flow sign-in modal. */
     const val GITHUB_SIGN_IN = "auth/github/signin"
+    /** Issue #181 — Anthropic Teams OAuth sign-in modal. */
+    const val TEAMS_SIGN_IN = "auth/anthropic-teams/signin"
     /** Q&A chat about a fiction (#81 follow-up). One chat history per
      *  fictionId; the screen pulls fiction title + current chapter
      *  context internally for the system prompt.
@@ -358,6 +361,7 @@ private fun StoryvoxNavHostContent(
                             )
                         }
                     },
+                    onOpenTeamsSignIn = { navController.navigate(StoryvoxRoutes.TEAMS_SIGN_IN) },
                     onOpenPronunciationDict = { navController.navigate(StoryvoxRoutes.SETTINGS_PRONUNCIATION) },
                 )
             }
@@ -414,6 +418,18 @@ private fun StoryvoxNavHostContent(
                 popExitTransition = popExit,
             ) {
                 GitHubSignInScreen(
+                    onSignedIn = { navController.popBackStack() },
+                    onCancelled = { navController.popBackStack() },
+                )
+            }
+            composable(
+                StoryvoxRoutes.TEAMS_SIGN_IN,
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+            ) {
+                AnthropicTeamsSignInScreen(
                     onSignedIn = { navController.popBackStack() },
                     onCancelled = { navController.popBackStack() },
                 )

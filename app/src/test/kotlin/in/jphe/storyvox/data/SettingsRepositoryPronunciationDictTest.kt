@@ -61,6 +61,7 @@ class SettingsRepositoryPronunciationDictTest {
             // GitHubAuth fake (#91) — pronunciation-dict tests don't touch
             // GitHub state; mirrors BufferTest / ModesTest / PitchTest pattern.
             githubAuth = FakeGitHubAuth(),
+            teamsAuth = fakeTeamsAuth(),
         )
     }
 

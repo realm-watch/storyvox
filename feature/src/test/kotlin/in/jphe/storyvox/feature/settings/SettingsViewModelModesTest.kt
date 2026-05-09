@@ -12,6 +12,9 @@ import `in`.jphe.storyvox.feature.api.VoiceProviderUi
 import `in`.jphe.storyvox.llm.LlmConfig
 import `in`.jphe.storyvox.llm.LlmRepository
 import `in`.jphe.storyvox.llm.provider.AzureFoundryProvider
+import `in`.jphe.storyvox.llm.auth.AnthropicTeamsAuthApi
+import `in`.jphe.storyvox.llm.auth.AnthropicTeamsAuthRepository
+import `in`.jphe.storyvox.llm.provider.AnthropicTeamsProvider
 import `in`.jphe.storyvox.llm.provider.BedrockProvider
 import `in`.jphe.storyvox.llm.provider.ClaudeApiProvider
 import `in`.jphe.storyvox.llm.provider.OllamaProvider
@@ -250,6 +253,7 @@ class SettingsViewModelModesTest {
         override suspend fun resetAiSettings() = Unit
         override suspend fun signOutGitHub() = Unit
         override suspend fun setGitHubPrivateReposEnabled(enabled: Boolean) = Unit
+        override suspend fun signOutTeams() = Unit
     }
 
     private class FakeVoiceProvider : VoiceProviderUi {
@@ -274,6 +278,12 @@ class SettingsViewModelModesTest {
             vertex = VertexProvider(http, store, cfg, json),
             foundry = AzureFoundryProvider(http, store, cfg, json),
             bedrock = BedrockProvider(http, store, cfg, json),
+            teams = AnthropicTeamsProvider(
+                http, store, cfg,
+                AnthropicTeamsAuthApi(http),
+                AnthropicTeamsAuthRepository(store),
+                json,
+            ),
         )
     }
 }

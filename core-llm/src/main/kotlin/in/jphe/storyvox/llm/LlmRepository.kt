@@ -1,5 +1,6 @@
 package `in`.jphe.storyvox.llm
 
+import `in`.jphe.storyvox.llm.provider.AnthropicTeamsProvider
 import `in`.jphe.storyvox.llm.provider.AzureFoundryProvider
 import `in`.jphe.storyvox.llm.provider.BedrockProvider
 import `in`.jphe.storyvox.llm.provider.ClaudeApiProvider
@@ -32,6 +33,7 @@ class LlmRepository @Inject constructor(
     private val vertex: VertexProvider,
     private val foundry: AzureFoundryProvider,
     private val bedrock: BedrockProvider,
+    private val teams: AnthropicTeamsProvider,
 ) {
 
     /** The provider currently picked in Settings, or null when AI
@@ -82,7 +84,6 @@ class LlmRepository @Inject constructor(
         ProviderId.Vertex -> vertex
         ProviderId.Foundry -> foundry
         ProviderId.Bedrock -> bedrock
-        ProviderId.Teams ->
-            throw LlmError.NotConfigured(id)
+        ProviderId.Teams -> teams
     }
 }

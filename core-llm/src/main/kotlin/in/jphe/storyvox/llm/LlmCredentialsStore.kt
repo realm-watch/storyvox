@@ -74,6 +74,50 @@ open class LlmCredentialsStore @Inject constructor(
     open fun setTeamsBearerToken(token: String) =
         prefs.edit { putString(KEY_TEAMS, token) }
     open fun clearTeamsBearerToken() = prefs.edit { remove(KEY_TEAMS) }
+    open val hasTeamsToken: Boolean get() = teamsBearerToken() != null
+
+    /** Anthropic Teams refresh token (#181). Stored alongside the
+     *  bearer so the provider can transparently refresh on expiry
+     *  without bouncing the user back through the browser. */
+    open fun teamsRefreshToken(): String? = prefs.getString(KEY_TEAMS_REFRESH, null)
+    open fun setTeamsRefreshToken(token: String) =
+        prefs.edit { putString(KEY_TEAMS_REFRESH, token) }
+    open fun clearTeamsRefreshToken() = prefs.edit { remove(KEY_TEAMS_REFRESH) }
+
+    /** Epoch millis when the bearer token expires. Zero / missing means
+     *  "unknown" — caller falls back to using the bearer until the API
+     *  rejects it with 401 and then runs the refresh flow. */
+    open fun teamsExpiresAt(): Long = prefs.getLong(KEY_TEAMS_EXPIRES_AT, 0L)
+    open fun setTeamsExpiresAt(epochMillis: Long) =
+        prefs.edit { putLong(KEY_TEAMS_EXPIRES_AT, epochMillis) }
+    open fun clearTeamsExpiresAt() = prefs.edit { remove(KEY_TEAMS_EXPIRES_AT) }
+
+    /** Granted scopes — surfaced on the "Signed in" Settings row. */
+    open fun teamsScopes(): String? = prefs.getString(KEY_TEAMS_SCOPES, null)
+    open fun setTeamsScopes(scopes: String) =
+        prefs.edit { putString(KEY_TEAMS_SCOPES, scopes) }
+    open fun clearTeamsScopes() = prefs.edit { remove(KEY_TEAMS_SCOPES) }
+
+    /** Persist the entire Teams session in a single atomic edit. */
+    open fun setTeamsSession(
+        bearer: String,
+        refreshToken: String?,
+        expiresAtEpochMillis: Long,
+        scopes: String,
+    ) = prefs.edit {
+        putString(KEY_TEAMS, bearer)
+        if (refreshToken != null) putString(KEY_TEAMS_REFRESH, refreshToken)
+        putLong(KEY_TEAMS_EXPIRES_AT, expiresAtEpochMillis)
+        putString(KEY_TEAMS_SCOPES, scopes)
+    }
+
+    /** Forget the Anthropic Teams session entirely. */
+    open fun clearTeamsSession() = prefs.edit {
+        remove(KEY_TEAMS)
+        remove(KEY_TEAMS_REFRESH)
+        remove(KEY_TEAMS_EXPIRES_AT)
+        remove(KEY_TEAMS_SCOPES)
+    }
 
     /** Wipe every provider's credentials. The "Forget all AI
      *  settings" button. */
@@ -81,7 +125,9 @@ open class LlmCredentialsStore @Inject constructor(
         remove(KEY_CLAUDE)
         remove(KEY_OPENAI)
         remove(KEY_BEDROCK_ACCESS); remove(KEY_BEDROCK_SECRET)
-        remove(KEY_VERTEX); remove(KEY_FOUNDRY); remove(KEY_TEAMS)
+        remove(KEY_VERTEX); remove(KEY_FOUNDRY)
+        remove(KEY_TEAMS); remove(KEY_TEAMS_REFRESH)
+        remove(KEY_TEAMS_EXPIRES_AT); remove(KEY_TEAMS_SCOPES)
     }
 
     /**
@@ -108,6 +154,9 @@ open class LlmCredentialsStore @Inject constructor(
         internal const val KEY_VERTEX = "llm_api_key:vertex"
         internal const val KEY_FOUNDRY = "llm_api_key:foundry"
         internal const val KEY_TEAMS = "llm_api_key:teams"
+        internal const val KEY_TEAMS_REFRESH = "llm_api_key:teams:refresh"
+        internal const val KEY_TEAMS_EXPIRES_AT = "llm_api_key:teams:expires_at"
+        internal const val KEY_TEAMS_SCOPES = "llm_api_key:teams:scopes"
     }
 }
 

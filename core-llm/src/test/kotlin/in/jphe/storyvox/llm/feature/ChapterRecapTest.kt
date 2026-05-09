@@ -93,6 +93,7 @@ class ChapterRecapTest {
             vertex = fakeProvider.asVertex(),
             foundry = fakeProvider.asFoundry(),
             bedrock = fakeProvider.asBedrock(),
+            teams = fakeProvider.asTeams(),
         )
         recap = ChapterRecap(
             chapterDao = db.chapterDao(),
@@ -301,4 +302,25 @@ private class FakeProvider {
         }
         override suspend fun probe(): ProbeResult = ProbeResult.Ok
     }
+
+    fun asTeams(): `in`.jphe.storyvox.llm.provider.AnthropicTeamsProvider =
+        object : `in`.jphe.storyvox.llm.provider.AnthropicTeamsProvider(
+            http = OkHttpClient(),
+            store = FakeStore(),
+            configFlow = flowOf(LlmConfig()),
+            authApi = `in`.jphe.storyvox.llm.auth.AnthropicTeamsAuthApi(OkHttpClient()),
+            authRepo = `in`.jphe.storyvox.llm.auth.AnthropicTeamsAuthRepository(FakeStore()),
+            json = Json,
+        ) {
+            override fun stream(
+                messages: List<LlmMessage>,
+                systemPrompt: String?,
+                model: String?,
+            ): Flow<String> {
+                lastMessages = messages
+                lastSystemPrompt = systemPrompt
+                return flowOf(*tokens.toTypedArray())
+            }
+            override suspend fun probe(): ProbeResult = ProbeResult.Ok
+        }
 }

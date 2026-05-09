@@ -169,6 +169,9 @@ dependencies {
     // Navigation
     implementation(libs.androidx.navigation.compose)
 
+    // Chrome Custom Tabs for the Anthropic Teams OAuth handoff (#181)
+    implementation(libs.androidx.browser)
+
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
