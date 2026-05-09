@@ -8,6 +8,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -35,6 +36,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Android 15+ forces edge-to-edge by default for apps targeting
+        // API 35; the legacy windowOptOutEdgeToEdgeEnforcement escape
+        // hatch is gone for API 36. Opting in deliberately (#145) so
+        // status/nav bar transparency is consistent across versions
+        // and Compose draws under both bars. Per-screen content uses
+        // Modifier.systemBarsPadding() (or Scaffold's default insets)
+        // to keep transport/FAB/headers off the bars.
+        enableEdgeToEdge()
         intentFlow.value = intent
         setContent {
             LibraryNocturneTheme {

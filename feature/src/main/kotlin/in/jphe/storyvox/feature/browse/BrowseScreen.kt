@@ -29,7 +29,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.SecondaryTabRow
+import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -84,9 +84,15 @@ fun BrowseScreen(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SecondaryTabRow(
+            // Scrollable so 'Popular' / 'Best Rated' don't truncate when
+            // sharing the row with the filter funnel on narrow phones.
+            // edgePadding=0 keeps the active-tab indicator flush with the
+            // left edge to match the tighter tab look from the previous
+            // SecondaryTabRow.
+            SecondaryScrollableTabRow(
                 selectedTabIndex = supportedTabs.indexOf(state.tab).coerceAtLeast(0),
                 modifier = Modifier.weight(1f),
+                edgePadding = 0.dp,
             ) {
                 supportedTabs.forEach { tab ->
                     Tab(
@@ -98,7 +104,6 @@ fun BrowseScreen(
                                 style = MaterialTheme.typography.labelLarge,
                                 maxLines = 1,
                                 softWrap = false,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             )
                         },
                     )
