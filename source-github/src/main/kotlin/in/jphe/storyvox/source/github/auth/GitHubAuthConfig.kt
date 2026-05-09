@@ -25,10 +25,14 @@ object GitHubAuthConfig {
 
     /**
      * Default scopes requested at sign-in. Spec § Scope minimization:
-     * least-privilege default. `repo` (private) and `gist` are deferred
-     * to opt-in toggles in future PRs.
+     * least-privilege default. `gist` was added (#202) so the GitHub
+     * source can list and resolve the user's gists as drafts. `repo`
+     * (full private-repo access) remains opt-in via the Settings
+     * toggle (#203). Existing signed-in users with the older scope set
+     * see a fresh Device Flow on next sign-in attempt — Sky's auth
+     * substrate detects the scope mismatch and re-authorizes.
      */
-    const val DEFAULT_SCOPES: String = "read:user public_repo"
+    const val DEFAULT_SCOPES: String = "read:user public_repo gist"
 
     /**
      * Scopes requested when the user has opted in to "Enable private

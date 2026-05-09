@@ -396,6 +396,7 @@ private val BrowseTab.label: String
         BrowseTab.Search -> "Search"
         BrowseTab.MyRepos -> "My Repos"
         BrowseTab.Starred -> "Starred"
+        BrowseTab.Gists -> "Gists"
     }
 
 /**

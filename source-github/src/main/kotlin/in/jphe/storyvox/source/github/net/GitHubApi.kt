@@ -3,6 +3,7 @@ package `in`.jphe.storyvox.source.github.net
 import `in`.jphe.storyvox.source.github.di.GitHubHttp
 import `in`.jphe.storyvox.source.github.model.GhCommitRef
 import `in`.jphe.storyvox.source.github.model.GhCompareResponse
+import `in`.jphe.storyvox.source.github.model.GhGist
 import `in`.jphe.storyvox.source.github.model.GhSearchResponse
 import `in`.jphe.storyvox.source.github.model.GhContent
 import `in`.jphe.storyvox.source.github.model.GhRepo
@@ -178,6 +179,48 @@ internal open class GitHubApi @Inject constructor(
     ): GitHubApiResult<List<GhRepo>> = get(
         "$BASE_URL/user/starred?sort=updated&page=$page&per_page=$perPage",
     )
+
+    /**
+     * `GET /users/{user}/gists` — public gists for [user]. The listing
+     * shape returns metadata + a stub `files` map without `content`;
+     * use [getGist] to fetch a single gist with bodies inline.
+     *
+     * https://docs.github.com/en/rest/gists/gists#list-gists-for-a-user
+     */
+    open suspend fun userGists(
+        user: String,
+        page: Int = 1,
+        perPage: Int = 30,
+    ): GitHubApiResult<List<GhGist>> {
+        val safeUser = java.net.URLEncoder.encode(user.trim(), "UTF-8")
+        return get("$BASE_URL/users/$safeUser/gists?page=$page&per_page=$perPage")
+    }
+
+    /**
+     * `GET /gists` — gists for the authenticated user. Includes
+     * private/secret gists in the response when the bearer token has
+     * the `gist` scope. Falls back to public-only when the token is
+     * absent or scope-deficient.
+     *
+     * https://docs.github.com/en/rest/gists/gists#list-gists-for-the-authenticated-user
+     */
+    open suspend fun authenticatedUserGists(
+        page: Int = 1,
+        perPage: Int = 30,
+    ): GitHubApiResult<List<GhGist>> =
+        get("$BASE_URL/gists?page=$page&per_page=$perPage")
+
+    /**
+     * `GET /gists/{gist_id}` — fetch a single gist with full inline
+     * file bodies. The listing endpoints omit `files[*].content`; this
+     * is the canonical fetch path for rendering.
+     *
+     * https://docs.github.com/en/rest/gists/gists#get-a-gist
+     */
+    open suspend fun getGist(gistId: String): GitHubApiResult<GhGist> {
+        val safeId = java.net.URLEncoder.encode(gistId.trim(), "UTF-8")
+        return get("$BASE_URL/gists/$safeId")
+    }
 
     private suspend inline fun <reified T> get(url: String): GitHubApiResult<T> =
         withContext(Dispatchers.IO) {

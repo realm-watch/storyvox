@@ -137,6 +137,7 @@ sealed interface BrowseSource {
         val query: String,
         val filter: GitHubSearchFilter,
     ) : BrowseSource
+
     /**
      * MemPalace wing-scoped listing (#191). Routes through
      * `FictionRepository.browseByGenre(genre)`, which on MemPalace's
@@ -160,6 +161,22 @@ sealed interface BrowseSource {
      * by `UiSettings.github`; the adapter routes to `GitHubAuthedSource`.
      */
     data object GitHubStarred : BrowseSource
+
+    /**
+     * Gists for the signed-in GitHub user (#202). Routes through
+     * `GET /gists` (authenticated) so secret gists show up alongside
+     * public ones; the `:source-github` source layer handles the
+     * empty/anonymous case by surfacing an empty page rather than
+     * erroring out.
+     *
+     * The repository adapter routes this onto
+     * `GitHubAuthedSource.authenticatedUserGists(page)`. There's no
+     * Royal Road or MemPalace analogue — the BrowseSource contract
+     * has source-specific variants on purpose (`Filtered` vs
+     * `FilteredGitHub`, `GitHubMyRepos` vs `GitHubStarred` vs
+     * `GitHubGists`).
+     */
+    data object GitHubGists : BrowseSource
 }
 
 /** A page-by-page accumulating cursor over a remote fiction listing.

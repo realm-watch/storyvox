@@ -146,3 +146,45 @@ internal data class GhCommitFile(
     @SerialName("sha") val sha: String? = null,
     @SerialName("previous_filename") val previousFilename: String? = null,
 )
+
+/**
+ * Subset of `GET /users/{user}/gists` and `GET /gists/{id}`. Listing
+ * responses carry a stub of [files] (no `content`); the per-gist
+ * `GET /gists/{id}` fetch carries the full body inline. The gist
+ * source layer (#202) treats single-file gists as single-chapter
+ * fictions and multi-file gists as multi-chapter ones.
+ *
+ * https://docs.github.com/en/rest/gists/gists
+ */
+@Serializable
+internal data class GhGist(
+    @SerialName("id") val id: String,
+    @SerialName("description") val description: String? = null,
+    @SerialName("html_url") val htmlUrl: String,
+    @SerialName("public") val public: Boolean = true,
+    @SerialName("owner") val owner: GhOwner? = null,
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null,
+    /**
+     * Map of filename → file metadata. The listing endpoint omits
+     * `content`; only the per-gist fetch populates it. Order is
+     * preserved as GitHub returns it (insertion order on the JSON
+     * object), which matches what the user sees in the gist UI.
+     */
+    @SerialName("files") val files: Map<String, GhGistFile> = emptyMap(),
+)
+
+@Serializable
+internal data class GhGistFile(
+    @SerialName("filename") val filename: String,
+    @SerialName("type") val type: String? = null, // mime, e.g. "text/markdown"
+    @SerialName("language") val language: String? = null,
+    @SerialName("size") val size: Long = 0,
+    /** Inline body — only present on `GET /gists/{id}`, not the listing. */
+    @SerialName("content") val content: String? = null,
+    @SerialName("raw_url") val rawUrl: String? = null,
+    /** True when the listing-endpoint omitted [content] because it was
+     *  too large; the fetch shape on `GET /gists/{id}` will then also
+     *  omit it. Storyvox doesn't render truncated gists today. */
+    @SerialName("truncated") val truncated: Boolean = false,
+)
