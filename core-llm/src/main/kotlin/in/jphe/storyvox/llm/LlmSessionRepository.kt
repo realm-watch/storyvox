@@ -37,7 +37,7 @@ enum class FeatureKind { ChapterRecap, CharacterLookup }
  * Sessions.
  */
 @Singleton
-class LlmSessionRepository @Inject constructor(
+open class LlmSessionRepository @Inject constructor(
     private val sessionDao: LlmSessionDao,
     private val messageDao: LlmMessageDao,
     private val llm: LlmRepository,
@@ -45,11 +45,11 @@ class LlmSessionRepository @Inject constructor(
 
     /** All sessions, newest-used first. UI should filter on
      *  `featureKind != null` to split free-form vs. feature views. */
-    fun observeSessions(): Flow<List<SessionView>> =
+    open fun observeSessions(): Flow<List<SessionView>> =
         sessionDao.observeAll().map { rows -> rows.map { it.toView() } }
 
     /** Live stream of messages in a session. */
-    fun observeMessages(sessionId: String): Flow<List<LlmMessage>> =
+    open fun observeMessages(sessionId: String): Flow<List<LlmMessage>> =
         messageDao.observeBySession(sessionId).map { rows ->
             rows.mapNotNull { it.toWire() }
         }
@@ -60,7 +60,7 @@ class LlmSessionRepository @Inject constructor(
      * deterministic id (e.g. "recap:fictionId:chapterId") so a
      * second recap on the same chapter overwrites the first record.
      */
-    suspend fun createSession(
+    open suspend fun createSession(
         name: String,
         provider: ProviderId,
         model: String,
@@ -97,7 +97,7 @@ class LlmSessionRepository @Inject constructor(
      * completion (success path only — partial replies on cancel are
      * NOT saved, consistent with how chat surfaces typically behave).
      */
-    fun chat(sessionId: String, userMessage: String): Flow<String> = flow {
+    open fun chat(sessionId: String, userMessage: String): Flow<String> = flow {
         val session = sessionDao.get(sessionId)
             ?: throw IllegalStateException("Session $sessionId not found")
         val provider = ProviderId.valueOf(session.provider)
@@ -140,7 +140,7 @@ class LlmSessionRepository @Inject constructor(
         emitAll(replyFlow)
     }
 
-    suspend fun deleteSession(sessionId: String) {
+    open suspend fun deleteSession(sessionId: String) {
         sessionDao.delete(sessionId)   // cascades to messages
     }
 }

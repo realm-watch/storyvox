@@ -27,6 +27,7 @@ import `in`.jphe.storyvox.auth.AuthWebViewScreen
 import `in`.jphe.storyvox.auth.github.GitHubSignInScreen
 import `in`.jphe.storyvox.source.github.auth.GitHubAuthConfig
 import `in`.jphe.storyvox.feature.browse.BrowseScreen
+import `in`.jphe.storyvox.feature.chat.ChatScreen
 import `in`.jphe.storyvox.feature.engine.VoicePickerGate
 import `in`.jphe.storyvox.feature.fiction.FictionDetailScreen
 import `in`.jphe.storyvox.feature.follows.FollowsScreen
@@ -56,6 +57,10 @@ object StoryvoxRoutes {
     const val AUTH_WEBVIEW = "auth/webview"
     /** Issue #91 — GitHub Device Flow sign-in modal. */
     const val GITHUB_SIGN_IN = "auth/github/signin"
+    /** Q&A chat about a fiction (#81 follow-up). One chat history per
+     *  fictionId; the screen pulls fiction title + current chapter
+     *  context internally for the system prompt. */
+    const val CHAT = "chat/{fictionId}"
 
     // Encode ids: GitHubSource fictionIds contain `/` (e.g. "github:owner/repo")
     // and chapterIds contain even more (e.g. "github:owner/repo:src/chapter-01.md"),
@@ -64,6 +69,7 @@ object StoryvoxRoutes {
     fun fictionDetail(fictionId: String) = "fiction/${Uri.encode(fictionId)}"
     fun reader(fictionId: String, chapterId: String) = "reader/${Uri.encode(fictionId)}/${Uri.encode(chapterId)}"
     fun audiobook(fictionId: String, chapterId: String) = "audiobook/${Uri.encode(fictionId)}/${Uri.encode(chapterId)}"
+    fun chat(fictionId: String) = "chat/${Uri.encode(fictionId)}"
 
     private val HOME_ROUTES = setOf(PLAYING, LIBRARY, FOLLOWS, BROWSE, SETTINGS)
     fun isHome(route: String?) = route in HOME_ROUTES
@@ -189,6 +195,7 @@ private fun StoryvoxNavHostContent(
                 HybridReaderScreen(
                     onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
                     onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
+                    onOpenChat = { fId -> navController.navigate(StoryvoxRoutes.chat(fId)) },
                 )
             }
             composable(
@@ -255,6 +262,7 @@ private fun StoryvoxNavHostContent(
                 HybridReaderScreen(
                     onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
                     onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
+                    onOpenChat = { fId -> navController.navigate(StoryvoxRoutes.chat(fId)) },
                 )
             }
 
@@ -271,6 +279,23 @@ private fun StoryvoxNavHostContent(
             ) {
                 HybridReaderScreen(
                     onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
+                    onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
+                    onOpenChat = { fId -> navController.navigate(StoryvoxRoutes.chat(fId)) },
+                )
+            }
+
+            composable(
+                route = StoryvoxRoutes.CHAT,
+                arguments = listOf(
+                    navArgument("fictionId") { type = NavType.StringType },
+                ),
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+            ) {
+                ChatScreen(
+                    onBack = { navController.popBackStack() },
                     onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
                 )
             }

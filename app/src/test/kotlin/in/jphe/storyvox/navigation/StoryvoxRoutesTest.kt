@@ -82,6 +82,20 @@ class StoryvoxRoutesTest {
     }
 
     @Test
+    fun chat_githubId_producesTwoSegmentPathAndRoundTrips() {
+        // Same encoding contract as fictionDetail — the chat route
+        // is single-arg `chat/{fictionId}` so a multi-segment GitHub
+        // id MUST be percent-encoded to fit the template.
+        val fictionId = "github:jphein/example-fiction"
+        val route = StoryvoxRoutes.chat(fictionId)
+        assertEquals(1, route.count { it == '/' })
+        val parts = route.split('/')
+        assertEquals(2, parts.size)
+        assertEquals("chat", parts[0])
+        assertEquals(fictionId, Uri.decode(parts[1]))
+    }
+
+    @Test
     fun fictionDetail_royalRoadId_roundTripsCleanly() {
         // Sanity: the encoding helper must not corrupt the simple
         // royalroad ids that worked pre-v0.4.25 — they have no `/` so
