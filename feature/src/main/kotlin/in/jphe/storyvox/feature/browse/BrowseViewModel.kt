@@ -45,7 +45,9 @@ enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
     /** MemPalace — JP's local memory system as a read-only fiction source.
      *  Only meaningful when on JP's home LAN; off-network the source returns
      *  NetworkError on every call and Browse → Palace shows the empty state. */
-    MemPalace(SourceIds.MEMPALACE, "Memory Palace"),
+    // "Palace" instead of "Memory Palace" so the segmented source picker
+    // doesn't break the chip label across two lines on narrow phones (#148).
+    MemPalace(SourceIds.MEMPALACE, "Palace"),
 }
 
 /** Tabs that are meaningful for [source]. GitHub registry doesn't

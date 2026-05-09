@@ -92,7 +92,15 @@ fun BrowseScreen(
                     Tab(
                         selected = tab == state.tab,
                         onClick = { viewModel.selectTab(tab) },
-                        text = { Text(tab.label, style = MaterialTheme.typography.labelLarge) },
+                        text = {
+                            Text(
+                                text = tab.label,
+                                style = MaterialTheme.typography.labelLarge,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            )
+                        },
                     )
                 }
             }
