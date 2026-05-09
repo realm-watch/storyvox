@@ -149,6 +149,50 @@ internal class GitHubSource @Inject constructor(
         }
     }
 
+    override suspend fun starred(page: Int): FictionResult<ListPage<FictionSummary>> {
+        return when (val r = api.starredRepos(page = page, perPage = MY_REPOS_PER_PAGE)) {
+            is GitHubApiResult.Success -> {
+                // GitHub's `/user/starred` doesn't accept search qualifiers,
+                // so the topic filter is applied client-side. Same shape as
+                // the public Browse → GitHub: keep repos topic-tagged as
+                // fiction-shaped, drop everything else. The page may end up
+                // smaller than `perPage` post-filter; that's expected and
+                // doesn't end pagination on its own — we only stop when
+                // the upstream returns fewer than `perPage` raw items.
+                val filtered = r.value.filter { it.matchesFictionTopics() }
+                FictionResult.Success(
+                    ListPage(
+                        items = filtered.map { it.toFictionSummary() },
+                        page = page,
+                        // Raw page size, pre-filter, decides hasNext:
+                        // a full upstream page means there's likely more.
+                        hasNext = r.value.size >= MY_REPOS_PER_PAGE,
+                    ),
+                )
+            }
+            is GitHubApiResult.NotFound -> FictionResult.NotFound(message = r.message)
+            is GitHubApiResult.RateLimited -> FictionResult.RateLimited(
+                retryAfter = r.retryAfterSeconds?.let { it.toDuration(DurationUnit.SECONDS) },
+            )
+            is GitHubApiResult.HttpError -> FictionResult.NetworkError(
+                message = "GitHub error ${r.code}: ${r.message}",
+            )
+            is GitHubApiResult.NetworkError -> FictionResult.NetworkError(
+                message = "Could not reach GitHub",
+                cause = r.cause,
+            )
+            is GitHubApiResult.ParseError -> FictionResult.NetworkError(
+                message = "Malformed starred response",
+                cause = r.cause,
+            )
+        }
+    }
+
+    private fun GhRepo.matchesFictionTopics(): Boolean =
+        topics.any { it.equals("fiction", ignoreCase = true) ||
+            it.equals("fanfiction", ignoreCase = true) ||
+            it.equals("webnovel", ignoreCase = true) }
+
     /**
      * `GET /user/repos` — auth-gated listing of the signed-in user's
      * repos (#200). Maps each row through [toFictionSummary] so they
@@ -557,9 +601,9 @@ internal class GitHubSource @Inject constructor(
 
     private companion object {
         const val STEP_3F_AUTH = "GitHub source auth-gated calls not implemented yet — lands in step 3f (optional PAT support)"
-        /** `/user/repos` per_page. 20 mirrors the search endpoint default
-         *  used elsewhere in the source so the BrowsePaginator hands the
-         *  user a consistent grid density across tabs. */
+        /** Per-page size for the auth-only feeds (#200, #201). 20 mirrors
+         *  the search endpoint default so BrowsePaginator hands the user
+         *  a consistent grid density across tabs. */
         const val MY_REPOS_PER_PAGE: Int = 20
     }
 }

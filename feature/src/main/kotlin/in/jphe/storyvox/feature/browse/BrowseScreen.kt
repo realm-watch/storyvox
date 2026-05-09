@@ -83,7 +83,7 @@ fun BrowseScreen(
         )
 
         val supportedTabs = remember(state.sourceKey, state.githubSignedIn) {
-            state.sourceKey.supportedTabs(state.githubSignedIn)
+            state.sourceKey.supportedTabs(githubSignedIn = state.githubSignedIn)
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -395,6 +395,7 @@ private val BrowseTab.label: String
         BrowseTab.BestRated -> "Best Rated"
         BrowseTab.Search -> "Search"
         BrowseTab.MyRepos -> "My Repos"
+        BrowseTab.Starred -> "Starred"
     }
 
 /**

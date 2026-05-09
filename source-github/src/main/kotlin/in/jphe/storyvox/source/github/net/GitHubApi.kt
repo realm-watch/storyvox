@@ -161,6 +161,24 @@ internal open class GitHubApi @Inject constructor(
         "$BASE_URL/user/repos?affiliation=owner,collaborator&sort=updated&page=$page&per_page=$perPage",
     )
 
+    /**
+     * `GET /user/starred?sort=updated`. Auth-only — the
+     * [GitHubAuthInterceptor] attaches the bearer token; an unauthenticated
+     * request comes back as 401 → `HttpError(401, ...)` from
+     * [mapResponse]. Sorted by recent star activity so the suggestions
+     * row shows what the user has been bookmarking lately, not their
+     * oldest stars.
+     *
+     * Issue #201. Same `hasNext` pagination convention as [myRepos] —
+     * the caller infers from raw upstream page size, not Link headers.
+     */
+    open suspend fun starredRepos(
+        page: Int = 1,
+        perPage: Int = 20,
+    ): GitHubApiResult<List<GhRepo>> = get(
+        "$BASE_URL/user/starred?sort=updated&page=$page&per_page=$perPage",
+    )
+
     private suspend inline fun <reified T> get(url: String): GitHubApiResult<T> =
         withContext(Dispatchers.IO) {
             val req = Request.Builder()

@@ -33,7 +33,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-enum class BrowseTab { Popular, NewReleases, BestRated, Search, MyRepos }
+enum class BrowseTab { Popular, NewReleases, BestRated, Search, MyRepos, Starred }
 
 /**
  * Top-level source picker on the Browse screen. Chooses which
@@ -60,11 +60,11 @@ enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
  *  `GitHubSource.search()` to `/search/repositories?q=topic:fiction
  *  +{userQuery}`.
  *
- *  [githubSignedIn] gates the `MyRepos` tab on the GitHub source
- *  (#200) — visible only when the user has captured an OAuth session
- *  via the Device Flow. Defaulting false keeps existing call sites
- *  (tests, screens that don't observe settings yet) on the anonymous
- *  tab list. */
+ *  [githubSignedIn] gates the auth-only tabs on the GitHub source —
+ *  `MyRepos` (#200) and `Starred` (#201) — visible only when the user
+ *  has captured an OAuth session via the Device Flow. Defaulting false
+ *  keeps existing call sites (tests, screens that don't observe
+ *  settings yet) on the anonymous tab list. */
 fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseTab> = when (this) {
     BrowseSourceKey.RoyalRoad -> listOf(
         BrowseTab.Popular,
@@ -75,7 +75,10 @@ fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseT
     BrowseSourceKey.GitHub -> buildList {
         add(BrowseTab.Popular)
         add(BrowseTab.NewReleases)
-        if (githubSignedIn) add(BrowseTab.MyRepos)
+        if (githubSignedIn) {
+            add(BrowseTab.MyRepos)
+            add(BrowseTab.Starred)
+        }
         add(BrowseTab.Search)
     }
     // Spec: docs/superpowers/specs/2026-05-08-mempalace-integration-design.md.
@@ -261,14 +264,15 @@ class BrowseViewModel @Inject constructor(
         viewModelScope.launch {
             paginator.collectLatest { p -> p?.loadNext() }
         }
-        // Auto-snap off `MyRepos` when the user signs out (#200). The
-        // tab disappears from `supportedTabs(githubSignedIn=false)`, so
-        // leaving the value pinned would render an empty grid driven by
-        // a null BrowseSource. Snap to Popular so the screen has
-        // something to draw.
+        // Auto-snap off auth-only tabs (`MyRepos` #200, `Starred` #201)
+        // when the user signs out. They disappear from
+        // `supportedTabs(githubSignedIn=false)`, so leaving the value
+        // pinned would render an empty grid driven by a null
+        // BrowseSource. Snap to Popular so the screen has something to
+        // draw.
         viewModelScope.launch {
             githubSignedIn.collectLatest { signedIn ->
-                if (!signedIn && _tab.value == BrowseTab.MyRepos) {
+                if (!signedIn && _tab.value in AUTH_ONLY_GH_TABS) {
                     _tab.value = BrowseTab.Popular
                 }
             }
@@ -427,6 +431,11 @@ class BrowseViewModel @Inject constructor(
     }
 }
 
+/** Tabs on the GitHub source that require an OAuth session.
+ *  Used by the auto-snap watcher to bounce the user off the tab
+ *  cleanly when their session goes away (sign-out, expired). */
+private val AUTH_ONLY_GH_TABS: Set<BrowseTab> = setOf(BrowseTab.MyRepos, BrowseTab.Starred)
+
 /** 5-arg shoehorn so the inner [combine] stays within the overload
  *  arity. Folded back into [ControlsView] (or consumed directly by
  *  [resolveSource]) at the next combine layer. */
@@ -456,13 +465,16 @@ private fun resolveSource(
     // re-snap). Search-with-blank-query stays null so the screen
     // renders SearchHint.
     BrowseSourceKey.GitHub -> when {
+        // Auth-only tabs short-circuit ahead of the filter check —
+        // search qualifiers don't apply to `/user/{repos,starred}`.
+        tab == BrowseTab.MyRepos -> if (githubSignedIn) BrowseSource.GitHubMyRepos else null
+        tab == BrowseTab.Starred -> if (githubSignedIn) BrowseSource.GitHubStarred else null
         githubFilter.isActive() -> BrowseSource.FilteredGitHub(
             query = if (tab == BrowseTab.Search) q else "",
             filter = githubFilter,
         )
         tab == BrowseTab.Popular -> BrowseSource.Popular
         tab == BrowseTab.NewReleases -> BrowseSource.NewReleases
-        tab == BrowseTab.MyRepos -> if (githubSignedIn) BrowseSource.GitHubMyRepos else null
         tab == BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
         else -> null
     }
