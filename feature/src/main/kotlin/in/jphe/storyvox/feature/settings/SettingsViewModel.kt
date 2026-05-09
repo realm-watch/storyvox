@@ -148,6 +148,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repo.setFoundryDeployment(deployment) }
     fun setFoundryServerless(serverless: Boolean) =
         viewModelScope.launch { repo.setFoundryServerless(serverless) }
+    fun setBedrockAccessKey(key: String?) = viewModelScope.launch { repo.setBedrockAccessKey(key) }
+    fun setBedrockSecretKey(key: String?) = viewModelScope.launch { repo.setBedrockSecretKey(key) }
+    fun setBedrockRegion(region: String) = viewModelScope.launch { repo.setBedrockRegion(region) }
+    fun setBedrockModel(model: String) = viewModelScope.launch { repo.setBedrockModel(model) }
     fun setSendChapterTextEnabled(enabled: Boolean) =
         viewModelScope.launch { repo.setSendChapterTextEnabled(enabled) }
     fun acknowledgeAiPrivacy() = viewModelScope.launch { repo.acknowledgeAiPrivacy() }

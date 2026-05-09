@@ -15,6 +15,7 @@ import `in`.jphe.storyvox.llm.LlmRepository
 import `in`.jphe.storyvox.llm.ProbeResult
 import `in`.jphe.storyvox.llm.ProviderId
 import `in`.jphe.storyvox.llm.provider.AzureFoundryProvider
+import `in`.jphe.storyvox.llm.provider.BedrockProvider
 import `in`.jphe.storyvox.llm.provider.ClaudeApiProvider
 import `in`.jphe.storyvox.llm.provider.FakeStore
 import `in`.jphe.storyvox.llm.provider.OllamaProvider
@@ -91,6 +92,7 @@ class ChapterRecapTest {
             ollama = fakeProvider.asOllama(),
             vertex = fakeProvider.asVertex(),
             foundry = fakeProvider.asFoundry(),
+            bedrock = fakeProvider.asBedrock(),
         )
         recap = ChapterRecap(
             chapterDao = db.chapterDao(),
@@ -265,6 +267,24 @@ private class FakeProvider {
     }
 
     fun asFoundry(): AzureFoundryProvider = object : AzureFoundryProvider(
+        http = OkHttpClient(),
+        store = FakeStore(),
+        configFlow = flowOf(LlmConfig()),
+        json = Json,
+    ) {
+        override fun stream(
+            messages: List<LlmMessage>,
+            systemPrompt: String?,
+            model: String?,
+        ): Flow<String> {
+            lastMessages = messages
+            lastSystemPrompt = systemPrompt
+            return flowOf(*tokens.toTypedArray())
+        }
+        override suspend fun probe(): ProbeResult = ProbeResult.Ok
+    }
+
+    fun asBedrock(): BedrockProvider = object : BedrockProvider(
         http = OkHttpClient(),
         store = FakeStore(),
         configFlow = flowOf(LlmConfig()),

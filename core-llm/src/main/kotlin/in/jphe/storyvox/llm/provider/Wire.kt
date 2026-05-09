@@ -88,3 +88,33 @@ internal data class FoundryDeployedRequest(
     @SerialName("max_tokens") val maxTokens: Int = 1024,
     val stream: Boolean = true,
 )
+
+// ── AWS Bedrock converse-stream ────────────────────────────────────
+//
+// Body shape: { modelId, messages:[{role, content:[{text}]}],
+//   inferenceConfig:{maxTokens, temperature}, system:[{text}] }
+// Bedrock requires the content array even for text-only messages (room
+// for image / tool_use blocks down the line).
+
+@Serializable
+internal data class BedrockRequest(
+    val modelId: String,
+    val messages: List<BedrockMessage>,
+    val inferenceConfig: BedrockInferenceConfig,
+    val system: List<BedrockTextBlock>? = null,
+)
+
+@Serializable
+internal data class BedrockMessage(
+    val role: String,        // "user" or "assistant"
+    val content: List<BedrockTextBlock>,
+)
+
+@Serializable
+internal data class BedrockTextBlock(val text: String)
+
+@Serializable
+internal data class BedrockInferenceConfig(
+    val maxTokens: Int,
+    val temperature: Double = 1.0,
+)

@@ -33,7 +33,7 @@ enum class ProviderId {
      *  False ids are surfaced as "coming soon" in the AI Settings. */
     val implemented: Boolean
         get() = this == Claude || this == OpenAi || this == Ollama ||
-            this == Vertex || this == Foundry
+            this == Vertex || this == Foundry || this == Bedrock
 
     /** Human-friendly label for the Settings UI. Localization is a
      *  follow-up; English-only labels for now match the rest of the

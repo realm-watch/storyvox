@@ -304,7 +304,7 @@ enum class UiLlmProvider {
      *  Matches `ProviderId.implemented`. */
     val implemented: Boolean
         get() = this == Claude || this == OpenAi || this == Ollama ||
-            this == Vertex || this == Foundry
+            this == Vertex || this == Foundry || this == Bedrock
 
     val displayName: String
         get() = when (this) {
@@ -344,6 +344,13 @@ data class UiAiSettings(
      *  shape (default — matches "Azure OpenAI Service" deployments). */
     val foundryServerless: Boolean = false,
     val foundryKeyConfigured: Boolean = false,
+    /** AWS Bedrock — both keys are encrypted; UI only sees the
+     *  "configured" booleans. Region + model are non-secret and round-trip
+     *  through DataStore. */
+    val bedrockAccessKeyConfigured: Boolean = false,
+    val bedrockSecretKeyConfigured: Boolean = false,
+    val bedrockRegion: String = "us-east-1",
+    val bedrockModel: String = "claude-haiku-4.5",
     val privacyAcknowledged: Boolean = false,
     val sendChapterTextEnabled: Boolean = true,
 )
@@ -594,13 +601,21 @@ interface SettingsRepositoryUi {
     suspend fun setOllamaModel(model: String)
     suspend fun setVertexApiKey(key: String?)   // null = clear
     suspend fun setVertexModel(model: String)
-    /** Azure Foundry mutators (this PR). [setFoundryApiKey] with `null`
-     *  clears the encrypted key. [setFoundryServerless] flips the URL
-     *  template + body shape — see `AzureFoundryProvider.buildUrl`. */
+    /** Azure Foundry mutators. [setFoundryApiKey] with `null` clears
+     *  the encrypted key. [setFoundryServerless] flips the URL template
+     *  + body shape — see `AzureFoundryProvider.buildUrl`. */
     suspend fun setFoundryApiKey(key: String?)
     suspend fun setFoundryEndpoint(url: String)
     suspend fun setFoundryDeployment(deployment: String)
     suspend fun setFoundryServerless(serverless: Boolean)
+    /** AWS Bedrock BYOK creds. Pass null to clear individual keys.
+     *  Both must be set for the provider to be usable; we let the
+     *  user save them one at a time so the UI can paste / show / save
+     *  flow stays per-field. */
+    suspend fun setBedrockAccessKey(key: String?)
+    suspend fun setBedrockSecretKey(key: String?)
+    suspend fun setBedrockRegion(region: String)
+    suspend fun setBedrockModel(model: String)
     suspend fun setSendChapterTextEnabled(enabled: Boolean)
     suspend fun acknowledgeAiPrivacy()
     /** Wipe all AI configuration — provider/keys/URLs. */
