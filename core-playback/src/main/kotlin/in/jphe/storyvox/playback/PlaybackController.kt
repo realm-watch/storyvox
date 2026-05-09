@@ -1,6 +1,7 @@
 package `in`.jphe.storyvox.playback
 
 import `in`.jphe.storyvox.playback.tts.EnginePlayer
+import `in`.jphe.storyvox.playback.tts.RecapPlaybackState
 import `in`.jphe.storyvox.playback.tts.SentenceChunker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +19,11 @@ import javax.inject.Singleton
 interface PlaybackController {
     val state: StateFlow<PlaybackState>
     val events: SharedFlow<PlaybackUiEvent>
+
+    /** Issue #189 — recap-aloud TTS pipeline state. Idle until [speakText]
+     *  is called; flips to Speaking while the one-shot utterance is playing,
+     *  back to Idle when it finishes naturally or [stopSpeaking] is called. */
+    val recapPlayback: StateFlow<RecapPlaybackState>
 
     suspend fun play(fictionId: String, chapterId: String, charOffset: Int = 0)
     fun pause()
@@ -39,6 +45,16 @@ interface PlaybackController {
     fun startSleepTimer(mode: SleepTimerMode)
     fun cancelSleepTimer()
     fun toggleSleepTimer()
+
+    /** Issue #189 — synthesize and play [text] as a one-shot utterance via
+     *  the active voice. Used by the chapter-recap modal to read the
+     *  AI-generated recap aloud. The caller is responsible for pausing
+     *  active fiction playback before calling — the engine is shared and
+     *  overlapping audio would muddy the listener experience. */
+    suspend fun speakText(text: String)
+
+    /** Issue #189 — cancel an in-flight recap-aloud utterance. Idempotent. */
+    fun stopSpeaking()
 }
 
 /**
@@ -69,6 +85,12 @@ class DefaultPlaybackController @Inject constructor(
 
     private var player: EnginePlayer? = null
 
+    /** Issue #189 — mirror of the bound player's recap-aloud state. Idle
+     *  before any player binds (and between bindings); reflects the
+     *  active player's flow while bound. */
+    private val _recapPlayback = MutableStateFlow(RecapPlaybackState.Idle)
+    override val recapPlayback: StateFlow<RecapPlaybackState> = _recapPlayback.asStateFlow()
+
     init {
         scope.launch {
             sleepTimer.remainingMs.collect { remaining ->
@@ -84,10 +106,14 @@ class DefaultPlaybackController @Inject constructor(
                 _state.value = update.copy(sleepTimerRemainingMs = sleepTimer.remainingMs.value)
             }
         }
+        scope.launch {
+            p.recapPlayback.collect { _recapPlayback.value = it }
+        }
     }
 
     fun unbindPlayer() {
         player = null
+        _recapPlayback.value = RecapPlaybackState.Idle
     }
 
     override suspend fun play(fictionId: String, chapterId: String, charOffset: Int) {
@@ -150,6 +176,14 @@ class DefaultPlaybackController @Inject constructor(
     override fun toggleSleepTimer() {
         if (state.value.sleepTimerRemainingMs != null) cancelSleepTimer()
         else startSleepTimer(SleepTimerMode.Duration(15))
+    }
+
+    override suspend fun speakText(text: String) {
+        player?.speak(text)
+    }
+
+    override fun stopSpeaking() {
+        player?.stopSpeaking()
     }
 
     internal fun emitEvent(event: PlaybackUiEvent) {

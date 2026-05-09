@@ -8,6 +8,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import `in`.jphe.storyvox.feature.api.PlaybackControllerUi
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.UiPlaybackState
+import `in`.jphe.storyvox.feature.api.UiRecapPlaybackState
 import `in`.jphe.storyvox.feature.api.UiSleepTimerMode
 import `in`.jphe.storyvox.llm.LlmError
 import `in`.jphe.storyvox.llm.feature.ChapterRecap
@@ -82,6 +83,15 @@ class ReaderViewModel @Inject constructor(
     /** Recap modal state. Reader UI collects this and renders the
      *  modal when not [RecapUiState.Hidden]. */
     val recap: StateFlow<RecapUiState> = _recap.asStateFlow()
+
+    /** Issue #189 — recap-aloud TTS pipeline state, surfaced from the
+     *  PlaybackController so the modal's Read-aloud button can render the
+     *  right play/pause icon. The chapter-recap modal collects this
+     *  alongside [recap] (the modal-content state) — they're independent
+     *  axes: the modal can be Done while the audio is Idle (button shows
+     *  Play), or Done while Speaking (button shows Pause). */
+    val recapPlayback: StateFlow<UiRecapPlaybackState> = playback.recapPlayback
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UiRecapPlaybackState.Idle)
 
     /** The currently in-flight recap stream, or null when no recap is
      *  running. Cancelling this Job cancels the underlying OkHttp
@@ -172,11 +182,40 @@ class ReaderViewModel @Inject constructor(
     }
 
     /** Hide the modal. Cancels the in-flight stream — partial recap
-     *  is discarded. */
+     *  is discarded. Also stops any in-flight recap-aloud utterance
+     *  (#189) so closing the modal silences the audio. */
     fun cancelRecap() {
         recapJob?.cancel()
         recapJob = null
+        playback.stopSpeaking()
         _recap.value = RecapUiState.Hidden
+    }
+
+    /**
+     * Issue #189 — toggle the recap-aloud TTS. Tapped from the Read-aloud
+     * button in [RecapModal] when the recap is in [RecapUiState.Done].
+     *
+     * Behaviour:
+     *  - If a recap utterance is already speaking, stop it. (Button
+     *    rendered as a Pause icon — second tap silences.)
+     *  - Otherwise, pause the active fiction (so the recap and the
+     *    chapter audio don't overlap), then synthesize the recap text
+     *    via the active voice. Per the spec we leave fiction paused
+     *    when the recap finishes — auto-resume would feel aggressive.
+     */
+    fun toggleRecapAloud() {
+        if (recapPlayback.value == UiRecapPlaybackState.Speaking) {
+            playback.stopSpeaking()
+            return
+        }
+        val text = (recap.value as? RecapUiState.Done)?.text ?: return
+        if (text.isBlank()) return
+        // Pause active fiction first — engine is shared, overlapping audio
+        // would be muddy.
+        if (uiState.value.playback?.isPlaying == true) playback.pause()
+        viewModelScope.launch {
+            playback.speakText(text)
+        }
     }
 
     private fun mapErrorToUi(e: Throwable): RecapUiState.Error = when (e) {

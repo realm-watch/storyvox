@@ -258,9 +258,17 @@ sealed class UiSleepTimerMode {
     data object EndOfChapter : UiSleepTimerMode()
 }
 
+/** Issue #189 — feature-side mirror of core-playback's RecapPlaybackState.
+ *  Idle = no recap utterance in flight. Speaking = recap audio is playing
+ *  through the dedicated AudioTrack. The Reader UI's "Read aloud" button
+ *  toggles between the two states. */
+enum class UiRecapPlaybackState { Idle, Speaking }
+
 interface PlaybackControllerUi {
     val state: Flow<UiPlaybackState>
     val chapterText: Flow<String>
+    /** Issue #189 — recap-aloud TTS pipeline state. See [UiRecapPlaybackState]. */
+    val recapPlayback: Flow<UiRecapPlaybackState>
     fun play()
     fun pause()
     fun seekTo(ms: Long)
@@ -284,6 +292,15 @@ interface PlaybackControllerUi {
     fun startListening(fictionId: String, chapterId: String, charOffset: Int = 0)
     fun startSleepTimer(mode: UiSleepTimerMode)
     fun cancelSleepTimer()
+
+    /** Issue #189 — synthesize and play [text] as a one-shot utterance via
+     *  the active voice. The caller (ReaderViewModel.toggleRecapAloud) is
+     *  responsible for pausing fiction playback before calling — see the
+     *  PlaybackController interface for the full contract. */
+    suspend fun speakText(text: String)
+
+    /** Issue #189 — cancel an in-flight recap-aloud utterance. Idempotent. */
+    fun stopSpeaking()
 }
 
 data class UiVoice(

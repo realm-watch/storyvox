@@ -33,6 +33,7 @@ fun HybridReaderScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val recapState by viewModel.recap.collectAsStateWithLifecycle()
+    val recapPlayback by viewModel.recapPlayback.collectAsStateWithLifecycle()
     val playback = state.playback
 
     if (playback == null) {
@@ -81,11 +82,13 @@ fun HybridReaderScreen(
     // ReaderViewModel.requestRecap().
     RecapModal(
         state = recapState,
+        recapPlayback = recapPlayback,
         onCancel = viewModel::cancelRecap,
         onRetry = viewModel::requestRecap,
         onOpenSettings = {
             viewModel.cancelRecap()
             onOpenAiSettings()
         },
+        onToggleReadAloud = viewModel::toggleRecapAloud,
     )
 }

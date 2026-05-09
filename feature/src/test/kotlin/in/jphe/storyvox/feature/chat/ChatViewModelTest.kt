@@ -13,6 +13,7 @@ import `in`.jphe.storyvox.feature.api.UiChapter
 import `in`.jphe.storyvox.feature.api.UiFiction
 import `in`.jphe.storyvox.feature.api.UiFollow
 import `in`.jphe.storyvox.feature.api.UiPlaybackState
+import `in`.jphe.storyvox.feature.api.UiRecapPlaybackState
 import `in`.jphe.storyvox.feature.api.UiSleepTimerMode
 import `in`.jphe.storyvox.llm.FeatureKind
 import `in`.jphe.storyvox.llm.LlmConfig
@@ -434,6 +435,7 @@ private fun uiFictionOf(id: String, title: String) = UiFiction(
 private class FakePlayback(initial: UiPlaybackState) : PlaybackControllerUi {
     override val state: StateFlow<UiPlaybackState> = MutableStateFlow(initial).asStateFlow()
     override val chapterText: Flow<String> = flowOf("")
+    override val recapPlayback: Flow<UiRecapPlaybackState> = flowOf(UiRecapPlaybackState.Idle)
     override fun play() = Unit
     override fun pause() = Unit
     override fun seekTo(ms: Long) = Unit
@@ -449,4 +451,6 @@ private class FakePlayback(initial: UiPlaybackState) : PlaybackControllerUi {
     override fun startListening(fictionId: String, chapterId: String, charOffset: Int) = Unit
     override fun startSleepTimer(mode: UiSleepTimerMode) = Unit
     override fun cancelSleepTimer() = Unit
+    override suspend fun speakText(text: String) = Unit
+    override fun stopSpeaking() = Unit
 }

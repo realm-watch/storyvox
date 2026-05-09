@@ -13,6 +13,7 @@ import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiSettings
 import `in`.jphe.storyvox.playback.PlaybackController
 import `in`.jphe.storyvox.playback.PlaybackState
+import `in`.jphe.storyvox.playback.tts.RecapPlaybackState
 import `in`.jphe.storyvox.playback.PlaybackUiEvent
 import `in`.jphe.storyvox.playback.SleepTimerMode
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -165,6 +166,8 @@ class RealPlaybackControllerUiTest {
         override val state: StateFlow<PlaybackState> = MutableStateFlow(PlaybackState()).asStateFlow()
         override val events: SharedFlow<PlaybackUiEvent> =
             MutableSharedFlow<PlaybackUiEvent>().asSharedFlow()
+        override val recapPlayback: StateFlow<RecapPlaybackState> =
+            MutableStateFlow(RecapPlaybackState.Idle).asStateFlow()
 
         override suspend fun play(fictionId: String, chapterId: String, charOffset: Int) = Unit
         override fun pause() = Unit
@@ -187,6 +190,8 @@ class RealPlaybackControllerUiTest {
         override fun startSleepTimer(mode: SleepTimerMode) = Unit
         override fun cancelSleepTimer() = Unit
         override fun toggleSleepTimer() = Unit
+        override suspend fun speakText(text: String) = Unit
+        override fun stopSpeaking() = Unit
     }
 
     /**

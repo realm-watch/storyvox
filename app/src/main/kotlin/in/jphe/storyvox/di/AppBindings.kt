@@ -47,12 +47,14 @@ import `in`.jphe.storyvox.feature.api.UiChapter
 import `in`.jphe.storyvox.feature.api.UiFiction
 import `in`.jphe.storyvox.feature.api.UiFollow
 import `in`.jphe.storyvox.feature.api.UiPlaybackState
+import `in`.jphe.storyvox.feature.api.UiRecapPlaybackState
 import `in`.jphe.storyvox.feature.api.UiSleepTimerMode
 import `in`.jphe.storyvox.feature.api.VoiceProviderUi
 import `in`.jphe.storyvox.feature.browse.RealBrowsePaginator
 import `in`.jphe.storyvox.feature.browse.toUiFiction
 import `in`.jphe.storyvox.playback.PlaybackController
 import `in`.jphe.storyvox.playback.PlaybackState
+import `in`.jphe.storyvox.playback.tts.RecapPlaybackState
 import `in`.jphe.storyvox.playback.SPEED_BASELINE_CHARS_PER_SECOND
 import `in`.jphe.storyvox.playback.SleepTimerMode
 import `in`.jphe.storyvox.playback.StoryvoxPlaybackService
@@ -560,6 +562,26 @@ internal class RealPlaybackControllerUi(
     }
 
     override fun cancelSleepTimer() = controller.cancelSleepTimer()
+
+    /** Issue #189 — recap-aloud TTS pipeline state, mapped from
+     *  core-playback's RecapPlaybackState onto the feature-side
+     *  [UiRecapPlaybackState]. Distinct flow from [state] so the chapter
+     *  playback observers don't recompose on every recap toggle. */
+    override val recapPlayback: Flow<UiRecapPlaybackState> = controller.recapPlayback
+        .map {
+            when (it) {
+                RecapPlaybackState.Idle -> UiRecapPlaybackState.Idle
+                RecapPlaybackState.Speaking -> UiRecapPlaybackState.Speaking
+            }
+        }
+
+    override suspend fun speakText(text: String) {
+        controller.speakText(text)
+    }
+
+    override fun stopSpeaking() {
+        controller.stopSpeaking()
+    }
 
     override fun startListening(fictionId: String, chapterId: String, charOffset: Int) {
         // Start the service synchronously while we still have the click's foreground
