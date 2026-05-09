@@ -342,16 +342,6 @@ fun SettingsScreen(
 }
 
 /**
- * Local shim that forwards to [SettingsSectionHeader] (Saga's brass-styled
- * header, [SettingsComposables]). Kept so [MemoryPalaceSection] + [AiSection]
- * still compile while their card-wrap refactor is deferred to a follow-up.
- */
-@Composable
-private fun SectionHeader(label: String) {
-    SettingsSectionHeader(label)
-}
-
-/**
  * Sources → GitHub row. Issue #91.
  *
  * Three states matching [UiGitHubAuthState]:
