@@ -96,6 +96,42 @@ class StoryvoxRoutesTest {
     }
 
     @Test
+    fun chat_withPrefill_appendsEncodedQueryAndRoundTrips() {
+        // #188 character lookup: long-press dialog routes here with a
+        // pre-built "Who is X?" question. The query value must survive
+        // percent-encoding (spaces, `?`, quotes) so the chat input
+        // field renders the literal question.
+        val fictionId = "github:jphein/example-fiction"
+        val prefill = "Who is Frodo?"
+        val route = StoryvoxRoutes.chat(fictionId, prefill)
+        // Path part stays single-segment; the query string is the only
+        // addition, separated by a single `?`.
+        assertEquals(1, route.count { it == '?' })
+        val (path, query) = route.split('?')
+        assertEquals(1, path.count { it == '/' })
+        val pathParts = path.split('/')
+        assertEquals("chat", pathParts[0])
+        assertEquals(fictionId, Uri.decode(pathParts[1]))
+        // Query is `prefill=<encoded>`.
+        val (key, value) = query.split('=')
+        assertEquals("prefill", key)
+        assertEquals(prefill, Uri.decode(value))
+    }
+
+    @Test
+    fun chat_withNullOrBlankPrefill_omitsQueryString() {
+        // Backwards-compat: callsites that don't need a prefill (the
+        // existing player-options "Smart features" entry point) must
+        // continue to produce the bare `chat/{fictionId}` route so the
+        // single-segment shape pinned by `chat_githubId_…` still holds.
+        val fictionId = "royalroad:12345"
+        assertEquals(StoryvoxRoutes.chat(fictionId), StoryvoxRoutes.chat(fictionId, null))
+        assertEquals(StoryvoxRoutes.chat(fictionId), StoryvoxRoutes.chat(fictionId, ""))
+        // No `?` means the route is just `chat/<encoded-id>`.
+        assertEquals(0, StoryvoxRoutes.chat(fictionId).count { it == '?' })
+    }
+
+    @Test
     fun fictionDetail_royalRoadId_roundTripsCleanly() {
         // Sanity: the encoding helper must not corrupt the simple
         // royalroad ids that worked pre-v0.4.25 — they have no `/` so

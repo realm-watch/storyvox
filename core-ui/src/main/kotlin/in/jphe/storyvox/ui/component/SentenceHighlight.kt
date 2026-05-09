@@ -32,6 +32,9 @@ import `in`.jphe.storyvox.ui.theme.LocalReducedMotion
  * @param highlightStart UTF-16 char index where the current sentence begins
  * @param highlightEnd UTF-16 char index where the current sentence ends (exclusive)
  * @param onTapWord optional — invoked with char index of the word the user tapped (for "start TTS from here")
+ * @param onLongPressWord optional — invoked with the long-pressed word (extracted via `TextLayoutResult.getWordBoundary`).
+ *                        Used by the reader for the "Ask AI: who is X?" character-lookup affordance (#188); the long-press
+ *                        does NOT fire `onTapWord`, so a deliberate long-press never accidentally seeks playback.
  * @param onLayout optional — emits the text layout each time it changes; reader uses it to auto-scroll
  *                the highlighted sentence into view.
  */
@@ -42,6 +45,7 @@ fun SentenceHighlight(
     highlightEnd: Int,
     modifier: Modifier = Modifier,
     onTapWord: ((Int) -> Unit)? = null,
+    onLongPressWord: ((String) -> Unit)? = null,
     onLayout: ((TextLayoutResult) -> Unit)? = null,
 ) {
     val brass = MaterialTheme.colorScheme.primary
@@ -132,22 +136,48 @@ fun SentenceHighlight(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 4.dp)
-            // Tap-to-seek: convert the tap position into a UTF-16 offset via
-            // the captured TextLayoutResult and forward to onTapWord. The
-            // pointerInput is keyed on `text` AND `onTapWord` so a chapter
-            // switch (which changes both text content and length) re-installs
-            // the gesture handler with the fresh closure — otherwise tap
-            // offsets would be clamped against the previous chapter's length
-            // and produce wrong seek positions.
+            // Tap-to-seek + long-press-to-look-up. Convert pointer position
+            // into a UTF-16 offset via the captured TextLayoutResult and
+            // forward to the appropriate callback. The pointerInput is keyed
+            // on `text` AND both callbacks so a chapter switch (which changes
+            // both text content and length) re-installs the gesture handler
+            // with fresh closures — otherwise tap/press offsets would be
+            // clamped against the previous chapter's length.
+            //
+            // Long-press resolves the word boundary at the press position via
+            // `TextLayoutResult.getWordBoundary` (a `TextRange`) and passes
+            // the substring to onLongPressWord. detectTapGestures dispatches
+            // either onTap OR onLongPress for a given gesture, never both, so
+            // a long-press never accidentally seeks.
             .then(
-                if (onTapWord != null) {
-                    Modifier.pointerInput(onTapWord, text) {
-                        detectTapGestures { tap ->
-                            val l = layout ?: return@detectTapGestures
-                            val charIndex = l.getOffsetForPosition(tap)
-                                .coerceIn(0, text.length)
-                            onTapWord(charIndex)
-                        }
+                if (onTapWord != null || onLongPressWord != null) {
+                    Modifier.pointerInput(onTapWord, onLongPressWord, text) {
+                        detectTapGestures(
+                            onTap = if (onTapWord != null) {
+                                { tap ->
+                                    val l = layout
+                                    if (l != null) {
+                                        val charIndex = l.getOffsetForPosition(tap)
+                                            .coerceIn(0, text.length)
+                                        onTapWord(charIndex)
+                                    }
+                                }
+                            } else null,
+                            onLongPress = if (onLongPressWord != null) {
+                                { press ->
+                                    val l = layout
+                                    if (l != null && text.isNotEmpty()) {
+                                        val charIndex = l.getOffsetForPosition(press)
+                                            .coerceIn(0, (text.length - 1).coerceAtLeast(0))
+                                        val range = l.getWordBoundary(charIndex)
+                                        val safeStart = range.start.coerceIn(0, text.length)
+                                        val safeEnd = range.end.coerceIn(safeStart, text.length)
+                                        val word = text.substring(safeStart, safeEnd).trim()
+                                        if (word.isNotEmpty()) onLongPressWord(word)
+                                    }
+                                }
+                            } else null,
+                        )
                     }
                 } else {
                     Modifier

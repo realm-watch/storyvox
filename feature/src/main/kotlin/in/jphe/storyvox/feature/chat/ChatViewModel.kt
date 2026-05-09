@@ -104,7 +104,7 @@ class ChatViewModel @Inject constructor(
     private val fictionRepo: FictionRepositoryUi,
     private val playback: PlaybackControllerUi,
     private val configFlow: Flow<LlmConfig>,
-    savedState: SavedStateHandle,
+    private val savedState: SavedStateHandle,
 ) : ViewModel() {
 
     private val fictionId: String = checkNotNull(savedState["fictionId"]) {
@@ -115,6 +115,27 @@ class ChatViewModel @Inject constructor(
      *  history for this book. Mirrors ChapterRecap's
      *  `recap:fictionId:chapterId` shape (LlmSession.id kdoc). */
     private val sessionId: String = "chat:$fictionId"
+
+    /** One-shot input prefill from the long-press character lookup
+     *  (#188). The reader navigates here with `?prefill=Who is X?`, the
+     *  composable consumes it once via [consumePrefill] and seeds the
+     *  text field. We hold it in a MutableStateFlow rather than as a
+     *  raw String so the ChatScreen's `LaunchedEffect` reliably observes
+     *  the initial value even on configuration change before consume. */
+    private val _prefill = MutableStateFlow<String?>(
+        (savedState.get<String>("prefill") ?: "").ifEmpty { null },
+    )
+    val prefill: StateFlow<String?> = _prefill.asStateFlow()
+
+    /** Called by the input field after applying the prefill so a
+     *  subsequent recomposition (e.g. config change) doesn't keep
+     *  re-injecting the same starter text over the user's edits. Also
+     *  clears the SavedStateHandle key so process death + restore
+     *  doesn't replay the prefill either. */
+    fun consumePrefill() {
+        _prefill.value = null
+        savedState["prefill"] = ""
+    }
 
     private val _streaming = MutableStateFlow<String?>(null)
     private val _error = MutableStateFlow<ChatError?>(null)

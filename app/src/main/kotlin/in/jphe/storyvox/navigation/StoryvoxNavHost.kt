@@ -59,8 +59,14 @@ object StoryvoxRoutes {
     const val GITHUB_SIGN_IN = "auth/github/signin"
     /** Q&A chat about a fiction (#81 follow-up). One chat history per
      *  fictionId; the screen pulls fiction title + current chapter
-     *  context internally for the system prompt. */
-    const val CHAT = "chat/{fictionId}"
+     *  context internally for the system prompt.
+     *
+     *  Optional `prefill` query param (#188 character lookup): when the
+     *  reader's long-press dialog routes here, it passes a prebuilt
+     *  "Who is X?" question to seed the input field. The arg is read
+     *  once on session creation by `ChatViewModel`; it does not auto-send.
+     */
+    const val CHAT = "chat/{fictionId}?prefill={prefill}"
 
     // Encode ids: GitHubSource fictionIds contain `/` (e.g. "github:owner/repo")
     // and chapterIds contain even more (e.g. "github:owner/repo:src/chapter-01.md"),
@@ -69,7 +75,21 @@ object StoryvoxRoutes {
     fun fictionDetail(fictionId: String) = "fiction/${Uri.encode(fictionId)}"
     fun reader(fictionId: String, chapterId: String) = "reader/${Uri.encode(fictionId)}/${Uri.encode(chapterId)}"
     fun audiobook(fictionId: String, chapterId: String) = "audiobook/${Uri.encode(fictionId)}/${Uri.encode(chapterId)}"
-    fun chat(fictionId: String) = "chat/${Uri.encode(fictionId)}"
+    /** Build a chat route. `prefill` (optional, #188) seeds the chat
+     *  input with a starter question; pass null/empty to leave the
+     *  input untouched on open. The query value is percent-encoded so
+     *  free-text questions ("Who is Frodo?") survive the URL roundtrip.
+     *
+     *  Compose Navigation matches the optional `?prefill={prefill}`
+     *  template against routes with OR without the query string —
+     *  omitting it when there's no prefill keeps the route minimal AND
+     *  preserves the pre-existing single-segment shape that
+     *  StoryvoxRoutesTest pins. */
+    fun chat(fictionId: String, prefill: String? = null): String {
+        val base = "chat/${Uri.encode(fictionId)}"
+        return if (prefill.isNullOrEmpty()) base
+        else "$base?prefill=${Uri.encode(prefill)}"
+    }
 
     private val HOME_ROUTES = setOf(PLAYING, LIBRARY, FOLLOWS, BROWSE, SETTINGS)
     fun isHome(route: String?) = route in HOME_ROUTES
@@ -195,7 +215,7 @@ private fun StoryvoxNavHostContent(
                 HybridReaderScreen(
                     onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
                     onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
-                    onOpenChat = { fId -> navController.navigate(StoryvoxRoutes.chat(fId)) },
+                    onOpenChat = { fId, prefill -> navController.navigate(StoryvoxRoutes.chat(fId, prefill)) },
                 )
             }
             composable(
@@ -262,7 +282,7 @@ private fun StoryvoxNavHostContent(
                 HybridReaderScreen(
                     onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
                     onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
-                    onOpenChat = { fId -> navController.navigate(StoryvoxRoutes.chat(fId)) },
+                    onOpenChat = { fId, prefill -> navController.navigate(StoryvoxRoutes.chat(fId, prefill)) },
                 )
             }
 
@@ -280,7 +300,7 @@ private fun StoryvoxNavHostContent(
                 HybridReaderScreen(
                     onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
                     onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
-                    onOpenChat = { fId -> navController.navigate(StoryvoxRoutes.chat(fId)) },
+                    onOpenChat = { fId, prefill -> navController.navigate(StoryvoxRoutes.chat(fId, prefill)) },
                 )
             }
 
@@ -288,6 +308,17 @@ private fun StoryvoxNavHostContent(
                 route = StoryvoxRoutes.CHAT,
                 arguments = listOf(
                     navArgument("fictionId") { type = NavType.StringType },
+                    // Optional prefill for the input field, passed by the
+                    // reader's long-press character lookup (#188). Default
+                    // is empty string — ChatViewModel treats blank as "no
+                    // prefill" and leaves the input untouched. Compose
+                    // Navigation only honors `defaultValue` when the param
+                    // is declared optional via `?prefill={prefill}` in the
+                    // route template (see StoryvoxRoutes.CHAT).
+                    navArgument("prefill") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    },
                 ),
                 enterTransition = pushEnter,
                 exitTransition = pushExit,

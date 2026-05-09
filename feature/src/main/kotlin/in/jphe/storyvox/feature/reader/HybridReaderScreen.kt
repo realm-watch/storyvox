@@ -26,9 +26,13 @@ fun HybridReaderScreen(
     onOpenAiSettings: () -> Unit = {},
     /** Open the Q&A chat surface for the currently-loaded fiction
      *  (#81 follow-up). No-op default is preview/test-only — production
-     *  callsites pass a real `navController.navigate(chat(fictionId))`.
-     *  Surfaced in the player-options sheet's "Smart features" group. */
-    onOpenChat: (fictionId: String) -> Unit = {},
+     *  callsites pass a real
+     *  `navController.navigate(chat(fictionId, prefill))`.
+     *  Surfaced in the player-options sheet's "Smart features" group, and
+     *  by long-press character-lookup in the reader (#188), which passes
+     *  a non-null prefill of the form `Who is X?`. Pass `null` for
+     *  prefill from non-lookup entry points. */
+    onOpenChat: (fictionId: String, prefill: String?) -> Unit = { _, _ -> },
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -63,7 +67,7 @@ fun HybridReaderScreen(
                 onCancelSleepTimer = viewModel::cancelSleepTimer,
                 onRequestRecap = viewModel::requestRecap,
                 onOpenChat = {
-                    playback.fictionId?.let(onOpenChat)
+                    playback.fictionId?.let { onOpenChat(it, null) }
                 },
             )
         },
@@ -73,6 +77,13 @@ fun HybridReaderScreen(
                 chapterText = state.chapterText,
                 onPlayPause = viewModel::playPause,
                 onSeekToChar = viewModel::seekToChar,
+                onAskAiAbout = { question ->
+                    // Long-press character lookup (#188): forward the
+                    // prebuilt "Who is X?" question as a chat prefill.
+                    // The chat surface auto-fills the input — the user
+                    // can edit before sending or send as-is.
+                    playback.fictionId?.let { onOpenChat(it, question) }
+                },
             )
         },
     )
