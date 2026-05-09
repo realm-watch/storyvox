@@ -13,11 +13,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -97,19 +99,37 @@ fun SettingsGroupCard(
  * Brass-colored section title rendered above each [SettingsGroupCard].
  * `labelLarge` in `colorScheme.primary` per Indigo's typography rhythm.
  * Header sits *outside* the card so it reads as a chapter heading, not a row.
+ *
+ * Optional [icon] is rendered as a small brass-tinted glyph immediately to the
+ * left of the label — adds the visual rhythm a wall-of-cards layout needs to
+ * stay scannable (Voice & Playback / Reading / Performance / AI / etc.).
  */
 @Composable
 fun SettingsSectionHeader(
     label: String,
     modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
 ) {
     val spacing = LocalSpacing.current
-    Text(
-        text = label,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
+    Row(
         modifier = modifier.padding(start = spacing.xs, top = spacing.xs, bottom = spacing.xxs),
-    )
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+    ) {
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
 }
 
 // endregion

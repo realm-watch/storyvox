@@ -10,6 +10,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.AutoStories
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.LibraryBooks
+import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -80,19 +89,17 @@ fun SettingsScreen(
         modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.lg),
     ) {
-        // ── Voices ───────────────────────────────────────────────────
-        SettingsSectionHeader("Voices")
+        // ── 1. Voice & Playback ──────────────────────────────────────
+        // The auditory knobs a listener touches *for this story, this
+        // session*: which voice, how fast, how pitched, how to say tricky
+        // names. Most-touched section → first.
+        SettingsSectionHeader("Voice & Playback", icon = Icons.Outlined.RecordVoiceOver)
         SettingsGroupCard {
             SettingsLinkRow(
                 title = "Voice library",
-                subtitle = "Pick a voice or download more.",
+                subtitle = "Pick a voice and hear samples.",
                 onClick = onOpenVoiceLibrary,
             )
-        }
-
-        // ── Reading ──────────────────────────────────────────────────
-        SettingsSectionHeader("Reading")
-        SettingsGroupCard {
             SettingsSliderBlock(
                 title = "Speed",
                 valueLabel = "${"%.2f".format(s.defaultSpeed)}×",
@@ -126,9 +133,6 @@ fun SettingsScreen(
                     )
                 },
             )
-            // Issue #135 — Pronunciation dictionary entry. Sits in
-            // Reading because it shapes how chapters *sound*, not how
-            // they buffer.
             SettingsLinkRow(
                 title = "Pronunciation",
                 subtitle = "Teach the voice how to say specific names and words.",
@@ -136,11 +140,26 @@ fun SettingsScreen(
             )
         }
 
-        // ── Performance & buffering ──────────────────────────────────
-        // Order: cheapest knobs (booleans) → most exploratory (buffer
-        // slider). Punctuation cadence sits last — it's a cadence
-        // preference but also lives in the perf trade space.
-        SettingsSectionHeader("Performance & buffering")
+        // ── 2. Reading ───────────────────────────────────────────────
+        // Visual reading knobs. Theme today; future home for font size
+        // override, sentence highlight intensity, page-turn animation.
+        SettingsSectionHeader("Reading", icon = Icons.Outlined.MenuBook)
+        SettingsGroupCard {
+            SettingsSegmentedBlock(
+                title = "Theme",
+                subtitle = "System matches the device's day/night.",
+                options = ThemeOverride.entries.map { it.name },
+                selectedIndex = ThemeOverride.entries.indexOf(s.themeOverride).coerceAtLeast(0),
+                onSelected = { idx -> viewModel.setTheme(ThemeOverride.entries[idx]) },
+            )
+        }
+
+        // ── 3. Performance & buffering ───────────────────────────────
+        // Trade upfront wait + memory for smoother playback. Order:
+        // cheapest knobs (booleans) → most exploratory (buffer slider).
+        // Punctuation cadence sits last — cadence preference that
+        // also lives in the perf trade space (#98).
+        SettingsSectionHeader("Performance & buffering", icon = Icons.Outlined.Speed)
         SettingsGroupCard {
             // Mode A — Warm-up Wait. Default ON. ON: brass spinner +
             // frozen scrubber while engine warms up. OFF: silent start.
@@ -194,8 +213,11 @@ fun SettingsScreen(
             )
         }
 
-        // ── AI ───────────────────────────────────────────────────────
-        SettingsSectionHeader("AI")
+        // ── 4. AI ────────────────────────────────────────────────────
+        // Smart features — Recap, character lookup, Q&A chat in Reader.
+        // Configure-once-per-provider; positioned between perf (engine
+        // tuning) and library (network syncing).
+        SettingsSectionHeader("AI", icon = Icons.Outlined.AutoAwesome)
         SettingsGroupCard {
         AiSection(
             ai = s.ai,
@@ -224,19 +246,12 @@ fun SettingsScreen(
         )
         }
 
-        // ── Theme ────────────────────────────────────────────────────
-        SettingsSectionHeader("Theme")
-        SettingsGroupCard {
-            SettingsSegmentedBlock(
-                title = "Theme override",
-                options = ThemeOverride.entries.map { it.name },
-                selectedIndex = ThemeOverride.entries.indexOf(s.themeOverride).coerceAtLeast(0),
-                onSelected = { idx -> viewModel.setTheme(ThemeOverride.entries[idx]) },
-            )
-        }
-
-        // ── Downloads ────────────────────────────────────────────────
-        SettingsSectionHeader("Downloads")
+        // ── 5. Library & Sync ────────────────────────────────────────
+        // Network preferences for keeping the library current. Renamed
+        // from "Downloads" — "Library & Sync" matches storyvox's bottom-
+        // tab language and reads as "what storyvox does in the
+        // background to keep the library current."
+        SettingsSectionHeader("Library & Sync", icon = Icons.Outlined.LibraryBooks)
         SettingsGroupCard {
             SettingsSwitchRow(
                 title = "Wi-Fi only",
@@ -262,11 +277,11 @@ fun SettingsScreen(
             )
         }
 
-        // ── Sources ──────────────────────────────────────────────────
-        // Royal Road sign-in is a two-state affair (signed in vs out)
-        // and GitHubSignInRow has its own composable for OAuth Device
-        // Flow state. Both render inside one card.
-        SettingsSectionHeader("Sources")
+        // ── 6. Account ───────────────────────────────────────────────
+        // Sign-in surfaces for fiction sources. Renamed from "Sources" —
+        // the sources themselves don't have settings worth listing here
+        // anymore (the feature is sign-in / sign-out + OAuth state).
+        SettingsSectionHeader("Account", icon = Icons.Outlined.AccountCircle)
         SettingsGroupCard {
             // Royal Road row — preserves the v0.4.x "Account" surface,
             // labeled per-source so GitHub can sit beside it. Issue #91.
@@ -305,8 +320,11 @@ fun SettingsScreen(
             )
         }
 
-        // ── Memory Palace ────────────────────────────────────────────
-        SettingsSectionHeader("Memory Palace")
+        // ── 7. Memory Palace ─────────────────────────────────────────
+        // Post-spec section — the palace is a fiction source with its
+        // own host/key config (substantial enough to keep separate from
+        // Account, which is just sign-in flows).
+        SettingsSectionHeader("Memory Palace", icon = Icons.Outlined.AutoStories)
         SettingsGroupCard {
             MemoryPalaceSection(
                 palace = s.palace,
@@ -319,19 +337,28 @@ fun SettingsScreen(
             )
         }
 
-        // ── About ────────────────────────────────────────────────────
-        // Realm-sigil version. "name" is a deterministic adjective+noun
-        // drawn from the fantasy realm word list, keyed on the build's
-        // git hash. Same hash → same name across rebuilds.
-        SettingsSectionHeader("About")
+        // ── 8. About ─────────────────────────────────────────────────
+        // Trailing metadata. Realm-sigil "name" is a deterministic
+        // adjective+noun drawn from the fantasy realm word list, keyed
+        // on the build's git hash. Same hash → same name across
+        // rebuilds. The sigil is the brass payoff at the bottom of the
+        // screen — give it the trailing slot for that beat.
+        SettingsSectionHeader("About", icon = Icons.Outlined.Info)
         SettingsGroupCard {
             SettingsRow(
                 title = "storyvox v${s.sigil.versionName}",
-                subtitle = s.sigil.name + " · " + buildString {
+                subtitle = buildString {
                     append(s.sigil.branch)
                     if (s.sigil.dirty) append(" · dirty")
                     append(" · built ")
                     append(s.sigil.built.take(10))
+                },
+                trailing = {
+                    Text(
+                        text = s.sigil.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
                 },
             )
         }
