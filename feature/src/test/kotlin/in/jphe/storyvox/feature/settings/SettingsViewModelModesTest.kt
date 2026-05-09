@@ -12,6 +12,7 @@ import `in`.jphe.storyvox.feature.api.VoiceProviderUi
 import `in`.jphe.storyvox.llm.LlmConfig
 import `in`.jphe.storyvox.llm.LlmRepository
 import `in`.jphe.storyvox.llm.provider.AzureFoundryProvider
+import `in`.jphe.storyvox.llm.provider.BedrockProvider
 import `in`.jphe.storyvox.llm.provider.ClaudeApiProvider
 import `in`.jphe.storyvox.llm.provider.OllamaProvider
 import `in`.jphe.storyvox.llm.provider.OpenAiApiProvider
@@ -236,6 +237,10 @@ class SettingsViewModelModesTest {
         override suspend fun setFoundryEndpoint(url: String) = Unit
         override suspend fun setFoundryDeployment(deployment: String) = Unit
         override suspend fun setFoundryServerless(serverless: Boolean) = Unit
+        override suspend fun setBedrockAccessKey(key: String?) = Unit
+        override suspend fun setBedrockSecretKey(key: String?) = Unit
+        override suspend fun setBedrockRegion(region: String) = Unit
+        override suspend fun setBedrockModel(model: String) = Unit
         override suspend fun setSendChapterTextEnabled(enabled: Boolean) = Unit
         override suspend fun acknowledgeAiPrivacy() = Unit
         override suspend fun resetAiSettings() = Unit
@@ -263,6 +268,7 @@ class SettingsViewModelModesTest {
             ollama = OllamaProvider(http, cfg, json),
             vertex = VertexProvider(http, store, cfg, json),
             foundry = AzureFoundryProvider(http, store, cfg, json),
+            bedrock = BedrockProvider(http, store, cfg, json),
         )
     }
 }

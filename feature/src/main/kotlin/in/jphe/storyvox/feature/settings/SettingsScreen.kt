@@ -259,6 +259,10 @@ fun SettingsScreen(
             onSetFoundryEndpoint = viewModel::setFoundryEndpoint,
             onSetFoundryDeployment = viewModel::setFoundryDeployment,
             onSetFoundryServerless = viewModel::setFoundryServerless,
+            onSetBedrockAccessKey = viewModel::setBedrockAccessKey,
+            onSetBedrockSecretKey = viewModel::setBedrockSecretKey,
+            onSetBedrockRegion = viewModel::setBedrockRegion,
+            onSetBedrockModel = viewModel::setBedrockModel,
             onSetSendChapterText = viewModel::setSendChapterTextEnabled,
             onTestConnection = viewModel::testAiConnection,
             onClearProbeOutcome = viewModel::clearProbeOutcome,
@@ -993,6 +997,10 @@ private fun AiSection(
     onSetFoundryEndpoint: (String) -> Unit,
     onSetFoundryDeployment: (String) -> Unit,
     onSetFoundryServerless: (Boolean) -> Unit,
+    onSetBedrockAccessKey: (String?) -> Unit,
+    onSetBedrockSecretKey: (String?) -> Unit,
+    onSetBedrockRegion: (String) -> Unit,
+    onSetBedrockModel: (String) -> Unit,
     onSetSendChapterText: (Boolean) -> Unit,
     onTestConnection: (UiLlmProvider) -> Unit,
     onClearProbeOutcome: () -> Unit,
@@ -1032,9 +1040,12 @@ private fun AiSection(
         ProviderChip(label = "Foundry", selected = ai.provider == UiLlmProvider.Foundry) {
             onSetProvider(UiLlmProvider.Foundry)
         }
+        ProviderChip(label = "Bedrock", selected = ai.provider == UiLlmProvider.Bedrock) {
+            onSetProvider(UiLlmProvider.Bedrock)
+        }
     }
     Text(
-        "Coming soon: AWS Bedrock, Anthropic Teams. " +
+        "Coming soon: Anthropic Teams. " +
             "See the design spec at docs/superpowers/specs/2026-05-08-ai-integration-design.md.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1068,7 +1079,13 @@ private fun AiSection(
             onSetFoundryDeployment = onSetFoundryDeployment,
             onSetFoundryServerless = onSetFoundryServerless,
         )
-        UiLlmProvider.Bedrock,
+        UiLlmProvider.Bedrock -> BedrockProviderRows(
+            ai = ai,
+            onSetAccessKey = onSetBedrockAccessKey,
+            onSetSecretKey = onSetBedrockSecretKey,
+            onSetRegion = onSetBedrockRegion,
+            onSetModel = onSetBedrockModel,
+        )
         UiLlmProvider.Teams -> {
             // Selected via the (currently disabled) chip; defensive
             // catch-all that surfaces a friendly message rather than
@@ -1516,6 +1533,152 @@ private fun AzureFoundryProviderRows(
                 )
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BedrockProviderRows(
+    ai: UiAiSettings,
+    onSetAccessKey: (String?) -> Unit,
+    onSetSecretKey: (String?) -> Unit,
+    onSetRegion: (String) -> Unit,
+    onSetModel: (String) -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    var accessDraft by remember { mutableStateOf("") }
+    var secretDraft by remember { mutableStateOf("") }
+    var showAccess by remember { mutableStateOf(false) }
+    var showSecret by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        // ── Access key ────────────────────────────────────────────
+        Text(
+            if (ai.bedrockAccessKeyConfigured) "AWS access key id — set"
+            else "AWS access key id — not set",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        OutlinedTextField(
+            value = accessDraft,
+            onValueChange = { accessDraft = it },
+            label = { Text("Paste new AWS access key id (AKIA…)") },
+            visualTransformation = if (showAccess) VisualTransformation.None
+                else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+            BrassButton(
+                label = if (showAccess) "Hide" else "Show",
+                onClick = { showAccess = !showAccess },
+                variant = BrassButtonVariant.Text,
+            )
+            BrassButton(
+                label = "Save",
+                onClick = {
+                    if (accessDraft.isNotBlank()) {
+                        onSetAccessKey(accessDraft)
+                        accessDraft = ""
+                        showAccess = false
+                    }
+                },
+                variant = BrassButtonVariant.Primary,
+            )
+            if (ai.bedrockAccessKeyConfigured) {
+                BrassButton(
+                    label = "Clear",
+                    onClick = { onSetAccessKey(null) },
+                    variant = BrassButtonVariant.Text,
+                )
+            }
+        }
+        // ── Secret key ────────────────────────────────────────────
+        Text(
+            if (ai.bedrockSecretKeyConfigured) "AWS secret access key — set"
+            else "AWS secret access key — not set",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        OutlinedTextField(
+            value = secretDraft,
+            onValueChange = { secretDraft = it },
+            label = { Text("Paste new AWS secret access key") },
+            visualTransformation = if (showSecret) VisualTransformation.None
+                else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+            BrassButton(
+                label = if (showSecret) "Hide" else "Show",
+                onClick = { showSecret = !showSecret },
+                variant = BrassButtonVariant.Text,
+            )
+            BrassButton(
+                label = "Save",
+                onClick = {
+                    if (secretDraft.isNotBlank()) {
+                        onSetSecretKey(secretDraft)
+                        secretDraft = ""
+                        showSecret = false
+                    }
+                },
+                variant = BrassButtonVariant.Primary,
+            )
+            if (ai.bedrockSecretKeyConfigured) {
+                BrassButton(
+                    label = "Clear",
+                    onClick = { onSetSecretKey(null) },
+                    variant = BrassButtonVariant.Text,
+                )
+            }
+        }
+        // ── Region picker ─────────────────────────────────────────
+        Text(
+            "Region: ${ai.bedrockRegion}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+            // Hardcoded Bedrock regions — see BedrockModels.regions in :core-llm.
+            listOf("us-east-1", "us-west-2", "eu-central-1", "ap-northeast-1").forEach { r ->
+                BrassButton(
+                    label = r,
+                    onClick = { onSetRegion(r) },
+                    variant = if (ai.bedrockRegion == r) BrassButtonVariant.Primary
+                        else BrassButtonVariant.Secondary,
+                )
+            }
+        }
+        // ── Model picker ──────────────────────────────────────────
+        Text(
+            "Model: ${ai.bedrockModel}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+            // Curated subset of cloud-chat-assistant's BEDROCK_MODELS map.
+            listOf(
+                "claude-haiku-4.5",
+                "claude-sonnet-4.6",
+                "nova-lite",
+                "llama4-maverick-17b",
+            ).forEach { m ->
+                BrassButton(
+                    label = m,
+                    onClick = { onSetModel(m) },
+                    variant = if (ai.bedrockModel == m) BrassButtonVariant.Primary
+                        else BrassButtonVariant.Secondary,
+                )
+            }
+        }
+        Text(
+            "Bedrock charges per-token; per-region pricing varies. AWS console is " +
+                "the source of truth for usage. SigV4 signing happens in-app — " +
+                "no AWS SDK is bundled.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

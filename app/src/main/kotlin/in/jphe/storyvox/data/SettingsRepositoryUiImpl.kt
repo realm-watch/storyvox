@@ -159,6 +159,8 @@ private object Keys {
     val AI_FOUNDRY_SERVERLESS = booleanPreferencesKey("pref_ai_foundry_serverless")
     val AI_PRIVACY_ACK = booleanPreferencesKey("pref_ai_privacy_ack")
     val AI_SEND_CHAPTER_TEXT = booleanPreferencesKey("pref_ai_send_chapter_text")
+    val AI_BEDROCK_REGION = stringPreferencesKey("pref_ai_bedrock_region")
+    val AI_BEDROCK_MODEL = stringPreferencesKey("pref_ai_bedrock_model")
 
     /** Issue #135 — JSON-serialized [PronunciationDict] (list of
      *  pattern/replacement/matchType entries). _v1 suffix lets us
@@ -249,6 +251,10 @@ class SettingsRepositoryUiImpl(
                 foundryDeployment = prefs[Keys.AI_FOUNDRY_DEPLOYMENT] ?: "",
                 foundryServerless = prefs[Keys.AI_FOUNDRY_SERVERLESS] ?: false,
                 foundryKeyConfigured = llmCreds.hasFoundryKey,
+                bedrockAccessKeyConfigured = !llmCreds.bedrockAccessKey().isNullOrBlank(),
+                bedrockSecretKeyConfigured = !llmCreds.bedrockSecretKey().isNullOrBlank(),
+                bedrockRegion = prefs[Keys.AI_BEDROCK_REGION] ?: "us-east-1",
+                bedrockModel = prefs[Keys.AI_BEDROCK_MODEL] ?: "claude-haiku-4.5",
                 privacyAcknowledged = prefs[Keys.AI_PRIVACY_ACK] ?: false,
                 sendChapterTextEnabled = prefs[Keys.AI_SEND_CHAPTER_TEXT] ?: true,
             ),
@@ -468,6 +474,53 @@ class SettingsRepositoryUiImpl(
         store.edit { it[Keys.AI_FOUNDRY_SERVERLESS] = serverless }
     }
 
+    override suspend fun setBedrockAccessKey(key: String?) {
+        if (key.isNullOrBlank()) {
+            // Clear access only — leave secret in place. The "Forget all"
+            // path goes through resetAiSettings → llmCreds.clearAll().
+            llmCreds.setBedrockKeys(
+                access = "",
+                secret = llmCreds.bedrockSecretKey() ?: "",
+            )
+            // Empty access = treated as not-configured by the UI, but we
+            // need a single "remove just access" path; fall back to
+            // clearing both if secret is also empty.
+            if (llmCreds.bedrockSecretKey().isNullOrBlank()) {
+                llmCreds.clearBedrockKeys()
+            }
+        } else {
+            llmCreds.setBedrockKeys(
+                access = key,
+                secret = llmCreds.bedrockSecretKey() ?: "",
+            )
+        }
+    }
+
+    override suspend fun setBedrockSecretKey(key: String?) {
+        if (key.isNullOrBlank()) {
+            llmCreds.setBedrockKeys(
+                access = llmCreds.bedrockAccessKey() ?: "",
+                secret = "",
+            )
+            if (llmCreds.bedrockAccessKey().isNullOrBlank()) {
+                llmCreds.clearBedrockKeys()
+            }
+        } else {
+            llmCreds.setBedrockKeys(
+                access = llmCreds.bedrockAccessKey() ?: "",
+                secret = key,
+            )
+        }
+    }
+
+    override suspend fun setBedrockRegion(region: String) {
+        store.edit { it[Keys.AI_BEDROCK_REGION] = region }
+    }
+
+    override suspend fun setBedrockModel(model: String) {
+        store.edit { it[Keys.AI_BEDROCK_MODEL] = model }
+    }
+
     override suspend fun setSendChapterTextEnabled(enabled: Boolean) {
         store.edit { it[Keys.AI_SEND_CHAPTER_TEXT] = enabled }
     }
@@ -487,6 +540,8 @@ class SettingsRepositoryUiImpl(
             it.remove(Keys.AI_FOUNDRY_ENDPOINT)
             it.remove(Keys.AI_FOUNDRY_DEPLOYMENT)
             it.remove(Keys.AI_FOUNDRY_SERVERLESS)
+            it.remove(Keys.AI_BEDROCK_REGION)
+            it.remove(Keys.AI_BEDROCK_MODEL)
             it.remove(Keys.AI_PRIVACY_ACK)
             it.remove(Keys.AI_SEND_CHAPTER_TEXT)
         }
@@ -571,6 +626,8 @@ class SettingsRepositoryUiImpl(
             foundryEndpoint = prefs[Keys.AI_FOUNDRY_ENDPOINT] ?: "",
             foundryDeployment = prefs[Keys.AI_FOUNDRY_DEPLOYMENT] ?: "",
             foundryServerless = prefs[Keys.AI_FOUNDRY_SERVERLESS] ?: false,
+            bedrockRegion = prefs[Keys.AI_BEDROCK_REGION] ?: "us-east-1",
+            bedrockModel = prefs[Keys.AI_BEDROCK_MODEL] ?: "claude-haiku-4.5",
             privacyAcknowledged = prefs[Keys.AI_PRIVACY_ACK] ?: false,
             sendChapterTextEnabled = prefs[Keys.AI_SEND_CHAPTER_TEXT] ?: true,
         )
@@ -591,6 +648,8 @@ class SettingsRepositoryUiImpl(
             p[Keys.AI_FOUNDRY_ENDPOINT] = config.foundryEndpoint
             p[Keys.AI_FOUNDRY_DEPLOYMENT] = config.foundryDeployment
             p[Keys.AI_FOUNDRY_SERVERLESS] = config.foundryServerless
+            p[Keys.AI_BEDROCK_REGION] = config.bedrockRegion
+            p[Keys.AI_BEDROCK_MODEL] = config.bedrockModel
             p[Keys.AI_PRIVACY_ACK] = config.privacyAcknowledged
             p[Keys.AI_SEND_CHAPTER_TEXT] = config.sendChapterTextEnabled
         }
