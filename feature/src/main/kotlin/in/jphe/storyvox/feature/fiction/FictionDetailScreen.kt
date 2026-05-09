@@ -256,6 +256,7 @@ private fun Hero(fiction: UiFiction) {
 
 @Composable
 private fun Synopsis(text: String) {
+    if (text.isBlank()) return
     val spacing = LocalSpacing.current
     var expanded by remember { mutableStateOf(false) }
     Column(
