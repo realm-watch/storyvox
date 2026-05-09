@@ -39,6 +39,13 @@ data class LlmConfig(
     val vertexModel: String = "gemini-2.5-flash",
     val foundryEndpoint: String = "",
     val foundryDeployment: String = "",
+    /** Foundry has two deployment models: per-model "deployed" URLs
+     *  (`/openai/deployments/{name}/...`, default) and a single
+     *  "serverless" catalog URL (`/models/chat/completions`). The
+     *  toggle is required because the URL templates differ AND the
+     *  request bodies differ — deployed omits `model`, serverless
+     *  includes it. See [provider.AzureFoundryProvider.buildUrl]. */
+    val foundryServerless: Boolean = false,
 
     // Cross-provider toggles
     /** First-time-activation modal acknowledged. Reset when the user
@@ -87,5 +94,18 @@ object LlmModels {
         "gemini-2.5-flash",
         "gemini-2.5-pro",
         "gemini-2.5-flash-lite",
+    )
+
+    /** Azure Foundry **serverless** catalog short-list — surfaces a
+     *  small grid in Settings when the user picks the Serverless
+     *  toggle. Deployed mode shows no chips because the deployment
+     *  name is whatever the user typed in the Azure portal. */
+    val foundryServerless: List<String> = listOf(
+        "gpt-4o",
+        "gpt-4o-mini",
+        "Llama-3.3-70B-Instruct",
+        "DeepSeek-R1",
+        "Phi-4",
+        "grok-3",
     )
 }

@@ -73,3 +73,18 @@ internal data class VertexGenerationConfig(
     val temperature: Float? = null,
     @SerialName("maxOutputTokens") val maxOutputTokens: Int? = null,
 )
+
+// ── Azure Foundry deployed-mode chat completions ───────────────────
+//
+// Same shape as [OpenAiRequest] minus `model` — Foundry pins the
+// model in the URL (`/openai/deployments/{name}/...`) and rejects
+// requests that also carry the field in the body. Serverless-mode
+// Foundry reuses [OpenAiRequest] verbatim. Tested against
+// `cloud-chat-assistant/llm_stream.py`'s `azure` branch (line ~272).
+
+@Serializable
+internal data class FoundryDeployedRequest(
+    val messages: List<OpenAiMessage>,
+    @SerialName("max_tokens") val maxTokens: Int = 1024,
+    val stream: Boolean = true,
+)

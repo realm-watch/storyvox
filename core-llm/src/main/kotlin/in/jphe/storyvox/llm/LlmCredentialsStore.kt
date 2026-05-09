@@ -68,6 +68,7 @@ open class LlmCredentialsStore @Inject constructor(
     open fun setFoundryApiKey(key: String) =
         prefs.edit { putString(KEY_FOUNDRY, key) }
     open fun clearFoundryApiKey() = prefs.edit { remove(KEY_FOUNDRY) }
+    open val hasFoundryKey: Boolean get() = foundryApiKey() != null
 
     open fun teamsBearerToken(): String? = prefs.getString(KEY_TEAMS, null)
     open fun setTeamsBearerToken(token: String) =
