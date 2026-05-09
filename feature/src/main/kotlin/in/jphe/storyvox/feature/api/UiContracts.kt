@@ -484,11 +484,13 @@ const val BUFFER_RECOMMENDED_MAX_CHUNKS: Int = 64
 
 /**
  * Mechanical upper bound. The LinkedBlockingQueue can hold this many; whether
- * the heap survives is JP's experimental question. 1500 chunks ≈ 165 MB of
- * PCM at 22050 Hz mono — comfortably past the worst-case LMK guess for a 3 GB
- * Helio P22T.
+ * the heap survives is JP's experimental question. 96 ≈ 1.5× the recommended
+ * max — keeps a real experimental headroom past the safe ceiling without
+ * exposing the OOM zone. Earlier 1500-chunk ceiling (#138) put 96% of slider
+ * travel past the recommended max, which let a casual drag walk straight
+ * into the LMK kill range.
  */
-const val BUFFER_MAX_CHUNKS: Int = 1500
+const val BUFFER_MAX_CHUNKS: Int = 96
 
 /** Slider color shifts to red (intensified warning) past this multiple of the recommended max. */
 const val BUFFER_DANGER_MULTIPLIER: Int = 4
