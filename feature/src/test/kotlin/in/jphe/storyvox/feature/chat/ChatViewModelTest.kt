@@ -7,8 +7,15 @@ import `in`.jphe.storyvox.data.db.entity.LlmSession
 import `in`.jphe.storyvox.data.db.entity.LlmStoredMessage
 import `in`.jphe.storyvox.feature.api.DownloadMode
 import `in`.jphe.storyvox.feature.api.FictionRepositoryUi
+import `in`.jphe.storyvox.feature.api.PalaceProbeResult
 import `in`.jphe.storyvox.feature.api.PlaybackControllerUi
+import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
+import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiAddByUrlResult
+import `in`.jphe.storyvox.feature.api.UiAiSettings
+import `in`.jphe.storyvox.feature.api.UiChatGrounding
+import `in`.jphe.storyvox.feature.api.UiLlmProvider
+import `in`.jphe.storyvox.feature.api.UiSettings
 import `in`.jphe.storyvox.feature.api.UiChapter
 import `in`.jphe.storyvox.feature.api.UiFiction
 import `in`.jphe.storyvox.feature.api.UiFollow
@@ -76,6 +83,7 @@ class ChatViewModelTest {
             fictionRepo = FakeFictionRepo(fictionId, fictionTitle),
             playback = FakePlayback(playbackState),
             configFlow = flowOf(config),
+            settingsRepo = FakeSettingsRepo(),
             savedState = SavedStateHandle(mapOf("fictionId" to fictionId)),
         )
         return vm to session
@@ -258,6 +266,10 @@ private class FakeSessionRepo(
         return explicitId ?: "fake-session"
     }
 
+    override suspend fun updateSystemPrompt(sessionId: String, systemPrompt: String?) {
+        lastSystemPrompt = systemPrompt
+    }
+
     override fun chat(sessionId: String, userMessage: String): Flow<String> = flow {
         chatCalls += sessionId to userMessage
         // Persist the user turn synchronously, mirroring real repo
@@ -280,6 +292,8 @@ private object ThrowingSessionDao : LlmSessionDao {
     override fun observeAll(): Flow<List<LlmSession>> = error("not used in fake")
     override suspend fun get(id: String): LlmSession? = error("not used in fake")
     override suspend fun touchLastUsed(id: String, ts: Long) = error("not used in fake")
+    override suspend fun updateSystemPrompt(id: String, systemPrompt: String?) =
+        error("not used in fake")
     override suspend fun delete(id: String) = error("not used in fake")
     override suspend fun deleteAll() = error("not used in fake")
 }
@@ -414,6 +428,7 @@ private class FakeFictionRepo(
         flowOf(if (id == fictionId && title != null) uiFictionOf(id, title) else null)
     override fun fictionLoadError(id: String): Flow<String?> = flowOf(null)
     override fun chaptersFor(fictionId: String): Flow<List<UiChapter>> = flowOf(emptyList())
+    override suspend fun chapterTextById(chapterId: String): String? = null
     override suspend fun setDownloadMode(fictionId: String, mode: DownloadMode) = Unit
     override suspend fun follow(fictionId: String, follow: Boolean) = Unit
     override suspend fun markAllCaughtUp() = Unit
@@ -453,4 +468,69 @@ private class FakePlayback(initial: UiPlaybackState) : PlaybackControllerUi {
     override fun cancelSleepTimer() = Unit
     override suspend fun speakText(text: String) = Unit
     override fun stopSpeaking() = Unit
+}
+
+/** Minimal settings stub — only the [settings] flow is read by
+ *  ChatViewModel, but [SettingsRepositoryUi] is a wide interface so
+ *  every method must be implemented; setters are no-ops. */
+private class FakeSettingsRepo(
+    chatGrounding: UiChatGrounding = UiChatGrounding(),
+) : SettingsRepositoryUi {
+    private val ai = UiAiSettings(chatGrounding = chatGrounding)
+    override val settings: Flow<UiSettings> = flowOf(
+        UiSettings(
+            ttsEngine = "VoxSherpa",
+            defaultVoiceId = null,
+            defaultSpeed = 1f,
+            defaultPitch = 1f,
+            themeOverride = ThemeOverride.System,
+            downloadOnWifiOnly = true,
+            pollIntervalHours = 6,
+            isSignedIn = false,
+            ai = ai,
+        ),
+    )
+    override suspend fun setTheme(override: ThemeOverride) = Unit
+    override suspend fun setDefaultSpeed(speed: Float) = Unit
+    override suspend fun setDefaultPitch(pitch: Float) = Unit
+    override suspend fun setDefaultVoice(voiceId: String?) = Unit
+    override suspend fun setDownloadOnWifiOnly(enabled: Boolean) = Unit
+    override suspend fun setPollIntervalHours(hours: Int) = Unit
+    override suspend fun setPunctuationPauseMultiplier(multiplier: Float) = Unit
+    override suspend fun setPlaybackBufferChunks(chunks: Int) = Unit
+    override suspend fun setWarmupWait(enabled: Boolean) = Unit
+    override suspend fun setCatchupPause(enabled: Boolean) = Unit
+    override suspend fun setVoiceSteady(enabled: Boolean) = Unit
+    override suspend fun signIn() = Unit
+    override suspend fun signOut() = Unit
+    override suspend fun setPalaceHost(host: String) = Unit
+    override suspend fun setPalaceApiKey(apiKey: String) = Unit
+    override suspend fun clearPalaceConfig() = Unit
+    override suspend fun testPalaceConnection(): PalaceProbeResult = PalaceProbeResult.NotConfigured
+    override suspend fun setAiProvider(provider: UiLlmProvider?) = Unit
+    override suspend fun setClaudeApiKey(key: String?) = Unit
+    override suspend fun setClaudeModel(model: String) = Unit
+    override suspend fun setOpenAiApiKey(key: String?) = Unit
+    override suspend fun setOpenAiModel(model: String) = Unit
+    override suspend fun setOllamaBaseUrl(url: String) = Unit
+    override suspend fun setOllamaModel(model: String) = Unit
+    override suspend fun setVertexApiKey(key: String?) = Unit
+    override suspend fun setVertexModel(model: String) = Unit
+    override suspend fun setFoundryApiKey(key: String?) = Unit
+    override suspend fun setFoundryEndpoint(url: String) = Unit
+    override suspend fun setFoundryDeployment(deployment: String) = Unit
+    override suspend fun setFoundryServerless(serverless: Boolean) = Unit
+    override suspend fun setBedrockAccessKey(key: String?) = Unit
+    override suspend fun setBedrockSecretKey(key: String?) = Unit
+    override suspend fun setBedrockRegion(region: String) = Unit
+    override suspend fun setBedrockModel(model: String) = Unit
+    override suspend fun setSendChapterTextEnabled(enabled: Boolean) = Unit
+    override suspend fun setChatGroundChapterTitle(enabled: Boolean) = Unit
+    override suspend fun setChatGroundCurrentSentence(enabled: Boolean) = Unit
+    override suspend fun setChatGroundEntireChapter(enabled: Boolean) = Unit
+    override suspend fun setChatGroundEntireBookSoFar(enabled: Boolean) = Unit
+    override suspend fun acknowledgeAiPrivacy() = Unit
+    override suspend fun resetAiSettings() = Unit
+    override suspend fun signOutGitHub() = Unit
+    override suspend fun setGitHubPrivateReposEnabled(enabled: Boolean) = Unit
 }

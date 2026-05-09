@@ -159,6 +159,15 @@ class SettingsViewModel @Inject constructor(
     fun setBedrockModel(model: String) = viewModelScope.launch { repo.setBedrockModel(model) }
     fun setSendChapterTextEnabled(enabled: Boolean) =
         viewModelScope.launch { repo.setSendChapterTextEnabled(enabled) }
+    // Issue #212 — chat grounding-level toggles.
+    fun setChatGroundChapterTitle(enabled: Boolean) =
+        viewModelScope.launch { repo.setChatGroundChapterTitle(enabled) }
+    fun setChatGroundCurrentSentence(enabled: Boolean) =
+        viewModelScope.launch { repo.setChatGroundCurrentSentence(enabled) }
+    fun setChatGroundEntireChapter(enabled: Boolean) =
+        viewModelScope.launch { repo.setChatGroundEntireChapter(enabled) }
+    fun setChatGroundEntireBookSoFar(enabled: Boolean) =
+        viewModelScope.launch { repo.setChatGroundEntireBookSoFar(enabled) }
     fun acknowledgeAiPrivacy() = viewModelScope.launch { repo.acknowledgeAiPrivacy() }
     fun resetAiSettings() = viewModelScope.launch {
         repo.resetAiSettings()

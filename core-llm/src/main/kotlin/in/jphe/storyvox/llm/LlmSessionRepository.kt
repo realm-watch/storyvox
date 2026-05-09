@@ -143,6 +143,17 @@ open class LlmSessionRepository @Inject constructor(
     open suspend fun deleteSession(sessionId: String) {
         sessionDao.delete(sessionId)   // cascades to messages
     }
+
+    /**
+     * Issue #212 — replace [sessionId]'s persisted system prompt
+     * in-place. Used by the chat ViewModel to swap in a freshly
+     * built prompt before each send when grounding settings have
+     * changed. No-op (silent) if the session doesn't exist yet —
+     * the next [createSession] will set the prompt.
+     */
+    open suspend fun updateSystemPrompt(sessionId: String, systemPrompt: String?) {
+        sessionDao.updateSystemPrompt(sessionId, systemPrompt)
+    }
 }
 
 /** UI-facing projection of [LlmSession] with strongly-typed

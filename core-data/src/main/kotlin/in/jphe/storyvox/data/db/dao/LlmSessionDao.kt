@@ -29,6 +29,16 @@ interface LlmSessionDao {
     @Query("UPDATE llm_session SET lastUsedAt = :ts WHERE id = :id")
     suspend fun touchLastUsed(id: String, ts: Long)
 
+    /**
+     * Issue #212 — refresh the session's system prompt without
+     * touching createdAt / lastUsedAt / message history. The chat
+     * ViewModel rebuilds the prompt from current grounding settings
+     * on every send so a user can flip a toggle and see the next
+     * reply use the new context level immediately.
+     */
+    @Query("UPDATE llm_session SET systemPrompt = :systemPrompt WHERE id = :id")
+    suspend fun updateSystemPrompt(id: String, systemPrompt: String?)
+
     @Query("DELETE FROM llm_session WHERE id = :id")
     suspend fun delete(id: String)
 
