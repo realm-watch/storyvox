@@ -312,6 +312,22 @@ private fun EmptyStatePrompt(
 
 // ── Input + error banner ───────────────────────────────────────────
 
+/** Pre-fill chips for the most common chat asks (#213). Tap inserts
+ *  the prompt into the input field but does NOT auto-send — the user
+ *  can edit / append before sending. Visible only when input is empty
+ *  so they don't clutter the chat once a conversation is rolling.
+ *
+ *  Order is touch-frequency: 'What did I miss?' is the dominant ask
+ *  for resumed listening; 'Who is X?' is character lookup; the rest
+ *  catch the long tail. Localized labels are a future follow-up. */
+private val QuickActionPrompts: List<String> = listOf(
+    "What did I miss?",
+    "Who is this character?",
+    "Explain that",
+    "Where are we?",
+)
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun ChatInput(
     enabled: Boolean,
@@ -319,41 +335,60 @@ private fun ChatInput(
 ) {
     val spacing = LocalSpacing.current
     var text by remember { mutableStateOf("") }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = spacing.md, vertical = spacing.sm),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-    ) {
-        OutlinedTextField(
-            value = text,
-            onValueChange = { text = it },
-            enabled = enabled,
-            placeholder = { Text("Ask a question…") },
-            modifier = Modifier.weight(1f),
-            singleLine = false,
-            maxLines = 4,
-        )
-        IconButton(
-            onClick = {
-                val toSend = text.trim()
-                if (toSend.isNotEmpty()) {
-                    onSend(toSend)
-                    text = ""
+
+    androidx.compose.foundation.layout.Column(modifier = Modifier.fillMaxWidth()) {
+        if (enabled && text.isBlank()) {
+            androidx.compose.foundation.layout.FlowRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.md, vertical = spacing.xs),
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                verticalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                QuickActionPrompts.forEach { prompt ->
+                    androidx.compose.material3.SuggestionChip(
+                        onClick = { text = prompt },
+                        label = { Text(prompt, style = MaterialTheme.typography.labelMedium) },
+                    )
                 }
-            },
-            enabled = enabled && text.isNotBlank(),
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = spacing.md, vertical = spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
-            Icon(
-                Icons.AutoMirrored.Filled.Send,
-                contentDescription = "Send",
-                tint = if (enabled && text.isNotBlank()) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-                },
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                enabled = enabled,
+                placeholder = { Text("Ask a question…") },
+                modifier = Modifier.weight(1f),
+                singleLine = false,
+                maxLines = 4,
             )
+            IconButton(
+                onClick = {
+                    val toSend = text.trim()
+                    if (toSend.isNotEmpty()) {
+                        onSend(toSend)
+                        text = ""
+                    }
+                },
+                enabled = enabled && text.isNotBlank(),
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Send,
+                    contentDescription = "Send",
+                    tint = if (enabled && text.isNotBlank()) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                    },
+                )
+            }
         }
     }
 }
