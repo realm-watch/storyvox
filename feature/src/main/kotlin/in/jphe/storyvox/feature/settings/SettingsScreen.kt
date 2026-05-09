@@ -1096,20 +1096,16 @@ private fun AiSection(
     }
 
     if (ai.provider != null) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Send chapter text to AI", style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    "Required for Recap. Off means the feature is disabled even with a provider configured.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Switch(
-                checked = ai.sendChapterTextEnabled,
-                onCheckedChange = onSetSendChapterText,
-            )
-        }
+        SettingsSwitchRow(
+            title = "Allow chapter text to AI",
+            subtitle = if (ai.sendChapterTextEnabled) {
+                "Recap, character lookup, and chat can read the current chapter."
+            } else {
+                "Smart features need this on — turn off to fully disable AI access."
+            },
+            checked = ai.sendChapterTextEnabled,
+            onCheckedChange = onSetSendChapterText,
+        )
         BrassButton(
             label = "Forget all AI settings",
             onClick = onResetAi,
