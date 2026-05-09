@@ -75,4 +75,29 @@ class SseLineParserTest {
         assertNull(SseLineParser.openAiCompat("", json))
         assertNull(SseLineParser.openAiCompat(": keep-alive", json))
     }
+
+    @Test
+    fun `vertex returns text from candidates parts`() {
+        val line = """data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Hello "}]}}]}"""
+        assertEquals("Hello ", SseLineParser.vertex(line, json))
+    }
+
+    @Test
+    fun `vertex finishReason-only frame returns null`() {
+        val line = """data: {"candidates":[{"content":{"parts":[]},"finishReason":"STOP"}]}"""
+        assertNull(SseLineParser.vertex(line, json))
+    }
+
+    @Test
+    fun `vertex empty candidates returns null`() {
+        val line = """data: {"candidates":[]}"""
+        assertNull(SseLineParser.vertex(line, json))
+    }
+
+    @Test
+    fun `vertex ignores non-data line and malformed json`() {
+        assertNull(SseLineParser.vertex("", json))
+        assertNull(SseLineParser.vertex(": keep-alive", json))
+        assertNull(SseLineParser.vertex("data: {not json", json))
+    }
 }

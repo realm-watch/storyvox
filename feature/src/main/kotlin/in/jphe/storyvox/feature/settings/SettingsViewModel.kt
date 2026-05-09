@@ -140,6 +140,8 @@ class SettingsViewModel @Inject constructor(
     fun setOpenAiModel(model: String) = viewModelScope.launch { repo.setOpenAiModel(model) }
     fun setOllamaBaseUrl(url: String) = viewModelScope.launch { repo.setOllamaBaseUrl(url) }
     fun setOllamaModel(model: String) = viewModelScope.launch { repo.setOllamaModel(model) }
+    fun setVertexApiKey(key: String?) = viewModelScope.launch { repo.setVertexApiKey(key) }
+    fun setVertexModel(model: String) = viewModelScope.launch { repo.setVertexModel(model) }
     fun setSendChapterTextEnabled(enabled: Boolean) =
         viewModelScope.launch { repo.setSendChapterTextEnabled(enabled) }
     fun acknowledgeAiPrivacy() = viewModelScope.launch { repo.acknowledgeAiPrivacy() }

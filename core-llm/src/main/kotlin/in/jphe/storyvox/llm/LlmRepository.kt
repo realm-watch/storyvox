@@ -3,6 +3,7 @@ package `in`.jphe.storyvox.llm
 import `in`.jphe.storyvox.llm.provider.ClaudeApiProvider
 import `in`.jphe.storyvox.llm.provider.OllamaProvider
 import `in`.jphe.storyvox.llm.provider.OpenAiApiProvider
+import `in`.jphe.storyvox.llm.provider.VertexProvider
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
@@ -26,6 +27,7 @@ class LlmRepository @Inject constructor(
     private val claude: ClaudeApiProvider,
     private val openAi: OpenAiApiProvider,
     private val ollama: OllamaProvider,
+    private val vertex: VertexProvider,
 ) {
 
     /** The provider currently picked in Settings, or null when AI
@@ -73,8 +75,8 @@ class LlmRepository @Inject constructor(
         ProviderId.Claude -> claude
         ProviderId.OpenAi -> openAi
         ProviderId.Ollama -> ollama
+        ProviderId.Vertex -> vertex
         ProviderId.Bedrock,
-        ProviderId.Vertex,
         ProviderId.Foundry,
         ProviderId.Teams ->
             throw LlmError.NotConfigured(id)

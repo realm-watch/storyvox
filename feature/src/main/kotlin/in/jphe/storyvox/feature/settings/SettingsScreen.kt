@@ -253,6 +253,8 @@ fun SettingsScreen(
             onSetOpenAiModel = viewModel::setOpenAiModel,
             onSetOllamaBaseUrl = viewModel::setOllamaBaseUrl,
             onSetOllamaModel = viewModel::setOllamaModel,
+            onSetVertexKey = viewModel::setVertexApiKey,
+            onSetVertexModel = viewModel::setVertexModel,
             onSetSendChapterText = viewModel::setSendChapterTextEnabled,
             onTestConnection = viewModel::testAiConnection,
             onClearProbeOutcome = viewModel::clearProbeOutcome,
@@ -981,6 +983,8 @@ private fun AiSection(
     onSetOpenAiModel: (String) -> Unit,
     onSetOllamaBaseUrl: (String) -> Unit,
     onSetOllamaModel: (String) -> Unit,
+    onSetVertexKey: (String?) -> Unit,
+    onSetVertexModel: (String) -> Unit,
     onSetSendChapterText: (Boolean) -> Unit,
     onTestConnection: (UiLlmProvider) -> Unit,
     onClearProbeOutcome: () -> Unit,
@@ -1014,9 +1018,12 @@ private fun AiSection(
         ProviderChip(label = "Ollama", selected = ai.provider == UiLlmProvider.Ollama) {
             onSetProvider(UiLlmProvider.Ollama)
         }
+        ProviderChip(label = "Vertex", selected = ai.provider == UiLlmProvider.Vertex) {
+            onSetProvider(UiLlmProvider.Vertex)
+        }
     }
     Text(
-        "Coming soon: AWS Bedrock, Google Vertex AI, Azure AI Foundry, Anthropic Teams. " +
+        "Coming soon: AWS Bedrock, Azure AI Foundry, Anthropic Teams. " +
             "See the design spec at docs/superpowers/specs/2026-05-08-ai-integration-design.md.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1038,8 +1045,12 @@ private fun AiSection(
             onSetOllamaBaseUrl = onSetOllamaBaseUrl,
             onSetOllamaModel = onSetOllamaModel,
         )
+        UiLlmProvider.Vertex -> VertexProviderRows(
+            ai = ai,
+            onSetVertexKey = onSetVertexKey,
+            onSetVertexModel = onSetVertexModel,
+        )
         UiLlmProvider.Bedrock,
-        UiLlmProvider.Vertex,
         UiLlmProvider.Foundry,
         UiLlmProvider.Teams -> {
             // Selected via the (currently disabled) chip; defensive
@@ -1272,6 +1283,79 @@ private fun OllamaProviderRows(
         Text(
             "Default URL is intentionally a placeholder — fix it to your LAN host (e.g. " +
                 "http://10.0.6.50:11434) before testing.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VertexProviderRows(
+    ai: UiAiSettings,
+    onSetVertexKey: (String?) -> Unit,
+    onSetVertexModel: (String) -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    var keyDraft by remember { mutableStateOf("") }
+    var showKey by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        Text(
+            if (ai.vertexKeyConfigured) "Vertex API key — set"
+            else "Vertex API key — not set",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        OutlinedTextField(
+            value = keyDraft,
+            onValueChange = { keyDraft = it },
+            label = { Text("Paste new Vertex (Gemini) key") },
+            visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+            BrassButton(
+                label = if (showKey) "Hide" else "Show",
+                onClick = { showKey = !showKey },
+                variant = BrassButtonVariant.Text,
+            )
+            BrassButton(
+                label = "Save",
+                onClick = {
+                    if (keyDraft.isNotBlank()) {
+                        onSetVertexKey(keyDraft)
+                        keyDraft = ""
+                        showKey = false
+                    }
+                },
+                variant = BrassButtonVariant.Primary,
+            )
+            if (ai.vertexKeyConfigured) {
+                BrassButton(
+                    label = "Clear",
+                    onClick = { onSetVertexKey(null) },
+                    variant = BrassButtonVariant.Text,
+                )
+            }
+        }
+        Text(
+            "Model: ${ai.vertexModel}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+            listOf("gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite").forEach { m ->
+                BrassButton(
+                    label = m.removePrefix("gemini-"),
+                    onClick = { onSetVertexModel(m) },
+                    variant = if (ai.vertexModel == m) BrassButtonVariant.Primary else BrassButtonVariant.Secondary,
+                )
+            }
+        }
+        Text(
+            "Generate a key at aistudio.google.com/app/apikey. " +
+                "Flash is the cheapest, Pro is the smartest, Flash-Lite is the lightest.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

@@ -146,6 +146,7 @@ private object Keys {
     val AI_OPENAI_MODEL = stringPreferencesKey("pref_ai_openai_model")
     val AI_OLLAMA_BASE_URL = stringPreferencesKey("pref_ai_ollama_base_url")
     val AI_OLLAMA_MODEL = stringPreferencesKey("pref_ai_ollama_model")
+    val AI_VERTEX_MODEL = stringPreferencesKey("pref_ai_vertex_model")
     val AI_PRIVACY_ACK = booleanPreferencesKey("pref_ai_privacy_ack")
     val AI_SEND_CHAPTER_TEXT = booleanPreferencesKey("pref_ai_send_chapter_text")
 
@@ -232,6 +233,8 @@ class SettingsRepositoryUiImpl(
                 openAiKeyConfigured = llmCreds.hasOpenAiKey,
                 ollamaBaseUrl = prefs[Keys.AI_OLLAMA_BASE_URL] ?: "http://10.0.0.1:11434",
                 ollamaModel = prefs[Keys.AI_OLLAMA_MODEL] ?: "llama3.3",
+                vertexModel = prefs[Keys.AI_VERTEX_MODEL] ?: "gemini-2.5-flash",
+                vertexKeyConfigured = llmCreds.hasVertexKey,
                 privacyAcknowledged = prefs[Keys.AI_PRIVACY_ACK] ?: false,
                 sendChapterTextEnabled = prefs[Keys.AI_SEND_CHAPTER_TEXT] ?: true,
             ),
@@ -425,6 +428,15 @@ class SettingsRepositoryUiImpl(
         store.edit { it[Keys.AI_OLLAMA_MODEL] = model }
     }
 
+    override suspend fun setVertexApiKey(key: String?) {
+        if (key == null) llmCreds.clearVertexApiKey()
+        else llmCreds.setVertexApiKey(key)
+    }
+
+    override suspend fun setVertexModel(model: String) {
+        store.edit { it[Keys.AI_VERTEX_MODEL] = model }
+    }
+
     override suspend fun setSendChapterTextEnabled(enabled: Boolean) {
         store.edit { it[Keys.AI_SEND_CHAPTER_TEXT] = enabled }
     }
@@ -440,6 +452,7 @@ class SettingsRepositoryUiImpl(
             it.remove(Keys.AI_OPENAI_MODEL)
             it.remove(Keys.AI_OLLAMA_BASE_URL)
             it.remove(Keys.AI_OLLAMA_MODEL)
+            it.remove(Keys.AI_VERTEX_MODEL)
             it.remove(Keys.AI_PRIVACY_ACK)
             it.remove(Keys.AI_SEND_CHAPTER_TEXT)
         }
@@ -520,6 +533,7 @@ class SettingsRepositoryUiImpl(
             openAiModel = prefs[Keys.AI_OPENAI_MODEL] ?: "gpt-4o-mini",
             ollamaBaseUrl = prefs[Keys.AI_OLLAMA_BASE_URL] ?: "http://10.0.0.1:11434",
             ollamaModel = prefs[Keys.AI_OLLAMA_MODEL] ?: "llama3.3",
+            vertexModel = prefs[Keys.AI_VERTEX_MODEL] ?: "gemini-2.5-flash",
             privacyAcknowledged = prefs[Keys.AI_PRIVACY_ACK] ?: false,
             sendChapterTextEnabled = prefs[Keys.AI_SEND_CHAPTER_TEXT] ?: true,
         )
@@ -536,6 +550,7 @@ class SettingsRepositoryUiImpl(
             p[Keys.AI_OPENAI_MODEL] = config.openAiModel
             p[Keys.AI_OLLAMA_BASE_URL] = config.ollamaBaseUrl
             p[Keys.AI_OLLAMA_MODEL] = config.ollamaModel
+            p[Keys.AI_VERTEX_MODEL] = config.vertexModel
             p[Keys.AI_PRIVACY_ACK] = config.privacyAcknowledged
             p[Keys.AI_SEND_CHAPTER_TEXT] = config.sendChapterTextEnabled
         }

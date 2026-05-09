@@ -15,6 +15,7 @@ import `in`.jphe.storyvox.llm.LlmRepository
 import `in`.jphe.storyvox.llm.provider.ClaudeApiProvider
 import `in`.jphe.storyvox.llm.provider.OllamaProvider
 import `in`.jphe.storyvox.llm.provider.OpenAiApiProvider
+import `in`.jphe.storyvox.llm.provider.VertexProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -166,6 +167,8 @@ class SettingsViewModelPunctuationPauseTest {
         override suspend fun setOpenAiModel(model: String) = Unit
         override suspend fun setOllamaBaseUrl(url: String) = Unit
         override suspend fun setOllamaModel(model: String) = Unit
+        override suspend fun setVertexApiKey(key: String?) = Unit
+        override suspend fun setVertexModel(model: String) = Unit
         override suspend fun setSendChapterTextEnabled(enabled: Boolean) = Unit
         override suspend fun acknowledgeAiPrivacy() = Unit
         override suspend fun resetAiSettings() = Unit
@@ -191,6 +194,7 @@ class SettingsViewModelPunctuationPauseTest {
             claude = ClaudeApiProvider(http, store, cfg, json),
             openAi = OpenAiApiProvider(http, store, cfg, json),
             ollama = OllamaProvider(http, cfg, json),
+            vertex = VertexProvider(http, store, cfg, json),
         )
     }
 }

@@ -300,10 +300,10 @@ interface VoiceProviderUi {
 enum class UiLlmProvider {
     Claude, OpenAi, Ollama, Bedrock, Vertex, Foundry, Teams;
 
-    /** Whether this provider has a real implementation in PR-1.
+    /** Whether this provider has a real implementation.
      *  Matches `ProviderId.implemented`. */
     val implemented: Boolean
-        get() = this == Claude || this == OpenAi || this == Ollama
+        get() = this == Claude || this == OpenAi || this == Ollama || this == Vertex
 
     val displayName: String
         get() = when (this) {
@@ -329,6 +329,8 @@ data class UiAiSettings(
     val openAiKeyConfigured: Boolean = false,
     val ollamaBaseUrl: String = "http://10.0.0.1:11434",
     val ollamaModel: String = "llama3.3",
+    val vertexModel: String = "gemini-2.5-flash",
+    val vertexKeyConfigured: Boolean = false,
     val privacyAcknowledged: Boolean = false,
     val sendChapterTextEnabled: Boolean = true,
 )
@@ -577,6 +579,8 @@ interface SettingsRepositoryUi {
     suspend fun setOpenAiModel(model: String)
     suspend fun setOllamaBaseUrl(url: String)
     suspend fun setOllamaModel(model: String)
+    suspend fun setVertexApiKey(key: String?)   // null = clear
+    suspend fun setVertexModel(model: String)
     suspend fun setSendChapterTextEnabled(enabled: Boolean)
     suspend fun acknowledgeAiPrivacy()
     /** Wipe all AI configuration — provider/keys/URLs. */

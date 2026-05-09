@@ -62,6 +62,7 @@ open class LlmCredentialsStore @Inject constructor(
     open fun setVertexApiKey(key: String) =
         prefs.edit { putString(KEY_VERTEX, key) }
     open fun clearVertexApiKey() = prefs.edit { remove(KEY_VERTEX) }
+    open val hasVertexKey: Boolean get() = vertexApiKey() != null
 
     open fun foundryApiKey(): String? = prefs.getString(KEY_FOUNDRY, null)
     open fun setFoundryApiKey(key: String) =

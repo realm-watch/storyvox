@@ -32,7 +32,7 @@ enum class ProviderId {
     /** True if a real LlmProvider implementation exists for this id.
      *  False ids are surfaced as "coming soon" in the AI Settings. */
     val implemented: Boolean
-        get() = this == Claude || this == OpenAi || this == Ollama
+        get() = this == Claude || this == OpenAi || this == Ollama || this == Vertex
 
     /** Human-friendly label for the Settings UI. Localization is a
      *  follow-up; English-only labels for now match the rest of the

@@ -18,6 +18,7 @@ import `in`.jphe.storyvox.llm.provider.ClaudeApiProvider
 import `in`.jphe.storyvox.llm.provider.FakeStore
 import `in`.jphe.storyvox.llm.provider.OllamaProvider
 import `in`.jphe.storyvox.llm.provider.OpenAiApiProvider
+import `in`.jphe.storyvox.llm.provider.VertexProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
@@ -87,6 +88,7 @@ class ChapterRecapTest {
             claude = fakeProvider.asClaude(),
             openAi = fakeProvider.asOpenAi(),
             ollama = fakeProvider.asOllama(),
+            vertex = fakeProvider.asVertex(),
         )
         recap = ChapterRecap(
             chapterDao = db.chapterDao(),
@@ -227,6 +229,24 @@ private class FakeProvider {
 
     fun asOllama(): OllamaProvider = object : OllamaProvider(
         http = OkHttpClient(),
+        configFlow = flowOf(LlmConfig()),
+        json = Json,
+    ) {
+        override fun stream(
+            messages: List<LlmMessage>,
+            systemPrompt: String?,
+            model: String?,
+        ): Flow<String> {
+            lastMessages = messages
+            lastSystemPrompt = systemPrompt
+            return flowOf(*tokens.toTypedArray())
+        }
+        override suspend fun probe(): ProbeResult = ProbeResult.Ok
+    }
+
+    fun asVertex(): VertexProvider = object : VertexProvider(
+        http = OkHttpClient(),
+        store = FakeStore(),
         configFlow = flowOf(LlmConfig()),
         json = Json,
     ) {
