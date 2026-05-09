@@ -109,7 +109,9 @@ fun SettingsScreen(
                     Slider(
                         value = s.defaultSpeed,
                         onValueChange = viewModel::setSpeed,
-                        valueRange = 0.5f..3.0f,
+                        // Widened past Thalia's P1 #5 (commute listeners
+                        // benefit from 3-4× on familiar narrators).
+                        valueRange = 0.5f..4.0f,
                         modifier = Modifier.semantics {
                             contentDescription = "Default speech speed"
                             stateDescription = "%.2f times".format(s.defaultSpeed)
@@ -677,43 +679,26 @@ private fun BufferSlider(
             max = BUFFER_MAX_CHUNKS,
         )
 
-        // Always-on note text. Issue #84 — substance is verbatim from the
-        // issue body's "Why we have a recommended max" / "Why we can't just
-        // fix the delay" paragraphs.
+        // One-liner explainer — full multi-paragraph rationale lives in
+        // #84 + #138 issue bodies, not the Settings card.
         Text(
-            text = "Pre-synthesizes extra audio ahead of where you're listening. " +
-                "A larger buffer hides moments where the voice engine can't keep up — " +
-                "useful on high-quality voices like Piper-high that synthesize slower " +
-                "than realtime on this device.",
+            text = "Pre-synthesizes audio ahead of where you're listening. " +
+                "Larger buffer hides slow voices; past the recommended max risks " +
+                "Android killing the app in the background.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = spacing.xs),
         )
-        Text(
-            text = "Why we have a recommended max: Past a certain size, Android may " +
-                "kill the app in the background while you're not actively using it. " +
-                "The recommended max is set just below where we currently believe " +
-                "that line is.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = "Why we can't just \"fix\" the delay: The bottleneck is the voice " +
-                "model running on this CPU — not the buffer logic. The structural fix " +
-                "is pre-rendering chapters to disk so playback reads finished audio " +
-                "instead of synthesizing live. That work is on the roadmap (#86 / PCM " +
-                "cache PRs C-H).",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
 
-        // Past-the-tick intensified warning. Issue #84 update — JP wants the
-        // probe to be visible so users above the tick know they're helping
-        // measure the LMK threshold.
         if (pastTick) {
             Text(
-                text = "Past the recommended max: Android may kill the app in the " +
-                    "background. Help us find the exact limit by reporting what works.",
+                text = if (danger) {
+                    "Danger zone — Android is likely to kill the app while " +
+                        "you're not looking. Pull back unless you're actively probing."
+                } else {
+                    "Past recommended — Android may kill the app in the background. " +
+                        "Help us find the line by reporting what works."
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = if (danger) red else amber,
                 modifier = Modifier.padding(top = spacing.xs),
@@ -777,16 +762,16 @@ private fun PunctuationPauseSlider(
     ) {
         Text("Pause after . , ? ! ; :", style = MaterialTheme.typography.bodyMedium)
         Text(
-            "How long to pause between sentences. 0× makes the reader sprint; " +
-                "1× is the audiobook default; 1.75× matches the old \"Long\" stop; " +
-                "4× gives narration full theatrical room to breathe.",
+            "Inter-sentence breath. 0× sprints, 1× is the audiobook " +
+                "default, 4× is theatrical.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
         Text(
-            text = "Pause after punctuation: ${"%.2f".format(multiplier)}×",
+            text = "${"%.2f".format(multiplier)}×",
             style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
         )
 
         Slider(
