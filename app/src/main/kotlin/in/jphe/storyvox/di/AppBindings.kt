@@ -334,7 +334,18 @@ private class RealBrowseRepositoryUi(
                     ),
                     sourceId = sourceId,
                 )
+                is BrowseSource.ByGenre -> repo.browseByGenre(
+                    genre = source.genre,
+                    page = page,
+                    sourceId = sourceId,
+                )
             }
+        }
+
+    override suspend fun genres(sourceId: String): List<String> =
+        when (val r = repo.genres(sourceId)) {
+            is FictionResult.Success -> r.value
+            else -> emptyList()
         }
 }
 

@@ -100,6 +100,14 @@ interface BrowseRepositoryUi {
         source: BrowseSource,
         sourceId: String = `in`.jphe.storyvox.data.source.SourceIds.ROYAL_ROAD,
     ): BrowsePaginator
+
+    /**
+     * Genres / tags / wings supported by [sourceId]. MemPalace returns
+     * its top-level wing names; Royal Road returns the curated tag list;
+     * GitHub returns an empty list (no genre concept). Used by
+     * BrowseViewModel to populate the MemPalace wing filter chips.
+     */
+    suspend fun genres(sourceId: String): List<String>
 }
 
 /** What kind of listing the paginator should fetch. The repository
@@ -121,6 +129,13 @@ sealed interface BrowseSource {
         val query: String,
         val filter: GitHubSearchFilter,
     ) : BrowseSource
+    /**
+     * MemPalace wing-scoped listing (#191). Routes through
+     * `FictionRepository.browseByGenre(genre)`, which on MemPalace's
+     * source resolves to `MemPalaceSource.byGenre(wing)` — top rooms
+     * inside the wing by drawer count.
+     */
+    data class ByGenre(val genre: String) : BrowseSource
 }
 
 /** A page-by-page accumulating cursor over a remote fiction listing.
@@ -209,6 +224,19 @@ enum class GitHubSort { BestMatch, Stars, Updated }
 /** GitHub `archived:` qualifier (#205). `Any` omits the qualifier and
  *  returns both active and archived repos (the GitHub default). */
 enum class GitHubArchivedStatus { Any, ActiveOnly, ArchivedOnly }
+
+/**
+ * MemPalace-shaped filter for Browse → Palace (#191). Single dimension
+ * today: which wing of the palace to scope the listing to. Null wing
+ * means "all wings" — Browse falls back to Popular/NewReleases tabs as
+ * before. Lives in `:feature/api` so the wing dropdown sheet and the
+ * ViewModel can hold it without taking a dep on `:source-mempalace`.
+ */
+data class MemPalaceFilter(
+    /** Wing name as returned by `MemPalaceSource.genres()`. Null = no
+     *  wing filter; Browse renders the unscoped Popular tab. */
+    val wing: String? = null,
+)
 
 data class UiPlaybackState(
     val fictionId: String?,
