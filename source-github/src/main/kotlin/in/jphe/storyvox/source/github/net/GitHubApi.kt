@@ -140,6 +140,27 @@ internal open class GitHubApi @Inject constructor(
         )
     }
 
+    /**
+     * `GET /user/repos?affiliation=owner,collaborator&sort=updated&page=N&per_page=P`.
+     *
+     * Issue #200. Returns repos the authenticated user owns or has been
+     * granted collaborator access to, ordered by most-recently-pushed.
+     * The auth bearer is attached transparently by [`in`.jphe.storyvox.
+     * source.github.auth.GitHubAuthInterceptor]; an unauthenticated
+     * caller gets a 401 mapped to `HttpError(401, ...)`.
+     *
+     * Pagination is by `Link: rel=next` header on GitHub's side; we
+     * don't parse it — the caller infers `hasNext` from
+     * `items.size >= perPage` (a full page strongly implies another
+     * exists; a short page is always the last one).
+     */
+    open suspend fun myRepos(
+        page: Int = 1,
+        perPage: Int = 20,
+    ): GitHubApiResult<List<GhRepo>> = get(
+        "$BASE_URL/user/repos?affiliation=owner,collaborator&sort=updated&page=$page&per_page=$perPage",
+    )
+
     private suspend inline fun <reified T> get(url: String): GitHubApiResult<T> =
         withContext(Dispatchers.IO) {
             val req = Request.Builder()

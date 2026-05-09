@@ -61,6 +61,22 @@ interface FictionRepository {
         sourceId: String = SourceIds.ROYAL_ROAD,
     ): FictionResult<ListPage<FictionSummary>>
 
+    /**
+     * Cache an externally-fetched browse listing the same way
+     * [browsePopular] / [search] do — `upsertAllPreservingUserState` so
+     * a subsequent `refreshDetail(id)` finds a row with the right
+     * `sourceId` and routes to the correct source.
+     *
+     * Used by source-specific listing endpoints that don't fit
+     * [SearchQuery] (e.g. GitHub `/user/repos` for #200) so their
+     * results materialize as DB-backed fictions when the user taps a
+     * card. [result] is returned untouched on either success or
+     * failure; callers use this as a transparent passthrough.
+     */
+    suspend fun cacheBrowseListing(
+        result: FictionResult<ListPage<FictionSummary>>,
+    ): FictionResult<ListPage<FictionSummary>>
+
     suspend fun genres(
         sourceId: String = SourceIds.ROYAL_ROAD,
     ): FictionResult<List<String>>
@@ -178,6 +194,10 @@ class FictionRepositoryImpl @Inject constructor(
 
     override suspend fun genres(sourceId: String): FictionResult<List<String>> =
         sourceFor(sourceId).genres()
+
+    override suspend fun cacheBrowseListing(
+        result: FictionResult<ListPage<FictionSummary>>,
+    ): FictionResult<ListPage<FictionSummary>> = cacheListing(result)
 
     override suspend fun refreshDetail(id: String): FictionResult<Unit> = withContext(Dispatchers.IO) {
         // Look up the persisted row to route to the correct source. Falls

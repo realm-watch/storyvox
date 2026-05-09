@@ -136,6 +136,14 @@ sealed interface BrowseSource {
      * inside the wing by drawer count.
      */
     data class ByGenre(val genre: String) : BrowseSource
+
+    /**
+     * Auth-gated `/user/repos` listing for the signed-in GitHub user
+     * (#200). Only meaningful when `BrowseSourceKey.GitHub` is selected
+     * AND `UiSettings.github` is signed-in; the BrowseViewModel gates
+     * the tab visibility, the adapter routes to `GitHubAuthedSource`.
+     */
+    data object GitHubMyRepos : BrowseSource
 }
 
 /** A page-by-page accumulating cursor over a remote fiction listing.

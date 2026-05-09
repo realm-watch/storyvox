@@ -9,6 +9,7 @@ import dagger.multibindings.IntoMap
 import dagger.multibindings.StringKey
 import `in`.jphe.storyvox.data.source.FictionSource
 import `in`.jphe.storyvox.data.source.SourceIds
+import `in`.jphe.storyvox.source.github.GitHubAuthedSource
 import `in`.jphe.storyvox.source.github.GitHubSource
 import `in`.jphe.storyvox.source.github.auth.DeviceFlowApi
 import `in`.jphe.storyvox.source.github.auth.GitHubAuthInterceptor
@@ -107,6 +108,15 @@ internal abstract class GitHubBindings {
     @IntoMap
     @StringKey(SourceIds.GITHUB)
     abstract fun bindFictionSource(impl: GitHubSource): FictionSource
+
+    /**
+     * Cross-module binding so the Browse adapter (in `:app`) can route
+     * auth-gated GitHub listings (`/user/repos`, `/user/starred`, ...)
+     * without exposing the package-internal [GitHubSource] type. #200.
+     */
+    @Binds
+    @Singleton
+    abstract fun bindGitHubAuthedSource(impl: GitHubSource): GitHubAuthedSource
 
     @Binds
     @Singleton

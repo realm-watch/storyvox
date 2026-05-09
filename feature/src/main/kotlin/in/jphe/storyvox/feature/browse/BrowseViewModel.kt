@@ -11,7 +11,9 @@ import `in`.jphe.storyvox.feature.api.BrowseRepositoryUi
 import `in`.jphe.storyvox.feature.api.BrowseSource
 import `in`.jphe.storyvox.feature.api.GitHubSearchFilter
 import `in`.jphe.storyvox.feature.api.MemPalaceFilter
+import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.UiFiction
+import `in`.jphe.storyvox.feature.api.UiGitHubAuthState
 import `in`.jphe.storyvox.feature.api.UiSearchOrder
 import `in`.jphe.storyvox.feature.api.UiSortDirection
 import javax.inject.Inject
@@ -31,7 +33,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-enum class BrowseTab { Popular, NewReleases, BestRated, Search }
+enum class BrowseTab { Popular, NewReleases, BestRated, Search, MyRepos }
 
 /**
  * Top-level source picker on the Browse screen. Chooses which
@@ -56,19 +58,26 @@ enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
  *  curator rating but doesn't yet sort by it), so it's hidden on
  *  GitHub. Search is wired as of step 8b — flips
  *  `GitHubSource.search()` to `/search/repositories?q=topic:fiction
- *  +{userQuery}`. */
-fun BrowseSourceKey.supportedTabs(): List<BrowseTab> = when (this) {
+ *  +{userQuery}`.
+ *
+ *  [githubSignedIn] gates the `MyRepos` tab on the GitHub source
+ *  (#200) — visible only when the user has captured an OAuth session
+ *  via the Device Flow. Defaulting false keeps existing call sites
+ *  (tests, screens that don't observe settings yet) on the anonymous
+ *  tab list. */
+fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseTab> = when (this) {
     BrowseSourceKey.RoyalRoad -> listOf(
         BrowseTab.Popular,
         BrowseTab.NewReleases,
         BrowseTab.BestRated,
         BrowseTab.Search,
     )
-    BrowseSourceKey.GitHub -> listOf(
-        BrowseTab.Popular,
-        BrowseTab.NewReleases,
-        BrowseTab.Search,
-    )
+    BrowseSourceKey.GitHub -> buildList {
+        add(BrowseTab.Popular)
+        add(BrowseTab.NewReleases)
+        if (githubSignedIn) add(BrowseTab.MyRepos)
+        add(BrowseTab.Search)
+    }
     // Spec: docs/superpowers/specs/2026-05-08-mempalace-integration-design.md.
     // - Popular = Wings tab (top-N rooms by drawer count).
     // - NewReleases = Recent tab (rooms ordered by latest drawer).
@@ -115,6 +124,9 @@ data class BrowseUiState(
      *  lazily on first switch to MemPalace; empty until the daemon
      *  responds (or daemon unreachable). */
     val palaceWings: List<String> = emptyList(),
+    /** True when an OAuth session is captured (#200). Drives the
+     *  `MyRepos` tab visibility on the GitHub source. */
+    val githubSignedIn: Boolean = false,
 )
 
 /** Typed view of a paginator's five state flows. Lifted into its own
@@ -129,11 +141,12 @@ private data class PaginatorView(
 )
 
 /** Bundled view of the user-controllable knobs (source picker, tab,
- *  query, RR filter, GitHub filter, MemPalace filter). Lifted into its
- *  own record so the outer combines stay within the 5-arg `combine`
- *  overload as we add filter shapes per source. The MemPalace filter
- *  is folded in via a nested combine (see [BrowseViewModel.controls])
- *  to keep within the overload arity. */
+ *  query, RR filter, GitHub filter, MemPalace filter, GH sign-in).
+ *  Lifted into its own record so the outer combines stay within the
+ *  5-arg `combine` overload as we add filter shapes per source. The
+ *  MemPalace filter and the sign-in flag are folded in via nested
+ *  combines (see [BrowseViewModel.controls]) to keep within the
+ *  overload arity. */
 private data class ControlsView(
     val sourceKey: BrowseSourceKey,
     val tab: BrowseTab,
@@ -141,6 +154,7 @@ private data class ControlsView(
     val filter: BrowseFilter,
     val githubFilter: GitHubSearchFilter,
     val palaceFilter: MemPalaceFilter,
+    val githubSignedIn: Boolean,
 )
 
 /**
@@ -160,6 +174,7 @@ private data class ControlsView(
 @HiltViewModel
 class BrowseViewModel @Inject constructor(
     private val repo: BrowseRepositoryUi,
+    settings: SettingsRepositoryUi,
 ) : ViewModel() {
 
     private val _sourceKey = MutableStateFlow(BrowseSourceKey.RoyalRoad)
@@ -175,13 +190,22 @@ class BrowseViewModel @Inject constructor(
     private var palaceWingsLoaded = false
     val query: StateFlow<String> = _query.asStateFlow()
 
+    /** Github sign-in projection — drives MyRepos tab visibility (#200).
+     *  `Expired` reads as signed-out: the disk copy is intact for Settings
+     *  to render "session expired" but the listing endpoint would 401, so
+     *  hiding the tab keeps the user from a guaranteed-failure path. */
+    private val githubSignedIn: StateFlow<Boolean> = settings.settings
+        .map { it.github is UiGitHubAuthState.SignedIn }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     /** Active paginator for the current tuple; null when the search tab
      *  has neither a query nor active filters (the empty search hint is
-     *  shown instead). Two-step combine: first the 5-arg base tuple
-     *  (source/tab/query/RRFilter/GHFilter), then merged with the
-     *  MemPalace filter to keep within `combine`'s 5-arg overload. */
-    private val paginator: StateFlow<BrowsePaginator?> = combine(
-        combine(
+     *  shown instead). Multi-step combine: the 5-arg overload is full
+     *  with source/tab/query/RRFilter/GHFilter, so palaceFilter (#191)
+     *  and githubSignedIn (#200) layer on top in nested combines. */
+    private val paginator: StateFlow<BrowsePaginator?> = run {
+        val baseTuple = combine(
             _sourceKey,
             _tab,
             _query.debounce(300),
@@ -189,15 +213,22 @@ class BrowseViewModel @Inject constructor(
             _githubFilter,
         ) { sourceKey, tab, q, filter, ghFilter ->
             ResolveTuple(sourceKey, tab, q, filter, ghFilter)
-        },
-        _palaceFilter,
-    ) { tup, palaceFilter ->
-        resolveSource(tup.sourceKey, tup.tab, tup.q, tup.filter, tup.ghFilter, palaceFilter)
-            ?.let { source -> source to tup.sourceKey.sourceId }
+        }
+        combine(baseTuple, _palaceFilter, githubSignedIn) { tup, palaceFilter, signedIn ->
+            resolveSource(
+                sourceKey = tup.sourceKey,
+                tab = tup.tab,
+                q = tup.q,
+                filter = tup.filter,
+                githubFilter = tup.ghFilter,
+                palaceFilter = palaceFilter,
+                githubSignedIn = signedIn,
+            )?.let { source -> source to tup.sourceKey.sourceId }
+        }
+            .distinctUntilChanged()
+            .map { pair -> pair?.let { (source, sourceId) -> repo.paginator(source, sourceId) } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     }
-        .distinctUntilChanged()
-        .map { pair -> pair?.let { (source, sourceId) -> repo.paginator(source, sourceId) } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     init {
         // Kick off the initial page whenever a fresh paginator lands.
@@ -208,19 +239,41 @@ class BrowseViewModel @Inject constructor(
         viewModelScope.launch {
             paginator.collectLatest { p -> p?.loadNext() }
         }
+        // Auto-snap off `MyRepos` when the user signs out (#200). The
+        // tab disappears from `supportedTabs(githubSignedIn=false)`, so
+        // leaving the value pinned would render an empty grid driven by
+        // a null BrowseSource. Snap to Popular so the screen has
+        // something to draw.
+        viewModelScope.launch {
+            githubSignedIn.collectLatest { signedIn ->
+                if (!signedIn && _tab.value == BrowseTab.MyRepos) {
+                    _tab.value = BrowseTab.Popular
+                }
+            }
+        }
     }
 
-    /** All user-controlled knobs collapsed into one typed record so the
-     *  outer combines below stay within the 5-arg `combine` overload.
-     *  The MemPalace filter is folded in via a nested combine to stay
-     *  within the overload arity. */
-    private val controls: kotlinx.coroutines.flow.Flow<ControlsView> = combine(
-        combine(_sourceKey, _tab, _query, _filter, _githubFilter) { sourceKey, tab, q, filter, ghFilter ->
+    /** All user-controlled knobs collapsed into one typed record. The
+     *  inner 5-arg combine builds the base tuple; outer combines fold
+     *  in palaceFilter (#191) and githubSignedIn (#200) without
+     *  exceeding the `combine` 5-arg overload. */
+    private val controls: kotlinx.coroutines.flow.Flow<ControlsView> = run {
+        val baseTuple = combine(
+            _sourceKey, _tab, _query, _filter, _githubFilter,
+        ) { sourceKey, tab, q, filter, ghFilter ->
             ResolveTuple(sourceKey, tab, q, filter, ghFilter)
-        },
-        _palaceFilter,
-    ) { tup, palaceFilter ->
-        ControlsView(tup.sourceKey, tup.tab, tup.q, tup.filter, tup.ghFilter, palaceFilter)
+        }
+        combine(baseTuple, _palaceFilter, githubSignedIn) { tup, palaceFilter, signedIn ->
+            ControlsView(
+                sourceKey = tup.sourceKey,
+                tab = tup.tab,
+                query = tup.q,
+                filter = tup.filter,
+                githubFilter = tup.ghFilter,
+                palaceFilter = palaceFilter,
+                githubSignedIn = signedIn,
+            )
+        }
     }
 
     val uiState: StateFlow<BrowseUiState> = paginator.flatMapLatest { p ->
@@ -243,6 +296,7 @@ class BrowseViewModel @Inject constructor(
                     isGitHubFilterActive = c.githubFilter.isActive(),
                     palaceFilter = c.palaceFilter,
                     palaceWings = wings,
+                    githubSignedIn = c.githubSignedIn,
                 )
             }
         } else {
@@ -275,6 +329,7 @@ class BrowseViewModel @Inject constructor(
                     isGitHubFilterActive = c.githubFilter.isActive(),
                     palaceFilter = c.palaceFilter,
                     palaceWings = wings,
+                    githubSignedIn = c.githubSignedIn,
                 )
             }
         }
@@ -285,9 +340,9 @@ class BrowseViewModel @Inject constructor(
         _sourceKey.value = key
         // If the previously-selected tab isn't supported on the new
         // source (e.g. user was on BestRated/Search on RR and switches
-        // to GitHub), snap to Popular so the screen has something
-        // sensible to render.
-        if (_tab.value !in key.supportedTabs()) {
+        // to GitHub, or MyRepos when not on GitHub), snap to Popular so
+        // the screen has something sensible to render.
+        if (_tab.value !in key.supportedTabs(githubSignedIn.value)) {
             _tab.value = BrowseTab.Popular
         }
         // Per-source filter shapes don't translate, so clear the
@@ -364,12 +419,16 @@ private fun resolveSource(
     filter: BrowseFilter,
     githubFilter: GitHubSearchFilter,
     palaceFilter: MemPalaceFilter,
+    githubSignedIn: Boolean,
 ): BrowseSource? = when (sourceKey) {
     // GitHub: filter takes priority over tab. When filter is active OR
     // user is on Search with a typed query, route to FilteredGitHub so
     // the qualifier-laden query lands. Otherwise the tab decides
-    // (Popular/NewReleases/Search). Search-with-blank-query stays null
-    // so the screen renders SearchHint.
+    // (Popular/NewReleases/MyRepos/Search). MyRepos is sign-in-gated;
+    // a stale tab value when the user has signed out maps to null
+    // (BrowseScreen will see the tab missing from supportedTabs and
+    // re-snap). Search-with-blank-query stays null so the screen
+    // renders SearchHint.
     BrowseSourceKey.GitHub -> when {
         githubFilter.isActive() -> BrowseSource.FilteredGitHub(
             query = if (tab == BrowseTab.Search) q else "",
@@ -377,6 +436,7 @@ private fun resolveSource(
         )
         tab == BrowseTab.Popular -> BrowseSource.Popular
         tab == BrowseTab.NewReleases -> BrowseSource.NewReleases
+        tab == BrowseTab.MyRepos -> if (githubSignedIn) BrowseSource.GitHubMyRepos else null
         tab == BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
         else -> null
     }
