@@ -373,6 +373,13 @@ private class RealBrowseRepositoryUi(
                 // github fictionId.
                 BrowseSource.GitHubMyRepos -> repo.cacheBrowseListing(github.myRepos(page = page))
                 BrowseSource.GitHubStarred -> repo.cacheBrowseListing(github.starred(page = page))
+                // #202 — auth-gated `/gists` listing. Same caching
+                // pattern as MyRepos / Starred: rows land in the DB
+                // with their `github:gist:<id>` ids so tapping a gist
+                // card resolves through `fictionDetail` and the gist
+                // codepath in GitHubSource — not the RR fallback.
+                BrowseSource.GitHubGists ->
+                    repo.cacheBrowseListing(github.authenticatedUserGists(page = page))
             }
         }
 

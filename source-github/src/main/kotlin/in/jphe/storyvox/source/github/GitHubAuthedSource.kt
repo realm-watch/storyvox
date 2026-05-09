@@ -39,4 +39,22 @@ interface GitHubAuthedSource {
      * → GitHub uses). Drives the Browse → Starred tab (#201).
      */
     suspend fun starred(page: Int): FictionResult<ListPage<FictionSummary>>
+
+    /**
+     * `/gists` — the authenticated user's gists. Includes secret
+     * gists when the bearer token has the `gist` scope (#202).
+     * Each gist maps to a fiction id (`github:gist:<id>`) the
+     * existing `fictionDetail` path can resolve into a multi-chapter
+     * fiction, one chapter per file.
+     */
+    suspend fun authenticatedUserGists(page: Int): FictionResult<ListPage<FictionSummary>>
+
+    /**
+     * `/users/{user}/gists` — public gists for [user] (#202).
+     * Anonymous-compatible (uses the public endpoint) but still
+     * benefits from higher rate limits when a token is attached.
+     * Reserved for the URL-resolved "view someone's gist roster"
+     * flow; not surfaced in Browse today.
+     */
+    suspend fun userGists(user: String, page: Int): FictionResult<ListPage<FictionSummary>>
 }

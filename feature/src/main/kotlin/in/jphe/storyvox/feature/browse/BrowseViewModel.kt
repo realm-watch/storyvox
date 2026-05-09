@@ -33,7 +33,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-enum class BrowseTab { Popular, NewReleases, BestRated, Search, MyRepos, Starred }
+enum class BrowseTab { Popular, NewReleases, BestRated, Search, MyRepos, Starred, Gists }
 
 /**
  * Top-level source picker on the Browse screen. Chooses which
@@ -61,8 +61,9 @@ enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
  *  +{userQuery}`.
  *
  *  [githubSignedIn] gates the auth-only tabs on the GitHub source —
- *  `MyRepos` (#200) and `Starred` (#201) — visible only when the user
- *  has captured an OAuth session via the Device Flow. Defaulting false
+ *  `MyRepos` (#200), `Starred` (#201), and `Gists` (#202) — visible
+ *  only when the user has captured an OAuth session via the Device
+ *  Flow. Defaulting false
  *  keeps existing call sites (tests, screens that don't observe
  *  settings yet) on the anonymous tab list. */
 fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseTab> = when (this) {
@@ -78,6 +79,7 @@ fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseT
         if (githubSignedIn) {
             add(BrowseTab.MyRepos)
             add(BrowseTab.Starred)
+            add(BrowseTab.Gists)
         }
         add(BrowseTab.Search)
     }
@@ -127,8 +129,10 @@ data class BrowseUiState(
      *  lazily on first switch to MemPalace; empty until the daemon
      *  responds (or daemon unreachable). */
     val palaceWings: List<String> = emptyList(),
-    /** True when an OAuth session is captured (#200). Drives the
-     *  `MyRepos` tab visibility on the GitHub source. */
+    /** True when an OAuth session is captured. Drives the `MyRepos`
+     *  (#200) and `Gists` (#202) tab visibility on the GitHub
+     *  source. Sourced from `SettingsRepositoryUi.settings.github`
+     *  and flips back to false on sign-out / token expiry. */
     val githubSignedIn: Boolean = false,
     /** True when the user has a GitHub OAuth session that includes the
      *  `repo` scope (#203 / #204). Drives the visibility chip row in
@@ -163,6 +167,10 @@ private data class ControlsView(
     val filter: BrowseFilter,
     val githubFilter: GitHubSearchFilter,
     val palaceFilter: MemPalaceFilter,
+    /** Snapshot of the GitHub auth state — true when the user has a
+     *  captured session (`UiGitHubAuthState.SignedIn`). Drives the
+     *  `MyRepos` (#200) and `Gists` (#202) tab visibility conditions
+     *  in [BrowseUiState]. */
     val githubSignedIn: Boolean,
     val hasGitHubRepoScope: Boolean,
 )
@@ -200,10 +208,11 @@ class BrowseViewModel @Inject constructor(
     private var palaceWingsLoaded = false
     val query: StateFlow<String> = _query.asStateFlow()
 
-    /** Github sign-in projection — drives MyRepos tab visibility (#200).
-     *  `Expired` reads as signed-out: the disk copy is intact for Settings
-     *  to render "session expired" but the listing endpoint would 401, so
-     *  hiding the tab keeps the user from a guaranteed-failure path. */
+    /** Github sign-in projection — drives MyRepos (#200) and Gists
+     *  (#202) tab visibility. `Expired` reads as signed-out: the disk
+     *  copy is intact for Settings to render "session expired" but the
+     *  listing endpoints would 401, so hiding the tabs keeps the user
+     *  from a guaranteed-failure path. */
     private val githubSignedIn: StateFlow<Boolean> = settings.settings
         .map { it.github is UiGitHubAuthState.SignedIn }
         .distinctUntilChanged()
@@ -264,8 +273,8 @@ class BrowseViewModel @Inject constructor(
         viewModelScope.launch {
             paginator.collectLatest { p -> p?.loadNext() }
         }
-        // Auto-snap off auth-only tabs (`MyRepos` #200, `Starred` #201)
-        // when the user signs out. They disappear from
+        // Auto-snap off auth-only tabs (`MyRepos` #200, `Starred` #201,
+        // `Gists` #202) when the user signs out. They disappear from
         // `supportedTabs(githubSignedIn=false)`, so leaving the value
         // pinned would render an empty grid driven by a null
         // BrowseSource. Snap to Popular so the screen has something to
@@ -281,7 +290,7 @@ class BrowseViewModel @Inject constructor(
 
     /** All user-controlled knobs collapsed into one typed record. The
      *  inner 5-arg combine builds the base tuple; outer combine folds
-     *  in palaceFilter (#191), githubSignedIn (#200), and the
+     *  in palaceFilter (#191), githubSignedIn (#200/#202), and the
      *  has-`repo`-scope flag (#204) without exceeding the `combine`
      *  5-arg overload. */
     private val controls: kotlinx.coroutines.flow.Flow<ControlsView> = run {
@@ -370,8 +379,8 @@ class BrowseViewModel @Inject constructor(
         _sourceKey.value = key
         // If the previously-selected tab isn't supported on the new
         // source (e.g. user was on BestRated/Search on RR and switches
-        // to GitHub, or MyRepos when not on GitHub), snap to Popular so
-        // the screen has something sensible to render.
+        // to GitHub, or MyRepos/Gists when not on GitHub), snap to
+        // Popular so the screen has something sensible to render.
         if (_tab.value !in key.supportedTabs(githubSignedIn.value)) {
             _tab.value = BrowseTab.Popular
         }
@@ -434,7 +443,7 @@ class BrowseViewModel @Inject constructor(
 /** Tabs on the GitHub source that require an OAuth session.
  *  Used by the auto-snap watcher to bounce the user off the tab
  *  cleanly when their session goes away (sign-out, expired). */
-private val AUTH_ONLY_GH_TABS: Set<BrowseTab> = setOf(BrowseTab.MyRepos, BrowseTab.Starred)
+private val AUTH_ONLY_GH_TABS: Set<BrowseTab> = setOf(BrowseTab.MyRepos, BrowseTab.Starred, BrowseTab.Gists)
 
 /** 5-arg shoehorn so the inner [combine] stays within the overload
  *  arity. Folded back into [ControlsView] (or consumed directly by
@@ -459,16 +468,20 @@ private fun resolveSource(
     // GitHub: filter takes priority over tab. When filter is active OR
     // user is on Search with a typed query, route to FilteredGitHub so
     // the qualifier-laden query lands. Otherwise the tab decides
-    // (Popular/NewReleases/MyRepos/Search). MyRepos is sign-in-gated;
-    // a stale tab value when the user has signed out maps to null
-    // (BrowseScreen will see the tab missing from supportedTabs and
-    // re-snap). Search-with-blank-query stays null so the screen
-    // renders SearchHint.
+    // (Popular/NewReleases/MyRepos/Gists/Search). MyRepos and Gists
+    // are sign-in-gated; a stale tab value when the user has signed
+    // out maps to null (BrowseScreen will see the tab missing from
+    // supportedTabs and re-snap). Search-with-blank-query stays null
+    // so the screen renders SearchHint. The GitHub filter doesn't
+    // apply to Gists (no `/search/gists` endpoint shape matches the
+    // repo-search qualifiers) so an active filter just means the tab
+    // still pages through gists.
     BrowseSourceKey.GitHub -> when {
         // Auth-only tabs short-circuit ahead of the filter check —
-        // search qualifiers don't apply to `/user/{repos,starred}`.
+        // search qualifiers don't apply to `/user/{repos,starred,gists}`.
         tab == BrowseTab.MyRepos -> if (githubSignedIn) BrowseSource.GitHubMyRepos else null
         tab == BrowseTab.Starred -> if (githubSignedIn) BrowseSource.GitHubStarred else null
+        tab == BrowseTab.Gists -> if (githubSignedIn) BrowseSource.GitHubGists else null
         githubFilter.isActive() -> BrowseSource.FilteredGitHub(
             query = if (tab == BrowseTab.Search) q else "",
             filter = githubFilter,

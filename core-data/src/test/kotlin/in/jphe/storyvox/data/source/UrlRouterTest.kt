@@ -107,4 +107,46 @@ class UrlRouterTest {
         val m = UrlRouter.route("  https://www.royalroad.com/fiction/7  ")
         assertEquals(UrlRouter.Match("royalroad", "7"), m)
     }
+
+    // ── Gists ─────────────────────────────────────────────────────────────
+
+    @Test fun `gist url with user prefix routes to gist sub-prefix`() {
+        val m = UrlRouter.route("https://gist.github.com/jphein/abc123def456")
+        assertEquals(UrlRouter.Match("github", "github:gist:abc123def456"), m)
+    }
+
+    @Test fun `gist url without user prefix is accepted`() {
+        // GitHub still serves the user-less form for legacy gist URLs.
+        val m = UrlRouter.route("https://gist.github.com/abc123def456")
+        assertEquals(UrlRouter.Match("github", "github:gist:abc123def456"), m)
+    }
+
+    @Test fun `gist url with revision suffix discards revision`() {
+        val m = UrlRouter.route(
+            "https://gist.github.com/jphein/abc123def456/0123456789abcdef",
+        )
+        assertEquals(UrlRouter.Match("github", "github:gist:abc123def456"), m)
+    }
+
+    @Test fun `gist mixed-case id is normalised to lowercase`() {
+        val m = UrlRouter.route("https://gist.github.com/jphein/ABC123DEF456")
+        assertEquals(UrlRouter.Match("github", "github:gist:abc123def456"), m)
+    }
+
+    @Test fun `gist short form with prefix routes to gist sub-prefix`() {
+        val m = UrlRouter.route("gist:abc123def456")
+        assertEquals(UrlRouter.Match("github", "github:gist:abc123def456"), m)
+    }
+
+    @Test fun `bare hex without gist prefix is not mistaken for a gist`() {
+        // Bare hex is too easy to collide with arbitrary user input;
+        // require the explicit `gist:` prefix on the short form.
+        assertNull(UrlRouter.route("abc123def456"))
+    }
+
+    @Test fun `gist with non-hex id is rejected`() {
+        // GitHub gist ids are hex; rejecting non-hex avoids picking up
+        // arbitrary `gist.github.com/<anything>` typos.
+        assertNull(UrlRouter.route("https://gist.github.com/jphein/not-a-gist"))
+    }
 }

@@ -852,6 +852,155 @@ class GitHubSourceTest {
             perPage: Int,
         ): GitHubApiResult<List<GhRepo>> =
             myReposByPage[page] ?: GitHubApiResult.NotFound("no /user/repos page $page")
+
+        override suspend fun userGists(
+            user: String,
+            page: Int,
+            perPage: Int,
+        ): GitHubApiResult<List<`in`.jphe.storyvox.source.github.model.GhGist>> =
+            GitHubApiResult.Success(emptyList(), etag = null)
+
+        override suspend fun authenticatedUserGists(
+            page: Int,
+            perPage: Int,
+        ): GitHubApiResult<List<`in`.jphe.storyvox.source.github.model.GhGist>> =
+            GitHubApiResult.Success(emptyList(), etag = null)
+
+        override suspend fun getGist(
+            gistId: String,
+        ): GitHubApiResult<`in`.jphe.storyvox.source.github.model.GhGist> =
+            GitHubApiResult.NotFound("gist not found")
+    }
+
+    // ─── Gists (#202) ──────────────────────────────────────────────────
+
+    private fun ghGist(
+        id: String,
+        description: String? = null,
+        ownerLogin: String? = "octocat",
+        public: Boolean = true,
+        files: Map<String, String> = mapOf("file.md" to "body"),
+    ): `in`.jphe.storyvox.source.github.model.GhGist =
+        `in`.jphe.storyvox.source.github.model.GhGist(
+            id = id,
+            description = description,
+            htmlUrl = "https://gist.github.com/$ownerLogin/$id",
+            public = public,
+            owner = ownerLogin?.let { GhOwner(login = it) },
+            files = files.mapValues { (name, body) ->
+                `in`.jphe.storyvox.source.github.model.GhGistFile(
+                    filename = name,
+                    content = body,
+                    size = body.length.toLong(),
+                )
+            },
+        )
+
+    private class GistFakeApi(
+        private val gists: Map<String, `in`.jphe.storyvox.source.github.model.GhGist> = emptyMap(),
+        private val authedList: List<`in`.jphe.storyvox.source.github.model.GhGist> = emptyList(),
+    ) : GitHubApi(httpClient = OkHttpClient()) {
+        override suspend fun getRepo(owner: String, repo: String) =
+            GitHubApiResult.NotFound("not used")
+        override suspend fun authenticatedUserGists(page: Int, perPage: Int) =
+            GitHubApiResult.Success(authedList, etag = null)
+        override suspend fun getGist(gistId: String) =
+            gists[gistId]?.let { GitHubApiResult.Success(it, etag = null) }
+                ?: GitHubApiResult.NotFound("gist not found")
+    }
+
+    @Test fun `authenticatedUserGists maps gist titles via description, then first filename`() = runBlocking {
+        val src = source(
+            api = GistFakeApi(
+                authedList = listOf(
+                    ghGist("a", description = "My snippet"),
+                    ghGist("b", description = null, files = mapOf("notes.md" to "x")),
+                    ghGist("c", description = "  ", files = mapOf("first.md" to "x", "second.md" to "y")),
+                ),
+            ),
+        )
+        val r = src.authenticatedUserGists(page = 1) as FictionResult.Success
+        assertEquals(3, r.value.items.size)
+        assertEquals("My snippet", r.value.items[0].title)
+        // Blank description still falls through to filename.
+        assertEquals("first.md", r.value.items[2].title)
+        assertEquals("notes.md", r.value.items[1].title)
+        assertEquals("github:gist:a", r.value.items[0].id)
+        assertEquals(SourceIds.GITHUB, r.value.items[0].sourceId)
+    }
+
+    @Test fun `gist fictionDetail builds chapters from files map preserving order`() = runBlocking {
+        val src = source(
+            api = GistFakeApi(
+                gists = mapOf(
+                    "abc" to ghGist(
+                        id = "abc",
+                        description = "Two-part gist",
+                        files = linkedMapOf(
+                            "01-intro.md" to "Hello world",
+                            "02-end.md" to "Goodbye",
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val r = src.fictionDetail("github:gist:abc") as FictionResult.Success
+        val d = r.value
+        assertEquals("github:gist:abc", d.summary.id)
+        assertEquals("Two-part gist", d.summary.title)
+        assertEquals(2, d.chapters.size)
+        assertEquals("01-intro.md", d.chapters[0].title)
+        assertEquals("github:gist:abc:01-intro.md", d.chapters[0].id)
+        assertEquals("02-end.md", d.chapters[1].title)
+        assertEquals(0, d.chapters[0].index)
+        assertEquals(1, d.chapters[1].index)
+    }
+
+    @Test fun `gist chapter renders file content via markdown renderer`() = runBlocking {
+        val src = source(
+            api = GistFakeApi(
+                gists = mapOf(
+                    "abc" to ghGist(
+                        id = "abc",
+                        files = mapOf("only.md" to "# Title\n\nBody text."),
+                    ),
+                ),
+            ),
+        )
+        val r = src.chapter("github:gist:abc", "github:gist:abc:only.md") as FictionResult.Success
+        assertTrue(r.value.htmlBody.contains("<h1>Title</h1>"))
+        assertTrue(r.value.plainBody.contains("Body text"))
+        assertEquals("only.md", r.value.info.title)
+    }
+
+    @Test fun `gist chapter surfaces NotFound when file absent`() = runBlocking {
+        val src = source(
+            api = GistFakeApi(
+                gists = mapOf("abc" to ghGist(id = "abc", files = mapOf("a.md" to ""))),
+            ),
+        )
+        val r = src.chapter("github:gist:abc", "github:gist:abc:b.md")
+        assertTrue(r is FictionResult.NotFound)
+    }
+
+    @Test fun `gist fiction id is rejected by parseFictionId so repo path is not entered`() = runBlocking {
+        // Repo-coords parser must reject `gist:`-prefixed ids so the
+        // gist codepath wins. A fiction id that confused the two would
+        // try to fetch `getRepo("gist", "abc")` which doesn't exist.
+        val src = source(api = GistFakeApi())
+        val r = src.fictionDetail("github:gist:abc")
+        // GistFakeApi.getGist returns NotFound for unknown ids.
+        assertTrue("got $r", r is FictionResult.NotFound)
+    }
+
+    @Test fun `latestRevisionToken on gist returns null without calling the API`() = runBlocking {
+        // Gists have no revision tokens — return Success(null) so the
+        // worker treats it as "no token, use full path" rather than
+        // dropping the fiction.
+        val src = source(api = GistFakeApi())
+        val r = src.latestRevisionToken("github:gist:abc")
+        assertTrue("got $r", r is FictionResult.Success)
+        assertEquals(null, (r as FictionResult.Success).value)
     }
 
 }

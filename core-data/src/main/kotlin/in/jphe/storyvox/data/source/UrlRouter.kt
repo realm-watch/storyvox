@@ -29,6 +29,26 @@ object UrlRouter {
         """^(?:github:)?([\w.-]+)/([\w.-]+?)(?:\.git)?$""",
     )
 
+    /**
+     * `https://gist.github.com/{user}/{id}` and the user-less variant
+     * `https://gist.github.com/{id}` GitHub still accepts. The id is
+     * a hex blob; the optional revision suffix `/<sha>` is tolerated
+     * but discarded — gists have no inter-revision identity in the
+     * fiction sense, so we always resolve to the head id.
+     */
+    private val GITHUB_GIST_PATTERN = Regex(
+        """^https?://gist\.github\.com/(?:([\w.-]+)/)?([0-9a-f]+)(?:/[0-9a-f]+)?/?$""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** Short form `gist:<id>` (no scheme). Bare hex isn't accepted —
+     *  too easy to collide with arbitrary user input that happens to
+     *  be hex. The explicit prefix anchors intent. */
+    private val GITHUB_GIST_SHORT_PATTERN = Regex(
+        """^gist:([0-9a-f]+)$""",
+        RegexOption.IGNORE_CASE,
+    )
+
     data class Match(val sourceId: String, val fictionId: String)
 
     fun route(input: String): Match? {
@@ -39,8 +59,21 @@ object UrlRouter {
             return Match(SourceIds.ROYAL_ROAD, m.groupValues[1])
         }
 
+        // Gist URLs must be matched before the GitHub repo pattern —
+        // both live on github.com, but only the gist subdomain matters
+        // here; the repo pattern is anchored on `github.com` (no
+        // subdomain), so the order is actually safe either way.
+        GITHUB_GIST_PATTERN.matchEntire(trimmed)?.let { m ->
+            val gistId = m.groupValues[2].lowercase()
+            return Match(SourceIds.GITHUB, "${SourceIds.GITHUB}:gist:$gistId")
+        }
+
         GITHUB_HTTPS_PATTERN.matchEntire(trimmed)?.let { m ->
             return Match(SourceIds.GITHUB, "${SourceIds.GITHUB}:${m.groupValues[1].lowercase()}/${m.groupValues[2].lowercase()}")
+        }
+
+        GITHUB_GIST_SHORT_PATTERN.matchEntire(trimmed)?.let { m ->
+            return Match(SourceIds.GITHUB, "${SourceIds.GITHUB}:gist:${m.groupValues[1].lowercase()}")
         }
 
         // Reject ambiguous short form on URLs that look like a full path

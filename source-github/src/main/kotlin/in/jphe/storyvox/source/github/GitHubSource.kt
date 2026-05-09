@@ -13,6 +13,7 @@ import `in`.jphe.storyvox.data.source.model.SearchQuery
 import `in`.jphe.storyvox.source.github.manifest.BookManifest
 import `in`.jphe.storyvox.source.github.manifest.ManifestChapter
 import `in`.jphe.storyvox.source.github.manifest.ManifestParser
+import `in`.jphe.storyvox.source.github.model.GhGist
 import `in`.jphe.storyvox.source.github.model.GhRepo
 import `in`.jphe.storyvox.source.github.model.decodedText
 import `in`.jphe.storyvox.source.github.net.GitHubApi
@@ -257,6 +258,12 @@ internal class GitHubSource @Inject constructor(
     )
 
     override suspend fun fictionDetail(fictionId: String): FictionResult<FictionDetail> {
+        // Gist fictions take a separate codepath: no manifest, no
+        // bare-repo dir-listing fallback — just the gist's `files` map
+        // mapped 1:1 into chapters.
+        parseGistFictionId(fictionId)?.let { gistId ->
+            return gistFictionDetail(fictionId, gistId)
+        }
         val coords = parseFictionId(fictionId)
             ?: return FictionResult.NotFound(message = "Not a GitHub fiction id: $fictionId")
         val (owner, repo) = coords
@@ -323,6 +330,13 @@ internal class GitHubSource @Inject constructor(
         fictionId: String,
         chapterId: String,
     ): FictionResult<ChapterContent> {
+        // Gist chapter id format: `<fictionId>:<filename>`. Gists have
+        // no commit history; we re-fetch the whole gist and pick the
+        // file out — the listing-stub `content` field is null, so this
+        // is the only path that yields the body.
+        parseGistFictionId(fictionId)?.let { gistId ->
+            return gistChapter(fictionId, gistId, chapterId)
+        }
         val coords = parseFictionId(fictionId)
             ?: return FictionResult.NotFound(message = "Not a GitHub fiction id: $fictionId")
         val (owner, repo) = coords
@@ -393,6 +407,12 @@ internal class GitHubSource @Inject constructor(
      * "fall back to the full path" rather than aborting the whole poll.
      */
     override suspend fun latestRevisionToken(fictionId: String): FictionResult<String?> {
+        // Gists have no commit history exposed via REST; fall back to
+        // the full `fictionDetail` path on every poll for now. Returning
+        // null instead of NotFound so the worker treats it as "no
+        // cheap-poll token, run the full path" rather than dropping the
+        // fiction entirely.
+        if (parseGistFictionId(fictionId) != null) return FictionResult.Success(null)
         val coords = parseFictionId(fictionId)
             ?: return FictionResult.NotFound(message = "Not a GitHub fiction id: $fictionId")
         val (owner, repo) = coords
@@ -569,13 +589,222 @@ internal class GitHubSource @Inject constructor(
         else -> FictionStatus.ONGOING
     }
 
-    /** `github:owner/repo` → `(owner, repo)` or null. */
+    /** `github:owner/repo` → `(owner, repo)` or null. Rejects gist
+     *  fiction ids (those use the [GIST_PREFIX] sub-prefix). */
     private fun parseFictionId(fictionId: String): Pair<String, String>? {
         val stripped = fictionId.removePrefix("${SourceIds.GITHUB}:")
         if (stripped == fictionId) return null
+        if (stripped.startsWith(GIST_PREFIX)) return null
         val slash = stripped.indexOf('/')
         if (slash <= 0 || slash == stripped.length - 1) return null
         return stripped.substring(0, slash) to stripped.substring(slash + 1)
+    }
+
+    /**
+     * `github:gist:<id>` → `<id>` or null. The `gist:` sub-prefix
+     * disambiguates gist fictions from owner/repo fictions, since
+     * gist ids overlap the alphanumeric space that owner/repo path
+     * segments occupy. Must be checked before [parseFictionId].
+     */
+    private fun parseGistFictionId(fictionId: String): String? {
+        val stripped = fictionId.removePrefix("${SourceIds.GITHUB}:")
+        if (stripped == fictionId) return null
+        if (!stripped.startsWith(GIST_PREFIX)) return null
+        val gistId = stripped.removePrefix(GIST_PREFIX)
+        if (gistId.isBlank() || '/' in gistId) return null
+        return gistId
+    }
+
+    // ─── gists ────────────────────────────────────────────────────────
+
+    /**
+     * Public list of [user]'s gists, mapped to [FictionSummary] for the
+     * Browse → GitHub → Gists tab (#202). Excludes secret gists by
+     * construction (the public `/users/{user}/gists` endpoint never
+     * surfaces them, even with a token); the [authenticatedUserGists]
+     * path is what the Settings-account-aware flow uses to include
+     * private/secret gists.
+     *
+     * Gist titles fall back through: [GhGist.description] →
+     * first-file filename → "Untitled gist". GitHub UIs use the same
+     * order; matching it keeps storyvox consistent with what users
+     * see at gist.github.com.
+     */
+    override suspend fun userGists(user: String, page: Int): FictionResult<ListPage<FictionSummary>> =
+        gistsPage(api.userGists(user, page = page), page)
+
+    /**
+     * Authenticated-user gists — `GET /gists`. Includes secret gists
+     * when the bearer token has the `gist` scope. The OkHttp
+     * interceptor attaches the token automatically; an anonymous call
+     * comes back as a 401 → mapped to `NetworkError(403)` by the API
+     * layer, which the caller surfaces as "sign in to see your gists."
+     */
+    override suspend fun authenticatedUserGists(page: Int): FictionResult<ListPage<FictionSummary>> =
+        gistsPage(api.authenticatedUserGists(page = page), page)
+
+    private fun gistsPage(
+        result: GitHubApiResult<List<GhGist>>,
+        page: Int,
+    ): FictionResult<ListPage<FictionSummary>> = when (result) {
+        is GitHubApiResult.Success -> {
+            val items = result.value.map { it.toFictionSummary() }
+            FictionResult.Success(
+                ListPage(
+                    items = items,
+                    page = page,
+                    // Default per_page=30 on the gists endpoints; signal
+                    // end-of-list when the page came back short.
+                    hasNext = items.size >= 30,
+                ),
+            )
+        }
+        is GitHubApiResult.NotFound -> FictionResult.Success(
+            ListPage(items = emptyList(), page = page, hasNext = false),
+        )
+        is GitHubApiResult.RateLimited -> FictionResult.RateLimited(
+            retryAfter = result.retryAfterSeconds?.let { it.toDuration(DurationUnit.SECONDS) },
+        )
+        is GitHubApiResult.HttpError -> FictionResult.NetworkError(
+            message = "GitHub error ${result.code}: ${result.message}",
+        )
+        is GitHubApiResult.NetworkError -> FictionResult.NetworkError(
+            message = "Could not reach GitHub",
+            cause = result.cause,
+        )
+        is GitHubApiResult.ParseError -> FictionResult.NetworkError(
+            message = "Malformed gists response",
+            cause = result.cause,
+        )
+    }
+
+    private fun GhGist.toFictionSummary(): FictionSummary {
+        val title = description?.takeIf { it.isNotBlank() }
+            ?: files.keys.firstOrNull()
+            ?: "Untitled gist"
+        return FictionSummary(
+            id = "${SourceIds.GITHUB}:$GIST_PREFIX$id",
+            sourceId = SourceIds.GITHUB,
+            title = title,
+            author = owner?.login.orEmpty(),
+            coverUrl = null,
+            description = if (public) null else "Secret gist",
+            tags = listOfNotNull(files.values.firstOrNull()?.language?.lowercase()),
+            // Gists have no lifecycle in the fiction sense; mark them
+            // ONGOING so they don't render with the COMPLETED badge.
+            status = FictionStatus.ONGOING,
+            chapterCount = files.size,
+            rating = null,
+        )
+    }
+
+    private suspend fun gistFictionDetail(
+        fictionId: String,
+        gistId: String,
+    ): FictionResult<FictionDetail> = when (val r = api.getGist(gistId)) {
+        is GitHubApiResult.Success -> FictionResult.Success(toGistFictionDetail(fictionId, r.value))
+        is GitHubApiResult.NotFound -> FictionResult.NotFound(message = r.message)
+        is GitHubApiResult.RateLimited -> FictionResult.RateLimited(
+            retryAfter = r.retryAfterSeconds?.let { it.toDuration(DurationUnit.SECONDS) },
+        )
+        is GitHubApiResult.HttpError -> FictionResult.NetworkError(
+            message = "GitHub error ${r.code}: ${r.message}",
+        )
+        is GitHubApiResult.NetworkError -> FictionResult.NetworkError(
+            message = "Could not reach GitHub",
+            cause = r.cause,
+        )
+        is GitHubApiResult.ParseError -> FictionResult.NetworkError(
+            message = "Malformed gist response",
+            cause = r.cause,
+        )
+    }
+
+    private fun toGistFictionDetail(fictionId: String, gist: GhGist): FictionDetail {
+        val title = gist.description?.takeIf { it.isNotBlank() }
+            ?: gist.files.keys.firstOrNull()
+            ?: "Untitled gist"
+        val author = gist.owner?.login.orEmpty()
+        // Each file in the gist's `files` map becomes a chapter. Single-
+        // file gists get one chapter titled after the file (the title
+        // field already shows the gist description); multi-file gists
+        // get the file map order GitHub returned, which matches the UI.
+        val chapters = gist.files.entries.mapIndexed { index, (filename, _) ->
+            ChapterInfo(
+                id = "$fictionId:$filename",
+                sourceChapterId = filename,
+                index = index,
+                title = filename,
+            )
+        }
+        return FictionDetail(
+            summary = FictionSummary(
+                id = fictionId,
+                sourceId = SourceIds.GITHUB,
+                title = title,
+                author = author,
+                coverUrl = null,
+                description = if (gist.public) gist.description else "Secret gist",
+                tags = listOfNotNull(gist.files.values.firstOrNull()?.language?.lowercase()),
+                status = FictionStatus.ONGOING,
+                chapterCount = chapters.size,
+                rating = null,
+            ),
+            chapters = chapters,
+            genres = emptyList(),
+            wordCount = null,
+            views = null,
+            followers = null,
+            lastUpdatedAt = null,
+            authorId = author.takeIf { it.isNotBlank() },
+        )
+    }
+
+    private suspend fun gistChapter(
+        fictionId: String,
+        gistId: String,
+        chapterId: String,
+    ): FictionResult<ChapterContent> {
+        val filename = chapterId.removePrefix("$fictionId:")
+        if (filename.isBlank() || filename == chapterId) {
+            return FictionResult.NotFound(message = "Malformed gist chapter id: $chapterId")
+        }
+        return when (val r = api.getGist(gistId)) {
+            is GitHubApiResult.Success -> {
+                val file = r.value.files[filename]
+                    ?: return FictionResult.NotFound(message = "Gist file not found: $filename")
+                val text = file.content
+                    ?: return FictionResult.NetworkError(
+                        message = "Gist file $filename had no inline content (truncated by GitHub)",
+                    )
+                val info = ChapterInfo(
+                    id = chapterId,
+                    sourceChapterId = filename,
+                    index = 0,
+                    title = filename,
+                )
+                // Gist files are typically markdown / plaintext; the
+                // existing markdown renderer handles both (a non-md
+                // source still yields a usable plainBody — markdown's
+                // graceful degradation is good enough here).
+                FictionResult.Success(markdownRenderer.render(info, text))
+            }
+            is GitHubApiResult.NotFound -> FictionResult.NotFound(message = r.message)
+            is GitHubApiResult.RateLimited -> FictionResult.RateLimited(
+                retryAfter = r.retryAfterSeconds?.let { it.toDuration(DurationUnit.SECONDS) },
+            )
+            is GitHubApiResult.HttpError -> FictionResult.NetworkError(
+                message = "GitHub error ${r.code}: ${r.message}",
+            )
+            is GitHubApiResult.NetworkError -> FictionResult.NetworkError(
+                message = "Could not reach GitHub",
+                cause = r.cause,
+            )
+            is GitHubApiResult.ParseError -> FictionResult.NetworkError(
+                message = "Malformed gist response",
+                cause = r.cause,
+            )
+        }
     }
 
     private suspend fun registryPage(
@@ -601,9 +830,20 @@ internal class GitHubSource @Inject constructor(
 
     private companion object {
         const val STEP_3F_AUTH = "GitHub source auth-gated calls not implemented yet — lands in step 3f (optional PAT support)"
+
         /** Per-page size for the auth-only feeds (#200, #201). 20 mirrors
          *  the search endpoint default so BrowsePaginator hands the user
          *  a consistent grid density across tabs. */
         const val MY_REPOS_PER_PAGE: Int = 20
+
+        /**
+         * Sub-prefix that separates a gist fiction id from an
+         * owner/repo fiction id. Both share the `github:` source
+         * prefix; `github:gist:<id>` resolves to the gist source path,
+         * `github:<owner>/<repo>` to the repo source path. Public
+         * because [latestRevisionToken] doesn't yet support gists and
+         * the cheap-poll worker uses this prefix to skip them.
+         */
+        const val GIST_PREFIX = "gist:"
     }
 }
