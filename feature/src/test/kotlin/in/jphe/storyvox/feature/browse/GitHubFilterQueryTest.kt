@@ -3,6 +3,7 @@ package `in`.jphe.storyvox.feature.browse
 import `in`.jphe.storyvox.feature.api.GitHubPushedSince
 import `in`.jphe.storyvox.feature.api.GitHubSearchFilter
 import `in`.jphe.storyvox.feature.api.GitHubSort
+import `in`.jphe.storyvox.feature.api.GitHubVisibilityFilter
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -155,6 +156,32 @@ class GitHubFilterQueryTest {
         assertTrue(empty.copy(sort = GitHubSort.Stars).isActive())
     }
 
+    @Test fun `visibility Both omits qualifier`() {
+        assertEquals(
+            "",
+            composeGitHubQuery("", empty.copy(visibility = GitHubVisibilityFilter.Both), today),
+        )
+    }
+
+    @Test fun `visibility PublicOnly emits is colon public`() {
+        assertEquals(
+            "is:public",
+            composeGitHubQuery("", empty.copy(visibility = GitHubVisibilityFilter.PublicOnly), today),
+        )
+    }
+
+    @Test fun `visibility PrivateOnly emits is colon private`() {
+        assertEquals(
+            "is:private",
+            composeGitHubQuery("", empty.copy(visibility = GitHubVisibilityFilter.PrivateOnly), today),
+        )
+    }
+
+    @Test fun `non-default visibility is active`() {
+        assertTrue(empty.copy(visibility = GitHubVisibilityFilter.PrivateOnly).isActive())
+        assertFalse(empty.copy(visibility = GitHubVisibilityFilter.Both).isActive())
+    }
+
     // -- activeCount -------------------------------------------------------------
 
     @Test fun `default activeCount is 0`() {
@@ -167,8 +194,9 @@ class GitHubFilterQueryTest {
             language = "en",
             pushedSince = GitHubPushedSince.Last7Days,
             sort = GitHubSort.Updated,
+            visibility = GitHubVisibilityFilter.PrivateOnly,
         )
-        assertEquals(4, filter.activeCount())
+        assertEquals(5, filter.activeCount())
     }
 
     @Test fun `partial filter counts only set knobs`() {
