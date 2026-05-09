@@ -10,6 +10,7 @@ import `in`.jphe.storyvox.feature.api.BrowsePaginator
 import `in`.jphe.storyvox.feature.api.BrowseRepositoryUi
 import `in`.jphe.storyvox.feature.api.BrowseSource
 import `in`.jphe.storyvox.feature.api.GitHubSearchFilter
+import `in`.jphe.storyvox.feature.api.MemPalaceFilter
 import `in`.jphe.storyvox.feature.api.UiFiction
 import `in`.jphe.storyvox.feature.api.UiSearchOrder
 import `in`.jphe.storyvox.feature.api.UiSortDirection
@@ -105,6 +106,15 @@ data class BrowseUiState(
      *  the [BrowseViewModel.selectSource] reset policy). */
     val githubFilter: GitHubSearchFilter = GitHubSearchFilter(),
     val isGitHubFilterActive: Boolean = false,
+    /** MemPalace-shaped filter (#191) — applied when sourceKey is
+     *  MemPalace. Coexists with [filter] / [githubFilter] across
+     *  source switches per [BrowseViewModel.selectSource] reset
+     *  policy. */
+    val palaceFilter: MemPalaceFilter = MemPalaceFilter(),
+    /** Available wing names for the MemPalace filter sheet. Loaded
+     *  lazily on first switch to MemPalace; empty until the daemon
+     *  responds (or daemon unreachable). */
+    val palaceWings: List<String> = emptyList(),
 )
 
 /** Typed view of a paginator's five state flows. Lifted into its own
@@ -119,15 +129,18 @@ private data class PaginatorView(
 )
 
 /** Bundled view of the user-controllable knobs (source picker, tab,
- *  query, RR filter, GitHub filter). Lifted into its own record so the
- *  outer combines stay within the 5-arg `combine` overload as we add
- *  filter shapes per source. */
+ *  query, RR filter, GitHub filter, MemPalace filter). Lifted into its
+ *  own record so the outer combines stay within the 5-arg `combine`
+ *  overload as we add filter shapes per source. The MemPalace filter
+ *  is folded in via a nested combine (see [BrowseViewModel.controls])
+ *  to keep within the overload arity. */
 private data class ControlsView(
     val sourceKey: BrowseSourceKey,
     val tab: BrowseTab,
     val query: String,
     val filter: BrowseFilter,
     val githubFilter: GitHubSearchFilter,
+    val palaceFilter: MemPalaceFilter,
 )
 
 /**
@@ -154,19 +167,33 @@ class BrowseViewModel @Inject constructor(
     private val _query = MutableStateFlow("")
     private val _filter = MutableStateFlow(BrowseFilter())
     private val _githubFilter = MutableStateFlow(GitHubSearchFilter())
+    private val _palaceFilter = MutableStateFlow(MemPalaceFilter())
+    private val _palaceWings = MutableStateFlow<List<String>>(emptyList())
+    /** Latches once the wings have been fetched (or attempted) so we
+     *  don't re-hit the daemon on every source switch. Reset only on
+     *  process death; a stale list is acceptable in v1. */
+    private var palaceWingsLoaded = false
     val query: StateFlow<String> = _query.asStateFlow()
 
     /** Active paginator for the current tuple; null when the search tab
      *  has neither a query nor active filters (the empty search hint is
-     *  shown instead). */
+     *  shown instead). Two-step combine: first the 5-arg base tuple
+     *  (source/tab/query/RRFilter/GHFilter), then merged with the
+     *  MemPalace filter to keep within `combine`'s 5-arg overload. */
     private val paginator: StateFlow<BrowsePaginator?> = combine(
-        _sourceKey,
-        _tab,
-        _query.debounce(300),
-        _filter,
-        _githubFilter,
-    ) { sourceKey, tab, q, filter, ghFilter ->
-        resolveSource(sourceKey, tab, q, filter, ghFilter)?.let { source -> source to sourceKey.sourceId }
+        combine(
+            _sourceKey,
+            _tab,
+            _query.debounce(300),
+            _filter,
+            _githubFilter,
+        ) { sourceKey, tab, q, filter, ghFilter ->
+            ResolveTuple(sourceKey, tab, q, filter, ghFilter)
+        },
+        _palaceFilter,
+    ) { tup, palaceFilter ->
+        resolveSource(tup.sourceKey, tup.tab, tup.q, tup.filter, tup.ghFilter, palaceFilter)
+            ?.let { source -> source to tup.sourceKey.sourceId }
     }
         .distinctUntilChanged()
         .map { pair -> pair?.let { (source, sourceId) -> repo.paginator(source, sourceId) } }
@@ -184,18 +211,23 @@ class BrowseViewModel @Inject constructor(
     }
 
     /** All user-controlled knobs collapsed into one typed record so the
-     *  outer combines below stay within the 5-arg `combine` overload. */
+     *  outer combines below stay within the 5-arg `combine` overload.
+     *  The MemPalace filter is folded in via a nested combine to stay
+     *  within the overload arity. */
     private val controls: kotlinx.coroutines.flow.Flow<ControlsView> = combine(
-        _sourceKey, _tab, _query, _filter, _githubFilter,
-    ) { sourceKey, tab, q, filter, ghFilter ->
-        ControlsView(sourceKey, tab, q, filter, ghFilter)
+        combine(_sourceKey, _tab, _query, _filter, _githubFilter) { sourceKey, tab, q, filter, ghFilter ->
+            ResolveTuple(sourceKey, tab, q, filter, ghFilter)
+        },
+        _palaceFilter,
+    ) { tup, palaceFilter ->
+        ControlsView(tup.sourceKey, tup.tab, tup.q, tup.filter, tup.ghFilter, palaceFilter)
     }
 
     val uiState: StateFlow<BrowseUiState> = paginator.flatMapLatest { p ->
         if (p == null) {
             // Empty-search/no-filter: surface a quiet idle state so the
             // screen renders SearchHint rather than the skeleton grid.
-            controls.map { c ->
+            combine(controls, _palaceWings) { c, wings ->
                 BrowseUiState(
                     sourceKey = c.sourceKey,
                     tab = c.tab,
@@ -209,6 +241,8 @@ class BrowseViewModel @Inject constructor(
                     isFilterActive = c.filter.isActive(),
                     githubFilter = c.githubFilter,
                     isGitHubFilterActive = c.githubFilter.isActive(),
+                    palaceFilter = c.palaceFilter,
+                    palaceWings = wings,
                 )
             }
         } else {
@@ -225,7 +259,7 @@ class BrowseViewModel @Inject constructor(
             ) { items, loading, appending, more, error ->
                 PaginatorView(items, loading, appending, more, error)
             }
-            combine(paginatorView, controls) { view, c ->
+            combine(paginatorView, controls, _palaceWings) { view, c, wings ->
                 BrowseUiState(
                     sourceKey = c.sourceKey,
                     tab = c.tab,
@@ -239,6 +273,8 @@ class BrowseViewModel @Inject constructor(
                     isFilterActive = c.filter.isActive(),
                     githubFilter = c.githubFilter,
                     isGitHubFilterActive = c.githubFilter.isActive(),
+                    palaceFilter = c.palaceFilter,
+                    palaceWings = wings,
                 )
             }
         }
@@ -255,22 +291,41 @@ class BrowseViewModel @Inject constructor(
             _tab.value = BrowseTab.Popular
         }
         // Per-source filter shapes don't translate, so clear the
-        // *other* source's filter on switch. Symmetrical: leaving
-        // GitHub clears the GH filter; leaving RR clears the RR
-        // filter. Always clear the query so a half-typed term doesn't
-        // leak across sources.
+        // *other* sources' filters on switch. Always clear the query
+        // so a half-typed term doesn't leak across sources.
         _query.value = ""
         when (key) {
-            BrowseSourceKey.RoyalRoad -> _githubFilter.value = GitHubSearchFilter()
-            BrowseSourceKey.GitHub -> _filter.value = BrowseFilter()
-            // MemPalace has no source-specific filter shape today — the
-            // wing dropdown reuses BrowseFilter.tagsInclude (each wing
-            // appears as a single tag on its rooms). Clearing both the
-            // RR and GH filters keeps the picker idempotent.
+            BrowseSourceKey.RoyalRoad -> {
+                _githubFilter.value = GitHubSearchFilter()
+                _palaceFilter.value = MemPalaceFilter()
+            }
+            BrowseSourceKey.GitHub -> {
+                _filter.value = BrowseFilter()
+                _palaceFilter.value = MemPalaceFilter()
+            }
             BrowseSourceKey.MemPalace -> {
                 _filter.value = BrowseFilter()
                 _githubFilter.value = GitHubSearchFilter()
+                // Lazy-load the wing list on first switch — keeps the
+                // daemon round-trip off the cold-start path for users
+                // who never visit the palace tab.
+                ensurePalaceWingsLoaded()
             }
+        }
+    }
+
+    private fun ensurePalaceWingsLoaded() {
+        if (palaceWingsLoaded) return
+        palaceWingsLoaded = true
+        viewModelScope.launch {
+            // Empty list on failure — the sheet renders an "All" chip
+            // only and the user sees no wing options, which matches
+            // the "palace unreachable / unconfigured" empty state.
+            // Reset the latch on failure so a subsequent switch retries.
+            val wings = runCatching { repo.genres(BrowseSourceKey.MemPalace.sourceId) }
+                .getOrDefault(emptyList())
+            if (wings.isEmpty()) palaceWingsLoaded = false
+            _palaceWings.value = wings
         }
     }
 
@@ -280,6 +335,8 @@ class BrowseViewModel @Inject constructor(
     fun resetFilter() { _filter.value = BrowseFilter() }
     fun setGitHubFilter(filter: GitHubSearchFilter) { _githubFilter.value = filter }
     fun resetGitHubFilter() { _githubFilter.value = GitHubSearchFilter() }
+    fun setPalaceFilter(filter: MemPalaceFilter) { _palaceFilter.value = filter }
+    fun resetPalaceFilter() { _palaceFilter.value = MemPalaceFilter() }
 
     /** Called by the grid when the user nears the end of the visible
      *  list. Idempotent — the paginator's mutex collapses concurrent
@@ -289,12 +346,24 @@ class BrowseViewModel @Inject constructor(
     }
 }
 
+/** 5-arg shoehorn so the inner [combine] stays within the overload
+ *  arity. Folded back into [ControlsView] (or consumed directly by
+ *  [resolveSource]) at the next combine layer. */
+private data class ResolveTuple(
+    val sourceKey: BrowseSourceKey,
+    val tab: BrowseTab,
+    val q: String,
+    val filter: BrowseFilter,
+    val ghFilter: GitHubSearchFilter,
+)
+
 private fun resolveSource(
     sourceKey: BrowseSourceKey,
     tab: BrowseTab,
     q: String,
     filter: BrowseFilter,
     githubFilter: GitHubSearchFilter,
+    palaceFilter: MemPalaceFilter,
 ): BrowseSource? = when (sourceKey) {
     // GitHub: filter takes priority over tab. When filter is active OR
     // user is on Search with a typed query, route to FilteredGitHub so
@@ -321,15 +390,16 @@ private fun resolveSource(
         tab == BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
         else -> null
     }
-    // MemPalace tabs map straight to the existing BrowseSource enum —
-    // Popular = Wings (top rooms by drawer count), NewReleases = Recent
-    // (rooms by latest drawer). No filtered/search variant in v1; spec
-    // P1 surfaces the daemon's /search endpoint behind a feature flag.
-    BrowseSourceKey.MemPalace -> when (tab) {
-        BrowseTab.Popular -> BrowseSource.Popular
-        BrowseTab.NewReleases -> BrowseSource.NewReleases
-        BrowseTab.BestRated -> null
-        BrowseTab.Search -> null
+    // MemPalace: when a wing is selected, route through ByGenre so the
+    // daemon scopes the listing to that wing (overrides tab). Wing-less
+    // requests fall through to the tab-driven Popular/NewReleases pair.
+    // Spec P1 surfaces the daemon's /search endpoint behind a feature
+    // flag; today Search is hidden on MemPalace.
+    BrowseSourceKey.MemPalace -> when {
+        palaceFilter.wing != null -> BrowseSource.ByGenre(palaceFilter.wing)
+        tab == BrowseTab.Popular -> BrowseSource.Popular
+        tab == BrowseTab.NewReleases -> BrowseSource.NewReleases
+        else -> null
     }
 }
 

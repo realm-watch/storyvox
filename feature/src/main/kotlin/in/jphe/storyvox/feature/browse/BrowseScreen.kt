@@ -19,8 +19,11 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.FilterAlt
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
@@ -117,12 +120,25 @@ fun BrowseScreen(
                 activeCount = when (state.sourceKey) {
                     BrowseSourceKey.RoyalRoad -> state.filter.activeCount()
                     BrowseSourceKey.GitHub -> state.githubFilter.activeCount()
-                    // MemPalace has no filter dimensions in v1 — the wing
-                    // dropdown is a TODO. Show 0 active so the badge stays
-                    // hidden; clicking still pops a sheet (placeholder).
-                    BrowseSourceKey.MemPalace -> 0
+                    // #191 — single dimension (wing) so badge counts at
+                    // most 1.
+                    BrowseSourceKey.MemPalace -> if (state.palaceFilter.wing != null) 1 else 0
                 },
                 onClick = { showFilterSheet = true },
+            )
+        }
+
+        // Active wing hint — surface the selected wing prominently
+        // below the tab row so users always know the listing is scoped.
+        // Tapping the chip clears the wing (one-tap reset path) without
+        // having to reopen the sheet.
+        if (state.sourceKey == BrowseSourceKey.MemPalace && state.palaceFilter.wing != null) {
+            ActiveWingChip(
+                wing = state.palaceFilter.wing!!,
+                onClear = { viewModel.resetPalaceFilter() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.md, vertical = spacing.xs),
             )
         }
 
@@ -287,12 +303,19 @@ fun BrowseScreen(
                 },
                 onDismiss = { showFilterSheet = false },
             )
-            // MemPalace filter sheet is a P1 follow-up — wing dropdown
-            // populated from `genres()`. For v1 we just dismiss so the
-            // tap doesn't strand the user with an empty sheet.
-            BrowseSourceKey.MemPalace -> {
-                showFilterSheet = false
-            }
+            BrowseSourceKey.MemPalace -> MemPalaceFilterSheet(
+                filter = state.palaceFilter,
+                wings = state.palaceWings,
+                onApply = { applied ->
+                    viewModel.setPalaceFilter(applied)
+                    showFilterSheet = false
+                },
+                onReset = {
+                    viewModel.resetPalaceFilter()
+                    showFilterSheet = false
+                },
+                onDismiss = { showFilterSheet = false },
+            )
         }
     }
 }
@@ -403,6 +426,32 @@ private fun BrowseSourcePicker(
             }
         }
     }
+}
+
+/**
+ * Hint chip surfaced under the tab row when MemPalace browse is scoped
+ * to a wing (#191). The leading "Wing:" label keeps the source of the
+ * filter unambiguous (vs a bare wing name); the trailing close icon
+ * gives one-tap reset without re-opening the filter sheet.
+ */
+@Composable
+private fun ActiveWingChip(
+    wing: String,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AssistChip(
+        onClick = onClear,
+        label = { Text("Wing: ${prettifyWing(wing)}") },
+        trailingIcon = {
+            Icon(
+                Icons.Filled.Close,
+                contentDescription = "Clear wing filter",
+                modifier = Modifier.size(AssistChipDefaults.IconSize),
+            )
+        },
+        modifier = modifier,
+    )
 }
 
 /** Number of independent filter knobs the user has actively set. */
