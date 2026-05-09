@@ -127,6 +127,12 @@ data class BrowseUiState(
     /** True when an OAuth session is captured (#200). Drives the
      *  `MyRepos` tab visibility on the GitHub source. */
     val githubSignedIn: Boolean = false,
+    /** True when the user has a GitHub OAuth session that includes the
+     *  `repo` scope (#203 / #204). Drives the visibility chip row in
+     *  the GitHub filter sheet — the `is:public` / `is:private`
+     *  qualifiers are only meaningful for callers with private-repo
+     *  access. */
+    val hasGitHubRepoScope: Boolean = false,
 )
 
 /** Typed view of a paginator's five state flows. Lifted into its own
@@ -155,6 +161,7 @@ private data class ControlsView(
     val githubFilter: GitHubSearchFilter,
     val palaceFilter: MemPalaceFilter,
     val githubSignedIn: Boolean,
+    val hasGitHubRepoScope: Boolean,
 )
 
 /**
@@ -198,6 +205,21 @@ class BrowseViewModel @Inject constructor(
         .map { it.github is UiGitHubAuthState.SignedIn }
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    /** True when the user is signed in to GitHub with the `repo` scope
+     *  granted. The scopes string is space-separated per RFC 6749; the
+     *  Settings impl persists exactly what GitHub returned. Drives the
+     *  GitHub filter sheet's visibility chip row — without `repo` the
+     *  `is:private` qualifier silently returns nothing, so we hide the
+     *  knob entirely instead of letting users wander into an empty grid. */
+    private val hasGitHubRepoScope: kotlinx.coroutines.flow.Flow<Boolean> =
+        settings.settings
+            .map { s ->
+                val auth = s.github
+                auth is UiGitHubAuthState.SignedIn &&
+                    auth.scopes.split(' ').any { it == "repo" }
+            }
+            .distinctUntilChanged()
 
     /** Active paginator for the current tuple; null when the search tab
      *  has neither a query nor active filters (the empty search hint is
@@ -254,16 +276,17 @@ class BrowseViewModel @Inject constructor(
     }
 
     /** All user-controlled knobs collapsed into one typed record. The
-     *  inner 5-arg combine builds the base tuple; outer combines fold
-     *  in palaceFilter (#191) and githubSignedIn (#200) without
-     *  exceeding the `combine` 5-arg overload. */
+     *  inner 5-arg combine builds the base tuple; outer combine folds
+     *  in palaceFilter (#191), githubSignedIn (#200), and the
+     *  has-`repo`-scope flag (#204) without exceeding the `combine`
+     *  5-arg overload. */
     private val controls: kotlinx.coroutines.flow.Flow<ControlsView> = run {
         val baseTuple = combine(
             _sourceKey, _tab, _query, _filter, _githubFilter,
         ) { sourceKey, tab, q, filter, ghFilter ->
             ResolveTuple(sourceKey, tab, q, filter, ghFilter)
         }
-        combine(baseTuple, _palaceFilter, githubSignedIn) { tup, palaceFilter, signedIn ->
+        combine(baseTuple, _palaceFilter, githubSignedIn, hasGitHubRepoScope) { tup, palaceFilter, signedIn, repoScope ->
             ControlsView(
                 sourceKey = tup.sourceKey,
                 tab = tup.tab,
@@ -272,6 +295,7 @@ class BrowseViewModel @Inject constructor(
                 githubFilter = tup.ghFilter,
                 palaceFilter = palaceFilter,
                 githubSignedIn = signedIn,
+                hasGitHubRepoScope = repoScope,
             )
         }
     }
@@ -297,6 +321,7 @@ class BrowseViewModel @Inject constructor(
                     palaceFilter = c.palaceFilter,
                     palaceWings = wings,
                     githubSignedIn = c.githubSignedIn,
+                    hasGitHubRepoScope = c.hasGitHubRepoScope,
                 )
             }
         } else {
@@ -330,6 +355,7 @@ class BrowseViewModel @Inject constructor(
                     palaceFilter = c.palaceFilter,
                     palaceWings = wings,
                     githubSignedIn = c.githubSignedIn,
+                    hasGitHubRepoScope = c.hasGitHubRepoScope,
                 )
             }
         }

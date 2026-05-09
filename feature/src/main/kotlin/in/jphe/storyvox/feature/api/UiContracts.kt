@@ -220,6 +220,12 @@ data class GitHubSearchFilter(
      *  qualifier. `ActiveOnly` adds `archived:false`; `ArchivedOnly`
      *  adds `archived:true`. */
     val archivedStatus: GitHubArchivedStatus = GitHubArchivedStatus.Any,
+    /** Repository visibility (#204). `Both` (default) omits the qualifier
+     *  and matches GitHub's API default. `PublicOnly` adds `is:public`;
+     *  `PrivateOnly` adds `is:private` and is only meaningful when the
+     *  user has granted the `repo` OAuth scope — the GitHubFilterSheet
+     *  hides the chip row otherwise so visibility stays at `Both`. */
+    val visibility: GitHubVisibilityFilter = GitHubVisibilityFilter.Both,
 )
 
 /** GitHub `pushed:>YYYY-MM-DD` cutoffs. `Any` omits the qualifier. */
@@ -232,6 +238,13 @@ enum class GitHubSort { BestMatch, Stars, Updated }
 /** GitHub `archived:` qualifier (#205). `Any` omits the qualifier and
  *  returns both active and archived repos (the GitHub default). */
 enum class GitHubArchivedStatus { Any, ActiveOnly, ArchivedOnly }
+
+/** GitHub `is:public` / `is:private` qualifier (#204). `Both` omits the
+ *  qualifier — matches GitHub's default behaviour for callers without
+ *  the `repo` scope (only public repos are visible anyway).
+ *  `PrivateOnly` only returns matches when the user has authorized
+ *  `repo`; otherwise GitHub silently returns nothing. */
+enum class GitHubVisibilityFilter { Both, PublicOnly, PrivateOnly }
 
 /**
  * MemPalace-shaped filter for Browse → Palace (#191). Single dimension

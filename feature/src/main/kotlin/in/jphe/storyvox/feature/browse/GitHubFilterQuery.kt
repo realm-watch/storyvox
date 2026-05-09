@@ -4,6 +4,7 @@ import `in`.jphe.storyvox.feature.api.GitHubArchivedStatus
 import `in`.jphe.storyvox.feature.api.GitHubPushedSince
 import `in`.jphe.storyvox.feature.api.GitHubSearchFilter
 import `in`.jphe.storyvox.feature.api.GitHubSort
+import `in`.jphe.storyvox.feature.api.GitHubVisibilityFilter
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -72,6 +73,11 @@ fun composeGitHubQuery(
         append(archQ)
     }
 
+    filter.visibility.toQualifier()?.let { visQ ->
+        if (isNotEmpty()) append(' ')
+        append(visQ)
+    }
+
     filter.sort.toQualifier()?.let { sortQ ->
         if (isNotEmpty()) append(' ')
         append(sortQ)
@@ -86,7 +92,8 @@ fun GitHubSearchFilter.isActive(): Boolean =
         pushedSince != GitHubPushedSince.Any ||
         sort != GitHubSort.BestMatch ||
         tags.isNotEmpty() ||
-        archivedStatus != GitHubArchivedStatus.Any
+        archivedStatus != GitHubArchivedStatus.Any ||
+        visibility != GitHubVisibilityFilter.Both
 
 fun GitHubSearchFilter.activeCount(): Int {
     var n = 0
@@ -96,6 +103,7 @@ fun GitHubSearchFilter.activeCount(): Int {
     if (sort != GitHubSort.BestMatch) n++
     if (tags.isNotEmpty()) n++
     if (archivedStatus != GitHubArchivedStatus.Any) n++
+    if (visibility != GitHubVisibilityFilter.Both) n++
     return n
 }
 
@@ -103,6 +111,12 @@ private fun GitHubArchivedStatus.toQualifier(): String? = when (this) {
     GitHubArchivedStatus.Any -> null
     GitHubArchivedStatus.ActiveOnly -> "archived:false"
     GitHubArchivedStatus.ArchivedOnly -> "archived:true"
+}
+
+private fun GitHubVisibilityFilter.toQualifier(): String? = when (this) {
+    GitHubVisibilityFilter.Both -> null
+    GitHubVisibilityFilter.PublicOnly -> "is:public"
+    GitHubVisibilityFilter.PrivateOnly -> "is:private"
 }
 
 private fun GitHubPushedSince.toCutoffDate(today: LocalDate): LocalDate? = when (this) {

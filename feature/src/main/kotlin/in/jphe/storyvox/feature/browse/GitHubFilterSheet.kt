@@ -31,6 +31,7 @@ import `in`.jphe.storyvox.feature.api.GitHubArchivedStatus
 import `in`.jphe.storyvox.feature.api.GitHubPushedSince
 import `in`.jphe.storyvox.feature.api.GitHubSearchFilter
 import `in`.jphe.storyvox.feature.api.GitHubSort
+import `in`.jphe.storyvox.feature.api.GitHubVisibilityFilter
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
@@ -49,6 +50,11 @@ fun GitHubFilterSheet(
     onApply: (GitHubSearchFilter) -> Unit,
     onReset: () -> Unit,
     onDismiss: () -> Unit,
+    /** Controls whether the Public/Private/Both visibility chip row is
+     *  rendered. The caller passes `true` only when the user has the
+     *  `repo` OAuth scope — otherwise `is:private` would silently match
+     *  nothing on github.com and the filter would feel broken. */
+    showVisibilityChips: Boolean = false,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val spacing = LocalSpacing.current
@@ -148,6 +154,26 @@ fun GitHubFilterSheet(
                 }
                 ArchivedChip("Archived only", local.archivedStatus == GitHubArchivedStatus.ArchivedOnly) {
                     local = local.copy(archivedStatus = GitHubArchivedStatus.ArchivedOnly)
+                }
+            }
+
+            // Visibility (#204) — only meaningful with the `repo` scope.
+            // Without it, GitHub returns no private hits anyway, so we
+            // hide the row entirely rather than offering a knob that
+            // silently empties the grid.
+            if (showVisibilityChips) {
+                HorizontalDivider()
+                SectionLabel("Visibility")
+                Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                    ArchivedChip("Both", local.visibility == GitHubVisibilityFilter.Both) {
+                        local = local.copy(visibility = GitHubVisibilityFilter.Both)
+                    }
+                    ArchivedChip("Public", local.visibility == GitHubVisibilityFilter.PublicOnly) {
+                        local = local.copy(visibility = GitHubVisibilityFilter.PublicOnly)
+                    }
+                    ArchivedChip("Private", local.visibility == GitHubVisibilityFilter.PrivateOnly) {
+                        local = local.copy(visibility = GitHubVisibilityFilter.PrivateOnly)
+                    }
                 }
             }
 

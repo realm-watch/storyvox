@@ -304,6 +304,7 @@ fun BrowseScreen(
                     showFilterSheet = false
                 },
                 onDismiss = { showFilterSheet = false },
+                showVisibilityChips = state.hasGitHubRepoScope,
             )
             BrowseSourceKey.MemPalace -> MemPalaceFilterSheet(
                 filter = state.palaceFilter,
