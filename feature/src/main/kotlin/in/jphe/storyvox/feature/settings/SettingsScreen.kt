@@ -365,7 +365,24 @@ fun SettingsScreen(
         // from "Downloads" — "Library & Sync" matches storyvox's bottom-
         // tab language and reads as "what storyvox does in the
         // background to keep the library current."
-        SettingsSectionHeader("Library & Sync", icon = Icons.AutoMirrored.Outlined.LibraryBooks)
+        // Iona (settings overhaul): split into a Sources card and a
+        // Sync card. The mixed paradigm in the old single card —
+        // backend-visibility toggles next to network-poll knobs — was
+        // confusing. Two cards with their own headers + descriptors
+        // separates "which fictions show up in Browse" from "how
+        // storyvox stays up to date".
+        //
+        // The redundant "Show in Browse picker." subtitle on every row
+        // is gone; the section descriptor now carries that meaning,
+        // and per-row subtitles convey actually-useful per-backend
+        // hints (auth scope, file location).
+        SectionHeading(
+            label = "Library & Sync",
+            icon = Icons.AutoMirrored.Outlined.LibraryBooks,
+            descriptor = "Where stories come from and how often we check for updates.",
+        )
+
+        // ── Sources sub-card ──────────────────────────────────────
         SettingsGroupCard {
             // Per-backend Browse-picker visibility (#221). The picker
             // chip strip filters out disabled backends; if the user
@@ -374,25 +391,25 @@ fun SettingsScreen(
             // fresh install matches pre-#221 behavior.
             SettingsSwitchRow(
                 title = "Royal Road",
-                subtitle = "Show in Browse picker.",
+                subtitle = "Web fiction. Sign in for premium chapters and Follows.",
                 checked = s.sourceRoyalRoadEnabled,
                 onCheckedChange = viewModel::setSourceRoyalRoadEnabled,
             )
             SettingsSwitchRow(
                 title = "GitHub",
-                subtitle = "Show in Browse picker.",
+                subtitle = "Repository READMEs as fictions. Anon 60 req/hr; sign in for 5,000.",
                 checked = s.sourceGitHubEnabled,
                 onCheckedChange = viewModel::setSourceGitHubEnabled,
             )
             SettingsSwitchRow(
                 title = "Memory Palace",
-                subtitle = "Show in Browse picker.",
+                subtitle = "Browse your local mempalace as fictions (LAN only).",
                 checked = s.sourceMemPalaceEnabled,
                 onCheckedChange = viewModel::setSourceMemPalaceEnabled,
             )
             SettingsSwitchRow(
                 title = "RSS / Atom feeds",
-                subtitle = "Show in Browse picker (#236).",
+                subtitle = "Subscribe to feeds and read new entries as chapters.",
                 checked = s.sourceRssEnabled,
                 onCheckedChange = viewModel::setSourceRssEnabled,
             )
@@ -406,7 +423,7 @@ fun SettingsScreen(
             }
             SettingsSwitchRow(
                 title = "Local EPUB files",
-                subtitle = "Show in Browse picker (#235).",
+                subtitle = "Read .epub files from a folder you pick.",
                 checked = s.sourceEpubEnabled,
                 onCheckedChange = viewModel::setSourceEpubEnabled,
             )
@@ -415,13 +432,20 @@ fun SettingsScreen(
             }
             SettingsSwitchRow(
                 title = "Outline (self-hosted wiki)",
-                subtitle = "Show in Browse picker (#245).",
+                subtitle = "Read your Outline collections and documents.",
                 checked = s.sourceOutlineEnabled,
                 onCheckedChange = viewModel::setSourceOutlineEnabled,
             )
             if (s.sourceOutlineEnabled) {
                 OutlineConfigRow(viewModel = viewModel)
             }
+        }
+
+        // ── Sync sub-card ─────────────────────────────────────────
+        // Same section header — these are still part of "Library &
+        // Sync" — just visually distinct so the user reads the card
+        // boundary as a paradigm shift (visibility → polling).
+        SettingsGroupCard {
             SettingsSwitchRow(
                 title = "Wi-Fi only",
                 subtitle = "Don't poll on cellular.",
