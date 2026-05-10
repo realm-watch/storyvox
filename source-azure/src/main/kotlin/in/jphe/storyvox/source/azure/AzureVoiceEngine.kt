@@ -138,6 +138,24 @@ open class AzureVoiceEngine @Inject constructor(
             Log.w(TAG, "Azure auth failed: ${e.message}")
             _lastError.value = e
             throw e
+        } catch (e: AzureError.BadRequest) {
+            // #251 (v0.4.88) — BadRequest is also terminal. The HTTP
+            // 400 response is permanent for this voice / SSML shape:
+            // wrong voice name format (the Dragon-HD-vs-Multilingual
+            // catalog mismatch that v0.4.84 live-fetch fixed),
+            // unsupported voice in the configured region, or a
+            // malformed SSML envelope. Retrying the same sentence
+            // gets the same 400, and the producer was previously
+            // returning null per sentence in a tight loop —
+            // ~30 req/s of paid Azure quota burned for zero audio,
+            // and the consumer's "all sentences empty" signal was
+            // mis-read as "chapter complete" so it spam-advanced.
+            // Treat like AuthFailed: throw → halt the pipeline →
+            // surface _lastError → user picks a different voice or
+            // checks Settings.
+            Log.w(TAG, "Azure BadRequest (HTTP ${e.httpCode}): ${e.message}")
+            _lastError.value = e
+            throw e
         } catch (e: AzureError) {
             // Throttle / 5xx / network — non-terminal. Skip this
             // sentence (return null) and let the producer keep going;

@@ -307,16 +307,41 @@ class EnginePlayer @AssistedInject constructor(
                 }
                 _observableState.update { it.copy(error = mapped) }
 
+                // #251 (v0.4.88) — terminal errors must stop the pipeline.
+                // Pre-fix: AuthFailed and BadRequest threw from
+                // AzureVoiceEngine.synthesize, the producer's catch-all
+                // swallowed them silently, and the consumer parked on
+                // queue.take forever (no END_PILL pushed). For BadRequest
+                // specifically, the OLD code returned null per sentence —
+                // so the producer kept retrying ~30 req/s, the chapter
+                // synthesized to entirely-empty, and the consumer's "all
+                // sentences null" path was misread as "natural end of
+                // chapter" → spam-advanced through chapters at ~1/sec
+                // burning the user's Azure quota for zero audio.
+                //
+                // Fix: when the engine emits a terminal AzureError
+                // (AuthFailed or BadRequest), stop the pipeline
+                // explicitly. The fallback-swap path below still
+                // handles non-terminal errors (Throttled, Network,
+                // ServerError) the same way.
+                val isTerminal = err is `in`.jphe.storyvox.source.azure.AzureError.AuthFailed ||
+                    err is `in`.jphe.storyvox.source.azure.AzureError.BadRequest
+                if (isTerminal && activeEngineType is EngineType.Azure) {
+                    _observableState.update { it.copy(isPlaying = false) }
+                    stopPlaybackPipeline()
+                }
+
                 // PR-6 (#185) — offline-fallback. Auth errors are NOT
                 // fall-back-able (a bad key won't recover by switching
-                // voice; the user has to re-paste). Other errors are
-                // fall-back-able if the toggle is on AND a fallback
-                // voice id is set AND we haven't already swapped this
-                // chapter. The swap goes through the standard
-                // setActive() path so the existing voice-swap pipeline
-                // rebuild handles AudioTrack sample-rate change cleanly.
+                // voice; the user has to re-paste). BadRequest also not
+                // fall-back-able as of #251 — a different voice in the
+                // same Azure region might 400 too, and the live-roster
+                // pivot in v0.4.84 should prevent the wrong-voice-name
+                // root cause anyway. Other errors fall-back-able if
+                // the toggle is on AND a fallback voice id is set AND
+                // we haven't already swapped this chapter.
                 if (err != null &&
-                    err !is `in`.jphe.storyvox.source.azure.AzureError.AuthFailed &&
+                    !isTerminal &&
                     activeEngineType is EngineType.Azure &&
                     azureFallbackEnabled &&
                     azureFallbackVoiceId != null &&
