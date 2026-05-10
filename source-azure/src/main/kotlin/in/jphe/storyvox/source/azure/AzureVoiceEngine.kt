@@ -3,9 +3,13 @@ package `in`.jphe.storyvox.source.azure
 import android.util.Log
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flow
 
 /**
  * Cloud TTS engine handle. Adapts [AzureSpeechClient] to the same
@@ -142,6 +146,56 @@ open class AzureVoiceEngine @Inject constructor(
             Log.w(TAG, "Azure synth failed: ${e::class.java.simpleName}: ${e.message}")
             _lastError.value = e
             null
+        }
+    }
+
+    /**
+     * Streaming variant — emits PCM chunks as they arrive over the
+     * wire instead of buffering the full sentence first. Lets the
+     * consumer begin writing to AudioTrack on the first chunk
+     * (~200-400 ms post press-play) instead of waiting for the full
+     * Azure render (~2-4 s for Dragon HD).
+     *
+     * Returns an empty Flow rather than throwing for the
+     * "skip-and-keep-going" cases [synthesize] swallows: blank text,
+     * missing credentials. AuthFailed mid-stream throws so the
+     * producer's exception path can stop the pipeline; non-terminal
+     * errors swallow into nothing-emitted-further.
+     */
+    open fun synthesizeStreaming(
+        text: String,
+        voiceName: String,
+        speed: Float,
+        pitch: Float,
+    ): Flow<ByteArray> {
+        if (text.isBlank()) return emptyFlow()
+        if (!credentials.isConfigured) {
+            Log.w(TAG, "Azure streaming synth requested but credentials not configured")
+            return emptyFlow()
+        }
+        val ssml = AzureSsmlBuilder.build(
+            text = text,
+            voiceName = voiceName,
+            speed = speed,
+            pitch = pitch,
+        )
+        return flow {
+            client.synthesizeStreaming(ssml).collect { chunk -> emit(chunk) }
+            if (_lastError.value != null) _lastError.value = null
+        }.catch { t ->
+            when (t) {
+                is AzureError.AuthFailed -> {
+                    Log.w(TAG, "Azure streaming auth failed: ${t.message}")
+                    _lastError.value = t
+                    throw t
+                }
+                is AzureError -> {
+                    Log.w(TAG,
+                        "Azure streaming failed: ${t::class.java.simpleName}: ${t.message}")
+                    _lastError.value = t
+                }
+                else -> throw t
+            }
         }
     }
 
