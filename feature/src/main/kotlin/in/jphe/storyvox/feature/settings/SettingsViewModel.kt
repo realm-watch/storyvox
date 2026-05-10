@@ -114,6 +114,22 @@ class SettingsViewModel @Inject constructor(
     fun setSourceMemPalaceEnabled(enabled: Boolean) =
         viewModelScope.launch { repo.setSourceMemPalaceEnabled(enabled) }
 
+    /** Issue #236 — RSS backend on/off + feed-list management. */
+    fun setSourceRssEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setSourceRssEnabled(enabled) }
+    fun addRssFeed(url: String) = viewModelScope.launch { repo.addRssFeed(url) }
+    fun removeRssFeed(fictionId: String) = viewModelScope.launch { repo.removeRssFeed(fictionId) }
+    /** Settings UI surfaces URLs (not fictionIds) — convert via the
+     *  repo's removal-by-URL helper so the UI doesn't import
+     *  source-rss internals. */
+    fun removeRssFeedByUrl(url: String) = viewModelScope.launch { repo.removeRssFeedByUrl(url) }
+    val rssSubscriptions: kotlinx.coroutines.flow.StateFlow<List<String>> =
+        repo.rssSubscriptions.stateIn(
+            viewModelScope,
+            kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000),
+            emptyList(),
+        )
+
     /** Issue #150 — sleep timer shake-to-extend on/off. */
     fun setSleepShakeToExtendEnabled(enabled: Boolean) =
         viewModelScope.launch { repo.setSleepShakeToExtendEnabled(enabled) }

@@ -64,6 +64,7 @@ class SettingsRepositoryPitchTest {
             // mirrors the pattern in BufferTest / ModesTest / PunctuationPauseTest.
             githubAuth = FakeGitHubAuth(),
             teamsAuth = fakeTeamsAuth(),
+            rssConfig = makeFakeRssConfig(tempFolder.newFolder("rss_ds"), scope),
         )
     }
 

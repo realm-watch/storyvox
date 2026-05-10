@@ -604,6 +604,10 @@ data class UiSettings(
     val sourceRoyalRoadEnabled: Boolean = true,
     val sourceGitHubEnabled: Boolean = true,
     val sourceMemPalaceEnabled: Boolean = true,
+    /** RSS / Atom backend toggle (#236). Default ON — fresh installs
+     *  see the chip in the picker; if the user hasn't subscribed to
+     *  any feeds yet the empty-state copy explains how to add one. */
+    val sourceRssEnabled: Boolean = true,
     /** Issue #150 — when ON, a shake during the sleep timer's fade
      *  tail re-arms the timer. Default ON; users with bumpy commutes
      *  can disable to avoid accidental extensions. */
@@ -856,6 +860,15 @@ interface SettingsRepositoryUi {
     suspend fun setSourceRoyalRoadEnabled(enabled: Boolean)
     suspend fun setSourceGitHubEnabled(enabled: Boolean)
     suspend fun setSourceMemPalaceEnabled(enabled: Boolean)
+
+    /** Issue #236 — RSS / Atom backend on/off. */
+    suspend fun setSourceRssEnabled(enabled: Boolean)
+
+    /** Issue #236 — manage subscribed feed URLs. */
+    suspend fun addRssFeed(url: String)
+    suspend fun removeRssFeed(fictionId: String)
+    suspend fun removeRssFeedByUrl(url: String)
+    val rssSubscriptions: Flow<List<String>>
 
     /** Issue #150 — sleep timer shake-to-extend on/off. */
     suspend fun setSleepShakeToExtendEnabled(enabled: Boolean)

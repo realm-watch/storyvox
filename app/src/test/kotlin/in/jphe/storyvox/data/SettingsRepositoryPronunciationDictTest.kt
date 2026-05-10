@@ -62,6 +62,7 @@ class SettingsRepositoryPronunciationDictTest {
             // GitHub state; mirrors BufferTest / ModesTest / PitchTest pattern.
             githubAuth = FakeGitHubAuth(),
             teamsAuth = fakeTeamsAuth(),
+            rssConfig = makeFakeRssConfig(tempFolder.newFolder("rss_ds"), scope),
         )
     }
 

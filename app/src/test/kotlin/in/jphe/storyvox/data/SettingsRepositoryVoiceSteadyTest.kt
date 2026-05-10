@@ -60,6 +60,7 @@ class SettingsRepositoryVoiceSteadyTest {
             // state; mirrors the pattern in BufferTest / ModesTest / etc.
             githubAuth = FakeGitHubAuth(),
             teamsAuth = fakeTeamsAuth(),
+            rssConfig = makeFakeRssConfig(tempFolder.newFolder("rss_ds"), scope),
         )
     }
 

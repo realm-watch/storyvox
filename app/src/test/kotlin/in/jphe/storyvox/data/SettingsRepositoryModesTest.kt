@@ -57,6 +57,7 @@ class SettingsRepositoryModesTest {
             llmCreds = `in`.jphe.storyvox.llm.LlmCredentialsStore.forTesting(),
             githubAuth = FakeGitHubAuth(),
             teamsAuth = fakeTeamsAuth(),
+            rssConfig = makeFakeRssConfig(tempFolder.newFolder("rss_ds"), scope),
         )
     }
 

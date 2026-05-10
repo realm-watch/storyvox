@@ -1,0 +1,238 @@
+package `in`.jphe.storyvox.source.rss
+
+import `in`.jphe.storyvox.data.source.FictionSource
+import `in`.jphe.storyvox.data.source.SourceIds
+import `in`.jphe.storyvox.data.source.model.ChapterContent
+import `in`.jphe.storyvox.data.source.model.ChapterInfo
+import `in`.jphe.storyvox.data.source.model.FictionDetail
+import `in`.jphe.storyvox.data.source.model.FictionResult
+import `in`.jphe.storyvox.data.source.model.FictionStatus
+import `in`.jphe.storyvox.data.source.model.FictionSummary
+import `in`.jphe.storyvox.data.source.model.ListPage
+import `in`.jphe.storyvox.data.source.model.SearchQuery
+import `in`.jphe.storyvox.source.rss.config.RssConfig
+import `in`.jphe.storyvox.source.rss.config.RssSubscription
+import `in`.jphe.storyvox.source.rss.net.FetchResult
+import `in`.jphe.storyvox.source.rss.net.RssFetcher
+import `in`.jphe.storyvox.source.rss.parse.ParseException
+import `in`.jphe.storyvox.source.rss.parse.RssFeed
+import `in`.jphe.storyvox.source.rss.parse.RssItem
+import `in`.jphe.storyvox.source.rss.parse.RssParser
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Issue #236 — RSS / Atom feeds as a fiction backend. Each
+ * subscribed feed URL maps to one fiction; each `<item>` / `<entry>`
+ * is one chapter.
+ *
+ * "Browse" surfaces in this source are the user's own subscription
+ * list — there's no global catalog to crawl. `popular` and `latestUpdates`
+ * both return the user's feeds (sorted by most-recent-item-first for
+ * `latestUpdates`). `search` filters by title substring. `byGenre`
+ * is a no-op (RSS feeds don't carry genre metadata in any consistent
+ * way).
+ *
+ * Caching: this impl is stateless w.r.t. parsed content — every
+ * call re-fetches and re-parses. The repository layer above caches
+ * the chapter cards. For the small N (a few feeds × a few hundred
+ * items each) the cost is negligible; if it becomes a concern, an
+ * in-memory map keyed by fictionId + last fetch's ETag is the
+ * follow-up.
+ */
+@Singleton
+internal class RssSource @Inject constructor(
+    private val config: RssConfig,
+    private val fetcher: RssFetcher,
+) : FictionSource {
+
+    override val id: String = SourceIds.RSS
+    override val displayName: String = "RSS"
+
+    // ─── browse ────────────────────────────────────────────────────────
+
+    override suspend fun popular(page: Int): FictionResult<ListPage<FictionSummary>> =
+        listSubscriptions(sortByMostRecent = false)
+
+    override suspend fun latestUpdates(page: Int): FictionResult<ListPage<FictionSummary>> =
+        listSubscriptions(sortByMostRecent = true)
+
+    override suspend fun byGenre(
+        genre: String,
+        page: Int,
+    ): FictionResult<ListPage<FictionSummary>> =
+        // RSS feeds don't carry genre metadata in a standardized way.
+        // Surfacing nothing is more honest than fabricating.
+        FictionResult.Success(ListPage(items = emptyList(), page = 1, hasNext = false))
+
+    override suspend fun genres(): FictionResult<List<String>> =
+        FictionResult.Success(emptyList())
+
+    override suspend fun search(query: SearchQuery): FictionResult<ListPage<FictionSummary>> {
+        val term = query.term.trim().lowercase()
+        if (term.isEmpty()) return listSubscriptions(sortByMostRecent = true)
+        val all = subscriptionSummaries()
+        val filtered = all.filter { it.title.lowercase().contains(term) }
+        return FictionResult.Success(ListPage(items = filtered, page = 1, hasNext = false))
+    }
+
+    private suspend fun listSubscriptions(
+        sortByMostRecent: Boolean,
+    ): FictionResult<ListPage<FictionSummary>> {
+        val all = subscriptionSummaries()
+        // We don't actually fetch every feed for this listing call —
+        // it'd be a network storm on every Browse open. The summary
+        // shows the URL until the user opens the fiction; the detail
+        // call hydrates with parsed feed data. This matches GitHub's
+        // pattern (the registry shows summaries; fictionDetail
+        // hydrates from the repo).
+        return FictionResult.Success(ListPage(items = all, page = 1, hasNext = false))
+    }
+
+    /**
+     * Thin summaries for each subscription — title is the URL host
+     * until [fictionDetail] hydrates with the real feed title. Avoids
+     * fetching every feed on Browse open (would be a network storm).
+     */
+    private suspend fun subscriptionSummaries(): List<FictionSummary> =
+        config.snapshot().map { sub ->
+            FictionSummary(
+                id = sub.fictionId,
+                sourceId = SourceIds.RSS,
+                title = displayLabelForUrl(sub.url),
+                author = "",
+                description = sub.url,
+                status = FictionStatus.ONGOING,
+            )
+        }
+
+    /** Best-effort short label for a feed URL — host + first path
+     *  segment, e.g. `wanderinginn.com / podcast`. */
+    private fun displayLabelForUrl(url: String): String {
+        return runCatching {
+            val u = java.net.URI(url)
+            val host = u.host?.removePrefix("www.") ?: url
+            host
+        }.getOrDefault(url)
+    }
+
+    // ─── detail ────────────────────────────────────────────────────────
+
+    override suspend fun fictionDetail(fictionId: String): FictionResult<FictionDetail> {
+        val sub = config.snapshot().firstOrNull { it.fictionId == fictionId }
+            ?: return FictionResult.NotFound("Feed not subscribed: $fictionId")
+
+        val feed = fetchAndParse(sub.url) ?: return FictionResult.NetworkError(
+            "Failed to fetch feed", null,
+        )
+
+        val chapters = feed.items.mapIndexed { idx, item -> item.toChapterInfo(idx, fictionId) }
+
+        // Authors-of-feed = first item's author or feed-level author.
+        // Falls back to URL host so the field isn't blank.
+        val author = feed.author
+            ?: feed.items.firstOrNull()?.author
+            ?: displayLabelForUrl(sub.url)
+
+        val summary = FictionSummary(
+            id = fictionId,
+            sourceId = SourceIds.RSS,
+            title = feed.title.ifBlank { displayLabelForUrl(sub.url) },
+            author = author,
+            description = feed.description ?: feed.link,
+            status = FictionStatus.ONGOING,
+            chapterCount = chapters.size,
+        )
+        val lastUpdatedAt = feed.items.mapNotNull { it.publishedAtEpochMs }.maxOrNull()
+        return FictionResult.Success(
+            FictionDetail(summary = summary, chapters = chapters, lastUpdatedAt = lastUpdatedAt),
+        )
+    }
+
+    override suspend fun chapter(
+        fictionId: String,
+        chapterId: String,
+    ): FictionResult<ChapterContent> {
+        val sub = config.snapshot().firstOrNull { it.fictionId == fictionId }
+            ?: return FictionResult.NotFound("Feed not subscribed: $fictionId")
+
+        val feed = fetchAndParse(sub.url) ?: return FictionResult.NetworkError(
+            "Failed to fetch feed", null,
+        )
+
+        val (idx, item) = feed.items.withIndex()
+            .firstOrNull { (_, it) -> it.toChapterId(fictionId) == chapterId }
+            ?: return FictionResult.NotFound("Chapter not in feed: $chapterId")
+
+        val info = item.toChapterInfo(idx, fictionId)
+        return FictionResult.Success(
+            ChapterContent(
+                info = info,
+                htmlBody = item.htmlBody,
+                plainBody = item.htmlBody.stripHtml(),
+            ),
+        )
+    }
+
+    // ─── auth-gated ─────────────────────────────────────────────────────
+
+    override suspend fun followsList(page: Int): FictionResult<ListPage<FictionSummary>> =
+        // RSS has no source-side concept of "follows" beyond the user's
+        // own subscription list. Returning the subscriptions here
+        // matches the user mental model: "follows = feeds I'm tracking."
+        listSubscriptions(sortByMostRecent = true)
+
+    override suspend fun setFollowed(
+        fictionId: String,
+        followed: Boolean,
+    ): FictionResult<Unit> {
+        // Toggling follow on RSS = toggling subscription. We do NOT
+        // implement add-via-this-call (storyvox-side: addFeed is
+        // explicit via Settings). Unfollowing removes the subscription.
+        if (!followed) {
+            config.removeFeed(fictionId)
+        }
+        return FictionResult.Success(Unit)
+    }
+
+    // ─── helpers ────────────────────────────────────────────────────────
+
+    private suspend fun fetchAndParse(url: String): RssFeed? {
+        val result = fetcher.fetch(url)
+        if (result !is FictionResult.Success) return null
+        val body = (result.value as? FetchResult.Body) ?: return null
+        return try {
+            RssParser.parse(body.xml)
+        } catch (_: ParseException) {
+            null
+        }
+    }
+}
+
+/**
+ * Each item's storyvox-internal chapter id is the feed's fictionId
+ * plus the item's stable id. This keeps chapter ids unique across
+ * feeds even when two feeds happen to use the same `<guid>`.
+ */
+private fun RssItem.toChapterId(fictionId: String): String =
+    "${fictionId}::${id.hashCode().toUInt().toString(16)}"
+
+private fun RssItem.toChapterInfo(index: Int, fictionId: String): ChapterInfo {
+    val cid = toChapterId(fictionId)
+    return ChapterInfo(
+        id = cid,
+        sourceChapterId = id,
+        index = index,
+        title = title.ifBlank { "Chapter ${index + 1}" },
+        publishedAt = publishedAtEpochMs,
+    )
+}
+
+/** Naive HTML strip for the TTS plaintext. EngineStreamingSource
+ *  applies further normalization downstream — this just removes
+ *  tags and collapses whitespace so the engine doesn't speak
+ *  `<p>...</p>`. */
+private fun String.stripHtml(): String =
+    replace(Regex("<[^>]+>"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()

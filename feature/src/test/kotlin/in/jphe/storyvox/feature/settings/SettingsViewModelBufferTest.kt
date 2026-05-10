@@ -181,6 +181,11 @@ class SettingsViewModelBufferTest {
         override suspend fun setSourceRoyalRoadEnabled(enabled: Boolean) = Unit
         override suspend fun setSourceGitHubEnabled(enabled: Boolean) = Unit
         override suspend fun setSourceMemPalaceEnabled(enabled: Boolean) = Unit
+        override suspend fun setSourceRssEnabled(enabled: Boolean) = Unit
+        override suspend fun addRssFeed(url: String) = Unit
+        override suspend fun removeRssFeed(fictionId: String) = Unit
+        override suspend fun removeRssFeedByUrl(url: String) = Unit
+        override val rssSubscriptions: kotlinx.coroutines.flow.Flow<List<String>> = kotlinx.coroutines.flow.flowOf(emptyList())
         override suspend fun setSleepShakeToExtendEnabled(enabled: Boolean) = Unit
         override suspend fun signOutTeams() = Unit
     }

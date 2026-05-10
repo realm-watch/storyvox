@@ -313,6 +313,19 @@ fun SettingsScreen(
                 onCheckedChange = viewModel::setSourceMemPalaceEnabled,
             )
             SettingsSwitchRow(
+                title = "RSS / Atom feeds",
+                subtitle = "Show in Browse picker (#236).",
+                checked = s.sourceRssEnabled,
+                onCheckedChange = viewModel::setSourceRssEnabled,
+            )
+            // Feed-list management surface — only meaningful when RSS
+            // is enabled. Tapping opens an inline editor that lists
+            // current subscriptions and lets the user add a new feed
+            // by URL.
+            if (s.sourceRssEnabled) {
+                RssFeedManagementRow(viewModel = viewModel)
+            }
+            SettingsSwitchRow(
                 title = "Wi-Fi only",
                 subtitle = "Don't poll on cellular.",
                 checked = s.downloadOnWifiOnly,
@@ -1963,5 +1976,79 @@ private fun AnthropicTeamsProviderRows(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+
+/**
+ * Issue #236 — inline feed-list management for the RSS backend.
+ * Lists current subscriptions and offers an add-by-URL field.
+ * Removal is a small "x" button per row; add is the right-side
+ * BrassButton on the input field.
+ */
+@Composable
+private fun RssFeedManagementRow(viewModel: SettingsViewModel) {
+    val subs by viewModel.rssSubscriptions.collectAsStateWithLifecycle()
+    var draftUrl by remember { mutableStateOf("") }
+    val spacing = LocalSpacing.current
+
+    Column(modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm)) {
+        Text(
+            "Subscribed feeds",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = spacing.xs),
+        )
+        if (subs.isEmpty()) {
+            Text(
+                "No feeds yet. Paste an RSS or Atom feed URL below.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = spacing.sm),
+            )
+        } else {
+            subs.forEach { url ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = url,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                    androidx.compose.material3.TextButton(onClick = {
+                        viewModel.removeRssFeedByUrl(url)
+                    }) { Text("Remove") }
+                }
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = spacing.sm),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            androidx.compose.material3.OutlinedTextField(
+                value = draftUrl,
+                onValueChange = { draftUrl = it },
+                label = { Text("Feed URL") },
+                placeholder = { Text("https://example.com/feed.xml") },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+            BrassButton(
+                label = "Add",
+                onClick = {
+                    val trimmed = draftUrl.trim()
+                    if (trimmed.isNotEmpty()) {
+                        viewModel.addRssFeed(trimmed)
+                        draftUrl = ""
+                    }
+                },
+                variant = BrassButtonVariant.Primary,
+                modifier = Modifier.padding(start = spacing.sm),
+            )
+        }
     }
 }

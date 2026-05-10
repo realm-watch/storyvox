@@ -33,8 +33,8 @@ android {
         applicationId = "in.jphe.storyvox"
         minSdk = 26
         targetSdk = 35
-        versionCode = 73
-        versionName = "0.4.61"
+        versionCode = 74
+        versionName = "0.4.62"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -152,6 +152,7 @@ dependencies {
     implementation(project(":source-royalroad"))
     implementation(project(":source-github"))
     implementation(project(":source-mempalace"))
+    implementation(project(":source-rss"))
     implementation(project(":feature"))
 
     implementation(libs.androidx.core.ktx)

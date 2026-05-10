@@ -21,4 +21,9 @@ object SourceIds {
      *  fiction source. Spec: docs/superpowers/specs/2026-05-08-
      *  mempalace-integration-design.md (#79). */
     const val MEMPALACE: String = "mempalace"
+    /** RSS / Atom feeds (#236) — user adds feed URLs (one fiction =
+     *  one feed; each feed item = one chapter). Pure user-content
+     *  backend; explicit author opt-in by definition (publishing RSS
+     *  is a publishing protocol). */
+    const val RSS: String = "rss"
 }

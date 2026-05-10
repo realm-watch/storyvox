@@ -126,6 +126,9 @@ fun BrowseScreen(
                     // #191 — single dimension (wing) so badge counts at
                     // most 1.
                     BrowseSourceKey.MemPalace -> if (state.palaceFilter.wing != null) 1 else 0
+                    // #236 — RSS has no filter sheet (subscription list
+                    // is the entire surface); count is always zero.
+                    BrowseSourceKey.Rss -> 0
                 },
                 onClick = { showFilterSheet = true },
             )
@@ -320,6 +323,9 @@ fun BrowseScreen(
                 },
                 onDismiss = { showFilterSheet = false },
             )
+            // #236 — RSS has no filter UI (the subscription list is
+            // managed in Settings, not a Browse-side sheet).
+            BrowseSourceKey.Rss -> { showFilterSheet = false }
         }
     }
 }

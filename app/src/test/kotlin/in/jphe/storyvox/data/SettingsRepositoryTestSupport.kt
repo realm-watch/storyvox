@@ -99,6 +99,20 @@ internal fun makeFakePalaceConfig(
     return PalaceConfigImpl(palaceStore, FakeSecrets())
 }
 
+/** Real [RssConfigImpl] over a temp DataStore (#236). Same shape
+ *  as [makeFakePalaceConfig] — the settings tests don't exercise RSS
+ *  state but the repo signature requires the dependency. */
+internal fun makeFakeRssConfig(
+    dir: File,
+    scope: CoroutineScope,
+): RssConfigImpl {
+    val rssStore = PreferenceDataStoreFactory.create(
+        scope = scope,
+        produceFile = { File(dir, "storyvox_rss.preferences_pb") },
+    )
+    return RssConfigImpl(rssStore)
+}
+
 /**
  * Real [PalaceDaemonApi] over an OkHttpClient + a fake config that emits
  * an empty [PalaceConfigState]. No HTTP is exercised by the settings

@@ -184,6 +184,8 @@ private object Keys {
     val SOURCE_ROYALROAD_ENABLED = booleanPreferencesKey("pref_source_royalroad_enabled")
     val SOURCE_GITHUB_ENABLED = booleanPreferencesKey("pref_source_github_enabled")
     val SOURCE_MEMPALACE_ENABLED = booleanPreferencesKey("pref_source_mempalace_enabled")
+    /** Issue #236 — RSS backend on/off. */
+    val SOURCE_RSS_ENABLED = booleanPreferencesKey("pref_source_rss_enabled")
 
     // ── Sleep timer shake-to-extend (issue #150) ───────────────────
     val SLEEP_SHAKE_TO_EXTEND_ENABLED = booleanPreferencesKey("pref_sleep_shake_to_extend_enabled")
@@ -241,6 +243,7 @@ class SettingsRepositoryUiImpl(
     private val llmCreds: LlmCredentialsStore,
     private val githubAuth: GitHubAuthRepository,
     private val teamsAuth: AnthropicTeamsAuthRepository,
+    private val rssConfig: RssConfigImpl,
 ) : SettingsRepositoryUi,
     PlaybackBufferConfig,
     PlaybackModeConfig,
@@ -262,9 +265,10 @@ class SettingsRepositoryUiImpl(
         llmCreds: LlmCredentialsStore,
         githubAuth: GitHubAuthRepository,
         teamsAuth: AnthropicTeamsAuthRepository,
+        rssConfig: RssConfigImpl,
     ) : this(
         context.settingsDataStore, auth, hydrator,
-        palaceConfig, palaceApi, llmCreds, githubAuth, teamsAuth,
+        palaceConfig, palaceApi, llmCreds, githubAuth, teamsAuth, rssConfig,
     )
 
     override val settings: Flow<UiSettings> = combine(
@@ -299,6 +303,7 @@ class SettingsRepositoryUiImpl(
             sourceRoyalRoadEnabled = prefs[Keys.SOURCE_ROYALROAD_ENABLED] ?: true,
             sourceGitHubEnabled = prefs[Keys.SOURCE_GITHUB_ENABLED] ?: true,
             sourceMemPalaceEnabled = prefs[Keys.SOURCE_MEMPALACE_ENABLED] ?: true,
+            sourceRssEnabled = prefs[Keys.SOURCE_RSS_ENABLED] ?: true,
             sleepShakeToExtendEnabled = prefs[Keys.SLEEP_SHAKE_TO_EXTEND_ENABLED] ?: true,
             ai = UiAiSettings(
                 provider = prefs[Keys.AI_PROVIDER]
@@ -710,6 +715,22 @@ class SettingsRepositoryUiImpl(
     override suspend fun setSourceMemPalaceEnabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_MEMPALACE_ENABLED] = enabled }
     }
+
+    override suspend fun setSourceRssEnabled(enabled: Boolean) {
+        store.edit { it[Keys.SOURCE_RSS_ENABLED] = enabled }
+    }
+
+    override suspend fun addRssFeed(url: String) = rssConfig.addFeed(url)
+    override suspend fun removeRssFeed(fictionId: String) = rssConfig.removeFeed(fictionId)
+    override suspend fun removeRssFeedByUrl(url: String) {
+        // Look up the fictionId for the URL via the canonical hash and
+        // delete by id. Keeps the UI free of source-rss internals.
+        rssConfig.removeFeed(
+            `in`.jphe.storyvox.source.rss.config.fictionIdForFeedUrl(url),
+        )
+    }
+    override val rssSubscriptions: kotlinx.coroutines.flow.Flow<List<String>> =
+        rssConfig.subscriptions.map { subs -> subs.map { it.url } }
 
     override suspend fun setSleepShakeToExtendEnabled(enabled: Boolean) {
         store.edit { it[Keys.SLEEP_SHAKE_TO_EXTEND_ENABLED] = enabled }

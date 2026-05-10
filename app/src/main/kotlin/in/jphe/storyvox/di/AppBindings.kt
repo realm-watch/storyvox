@@ -125,6 +125,13 @@ object AppBindings {
     @Provides @Singleton
     fun providePalaceConfig(impl: PalaceConfigImpl): PalaceConfig = impl
 
+    /** Bridges the source-rss [RssConfig] read interface (#236) to the
+     *  concrete app-side DataStore-backed impl. Same pattern as
+     *  [providePalaceConfig]. The impl exposes mutators (addFeed /
+     *  removeFeed) that the Settings UI calls directly. */
+    @Provides @Singleton
+    fun provideRssConfig(impl: `in`.jphe.storyvox.data.RssConfigImpl): `in`.jphe.storyvox.source.rss.config.RssConfig = impl
+
     /**
      * Same singleton instance as [provideSettingsRepositoryUi], exposed under
      * the [PlaybackBufferConfig] contract so `core-playback`'s [EnginePlayer]

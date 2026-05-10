@@ -51,6 +51,10 @@ enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
     // "Palace" instead of "Memory Palace" so the segmented source picker
     // doesn't break the chip label across two lines on narrow phones (#148).
     MemPalace(SourceIds.MEMPALACE, "Palace"),
+    /** RSS / Atom feeds (#236) — user's own subscription list, no global
+     *  catalog. Each subscribed feed URL becomes one fiction; each item
+     *  is one chapter. Pure user-content backend. */
+    Rss(SourceIds.RSS, "RSS"),
 }
 
 /** Tabs that are meaningful for [source]. GitHub registry doesn't
@@ -91,6 +95,14 @@ fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseT
     BrowseSourceKey.MemPalace -> listOf(
         BrowseTab.Popular,
         BrowseTab.NewReleases,
+    )
+    // RSS subscriptions form a flat user-curated list. NewReleases sorts
+    // by most-recent-item-first; Popular shows the same set in subscription
+    // order. Search filters by feed title. BestRated has no analogue.
+    BrowseSourceKey.Rss -> listOf(
+        BrowseTab.NewReleases,
+        BrowseTab.Popular,
+        BrowseTab.Search,
     )
 }
 
@@ -255,6 +267,7 @@ class BrowseViewModel @Inject constructor(
                     if (s.sourceRoyalRoadEnabled) add(BrowseSourceKey.RoyalRoad)
                     if (s.sourceGitHubEnabled) add(BrowseSourceKey.GitHub)
                     if (s.sourceMemPalaceEnabled) add(BrowseSourceKey.MemPalace)
+                    if (s.sourceRssEnabled) add(BrowseSourceKey.Rss)
                 }
             }
             .distinctUntilChanged()
@@ -459,6 +472,14 @@ class BrowseViewModel @Inject constructor(
                 // who never visit the palace tab.
                 ensurePalaceWingsLoaded()
             }
+            BrowseSourceKey.Rss -> {
+                // RSS has no per-source filter; clear sibling filters
+                // so a switch from RR/GitHub/Palace doesn't carry
+                // stale state into a future switch back.
+                _filter.value = BrowseFilter()
+                _githubFilter.value = GitHubSearchFilter()
+                _palaceFilter.value = MemPalaceFilter()
+            }
         }
     }
 
@@ -562,6 +583,15 @@ private fun resolveSource(
     // flag; today Search is hidden on MemPalace.
     BrowseSourceKey.MemPalace -> when {
         palaceFilter.wing != null -> BrowseSource.ByGenre(palaceFilter.wing)
+        tab == BrowseTab.Popular -> BrowseSource.Popular
+        tab == BrowseTab.NewReleases -> BrowseSource.NewReleases
+        else -> null
+    }
+    // RSS (#236): Search filters by feed title (handled by RssSource);
+    // Popular and NewReleases both list the user's subscriptions
+    // (RssSource sorts NewReleases by most-recent-item).
+    BrowseSourceKey.Rss -> when {
+        tab == BrowseTab.Search -> if (q.isBlank()) BrowseSource.NewReleases else BrowseSource.Search(q)
         tab == BrowseTab.Popular -> BrowseSource.Popular
         tab == BrowseTab.NewReleases -> BrowseSource.NewReleases
         else -> null
