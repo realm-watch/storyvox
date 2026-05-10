@@ -188,7 +188,14 @@ fun SettingsScreen(
         // ── 2. Reading ───────────────────────────────────────────────
         // Visual reading knobs. Theme today; future home for font size
         // override, sentence highlight intensity, page-turn animation.
-        SettingsSectionHeader("Reading", icon = Icons.AutoMirrored.Outlined.MenuBook)
+        // Sleep-shake also lives here for now (set-once switch); when
+        // a dedicated Sleep & timers section materializes the
+        // shake-to-extend toggle migrates there.
+        SectionHeading(
+            label = "Reading",
+            icon = Icons.AutoMirrored.Outlined.MenuBook,
+            descriptor = "How chapter text and the reader behave.",
+        )
         SettingsGroupCard {
             SettingsSegmentedBlock(
                 title = "Theme",
@@ -210,24 +217,24 @@ fun SettingsScreen(
         }
 
         // ── 3. Performance & buffering ───────────────────────────────
-        // Trade upfront wait + memory for smoother playback. Order:
-        // cheapest knobs (booleans) → most exploratory (buffer slider).
-        // Punctuation cadence sits last — cadence preference that
-        // also lives in the perf trade space (#98).
-        SettingsSectionHeader("Performance & buffering", icon = Icons.Outlined.Speed)
+        // Daily knobs visible up top; advanced/experimental knobs tucked
+        // into an [AdvancedExpander] so first-time users see two
+        // controls instead of six.
+        //
+        // Iona (settings overhaul): Catch-up Pause and Buffer ride at
+        // the top because they're the two perf knobs an everyday
+        // listener actually touches when audio degrades on their
+        // device. Warm-up Wait, Voice Determinism, and the Tier-3
+        // parallel-synth sliders all live behind "More" — these are
+        // either set-once preferences (warm-up, determinism) or deeply
+        // experimental (parallel synth, #88). Punctuation cadence
+        // moved to Voice & Playback in the same overhaul.
+        SectionHeading(
+            label = "Performance & buffering",
+            icon = Icons.Outlined.Speed,
+            descriptor = "Trade memory and CPU for smoother playback.",
+        )
         SettingsGroupCard {
-            // Mode A — Warm-up Wait. Default ON. ON: brass spinner +
-            // frozen scrubber while engine warms up. OFF: silent start.
-            SettingsSwitchRow(
-                title = "Warm-up Wait",
-                subtitle = if (s.warmupWait) {
-                    "Wait for the voice to warm up before playback starts."
-                } else {
-                    "Start playback immediately; accept silence at chapter start."
-                },
-                checked = s.warmupWait,
-                onCheckedChange = viewModel::setWarmupWait,
-            )
             // Mode B — Catch-up Pause. Default ON. ON: pause+resume on
             // underrun (PR #77). OFF: drain through underrun.
             SettingsSwitchRow(
@@ -240,37 +247,66 @@ fun SettingsScreen(
                 checked = s.catchupPause,
                 onCheckedChange = viewModel::setCatchupPause,
             )
-            // Issue #85 — Voice Determinism preset. ON = VoxSherpa
-            // calmed VITS defaults (replay-stable). OFF = sherpa-onnx
-            // upstream Piper defaults (more variable prosody). Flips
-            // force a model reload — handled by EnginePlayer.
-            SettingsSwitchRow(
-                title = "Voice Determinism",
-                subtitle = if (s.voiceSteady) {
-                    "Steady — identical text plays the same each time."
-                } else {
-                    "Expressive — slight variation, fuller prosody."
-                },
-                checked = s.voiceSteady,
-                onCheckedChange = viewModel::setVoiceSteady,
-            )
             // Buffer slider keeps its custom rendering — colored
             // amber/red past the recommended tick is the whole point.
             BufferSlider(
                 chunks = s.playbackBufferChunks,
                 onChunksChange = viewModel::setPlaybackBufferChunks,
             )
-            // Tier 3 (#88) — experimental parallel synth sliders.
-            // Two independent knobs: how many engine INSTANCES storyvox
-            // loads (1..8) and how many THREADS each instance gets
-            // inside sherpa-onnx (Auto..8). Both Piper and Kokoro
-            // honor both knobs. Restart playback to apply changes.
-            ParallelSynthSliders(
-                instances = s.parallelSynthInstances,
-                threadsPerInstance = s.synthThreadsPerInstance,
-                onInstancesChange = viewModel::setParallelSynthInstances,
-                onThreadsChange = viewModel::setSynthThreadsPerInstance,
-            )
+            // Advanced/experimental cluster. Three rarely-touched perf
+            // controls + the Tier-3 parallel-synth pair, all behind one
+            // expander so first-time users aren't confronted with five
+            // knobs at once. AdvancedExpander hides itself if fewer
+            // than 3 entries; we have 4 (counting parallel-synth as
+            // one logical row), so it always renders.
+            var perfAdvancedOpen by remember { mutableStateOf(false) }
+            AdvancedExpander(
+                titlesPreview = listOf(
+                    "Warm-up Wait",
+                    "Voice Determinism",
+                    "Parallel synth (engines + threads)",
+                ),
+                expanded = perfAdvancedOpen,
+                onToggle = { perfAdvancedOpen = !perfAdvancedOpen },
+            ) {
+                // Mode A — Warm-up Wait. Default ON. ON: brass spinner +
+                // frozen scrubber while engine warms up. OFF: silent start.
+                SettingsSwitchRow(
+                    title = "Warm-up Wait",
+                    subtitle = if (s.warmupWait) {
+                        "Wait for the voice to warm up before playback starts."
+                    } else {
+                        "Start playback immediately; accept silence at chapter start."
+                    },
+                    checked = s.warmupWait,
+                    onCheckedChange = viewModel::setWarmupWait,
+                )
+                // Issue #85 — Voice Determinism preset. ON = VoxSherpa
+                // calmed VITS defaults (replay-stable). OFF = sherpa-onnx
+                // upstream Piper defaults (more variable prosody). Flips
+                // force a model reload — handled by EnginePlayer.
+                SettingsSwitchRow(
+                    title = "Voice Determinism",
+                    subtitle = if (s.voiceSteady) {
+                        "Steady — identical text plays the same each time."
+                    } else {
+                        "Expressive — slight variation, fuller prosody."
+                    },
+                    checked = s.voiceSteady,
+                    onCheckedChange = viewModel::setVoiceSteady,
+                )
+                // Tier 3 (#88) — experimental parallel synth sliders.
+                // Two independent knobs: how many engine INSTANCES storyvox
+                // loads (1..8) and how many THREADS each instance gets
+                // inside sherpa-onnx (Auto..8). Both Piper and Kokoro
+                // honor both knobs. Restart playback to apply changes.
+                ParallelSynthSliders(
+                    instances = s.parallelSynthInstances,
+                    threadsPerInstance = s.synthThreadsPerInstance,
+                    onInstancesChange = viewModel::setParallelSynthInstances,
+                    onThreadsChange = viewModel::setSynthThreadsPerInstance,
+                )
+            }
         }
 
         // ── 4. AI ────────────────────────────────────────────────────
