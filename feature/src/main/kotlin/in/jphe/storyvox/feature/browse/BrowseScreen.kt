@@ -57,6 +57,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import `in`.jphe.storyvox.feature.api.BrowseFilter
 import `in`.jphe.storyvox.ui.component.cascadeReveal
 import `in`.jphe.storyvox.ui.component.ErrorBlock
+import `in`.jphe.storyvox.ui.component.friendlyErrorMessage
 import `in`.jphe.storyvox.ui.component.ErrorPlacement
 import `in`.jphe.storyvox.ui.component.FictionCardSkeleton
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
@@ -172,7 +173,11 @@ fun BrowseScreen(
             // resolves to the same page that failed.
             state.error != null && state.items.isEmpty() -> ErrorBlock(
                 title = "The realm is unreachable",
-                message = state.error ?: "We couldn't reach Royal Road. Check your connection and try again.",
+                // #171 — friendlyErrorMessage maps the raw exception
+                // string (HTTP 0 timeouts, IOExceptions, "host not
+                // configured") to user copy that doesn't leak the
+                // OkHttp stack into the UI.
+                message = friendlyErrorMessage(state.error),
                 onRetry = { viewModel.loadMore() },
                 placement = ErrorPlacement.FullScreen,
             )

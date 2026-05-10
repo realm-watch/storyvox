@@ -40,6 +40,7 @@ import `in`.jphe.storyvox.ui.component.ChapterCard
 import `in`.jphe.storyvox.ui.component.ChapterCardState
 import `in`.jphe.storyvox.ui.component.ErrorBlock
 import `in`.jphe.storyvox.ui.component.ErrorPlacement
+import `in`.jphe.storyvox.ui.component.friendlyErrorMessage
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
 import `in`.jphe.storyvox.ui.component.FictionDetailSkeleton
 import `in`.jphe.storyvox.ui.layout.isAtLeastTablet
@@ -115,7 +116,7 @@ fun FictionDetailScreen(
             // here would just blink the same error.
             ErrorBlock(
                 title = "Couldn't load this fiction",
-                message = state.error ?: "We couldn't reach Royal Road. Go back and try again in a moment.",
+                message = friendlyErrorMessage(state.error),
                 onRetry = null,
                 onBack = onBack,
                 placement = ErrorPlacement.FullScreen,
@@ -138,7 +139,7 @@ fun FictionDetailScreen(
                     if (state.error != null) {
                         ErrorBlock(
                             title = "Couldn't refresh",
-                            message = state.error ?: "We couldn't reach Royal Road.",
+                            message = friendlyErrorMessage(state.error),
                             onRetry = null,
                             placement = ErrorPlacement.Banner,
                         )
@@ -185,7 +186,7 @@ fun FictionDetailScreen(
                     item {
                         ErrorBlock(
                             title = "Couldn't refresh",
-                            message = state.error ?: "We couldn't reach Royal Road.",
+                            message = friendlyErrorMessage(state.error),
                             onRetry = null,
                             placement = ErrorPlacement.Banner,
                         )
