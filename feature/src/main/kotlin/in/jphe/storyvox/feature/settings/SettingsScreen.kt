@@ -80,6 +80,9 @@ import `in`.jphe.storyvox.feature.api.UiChatGrounding
 import `in`.jphe.storyvox.feature.api.UiGitHubAuthState
 import `in`.jphe.storyvox.feature.api.UiLlmProvider
 import `in`.jphe.storyvox.feature.api.UiPalaceConfig
+import `in`.jphe.storyvox.feature.settings.components.SectionHeading
+import `in`.jphe.storyvox.feature.settings.components.StatusPill
+import `in`.jphe.storyvox.feature.settings.components.StatusTone
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
@@ -107,9 +110,19 @@ fun SettingsScreen(
     ) {
         // ── 1. Voice & Playback ──────────────────────────────────────
         // The auditory knobs a listener touches *for this story, this
-        // session*: which voice, how fast, how pitched, how to say tricky
-        // names. Most-touched section → first.
-        SettingsSectionHeader("Voice & Playback", icon = Icons.Outlined.RecordVoiceOver)
+        // session*: which voice, how fast, how pitched, how to say
+        // tricky names, how long to breathe between sentences.
+        // Most-touched section → first.
+        //
+        // Iona (settings overhaul): Punctuation cadence migrated here
+        // from Performance & buffering — it's a *voice* preference, not
+        // a perf knob. Section now answers "how does this voice sound?"
+        // end-to-end.
+        SectionHeading(
+            label = "Voice & Playback",
+            icon = Icons.Outlined.RecordVoiceOver,
+            descriptor = "How storyvox sounds — voice, speed, cadence.",
+        )
         SettingsGroupCard {
             SettingsLinkRow(
                 title = "Voice library",
@@ -155,6 +168,15 @@ fun SettingsScreen(
                         },
                     )
                 },
+            )
+            // Punctuation cadence — #109 continuous slider (was 3-stop
+            // in #93). Range 0..4× matches the engine's internal clamp.
+            // Iona (settings overhaul): moved here from Performance &
+            // buffering — this is a voice/cadence preference, not a
+            // memory/CPU trade.
+            PunctuationPauseSlider(
+                multiplier = s.punctuationPauseMultiplier,
+                onMultiplierChange = viewModel::setPunctuationPauseMultiplier,
             )
             SettingsLinkRow(
                 title = "Pronunciation",
@@ -237,12 +259,6 @@ fun SettingsScreen(
             BufferSlider(
                 chunks = s.playbackBufferChunks,
                 onChunksChange = viewModel::setPlaybackBufferChunks,
-            )
-            // Punctuation cadence — #109 continuous slider (was 3-stop
-            // in #93). Range 0..4× matches the engine's internal clamp.
-            PunctuationPauseSlider(
-                multiplier = s.punctuationPauseMultiplier,
-                onMultiplierChange = viewModel::setPunctuationPauseMultiplier,
             )
             // Tier 3 (#88) — experimental parallel synth sliders.
             // Two independent knobs: how many engine INSTANCES storyvox
