@@ -226,6 +226,47 @@ class EnginePlayer @AssistedInject constructor(
         observeModeConfig()
         observeVoiceTuningConfig()
         observePronunciationDict()
+        observeAzureErrors()
+    }
+
+    /**
+     * PR-5 (#184) — bridge [AzureVoiceEngine.lastError] to
+     * [PlaybackState.error]. Each Azure error type maps to a distinct
+     * [PlaybackError] subclass so the UI can render different copy
+     * (auth-error → re-paste prompt; throttled → quota-hint; offline
+     * → "network required"). Null clears the error.
+     */
+    private fun observeAzureErrors() {
+        scope.launch {
+            azureVoiceEngine.lastError.collect { err ->
+                val mapped: PlaybackError? = when (err) {
+                    null -> null
+                    is `in`.jphe.storyvox.source.azure.AzureError.AuthFailed ->
+                        PlaybackError.AzureAuthFailed
+                    is `in`.jphe.storyvox.source.azure.AzureError.Throttled ->
+                        PlaybackError.AzureThrottled(err.message ?: "Azure throttled.")
+                    is `in`.jphe.storyvox.source.azure.AzureError.NetworkError ->
+                        PlaybackError.AzureNetworkUnavailable(
+                            err.message ?: "Network error reaching Azure.",
+                        )
+                    is `in`.jphe.storyvox.source.azure.AzureError.ServerError ->
+                        PlaybackError.AzureServerError(
+                            httpCode = err.httpCode,
+                            message = err.message ?: "Azure server error.",
+                        )
+                    is `in`.jphe.storyvox.source.azure.AzureError.BadRequest ->
+                        // Bad SSML is rare and usually engine-side; surface
+                        // as a generic Azure server error so the user
+                        // doesn't see an "azure rejected SSML" message
+                        // they can't act on. Logs catch the detail.
+                        PlaybackError.AzureServerError(
+                            httpCode = err.httpCode,
+                            message = err.message ?: "Azure rejected request.",
+                        )
+                }
+                _observableState.update { it.copy(error = mapped) }
+            }
+        }
     }
 
     private fun observeBufferConfig() {

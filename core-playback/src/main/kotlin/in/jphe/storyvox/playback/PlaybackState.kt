@@ -42,6 +42,42 @@ sealed class PlaybackError {
     @Serializable data object EngineUnavailable : PlaybackError()
     @Serializable data class ChapterFetchFailed(val message: String) : PlaybackError()
     @Serializable data class TtsSpeakFailed(val utteranceId: String, val errorCode: Int) : PlaybackError()
+
+    // Azure HD voices (#184, PR-5) — typed surface for the four
+    // distinct failure modes Azure synthesis can hit. Each one drives
+    // different UX:
+    //  - AzureAuthFailed → stop pipeline, prompt re-paste key.
+    //  - AzureThrottled → user has hit Azure F0 quota; advise local
+    //    voice or wait for monthly reset.
+    //  - AzureNetworkUnavailable → connectivity gone; PR-6 wires a
+    //    fallback voice toggle to keep playback going on a local
+    //    voice instead.
+    //  - AzureServerError → Azure-side outage; retry budget exhausted.
+
+    /** 401 / 403 — bad / revoked subscription key. The producer
+     *  stops the pipeline on this error because every subsequent
+     *  sentence will fail the same way. The Settings → Cloud voices
+     *  surface picks up the key-rejected state via the same shared
+     *  AzureCredentials flow. */
+    @Serializable data object AzureAuthFailed : PlaybackError()
+
+    /** 429 — Azure rejected the request after the client's internal
+     *  backoff retries (250ms / 500ms / 1s). Likely the F0 quota
+     *  (500K chars/month for HD) is exhausted. Surfaces as a one-shot
+     *  toast/banner; the user can switch to a local voice. */
+    @Serializable data class AzureThrottled(val message: String) : PlaybackError()
+
+    /** TCP / TLS / DNS failure. PR-6 wraps the Azure handle with a
+     *  fallback voice when the user has the toggle on; without it,
+     *  this is a hard error and the playback sheet shows
+     *  "Network required for cloud voices." */
+    @Serializable data class AzureNetworkUnavailable(val message: String) : PlaybackError()
+
+    /** 5xx (after retries) — Azure-side outage. Same UX as
+     *  [AzureNetworkUnavailable] today; could be surfaced with a
+     *  different copy ("Azure servers having issues") if JP wants to
+     *  blame Microsoft explicitly. */
+    @Serializable data class AzureServerError(val httpCode: Int, val message: String) : PlaybackError()
 }
 
 sealed class SleepTimerMode {

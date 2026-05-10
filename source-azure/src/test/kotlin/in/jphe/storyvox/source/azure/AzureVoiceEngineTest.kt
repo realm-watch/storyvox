@@ -114,24 +114,31 @@ class AzureVoiceEngineTest {
     }
 
     @Test
-    fun `AuthFailed error swallowed to null`() {
+    fun `AuthFailed re-throws so producer halts the pipeline`() {
+        // PR-5 (#184) — auth failure is terminal. Every subsequent
+        // sentence will fail the same way, so AzureVoiceEngine
+        // re-throws (rather than swallowing to null) and the
+        // EngineStreamingSource producer's exception path winds the
+        // pipeline down. _lastError is also set so EnginePlayer's
+        // observer can map to PlaybackError.AzureAuthFailed.
         val client = RecordingClient(
             error = AzureError.AuthFailed("bad key"),
         )
         val engine = AzureVoiceEngine(client, creds(configured = true))
 
-        val pcm = engine.synthesize(
-            text = "x",
-            voiceName = "v",
-            speed = 1.0f,
-            pitch = 1.0f,
+        org.junit.Assert.assertThrows(AzureError.AuthFailed::class.java) {
+            engine.synthesize(
+                text = "x",
+                voiceName = "v",
+                speed = 1.0f,
+                pitch = 1.0f,
+            )
+        }
+        assertEquals(
+            "lastError surface set so EnginePlayer can map to PlaybackError",
+            "bad key",
+            engine.lastError.value?.message,
         )
-
-        // PR-2 swallows to null — PR-5 is the one that wires the
-        // PlaybackState.error channel. The producer's existing skip
-        // branch keeps the chapter going; PR-5 will instead halt the
-        // pipeline because every subsequent sentence will fail too.
-        assertNull(pcm)
     }
 
     @Test

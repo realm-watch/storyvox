@@ -52,12 +52,29 @@ class AzureSpeechClientTest {
         }
     }
 
-    /** A client that points at MockWebServer instead of `*.tts.speech.microsoft.com`. */
+    /** A client that points at MockWebServer instead of
+     *  `*.tts.speech.microsoft.com`. PR-5 retry tests also override
+     *  [sleepMillis] to a no-op so the 250 + 500ms backoff chain
+     *  doesn't slow CI by ~750ms per failing-after-retry test. */
     private fun client(creds: AzureCredentials): AzureSpeechClient =
         object : AzureSpeechClient(http, creds) {
             override fun endpointUrlFor(regionId: String): String =
                 server.url("/cognitiveservices/v1").toString()
+            override fun voicesListUrlFor(regionId: String): String =
+                server.url("/cognitiveservices/voices/list").toString()
+            override fun sleepMillis(ms: Long) = Unit
         }
+
+    /** Enqueue [response] N times so [AzureSpeechClient.withRetry]'s
+     *  initial-attempt + retries each see a fresh response. PR-5 retry
+     *  tests use this when the response is itself a retryable failure
+     *  (429 / 5xx) — without it MockWebServer dispatches the single
+     *  response to the first request, then closes the connection on
+     *  subsequent retries → tests would see NetworkError, not the
+     *  expected typed error. */
+    private fun MockWebServer.enqueueRepeated(response: MockResponse, times: Int) {
+        repeat(times) { enqueue(response) }
+    }
 
     @Test
     fun `synthesize returns response body bytes on 200`() {
@@ -133,15 +150,36 @@ class AzureSpeechClientTest {
     }
 
     @Test
-    fun `429 throws Throttled`() {
-        server.enqueue(
+    fun `429 throws Throttled after retry budget exhausted`() {
+        // PR-5 retry: initial attempt + 2 retries = 3 mock responses.
+        // All three throttled → typed Throttled escapes withRetry.
+        server.enqueueRepeated(
             MockResponse().setResponseCode(429).setBody("Too Many Requests"),
+            times = 3,
         )
         val c = client(creds())
 
         assertThrows(AzureError.Throttled::class.java) {
             c.synthesize("<speak/>")
         }
+    }
+
+    @Test
+    fun `429 then 200 succeeds via retry`() {
+        // PR-5 retry: initial 429 should silently retry, second 429
+        // also retries, third response (200) returns the body.
+        server.enqueue(MockResponse().setResponseCode(429))
+        server.enqueue(MockResponse().setResponseCode(429))
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(Buffer().write(byteArrayOf(0x42))),
+        )
+        val c = client(creds())
+
+        val pcm = c.synthesize("<speak/>")
+
+        assertArrayEquals(byteArrayOf(0x42), pcm)
+        // Confirm 3 requests actually went out (the retries are real).
+        assertEquals(3, server.requestCount)
     }
 
     @Test
@@ -164,8 +202,12 @@ class AzureSpeechClientTest {
     }
 
     @Test
-    fun `500 throws ServerError`() {
-        server.enqueue(MockResponse().setResponseCode(500).setBody("oops"))
+    fun `500 throws ServerError after retry budget exhausted`() {
+        // PR-5: 3 attempts, all 500 → typed ServerError escapes.
+        server.enqueueRepeated(
+            MockResponse().setResponseCode(500).setBody("oops"),
+            times = 3,
+        )
         val c = client(creds())
 
         val ex = assertThrows(AzureError.ServerError::class.java) {
@@ -175,8 +217,8 @@ class AzureSpeechClientTest {
     }
 
     @Test
-    fun `503 throws ServerError`() {
-        server.enqueue(MockResponse().setResponseCode(503))
+    fun `503 throws ServerError after retry budget exhausted`() {
+        server.enqueueRepeated(MockResponse().setResponseCode(503), times = 3)
         val c = client(creds())
 
         assertThrows(AzureError.ServerError::class.java) {

@@ -3,6 +3,9 @@ package `in`.jphe.storyvox.source.azure
 import android.util.Log
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Cloud TTS engine handle. Adapts [AzureSpeechClient] to the same
@@ -47,6 +50,28 @@ open class AzureVoiceEngine @Inject constructor(
      *  (see [AzureSpeechClient.SAMPLE_RATE_HZ]). The engine handle
      *  surfaces this to AudioTrack on voice swap. */
     val sampleRate: Int = AzureSpeechClient.SAMPLE_RATE_HZ
+
+    private val _lastError = MutableStateFlow<AzureError?>(null)
+
+    /**
+     * PR-5 (#184) — last error this engine surfaced, or null when
+     * synthesis is healthy. EnginePlayer observes this Flow and
+     * translates Azure errors into [PlaybackError] types on
+     * `PlaybackState.error`; the Settings → Cloud Voices section can
+     * also surface it as a "last failure" hint.
+     *
+     * Cleared on the next successful synthesize() (so the user sees
+     * the error disappear when reconnect succeeds) and exposed via
+     * [clearLastError] so the Settings flow can dismiss it on a
+     * key change.
+     */
+    val lastError: StateFlow<AzureError?> = _lastError.asStateFlow()
+
+    /** Clear the [lastError] state — called when the user re-pastes
+     *  a key or otherwise indicates the prior failure is moot. */
+    fun clearLastError() {
+        _lastError.value = null
+    }
 
     /**
      * Synthesize one sentence to PCM via Azure.
@@ -93,13 +118,29 @@ open class AzureVoiceEngine @Inject constructor(
             pitch = pitch,
         )
         return try {
-            client.synthesize(ssml)
+            val pcm = client.synthesize(ssml)
+            // Successful synth — clear any previously-recorded error
+            // so the UI's "last failure" surface dismisses naturally
+            // once the connection recovers.
+            if (_lastError.value != null) _lastError.value = null
+            pcm
+        } catch (e: AzureError.AuthFailed) {
+            // PR-5 (#184) — auth failure is terminal. Every subsequent
+            // sentence will fail the same way, so we re-throw to let
+            // the producer's exception path stop the pipeline. The
+            // _lastError surface gives the UI (PlaybackError mapping
+            // in EnginePlayer + Settings → Cloud Voices) a place to
+            // read the failure type without parsing exception text.
+            Log.w(TAG, "Azure auth failed: ${e.message}")
+            _lastError.value = e
+            throw e
         } catch (e: AzureError) {
-            // PR-5 elevates these into PlaybackState.error so the UI
-            // can react (offline fallback, re-paste-key prompt). For
-            // PR-2 we log the type and return null so the producer's
-            // existing skip branch handles it without crashing.
+            // Throttle / 5xx / network — non-terminal. Skip this
+            // sentence (return null) and let the producer keep going;
+            // the next sentence may succeed. _lastError lets the UI
+            // surface a one-shot error banner without halting playback.
             Log.w(TAG, "Azure synth failed: ${e::class.java.simpleName}: ${e.message}")
+            _lastError.value = e
             null
         }
     }

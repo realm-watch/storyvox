@@ -96,6 +96,59 @@ open class AzureSpeechClient @Inject constructor(
         "https://$regionId.tts.speech.microsoft.com/cognitiveservices/voices/list"
 
     /**
+     * Sleep override for tests — production [Thread.sleep], unit
+     * tests substitute a no-op so the backoff timing doesn't slow
+     * CI runs by 1-2s per retry test.
+     */
+    protected open fun sleepMillis(ms: Long) {
+        try {
+            Thread.sleep(ms)
+        } catch (_: InterruptedException) {
+            // Reset interrupt flag so cancellation propagates cleanly.
+            Thread.currentThread().interrupt()
+        }
+    }
+
+    /**
+     * PR-5 (#184) — exponential-backoff retry helper for transient
+     * Azure failures (429 throttle, 5xx server errors). [synthesize]
+     * and [voicesList] both wrap their HTTP calls in this. AuthFailed
+     * and BadRequest are NOT retried (re-issuing won't help — the key
+     * is bad or the SSML is wrong); NetworkError isn't retried either
+     * since OkHttp's `retryOnConnectionFailure` handles transient
+     * socket faults at a lower layer.
+     *
+     * Backoff schedule per Solara's spec: 250ms / 500ms / 1s, max 3
+     * attempts (initial + 2 retries). Jitter via a small random
+     * additive offset so multiple devices recovering from the same
+     * Azure incident don't synchronize their retries.
+     */
+    private inline fun <T> withRetry(crossinline block: () -> T): T {
+        var attempt = 0
+        while (true) {
+            try {
+                return block()
+            } catch (e: AzureError.Throttled) {
+                if (attempt >= MAX_RETRIES) throw e
+                sleepMillis(retryDelayMs(attempt))
+                attempt++
+            } catch (e: AzureError.ServerError) {
+                if (attempt >= MAX_RETRIES) throw e
+                sleepMillis(retryDelayMs(attempt))
+                attempt++
+            }
+        }
+    }
+
+    /** Backoff delay for the given attempt index (0-based). 250ms,
+     *  500ms, 1s with up to +25% jitter. */
+    private fun retryDelayMs(attempt: Int): Long {
+        val base = RETRY_DELAYS_MS[attempt.coerceAtMost(RETRY_DELAYS_MS.size - 1)]
+        val jitter = (base / 4 * Math.random()).toLong()
+        return base + jitter
+    }
+
+    /**
      * POST [ssml] to Azure, return the raw PCM body.
      *
      * @throws AzureError.AuthFailed   on 401 / 403 (bad key)
@@ -104,7 +157,11 @@ open class AzureSpeechClient @Inject constructor(
      * @throws AzureError.ServerError  on 5xx
      * @throws AzureError.NetworkError on TCP / TLS / DNS failure
      */
-    open fun synthesize(ssml: String): ByteArray {
+    open fun synthesize(ssml: String): ByteArray = withRetry {
+        synthesizeOnce(ssml)
+    }
+
+    private fun synthesizeOnce(ssml: String): ByteArray {
         val key = credentials.key()
             ?: throw AzureError.AuthFailed("No Azure subscription key configured")
         val regionId = credentials.regionId()
@@ -194,7 +251,11 @@ open class AzureSpeechClient @Inject constructor(
      * @throws AzureError.ServerError  on 5xx
      * @throws AzureError.NetworkError on TCP / TLS / DNS failure
      */
-    open fun voicesList(): Int {
+    open fun voicesList(): Int = withRetry {
+        voicesListOnce()
+    }
+
+    private fun voicesListOnce(): Int {
         val key = credentials.key()
             ?: throw AzureError.AuthFailed("No Azure subscription key configured")
         val regionId = credentials.regionId()
@@ -259,6 +320,23 @@ open class AzureSpeechClient @Inject constructor(
     }
 
     companion object {
+        /** PR-5 (#184) — backoff schedule for [withRetry]. Index 0 =
+         *  delay before the 1st retry, index 1 = delay before the 2nd
+         *  retry. Total wall time on full exhaustion ≈ 0.75 s + jitter.
+         *  Tuned so a transient Azure 429 burst (typical recovery < 1 s)
+         *  clears without the user noticing, but a sustained outage
+         *  doesn't tie up the producer for >1 s before the error
+         *  reaches the UI. The 1 s slot in Solara's original spec was
+         *  trimmed because the producer-side retry budget needs to fit
+         *  inside the engineMutex window — anything longer stalls the
+         *  pipeline visibly. */
+        internal val RETRY_DELAYS_MS: LongArray = longArrayOf(250L, 500L)
+        /** PR-5 — initial attempt + this many retries = 3 total attempts.
+         *  One retry covers a single in-flight burst; the second covers
+         *  a brief sustained incident. After that we give up and let
+         *  the typed error surface to the UI. */
+        internal const val MAX_RETRIES: Int = 2
+
         internal const val HEADER_KEY = "Ocp-Apim-Subscription-Key"
         internal const val HEADER_OUTPUT_FORMAT = "X-Microsoft-OutputFormat"
         internal const val HEADER_CONTENT_TYPE = "Content-Type"
