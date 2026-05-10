@@ -20,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -40,6 +41,10 @@ import `in`.jphe.storyvox.ui.theme.LocalSpacing
  * @param strokeWidth thickness of the ring; defaults to 2.dp.
  * @param dashLengthFraction fraction of the circumference used by the
  *   dash pattern. Smaller = more "magical sweep" feel.
+ * @param color stroke color. Defaults to brass primary, but inside a
+ *   Primary [BrassButton] (brass background) the caller passes
+ *   `LocalContentColor` (= onPrimary) so the spinner stays visible
+ *   against the brass fill.
  */
 @Composable
 fun MagicSpinner(
@@ -47,8 +52,9 @@ fun MagicSpinner(
     strokeWidth: Dp = 2.dp,
     dashLengthFraction: Float = 0.18f,
     durationMs: Int = 1600,
+    color: Color = MaterialTheme.colorScheme.primary,
 ) {
-    val brass = MaterialTheme.colorScheme.primary
+    val brass = color
     val transition = rememberInfiniteTransition(label = "magic-spinner")
     val angle by transition.animateFloat(
         initialValue = 0f,

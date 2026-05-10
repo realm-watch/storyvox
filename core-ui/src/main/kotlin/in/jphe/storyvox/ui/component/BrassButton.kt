@@ -1,14 +1,19 @@
 package `in`.jphe.storyvox.ui.component
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -16,6 +21,16 @@ import androidx.compose.ui.unit.dp
 
 enum class BrassButtonVariant { Primary, Secondary, Text }
 
+/**
+ * The realm's brass button.
+ *
+ * @param loading when true, the button reads disabled and renders a small
+ *   [MagicSpinner] over the label position. The label itself is rendered
+ *   at 0 alpha so the button keeps its measured width — start/stop of an
+ *   async action doesn't reflow the surrounding row. This replaces the
+ *   older "swap to inline CircularProgressIndicator + Text" pattern that
+ *   caused a width jump and broke the brass palette.
+ */
 @Composable
 fun BrassButton(
     label: String,
@@ -23,6 +38,7 @@ fun BrassButton(
     modifier: Modifier = Modifier,
     variant: BrassButtonVariant = BrassButtonVariant.Primary,
     enabled: Boolean = true,
+    loading: Boolean = false,
 ) {
     val padding = PaddingValues(horizontal = 24.dp, vertical = 12.dp)
     val sem = Modifier.semantics { role = Role.Button }
@@ -30,44 +46,82 @@ fun BrassButton(
     // M3's default `onSurface * 0.12 / 0.38`, which renders as cool grey and
     // breaks the brass aesthetic during reachable disabled flows (e.g.,
     // VoicePickerGate during voice download).
+    //
+    // When `loading` is set, we keep the brass at full opacity so the
+    // button reads as "working", not "broken / unavailable".
     val brass = MaterialTheme.colorScheme.primary
     val onBrass = MaterialTheme.colorScheme.onPrimary
+    val effectiveEnabled = enabled && !loading
+    val disabledBrassAlpha = if (loading) 1.0f else 0.12f
+    val disabledOnBrassAlpha = if (loading) 1.0f else 0.38f
+    val disabledOutlineAlpha = if (loading) 1.0f else 0.38f
     when (variant) {
         BrassButtonVariant.Primary -> Button(
             onClick = onClick,
-            enabled = enabled,
+            enabled = effectiveEnabled,
             modifier = modifier.then(sem),
             colors = ButtonDefaults.buttonColors(
                 containerColor = brass,
                 contentColor = onBrass,
-                disabledContainerColor = brass.copy(alpha = 0.12f),
-                disabledContentColor = onBrass.copy(alpha = 0.38f),
+                disabledContainerColor = brass.copy(alpha = disabledBrassAlpha),
+                disabledContentColor = onBrass.copy(alpha = disabledOnBrassAlpha),
             ),
             shape = MaterialTheme.shapes.medium,
             contentPadding = padding,
-        ) { Text(label, style = MaterialTheme.typography.labelLarge) }
+        ) { ButtonContent(label, loading) }
 
         BrassButtonVariant.Secondary -> OutlinedButton(
             onClick = onClick,
-            enabled = enabled,
+            enabled = effectiveEnabled,
             modifier = modifier.then(sem),
             colors = ButtonDefaults.outlinedButtonColors(
                 contentColor = brass,
-                disabledContentColor = brass.copy(alpha = 0.38f),
+                disabledContentColor = brass.copy(alpha = disabledOutlineAlpha),
             ),
             shape = MaterialTheme.shapes.medium,
             contentPadding = padding,
-        ) { Text(label, style = MaterialTheme.typography.labelLarge) }
+        ) { ButtonContent(label, loading) }
 
         BrassButtonVariant.Text -> TextButton(
             onClick = onClick,
-            enabled = enabled,
+            enabled = effectiveEnabled,
             modifier = modifier.then(sem),
             colors = ButtonDefaults.textButtonColors(
                 contentColor = brass,
-                disabledContentColor = brass.copy(alpha = 0.38f),
+                disabledContentColor = brass.copy(alpha = disabledOutlineAlpha),
             ),
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-        ) { Text(label, style = MaterialTheme.typography.labelLarge) }
+        ) { ButtonContent(label, loading) }
+    }
+}
+
+/**
+ * Renders the label and, when [loading], hides it (alpha 0) while
+ * overlaying a [MagicSpinner]. Using a Box keeps the button width stable
+ * — the label's measured size always wins.
+ *
+ * The spinner inherits its color from `LocalContentColor`, which Material
+ * sets from each variant's `contentColor`. So Primary gets onPrimary
+ * brass, Secondary/Text get brass — all correct for the realm.
+ */
+@Composable
+private fun ButtonContent(label: String, loading: Boolean) {
+    Box(contentAlignment = Alignment.Center) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            modifier = if (loading) Modifier.alpha(0f) else Modifier,
+        )
+        if (loading) {
+            // Use the variant's content color so the spinner stays visible
+            // on Primary (onBrass on brass) and on Secondary/Text (brass on
+            // surface). Hardcoding `primary` would make Primary spinners
+            // brass-on-brass and invisible.
+            MagicSpinner(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+                color = LocalContentColor.current,
+            )
+        }
     }
 }
