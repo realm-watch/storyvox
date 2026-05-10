@@ -1,17 +1,18 @@
 ---
 layout: default
 title: Voice catalog
-description: Piper and Kokoro voices shipped via VoxSherpa-TTS. Sizes, quality tiers, refresh workflow, and why we don't quantize.
+description: Piper and Kokoro voices shipped via VoxSherpa-TTS, plus optional Azure HD cloud voices. Sizes, quality tiers, refresh workflow, and why we don't quantize.
 ---
 
 # Voice catalog
 
-storyvox ships **two voice families**:
+storyvox ships **two local voice families**, with an **optional cloud backend** wired in for users who want studio-grade narration on slow devices:
 
-- **[Piper](https://github.com/rhasspy/piper)** — single-speaker, compact, fast. Each voice is ~14–30 MB. Best for first-time installs and for fast turnaround on slow hardware.
-- **[Kokoro](https://github.com/hexgrad/kokoro)** — multi-speaker, ~330 MB single download, ships dozens of voice profiles in one model. Higher quality, slower to synthesize.
+- **[Piper](https://github.com/rhasspy/piper)** *(local, in-process)* — single-speaker, compact, fast. Each voice is ~14–30 MB. Best for first-time installs and for fast turnaround on slow hardware.
+- **[Kokoro](https://github.com/hexgrad/kokoro)** *(local, in-process)* — multi-speaker, ~330 MB single download, ships dozens of voice profiles in one model. Higher quality, slower to synthesize.
+- **[Azure Cognitive Services HD voices](https://learn.microsoft.com/azure/ai-services/speech-service/text-to-speech)** *(cloud, BYOK)* — opt-in, paid by you to Microsoft, never by storyvox. Studio-grade narration with offline fallback to a local voice if your key fails or the network drops. See [Cloud voices](#cloud-voices-azure-hd-byok) below.
 
-Both run **in-process** in storyvox via the [VoxSherpa-TTS](https://github.com/jphein/VoxSherpa-TTS) `:engine-lib` AAR, which wraps [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) for inference. No second APK, no system-TTS handoff, no per-character billing.
+Local voices run **in-process** via the [VoxSherpa-TTS](https://github.com/jphein/VoxSherpa-TTS) `:engine-lib` AAR, which wraps [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) for inference. No second APK, no system-TTS handoff, no per-character billing.
 
 ## Quality tiers (Piper)
 
@@ -108,7 +109,25 @@ If the cadence ever picks up, the plan is to switch to a JSON file in the same `
 release that the app fetches and caches; `VoiceCatalog.kt` becomes a fallback. That's a v1.x
 feature, not v0.4.x.
 
+## Cloud voices — Azure HD (BYOK)
+
+For users who want studio-grade narration on slow devices, **Azure Cognitive Services HD voices** are wired in as an optional remote backend. Bring your own Azure key + region; storyvox never touches your billing.
+
+To set up Azure:
+
+1. Create an Azure Speech resource ([Azure portal](https://portal.azure.com)) and copy the key + region (e.g. `eastus`, `westeurope`).
+2. In storyvox, open **Settings → Voice & Playback → Azure**.
+3. Paste the key, pick the region, tap **Test connection**. The full HD voice roster lights up.
+4. Pick an Azure voice from the regular voice library — it shows up grouped under "Azure HD".
+
+Storyvox uses SSML to drive the same per-voice **speed**, **pitch**, and **punctuation cadence** knobs you set for local voices, with retries on transient HTTP errors. If your key fails or the network drops mid-chapter, playback falls back to your selected local voice for the remainder — it never just stops on you.
+
+Cache eviction priority weights Azure renders higher than local renders since they cost real money: the chapter PCM cache evicts local-engine outputs first when it needs space.
+
+Originally tracked in [#85](https://github.com/jphein/storyvox/issues/85); shipped across [#182](https://github.com/jphein/storyvox/issues/182)–[#186](https://github.com/jphein/storyvox/issues/186).
+
 ## Coming soon
 
-- **Azure HD voices** ([#85](https://github.com/jphein/storyvox/issues/85)) — bring-your-own-key Azure Cognitive Services voices for users who want studio-grade narration. Optional, not required, never billed by storyvox. Design draft is in `docs/superpowers/specs/2026-05-08-azure-hd-voices-design.md`.
 - **VoxSherpa-TTS knob exposure** ([research draft](https://github.com/jphein/storyvox/blob/main/docs/superpowers/specs/2026-05-08-voxsherpa-knobs-research.md)) — loudness normalization, breath pause, pitch envelope as user-tunable settings.
+- **Per-voice lexicon override** ([#197](https://github.com/jphein/storyvox/issues/197)) — IPA pronunciation dictionaries per voice for the names that always come out wrong.
+- **KittenTTS** ([#119](https://github.com/jphein/storyvox/issues/119)) — a third in-process voice family at the smallest tier, for the slowest of slow devices.

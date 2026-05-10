@@ -1,18 +1,21 @@
 ---
 layout: default
 title: storyvox — neural-voice audiobook player for any text you have
-description: Offline neural TTS. Multiple sources — Royal Road, GitHub, Memory Palace, RSS feeds, local EPUB files. AI chat per fiction across seven LLM providers. Brass-on-warm-dark Library Nocturne aesthetic. Free, GPL-3.0, no per-character billing.
+description: Offline neural TTS, optional Azure HD cloud voices. Six sources — Royal Road, GitHub, RSS / Atom feeds, local EPUB files, Outline wikis, Memory Palace. AI chat per fiction across seven LLM providers. Brass-on-warm-dark Library Nocturne aesthetic. Free, GPL-3.0, no per-character billing.
 ---
 
 <section class="hero">
   <div class="hero-text">
     <h1>storyvox</h1>
-    <p class="tagline">A neural-voice audiobook player for serial fiction.</p>
+    <p class="tagline">A neural-voice audiobook player for any text you have.</p>
     <p>
-      Stream chapters from <a href="https://royalroad.com">Royal Road</a> and
-      <a href="https://github.com/jphein/storyvox-registry">GitHub</a>, read aloud by an
-      <strong>offline neural TTS engine</strong>, with a hybrid reader/audiobook view that
-      highlights the spoken sentence as you listen.
+      Stream chapters from <a href="https://royalroad.com">Royal Road</a>,
+      <a href="https://github.com/jphein/storyvox-registry">GitHub</a>, an
+      <a href="https://www.getoutline.com">Outline</a> wiki, an RSS / Atom feed, a
+      <a href="https://github.com/jphein/mempalace">Memory Palace</a> you host yourself,
+      or a folder of EPUB files on your device — read aloud by an
+      <strong>offline neural TTS engine</strong> (with optional Azure HD cloud voices),
+      and a hybrid reader/audiobook view that highlights the spoken sentence as you listen.
     </p>
     <p class="cta-row">
       <a class="cta-primary" href="install/">Install</a>
@@ -43,12 +46,14 @@ description: Offline neural TTS. Multiple sources — Royal Road, GitHub, Memory
       </p>
     </div>
     <div class="card">
-      <h3>Three fiction sources</h3>
+      <h3>Six fiction sources</h3>
       <p>
-        Browse Royal Road with the full filter set, browse curated and discoverable GitHub
-        fiction repositories via <a href="https://github.com/jphein/storyvox-registry">storyvox-registry</a>,
-        or read your <a href="https://github.com/jphein/mempalace">MemPalace</a> drawers as chapters
-        when on the home network.
+        Royal Road with the full filter set, GitHub fiction repos via the curated
+        <a href="https://github.com/jphein/storyvox-registry">storyvox-registry</a>,
+        any RSS / Atom feed (with a managed suggested-feeds list), a self-hosted
+        <a href="https://www.getoutline.com">Outline</a> wiki, your own
+        <a href="https://github.com/jphein/mempalace">Memory Palace</a>, or a folder of
+        EPUB files on your device. Each backend has its own on/off toggle.
       </p>
     </div>
     <div class="card">
@@ -61,8 +66,18 @@ description: Offline neural TTS. Multiple sources — Royal Road, GitHub, Memory
     <div class="card">
       <h3>Smooth on slow hardware</h3>
       <p>
-        PCM cache buffering and optional render-ahead modes keep playback gapless even when
-        Piper-high struggles on a Helio P22T. Tuned on a Galaxy Tab A7 Lite.
+        Tier 3 multi-engine parallel synthesis (1–8 VoxSherpa instances × N threads each,
+        twin sliders in Settings → Performance), a producer pinned to <code>URGENT_AUDIO</code>,
+        and PCM cache buffering keep playback gapless even when Piper-high struggles on a
+        Helio P22T. Tuned on a Galaxy Tab A7 Lite.
+      </p>
+    </div>
+    <div class="card">
+      <h3>Optional cloud voices</h3>
+      <p>
+        Bring your own Azure key for studio-grade <a href="https://learn.microsoft.com/azure/ai-services/speech-service/text-to-speech">Azure HD voices</a>.
+        Offline fallback to your local voice if the network drops or your key expires.
+        Opt-in, never required, never billed by storyvox.
       </p>
     </div>
     <div class="card">
@@ -102,21 +117,30 @@ description: Offline neural TTS. Multiple sources — Royal Road, GitHub, Memory
 <section class="recent">
   <h2>What just shipped</h2>
   <p>
-    <strong>v0.4.55</strong> — sleep timer shake-to-extend during the fade tail (#150),
-    backend on/off toggles for Royal Road / GitHub / Memory Palace (#221A), bottom-nav
-    default lands on Playing instead of Library, GitHub gist scope fix (#234).
-    <a href="https://github.com/jphein/storyvox/releases/tag/v0.4.55">Full release notes →</a>
+    <strong>v0.4.83</strong> — Tier 3 multi-engine parallel synthesis with twin
+    Engines/Threads sliders in Settings → Performance, smart-resume CTA so the Library
+    button respects your last paused/playing intent, and a Tier 3 voice-swap engine-leak fix.
+    <a href="https://github.com/jphein/storyvox/releases/tag/v0.4.83">Full release notes →</a>
   </p>
   <p>
-    <strong>v0.4 highlights since v0.4.31:</strong> seven-provider AI chat with grounding
-    controls, GitHub OAuth Device Flow (#91) with My Repos / Starred / Gists tabs, MemPalace
-    as third fiction backend with per-wing filter, Settings redesign (8 sections + brass icons +
-    Saga's row composables), AI-generated chapter recap with TTS read-aloud, "Who is X?"
-    word lookup, public/private repo filter, and the parallel feature bundle (10 PRs in v0.4.51).
+    <strong>v0.4 highlights since v0.4.55:</strong> Azure Cognitive Services HD voices as
+    an optional remote TTS backend (BYOK, with offline fallback, error retries, full roster
+    and cache eviction priority — <a href="https://github.com/jphein/storyvox/issues/182">#182</a>–<a href="https://github.com/jphein/storyvox/issues/186">#186</a>);
+    EPUB import (<a href="https://github.com/jphein/storyvox/issues/235">#235</a>) via the
+    Storage Access Framework + an OPF parser; RSS / Atom feeds
+    (<a href="https://github.com/jphein/storyvox/issues/236">#236</a>) with a managed
+    suggested-feeds list from <a href="https://github.com/jphein/storyvox-feeds">storyvox-feeds</a>;
+    self-hosted Outline wikis as a backend
+    (<a href="https://github.com/jphein/storyvox/issues/245">#245</a>); AI Sessions surface
+    (<a href="https://github.com/jphein/storyvox/issues/218">#218</a>); read-aloud per AI
+    assistant turn (<a href="https://github.com/jphein/storyvox/issues/214">#214</a>);
+    per-voice speed and pitch defaults
+    (<a href="https://github.com/jphein/storyvox/issues/195">#195</a>); and stable debug
+    keystore for clean upgrades over older debug builds.
   </p>
   <p class="muted">
-    See the <a href="https://github.com/jphein/storyvox/wiki">wiki</a> for per-feature documentation,
-    or <a href="architecture/">how the modules fit together</a>.
+    See the <a href="https://github.com/jphein/storyvox/wiki">wiki</a> for build, voice catalog,
+    and troubleshooting reference, or <a href="architecture/">how the modules fit together</a>.
   </p>
 </section>
 

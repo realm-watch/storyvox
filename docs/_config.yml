@@ -1,5 +1,5 @@
 title: storyvox
-description: A neural-voice audiobook player for serial fiction. Offline TTS, brass aesthetic, Royal Road and GitHub sources, no per-character billing.
+description: A neural-voice audiobook player for any text you have. Offline TTS with optional Azure HD cloud voices, brass-on-warm-dark Library Nocturne aesthetic, six fiction sources (Royal Road, GitHub, RSS, EPUB, Outline, Memory Palace), no per-character billing.
 url: https://jphein.github.io
 baseurl: /storyvox
 

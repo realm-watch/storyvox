@@ -87,5 +87,7 @@ storyvox doesn't auto-update. When a new release ships:
 1. Download the new APK from [Releases](https://github.com/jphein/storyvox/releases).
 2. Open it. Android will prompt to upgrade in place — your library, voices, and progress are preserved.
 
-The app's signing key is stable across releases starting with `v0.4.15`. Older debug-keystore
-builds may need a clean uninstall before upgrading.
+The app's signing key has been stable since `v0.4.15` (a checked-in debug keystore — see
+[#15](https://github.com/jphein/storyvox/pull/15)). Releases before that used the throwaway
+debug keystore Gradle generates per machine, so an upgrade from those earlier builds may
+require a clean uninstall first. Installs from `v0.4.15` forward upgrade in place.

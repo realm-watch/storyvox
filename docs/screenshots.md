@@ -52,7 +52,7 @@ Captured on a Galaxy Tab A7 Lite (800×1340 px) running storyvox in the Library 
 
 <figure>
   <img src="{{ '/screenshots/05-settings.png' | relative_url }}" alt="Settings — voice library, speed, pitch, punctuation cadence, audio buffer slider, theme override, Wi-Fi only, poll interval, account, version." />
-  <figcaption>Settings — voice picker, speed, pitch, punctuation cadence, buffer slider, theme override, Wi-Fi-only, poll interval, account, version. (Settings UI is being redesigned in <a href="https://github.com/jphein/storyvox/issues/104">#104</a> — these screenshots reflect v0.4.x layout.)</figcaption>
+  <figcaption>Settings — voice picker, speed, pitch, punctuation cadence, buffer slider, theme override, Wi-Fi-only, poll interval, account, version. (Pre-redesign layout — the current build groups these into eight brass-iconed sections.)</figcaption>
 </figure>
 
 ## Follows
