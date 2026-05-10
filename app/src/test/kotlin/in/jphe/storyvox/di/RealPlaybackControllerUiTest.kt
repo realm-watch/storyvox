@@ -176,6 +176,11 @@ class RealPlaybackControllerUiTest {
         override fun seekTo(charOffset: Int) = Unit
         override fun skipForward30s() = Unit
         override fun skipBack30s() = Unit
+        // #120 — sentence stepping. Vesper drive-by fix: test wasn't
+        // updated when PlaybackController grew these two; the missing
+        // overrides broke `:app:compileDebugUnitTestKotlin` until now.
+        override fun nextSentence() = Unit
+        override fun previousSentence() = Unit
         override suspend fun nextChapter() = Unit
         override suspend fun previousChapter() = Unit
         override suspend fun jumpToChapter(chapterId: String) = Unit
