@@ -475,7 +475,6 @@ private class FakePlayback(initial: UiPlaybackState) : PlaybackControllerUi {
     override fun previousChapter() = Unit
     override fun setSpeed(speed: Float) = Unit
     override fun setPitch(pitch: Float) = Unit
-    override fun setVoice(voiceId: String) = Unit
     override fun setPunctuationPauseMultiplier(multiplier: Float) = Unit
     override fun startListening(fictionId: String, chapterId: String, charOffset: Int) = Unit
     override fun startSleepTimer(mode: UiSleepTimerMode) = Unit

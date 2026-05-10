@@ -38,7 +38,6 @@ interface PlaybackController {
 
     fun setSpeed(speed: Float)
     fun setPitch(pitch: Float)
-    fun setVoice(voiceId: String)
     /** Issue #90 — see [in.jphe.storyvox.playback.tts.EnginePlayer.setPunctuationPauseMultiplier]. */
     fun setPunctuationPauseMultiplier(multiplier: Float)
 
@@ -160,10 +159,6 @@ class DefaultPlaybackController @Inject constructor(
     override fun setPitch(pitch: Float) {
         val clamped = pitch.coerceIn(0.5f, 2.0f)
         player?.setPitch(clamped)
-    }
-
-    override fun setVoice(voiceId: String) {
-        player?.setVoice(voiceId)
     }
 
     override fun setPunctuationPauseMultiplier(multiplier: Float) {

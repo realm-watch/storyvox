@@ -362,7 +362,6 @@ interface PlaybackControllerUi {
     fun previousChapter()
     fun setSpeed(speed: Float)
     fun setPitch(pitch: Float)
-    fun setVoice(voiceId: String)
     /**
      * Scale the inter-sentence punctuation pause (issue #90). 0f disables
      * trailing silence entirely; 1f is the audiobook-tuned default; >1f

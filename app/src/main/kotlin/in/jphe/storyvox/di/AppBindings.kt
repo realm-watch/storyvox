@@ -615,7 +615,6 @@ internal class RealPlaybackControllerUi(
     }
     override fun setSpeed(speed: Float) = controller.setSpeed(speed)
     override fun setPitch(pitch: Float) = controller.setPitch(pitch)
-    override fun setVoice(voiceId: String) = controller.setVoice(voiceId)
     override fun setPunctuationPauseMultiplier(multiplier: Float) =
         controller.setPunctuationPauseMultiplier(multiplier)
 

@@ -182,7 +182,6 @@ class RealPlaybackControllerUiTest {
 
         override fun setSpeed(speed: Float) { speeds += speed }
         override fun setPitch(pitch: Float) { pitches += pitch }
-        override fun setVoice(voiceId: String) = Unit
         override fun setPunctuationPauseMultiplier(multiplier: Float) {
             multipliers += multiplier
         }

@@ -35,7 +35,6 @@ import `in`.jphe.storyvox.feature.follows.FollowsScreen
 import `in`.jphe.storyvox.feature.library.LibraryScreen
 import `in`.jphe.storyvox.feature.reader.HybridReaderScreen
 import `in`.jphe.storyvox.feature.settings.SettingsScreen
-import `in`.jphe.storyvox.feature.settings.VoicePickerScreen
 import `in`.jphe.storyvox.feature.settings.pronunciation.PronunciationDictScreen
 import `in`.jphe.storyvox.feature.voicelibrary.VoiceLibraryScreen
 import `in`.jphe.storyvox.ui.component.BottomTabBar
@@ -52,7 +51,6 @@ object StoryvoxRoutes {
     const val READER = "reader/{fictionId}/{chapterId}"
     const val AUDIOBOOK = "audiobook/{fictionId}/{chapterId}"
     const val SETTINGS = "settings"
-    const val SETTINGS_VOICE = "settings/voice"
     const val SETTINGS_PRONUNCIATION = "settings/pronunciation"
     const val VOICE_LIBRARY = "settings/voices"
     /** Issue #218 — Settings → AI → Sessions: review past chats and
@@ -400,17 +398,6 @@ private fun StoryvoxNavHostContent(
             ) {
                 PronunciationDictScreen(
                     onBack = { navController.popBackStack() },
-                )
-            }
-            composable(
-                StoryvoxRoutes.SETTINGS_VOICE,
-                enterTransition = pushEnter,
-                exitTransition = pushExit,
-                popEnterTransition = popEnter,
-                popExitTransition = popExit,
-            ) {
-                VoicePickerScreen(
-                    onPicked = { navController.popBackStack() },
                 )
             }
             composable(

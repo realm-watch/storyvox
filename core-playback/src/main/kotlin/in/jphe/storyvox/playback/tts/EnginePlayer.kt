@@ -1226,12 +1226,6 @@ class EnginePlayer @AssistedInject constructor(
         invalidateState()
     }
 
-    fun setVoice(@Suppress("UNUSED_PARAMETER") voiceId: String) {
-        // Voice changes require re-loading the engine model. Punted to a
-        // VoiceEngineLoader the EnginePlayer will gain in v0.4.x — for now
-        // we use whichever model VoiceEngine.loadModel was last called with.
-    }
-
     fun setTtsVolume(v: Float) {
         volumeRamp.set(v)
         runCatching { audioTrack?.setVolume(v.coerceIn(0f, 1f)) }

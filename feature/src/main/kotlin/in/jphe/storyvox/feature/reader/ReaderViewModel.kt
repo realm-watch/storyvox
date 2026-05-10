@@ -137,8 +137,6 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch { settings.setDefaultPitch(pitch) }
     }
 
-    fun setVoice(voiceId: String) = playback.setVoice(voiceId)
-
     fun startSleepTimer(mode: UiSleepTimerMode) = playback.startSleepTimer(mode)
     fun cancelSleepTimer() = playback.cancelSleepTimer()
 
