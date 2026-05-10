@@ -132,6 +132,17 @@ class PcmCache @Inject constructor(
      * skipped — caller passes basenames for currently-playing + next-
      * in-sequence chapters per spec.
      *
+     * **Azure-survives-longer ordering (#186, PR-7).** Azure-rendered
+     * entries cost real money to re-create; local engine entries are
+     * free to re-render. The eviction order pins local entries to
+     * earlier in the LRU list — non-Azure first (by mtime ascending),
+     * then Azure (by mtime ascending). A 1980s Piper render gets
+     * thrown away before a yesterday's Azure render. Azure detection
+     * via the `.meta.json` file's voiceId — Azure ids start with
+     * `azure_`. Meta-read failures default to non-Azure (we'd rather
+     * over-evict than under-evict on a corrupt file; the cache
+     * tolerates rebuilding any entry).
+     *
      * Returns the number of entries evicted.
      */
     suspend fun evictTo(
@@ -141,13 +152,21 @@ class PcmCache @Inject constructor(
         var total = totalSizeBytes()
         if (total <= quotaBytes) return@withContext 0
 
-        // Sort by mtime ascending — oldest first. Skip pinned.
+        // Read each candidate's meta-file once to learn its voiceId.
+        // The (isAzure, mtime) compound key sorts non-Azure-then-Azure,
+        // mtime-ascending within each group. List sort is by file
+        // mtime; the meta read amortizes across one eviction cycle.
         val candidates = (rootDir.listFiles { f -> f.name.endsWith(PCM_SUFFIX) } ?: emptyArray())
             .filter { it.name.removeSuffix(PCM_SUFFIX) !in pinnedBasenames }
-            .sortedBy { it.lastModified() }
+            .map { pcm ->
+                val basename = pcm.name.removeSuffix(PCM_SUFFIX)
+                val isAzure = readMetaIsAzure(basename)
+                Triple(pcm, isAzure, pcm.lastModified())
+            }
+            .sortedWith(compareBy({ it.second }, { it.third }))
 
         var evicted = 0
-        for (pcm in candidates) {
+        for ((pcm, _, _) in candidates) {
             if (total <= quotaBytes) break
             val basename = pcm.name.removeSuffix(PCM_SUFFIX)
             val sz = pcm.length()
@@ -158,6 +177,20 @@ class PcmCache @Inject constructor(
             evicted++
         }
         evicted
+    }
+
+    /** PR-7 (#186) — true if the cache entry's meta-file declares an
+     *  Azure voiceId. Azure voice ids ship with the `azure_` prefix
+     *  per [VoiceCatalog.azureEntries]; future cloud providers should
+     *  use a similarly distinguishable prefix if they want the same
+     *  paid-renders-survive-longer treatment. */
+    private fun readMetaIsAzure(basename: String): Boolean {
+        val mf = File(rootDir, "$basename$META_SUFFIX")
+        if (!mf.isFile) return false
+        return runCatching {
+            pcmCacheJson.decodeFromString(PcmMeta.serializer(), mf.readText())
+                .voiceId.startsWith("azure_")
+        }.getOrDefault(false)
     }
 
     /** Convenience overload — reads quota from [PcmCacheConfig]. */

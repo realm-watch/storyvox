@@ -748,7 +748,7 @@ object VoiceCatalog {
                 cost = cost,
             )
         return listOf(
-            // Dragon HD — Azure's 2025 generative tier. Highest quality.
+            // ── Dragon HD (Azure's 2025 generative tier — highest quality) ──
             azure(
                 "azure_ava_en_US_dragon_hd",
                 "☁️ Ava (Dragon HD)",
@@ -761,7 +761,19 @@ object VoiceCatalog {
                 "en_US",
                 "en-US-AndrewDragonHDLatestNeural",
             ),
-            // HD Neural multilingual — broad accent + cross-language coverage.
+            azure(
+                "azure_brian_en_US_dragon_hd",
+                "☁️ Brian (Dragon HD)",
+                "en_US",
+                "en-US-BrianMultilingualNeural",
+            ),
+            azure(
+                "azure_emma_en_US_dragon_hd",
+                "☁️ Emma (Dragon HD)",
+                "en_US",
+                "en-US-EmmaMultilingualNeural",
+            ),
+            // ── en-US HD Neural — broad gender/age coverage ────────────
             azure(
                 "azure_aria_en_US_hd",
                 "☁️ Aria (HD Neural)",
@@ -775,10 +787,92 @@ object VoiceCatalog {
                 "en-US-JennyMultilingualNeural",
             ),
             azure(
+                "azure_guy_en_US_hd",
+                "☁️ Guy (HD Neural)",
+                "en_US",
+                "en-US-GuyNeural",
+            ),
+            azure(
+                "azure_davis_en_US_hd",
+                "☁️ Davis (HD Neural)",
+                "en_US",
+                "en-US-DavisMultilingualNeural",
+            ),
+            azure(
+                "azure_tony_en_US_hd",
+                "☁️ Tony (HD Neural)",
+                "en_US",
+                "en-US-TonyNeural",
+            ),
+            azure(
+                "azure_sara_en_US_hd",
+                "☁️ Sara (HD Neural)",
+                "en_US",
+                "en-US-SaraNeural",
+            ),
+            azure(
+                "azure_christopher_en_US_hd",
+                "☁️ Christopher (HD Neural)",
+                "en_US",
+                "en-US-ChristopherNeural",
+            ),
+            azure(
+                "azure_nancy_en_US_hd",
+                "☁️ Nancy (HD Neural)",
+                "en_US",
+                "en-US-NancyNeural",
+            ),
+            // ── en-GB HD Neural — UK English ───────────────────────────
+            azure(
                 "azure_sonia_en_GB_hd",
                 "☁️ Sonia (HD Neural, British)",
                 "en_GB",
                 "en-GB-SoniaNeural",
+            ),
+            azure(
+                "azure_ryan_en_GB_hd",
+                "☁️ Ryan (HD Neural, British)",
+                "en_GB",
+                "en-GB-RyanNeural",
+            ),
+            azure(
+                "azure_libby_en_GB_hd",
+                "☁️ Libby (HD Neural, British)",
+                "en_GB",
+                "en-GB-LibbyNeural",
+            ),
+            // ── en-AU HD Neural — Australian English ──────────────────
+            azure(
+                "azure_natasha_en_AU_hd",
+                "☁️ Natasha (HD Neural, Australian)",
+                "en_AU",
+                "en-AU-NatashaNeural",
+            ),
+            azure(
+                "azure_william_en_AU_hd",
+                "☁️ William (HD Neural, Australian)",
+                "en_AU",
+                "en-AU-WilliamNeural",
+            ),
+            // ── en-IN HD Neural — Indian English ──────────────────────
+            azure(
+                "azure_neerja_en_IN_hd",
+                "☁️ Neerja (HD Neural, Indian)",
+                "en_IN",
+                "en-IN-NeerjaNeural",
+            ),
+            azure(
+                "azure_prabhat_en_IN_hd",
+                "☁️ Prabhat (HD Neural, Indian)",
+                "en_IN",
+                "en-IN-PrabhatNeural",
+            ),
+            // ── en-CA HD Neural — Canadian English ────────────────────
+            azure(
+                "azure_clara_en_CA_hd",
+                "☁️ Clara (HD Neural, Canadian)",
+                "en_CA",
+                "en-CA-ClaraNeural",
             ),
         )
     }

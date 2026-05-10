@@ -34,13 +34,14 @@ class AzureCatalogTest {
             "at least one Azure voice in the catalog",
             azureEntries.isNotEmpty(),
         )
-        // Per Solara's PR-1 spec, the curated list is ~5 voices for
-        // the initial seam — keep an upper bound test so the
+        // PR-7 (#186) widened from PR-1's ~5 entries to the full
+        // curated roster (~20: Dragon HD set + en-US/GB/AU/IN/CA HD
+        // Neural). Upper bound stays in place to defend against the
         // "hardcoded curated for v1" decision (open question #5)
-        // doesn't silently grow into the full ~400-voice roster.
+        // silently mushrooming into the full ~400-voice fetch.
         assertTrue(
-            "curated list stays small (≤10 entries)",
-            azureEntries.size <= 10,
+            "curated list stays bounded (≤25 entries)",
+            azureEntries.size <= 25,
         )
     }
 
