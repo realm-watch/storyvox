@@ -16,6 +16,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -131,6 +132,34 @@ fun StoryvoxNavHost(
         onOpenVoiceLibrary = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
     ) {
         StoryvoxNavHostContent(navController, modifier)
+        // Calliope (v0.5.00) — one-time graduation milestone dialog.
+        // Mounted at the nav host level so it shows on top of
+        // whatever the first launch landed on (Playing tab today,
+        // possibly a deep-linked chapter tomorrow). The MilestoneVM
+        // gates on BuildConfig.VERSION_NAME + a DataStore flag and
+        // emits false-forever after first dismissal, so this composable
+        // is a no-op on every launch after the first qualifying one.
+        MilestoneDialogHost()
+    }
+}
+
+/**
+ * Thin Hilt-injection wrapper around [MilestoneDialog]. Reads the
+ * `showDialog` StateFlow from [MilestoneViewModel] and renders the
+ * brass thank-you card when it's true. Separate from
+ * [StoryvoxNavHost] so the VM scope is the dialog's lifetime, not
+ * the whole nav host.
+ */
+@Composable
+private fun MilestoneDialogHost(
+    viewModel: `in`.jphe.storyvox.feature.milestone.MilestoneViewModel =
+        androidx.hilt.navigation.compose.hiltViewModel(),
+) {
+    val show by viewModel.showDialog.collectAsStateWithLifecycle()
+    if (show) {
+        `in`.jphe.storyvox.ui.component.MilestoneDialog(
+            onDismiss = viewModel::dismiss,
+        )
     }
 }
 

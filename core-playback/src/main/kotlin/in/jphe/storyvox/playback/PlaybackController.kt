@@ -122,6 +122,19 @@ class DefaultPlaybackController @Inject constructor(
         scope.launch {
             p.recapPlayback.collect { _recapPlayback.value = it }
         }
+        // Calliope (v0.5.00) — bridge the player's internal uiEvents
+        // SharedFlow into the controller's public `events` flow. Pre-
+        // Calliope this bridge was missing entirely: BookFinished,
+        // ChapterChanged, EngineMissing, and AzureFellBack fired
+        // inside EnginePlayer but never reached any external observer
+        // because nothing collected `p.uiEvents`. The :app debug
+        // surface read `controller.events` directly and silently
+        // received nothing — only this commit's confetti
+        // requirement caught it. New event consumers should rely on
+        // this bridge being live for the lifetime of a player binding.
+        scope.launch {
+            p.uiEvents.collect { _events.tryEmit(it) }
+        }
     }
 
     fun unbindPlayer() {

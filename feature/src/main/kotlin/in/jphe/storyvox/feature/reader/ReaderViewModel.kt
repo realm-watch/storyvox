@@ -10,12 +10,15 @@ import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.UiPlaybackState
 import `in`.jphe.storyvox.feature.api.UiRecapPlaybackState
 import `in`.jphe.storyvox.feature.api.UiSleepTimerMode
+import `in`.jphe.storyvox.playback.PlaybackUiEvent
 import `in`.jphe.storyvox.llm.LlmError
 import `in`.jphe.storyvox.llm.feature.ChapterRecap
 import `in`.jphe.storyvox.ui.component.ReaderView
 import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -23,8 +26,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -157,6 +162,30 @@ class ReaderViewModel @Inject constructor(
     private val _loadingPhase = MutableStateFlow(LoadingPhase.Loading)
     private var loadingTimerJob: Job? = null
 
+    /**
+     * Calliope (v0.5.00) — one-shot signal for the chapter-complete
+     * confetti easter-egg. Conflated capacity 1 so a missed observer
+     * (e.g. mid-config-change) sees the latest signal on next collect
+     * but can't accumulate a backlog of celebrations. The collector
+     * in [HybridReaderScreen] mounts a [MilestoneConfetti] overlay
+     * for each Unit it pulls off the channel.
+     *
+     * Fires when ALL of these are true on a [PlaybackUiEvent.ChapterDone]:
+     *  - build qualifies (VERSION_NAME ≥ 0.5.00),
+     *  - the confetti flag is still false (one-time gate),
+     *  - the event is a natural ChapterDone, not a ChapterChanged
+     *    (the engine emits ChapterDone before ChapterChanged on the
+     *    auto-advance path; manual nav skips ChapterDone).
+     *
+     * The flag flip-to-true happens from the UI side via
+     * `markMilestoneConfettiShown()` when the overlay finishes
+     * fading — keeps the side-effect path serialized through the
+     * SettingsRepositoryUi seam rather than racing on a VM-local
+     * boolean.
+     */
+    private val _confettiTrigger = Channel<Unit>(capacity = Channel.CONFLATED)
+    val confettiTrigger: Flow<Unit> = _confettiTrigger.receiveAsFlow()
+
     init {
         viewModelScope.launch {
             isLoading.collect { loading ->
@@ -174,6 +203,29 @@ class ReaderViewModel @Inject constructor(
                 }
             }
         }
+        // Calliope (v0.5.00) — observe player events for the
+        // one-time confetti trigger. We re-check the persisted flag
+        // on each ChapterDone (not just at init) so a celebration
+        // fired in a different process / install state doesn't
+        // double-fire on a quick chapter-complete after reopening.
+        viewModelScope.launch {
+            playback.events.collect { ev ->
+                if (ev !is PlaybackUiEvent.ChapterDone) return@collect
+                val ms = settings.milestoneState.first()
+                if (ms.qualifies && !ms.confettiShown) {
+                    _confettiTrigger.trySend(Unit)
+                }
+            }
+        }
+    }
+
+    /** Calliope — called by [HybridReaderScreen] when the confetti
+     *  overlay fades out, so the one-time flag flips and the
+     *  celebration never replays. The collector branch above also
+     *  reads the flag on every ChapterDone, so this method
+     *  effectively closes the gate. */
+    fun markConfettiShown() {
+        viewModelScope.launch { settings.markMilestoneConfettiShown() }
     }
 
     val uiState: StateFlow<ReaderUiState> = combine(

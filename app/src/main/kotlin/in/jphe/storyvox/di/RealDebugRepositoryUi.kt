@@ -151,6 +151,12 @@ internal class RealDebugRepositoryUi(
                 pushEvent(DebugEventKind.Pipeline, "Book finished")
             is PlaybackUiEvent.ChapterChanged ->
                 pushEvent(DebugEventKind.Chapter, "Auto-advance → ${ev.chapterId.takeLast(16)}")
+            is PlaybackUiEvent.ChapterDone ->
+                // Calliope (v0.5.00) — natural chapter completion. Fires
+                // BEFORE ChapterChanged on auto-advance; absent on
+                // manual nav. Useful in the overlay as a separate marker
+                // from the chapter-loaded line.
+                pushEvent(DebugEventKind.Chapter, "Chapter done → ${ev.chapterId.takeLast(16)}")
             is PlaybackUiEvent.EngineMissing ->
                 pushEvent(DebugEventKind.Error, "Engine missing")
             is PlaybackUiEvent.AzureFellBack ->

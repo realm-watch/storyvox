@@ -374,6 +374,25 @@ interface PlaybackControllerUi {
     val chapterText: Flow<String>
     /** Issue #189 — recap-aloud TTS pipeline state. See [UiRecapPlaybackState]. */
     val recapPlayback: Flow<UiRecapPlaybackState>
+    /**
+     * Calliope (v0.5.00) — one-shot UI signals from the player.
+     * Used today by the milestone celebration to detect the first
+     * natural chapter completion ([`in`.jphe.storyvox.playback.PlaybackUiEvent.ChapterDone])
+     * so the confetti overlay can fire once. Default emits nothing,
+     * so test fakes that don't care about player events stay slim.
+     *
+     * This is the long-promised UI seam for the events SharedFlow on
+     * the core-playback PlaybackController — pre-Calliope, the
+     * `BookFinished` / `ChapterChanged` / `EngineMissing` /
+     * `AzureFellBack` events still flowed inside core-playback but
+     * never reached the feature layer because there was no UI-side
+     * subscription path. New consumers should observe through this
+     * flow; the existing debug-overlay path goes through
+     * `PlaybackController.events` directly from `:app` and keeps
+     * working.
+     */
+    val events: Flow<`in`.jphe.storyvox.playback.PlaybackUiEvent>
+        get() = kotlinx.coroutines.flow.emptyFlow()
     fun play()
     fun pause()
     fun seekTo(ms: Long)
@@ -1107,7 +1126,56 @@ interface SettingsRepositoryUi {
     suspend fun setShowDebugOverlay(enabled: Boolean) {
         // default no-op for test fakes; SettingsRepositoryUiImpl overrides.
     }
+
+    // ── v0.5.00 milestone celebration (Calliope) ───────────────────
+    /**
+     * Calliope (v0.5.00) — one-time celebration state for the
+     * graduation milestone. Drives the brass "thank-you" dialog and
+     * the chapter-complete confetti easter-egg. See [MilestoneState]
+     * for the field semantics. Default emits an inert state so test
+     * fakes neither flicker the dialog nor the confetti — the only
+     * caller that needs real data is the production app's Settings
+     * repo, which reads from DataStore + BuildConfig.
+     */
+    val milestoneState: Flow<MilestoneState>
+        get() = kotlinx.coroutines.flow.flowOf(MilestoneState())
+
+    /** Flip the "saw the milestone dialog" flag to true so it never
+     *  shows again on this install. Default no-op for fakes; the
+     *  DataStore impl persists. */
+    suspend fun markMilestoneDialogSeen() {}
+
+    /** Flip the "saw the confetti easter-egg" flag to true so it
+     *  never fires again on this install. Default no-op for fakes;
+     *  the DataStore impl persists. */
+    suspend fun markMilestoneConfettiShown() {}
 }
+
+/**
+ * v0.5.00 milestone state. All three fields are independent gates:
+ *
+ *  - [qualifies] is true when the build's version is v0.5.00 or
+ *    later. On lower builds nothing in this struct matters — both
+ *    surfaces stay dark. Computed from [BuildConfig.VERSION_NAME]
+ *    in the production repo; always false in tests.
+ *  - [dialogSeen] flips to true after the user dismisses the
+ *    one-time dialog. The dialog renders only when `qualifies &&
+ *    !dialogSeen`.
+ *  - [confettiShown] flips to true after the first natural
+ *    chapter-completion drops the celebration overlay. Confetti
+ *    renders only when `qualifies && !confettiShown` AND a
+ *    PlaybackUiEvent.ChapterDone arrives. The two are deliberately
+ *    independent — the user might dismiss the dialog before
+ *    listening, or never open the dialog and just finish a chapter.
+ *
+ * Default instance is the "inert" state safe for previews + test
+ * fakes — nothing fires.
+ */
+data class MilestoneState(
+    val qualifies: Boolean = false,
+    val dialogSeen: Boolean = false,
+    val confettiShown: Boolean = false,
+)
 
 /** Tier 3 (#88) slider bounds. Min 1 (serial), max 8 (the Snapdragon
  *  888 / Helio P22T core count ceiling — beyond 8 the OS scheduler

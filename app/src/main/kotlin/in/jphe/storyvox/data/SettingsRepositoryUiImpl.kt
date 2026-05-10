@@ -250,6 +250,21 @@ private object Keys {
      *  in this file matches Converters.kt's settings
      *  (`ignoreUnknownKeys = true; encodeDefaults = true`). */
     val PRONUNCIATION_DICT = stringPreferencesKey("pref_pronunciation_dict_v1")
+
+    // ── Calliope (v0.5.00) milestone celebration ──────────────────
+    /** One-time gate for the brass "thank-you" dialog. Flips to true
+     *  after the user taps Continue (or taps outside the card). Pre-
+     *  flip, the dialog renders on every fresh launch of a v0.5.00+
+     *  build. Post-flip, the dialog never reappears for the life of
+     *  this install. Cleared by uninstall / app-data-clear like every
+     *  other pref. */
+    val V0500_MILESTONE_SEEN = booleanPreferencesKey("pref_v0500_milestone_seen")
+    /** One-time gate for the chapter-complete confetti easter-egg.
+     *  Flips to true after the overlay fades. Independent from
+     *  [V0500_MILESTONE_SEEN] — the user might dismiss the dialog
+     *  before listening, or listen first and only later open the
+     *  dialog. */
+    val V0500_CONFETTI_SHOWN = booleanPreferencesKey("pref_v0500_confetti_shown")
 }
 
 /** Issue #195 — flat string codec for `Map<voiceId, Float>` overrides.
@@ -1112,6 +1127,29 @@ class SettingsRepositoryUiImpl(
             p[Keys.AI_PRIVACY_ACK] = config.privacyAcknowledged
             p[Keys.AI_SEND_CHAPTER_TEXT] = config.sendChapterTextEnabled
         }
+    }
+
+    // ── Calliope (v0.5.00) milestone celebration ──────────────────
+    /** [Milestone.isV0500OrLater] is a process-lifetime constant —
+     *  it's pinned to the build's VERSION_NAME, which doesn't change
+     *  while the app is running. We still emit through a Flow so the
+     *  UI's collect cadence matches the persisted-flag stream and the
+     *  dialog's gating is a single combine source. */
+    override val milestoneState: Flow<`in`.jphe.storyvox.feature.api.MilestoneState> =
+        store.data.map { prefs ->
+            `in`.jphe.storyvox.feature.api.MilestoneState(
+                qualifies = `in`.jphe.storyvox.sigil.Milestone.isV0500OrLater,
+                dialogSeen = prefs[Keys.V0500_MILESTONE_SEEN] ?: false,
+                confettiShown = prefs[Keys.V0500_CONFETTI_SHOWN] ?: false,
+            )
+        }
+
+    override suspend fun markMilestoneDialogSeen() {
+        store.edit { it[Keys.V0500_MILESTONE_SEEN] = true }
+    }
+
+    override suspend fun markMilestoneConfettiShown() {
+        store.edit { it[Keys.V0500_CONFETTI_SHOWN] = true }
     }
 }
 

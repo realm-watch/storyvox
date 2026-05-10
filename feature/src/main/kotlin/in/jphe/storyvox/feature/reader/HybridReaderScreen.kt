@@ -6,6 +6,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -13,6 +17,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import `in`.jphe.storyvox.feature.debug.DebugOverlay
 import `in`.jphe.storyvox.feature.debug.DebugViewModel
 import `in`.jphe.storyvox.ui.component.HybridReaderShell
+import `in`.jphe.storyvox.ui.component.MilestoneConfetti
 
 @Composable
 fun HybridReaderScreen(
@@ -41,6 +46,18 @@ fun HybridReaderScreen(
     val recapState by viewModel.recap.collectAsStateWithLifecycle()
     val recapPlayback by viewModel.recapPlayback.collectAsStateWithLifecycle()
     val playback = state.playback
+
+    // Calliope (v0.5.00) — first-natural-chapter-completion confetti.
+    // The VM's confettiTrigger fires Unit once per qualifying event;
+    // we flip a local visible flag that drives the [MilestoneConfetti]
+    // overlay, then close the gate persistently via markConfettiShown
+    // when the overlay tells us it's done.
+    var celebrationVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(viewModel) {
+        viewModel.confettiTrigger.collect {
+            celebrationVisible = true
+        }
+    }
 
     // Vesper (v0.4.97) — debug overlay. The DebugViewModel pulls the
     // master switch from SettingsRepositoryUi so toggling in Settings →
@@ -129,6 +146,21 @@ fun HybridReaderScreen(
     // controls at the bottom stay free.
     if (debugEnabled) {
         DebugOverlay(viewModel = debugVm)
+    }
+
+    // Calliope (v0.5.00) — confetti easter-egg, drifts across the
+    // player for ~3.5s then fades. Sits ABOVE the debug overlay so
+    // power users still see the celebration; the overlay can wait.
+    // markConfettiShown persists the one-time flag so this never
+    // reappears for this install. Non-blocking — no pointer
+    // interception, just a Canvas drawing on top.
+    if (celebrationVisible) {
+        MilestoneConfetti(
+            onFinished = {
+                celebrationVisible = false
+                viewModel.markConfettiShown()
+            },
+        )
     }
     }
 }

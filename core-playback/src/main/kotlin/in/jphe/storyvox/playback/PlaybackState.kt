@@ -88,6 +88,21 @@ sealed class SleepTimerMode {
 sealed class PlaybackUiEvent {
     data object BookFinished : PlaybackUiEvent()
     data class ChapterChanged(val chapterId: String) : PlaybackUiEvent()
+    /**
+     * Calliope (v0.5.00) — a chapter just finished *naturally* (the
+     * pipeline reached end-of-text + the AudioTrack drained). Fires
+     * once per natural completion; explicit user nav (Next chapter
+     * button, jumpToChapter) does NOT fire this. Used by the v0.5.00
+     * milestone confetti easter-egg to mark "the user actually listened
+     * to a chapter on the new build" — gated separately in the UI on
+     * the one-time `KEY_V0500_CONFETTI_SHOWN` DataStore flag.
+     *
+     * Emitted from [in.jphe.storyvox.playback.tts.EnginePlayer.handleChapterDone]
+     * *before* the auto-advance fires [ChapterChanged], so a UI that
+     * observes both events sees ChapterDone → ChapterChanged in that
+     * order on natural completion, and only ChapterChanged on user nav.
+     */
+    data class ChapterDone(val chapterId: String) : PlaybackUiEvent()
     data class EngineMissing(val installUrl: String) : PlaybackUiEvent()
     /**
      * PR-6 (#185) — Azure synth failed (non-auth, non-stop) with the

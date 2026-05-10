@@ -1641,6 +1641,15 @@ class EnginePlayer @AssistedInject constructor(
         val chapterId = _observableState.value.currentChapterId
         persistPosition()
         if (chapterId != null) chapterRepo.markChapterPlayed(chapterId)
+        // Calliope (v0.5.00) — distinguish "chapter naturally finished" from
+        // "user tapped Next chapter". Emit BEFORE advanceChapter so the
+        // confetti overlay's observer sees ChapterDone first; the
+        // subsequent ChapterChanged (from inside advanceChapter) is a
+        // separate axis. UI is responsible for the one-time gate; the
+        // engine just announces facts.
+        if (chapterId != null) {
+            _uiEvents.tryEmit(PlaybackUiEvent.ChapterDone(chapterId))
+        }
         // advanceChapter now persists the new chapter's id internally
         // (issue #287 — see the comment on advanceChapter).
         advanceChapter(direction = 1)
