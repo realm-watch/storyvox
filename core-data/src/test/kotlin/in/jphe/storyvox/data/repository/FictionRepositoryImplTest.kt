@@ -238,6 +238,12 @@ class FictionRepositoryImplTest {
         override fun observeDownloadStates(fictionId: String): Flow<List<ChapterDownloadStateRow>> =
             MutableStateFlow(emptyList())
 
+        // Issue #282 — played-chapter set query. FictionRepository tests
+        // don't exercise played tracking; emit empty so the override
+        // compiles.
+        override fun observePlayedChapterIds(fictionId: String): Flow<List<String>> =
+            MutableStateFlow(emptyList())
+
         override suspend fun missingForFiction(fictionId: String): List<Chapter> =
             rows.values.filter {
                 it.fictionId == fictionId && it.downloadState == ChapterDownloadState.NOT_DOWNLOADED

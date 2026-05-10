@@ -76,6 +76,12 @@ class ChapterRepositoryImplTest {
         override fun observeDownloadStates(fictionId: String): Flow<List<ChapterDownloadStateRow>> =
             stateFeeds.getOrPut(fictionId) { MutableStateFlow(stateRows(fictionId)) }
 
+        // Issue #282 — played-chapter set query for the chapter-list
+        // `isFinished` indicator. The dao tests don't exercise played
+        // tracking; emit empty so the new override compiles.
+        override fun observePlayedChapterIds(fictionId: String): Flow<List<String>> =
+            MutableStateFlow(emptyList())
+
         override suspend fun missingForFiction(fictionId: String): List<Chapter> {
             callLog += "missingForFiction($fictionId)"
             return rows.values

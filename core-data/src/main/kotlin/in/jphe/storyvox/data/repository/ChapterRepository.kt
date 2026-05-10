@@ -25,6 +25,16 @@ interface ChapterRepository {
 
     fun observeDownloadState(fictionId: String): Flow<Map<String, ChapterDownloadState>>
 
+    /**
+     * Issue #282 — observable set of chapter ids the user has marked
+     * played for this fiction. The UI combines this with [observeChapters]
+     * to render the `isFinished` indicator on each chapter row. Distinct
+     * from [observeDownloadState] because download-state and play-state
+     * are independent axes (a chapter may be downloaded but unplayed,
+     * or played without being downloaded if streamed live).
+     */
+    fun observePlayedChapterIds(fictionId: String): Flow<Set<String>>
+
     /** Schedule a single chapter download via WorkManager. */
     suspend fun queueChapterDownload(
         fictionId: String,
@@ -83,6 +93,9 @@ class ChapterRepositoryImpl @Inject constructor(
                 notesAuthorPosition = row.notesAuthorPosition,
             )
         }
+
+    override fun observePlayedChapterIds(fictionId: String): Flow<Set<String>> =
+        dao.observePlayedChapterIds(fictionId).map { it.toSet() }
 
     override fun observeDownloadState(fictionId: String): Flow<Map<String, ChapterDownloadState>> =
         dao.observeDownloadStates(fictionId).map { rows ->
