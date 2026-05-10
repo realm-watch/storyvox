@@ -48,6 +48,20 @@ sealed interface PcmSource {
     /** Release any resources (cancel producer, close mmap, etc).
      *  Wakes any consumer blocked in [nextChunk] so it can exit. */
     suspend fun close()
+
+    /**
+     * Argus Fix B (#79) — called by the consumer AFTER it has finished
+     * writing this chunk's PCM + trailing silence to AudioTrack. The
+     * streaming impl uses this to decrement its `bufferHeadroomMs`
+     * counter so the underrun trigger fires when audio actually runs
+     * out, not one chunk earlier (the dequeue-time decrement was
+     * pessimistic by ~one chunk duration).
+     *
+     * The cache-file impl has no queue or headroom; it overrides this
+     * to a no-op. Default empty body keeps the seam non-breaking for
+     * future PcmSource implementations.
+     */
+    fun decrementHeadroomForChunk(chunk: PcmChunk) = Unit
 }
 
 /**

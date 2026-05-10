@@ -114,14 +114,36 @@ class EngineStreamingSource(
     override suspend fun nextChunk(): PcmChunk? = runInterruptible {
         val item = queue.take()
         if (item === END_PILL) return@runInterruptible null
-        val chunk = item.chunk
-        // Decrement headroom by everything this chunk represented in the
-        // queue: PCM duration + the trailing cadence silence (consumer is
-        // about to write both into AudioTrack).
+        // 2026-05-09 — Argus Fix B (#79): the headroom decrement used
+        // to fire here at dequeue time, but the listener hasn't yet
+        // heard this audio (it's about to enter AudioTrack's hardware
+        // ring buffer). Decrementing at dequeue made `bufferHeadroomMs`
+        // reflect "audio in the queue" rather than "audio not yet
+        // heard," which fired the underrun trigger one chunk-duration
+        // earlier than the listener actually needed. The consumer
+        // now calls [decrementHeadroomForChunk] after the AudioTrack
+        // write loop exits — see [EnginePlayer]'s consumer.
+        item.chunk
+    }
+
+    /**
+     * Argus Fix B (#79) — called by the consumer AFTER it has finished
+     * writing this chunk's PCM + trailing silence to AudioTrack. The
+     * decrement happens late so [bufferHeadroomMs] reflects "audio the
+     * listener hasn't heard yet" (queue + writes-in-flight), not "audio
+     * still in the queue."
+     *
+     * Idempotent guard: if the consumer aborts mid-write (pause /
+     * voice swap), it MUST still call this once after exiting the
+     * write loop so the headroom doesn't drift upward. The producer-
+     * side increment in [startProducer] is the matching counter; if
+     * one fires without the other, [bufferHeadroomMs] desyncs and the
+     * underrun threshold fires at the wrong time.
+     */
+    override fun decrementHeadroomForChunk(chunk: PcmChunk) {
         val durMs = pcmDurationMs(chunk.pcm.size) +
             pcmDurationMs(chunk.trailingSilenceBytes)
         _bufferHeadroomMs.update { (it - durMs).coerceAtLeast(0L) }
-        chunk
     }
 
     override suspend fun seekToCharOffset(charOffset: Int) {

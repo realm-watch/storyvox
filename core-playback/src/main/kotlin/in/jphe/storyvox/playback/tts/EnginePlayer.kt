@@ -894,6 +894,17 @@ class EnginePlayer @AssistedInject constructor(
                     // queue.take() is where a slow producer shows up as a
                     // logged gap.
                     chunkGapLogger.chunkEnd(gapVoiceId, chunk.sentenceIndex)
+
+                    // Argus Fix B (#79) — decrement the source's headroom
+                    // tracker NOW, not when we dequeued. The chunk just
+                    // entered AudioTrack's hardware ring buffer; the
+                    // listener is about to hear it (or already hearing
+                    // it). Decrementing here makes `bufferHeadroomMs`
+                    // reflect "audio not yet heard," which is what the
+                    // underrun threshold actually wants to compare
+                    // against. Pre-Fix-B the decrement fired at dequeue,
+                    // making the trigger pessimistic by ~one chunk.
+                    source.decrementHeadroomForChunk(chunk)
                 }
             } finally {
                 // Release the AudioTrack from the same thread that owns
@@ -1432,6 +1443,12 @@ class EnginePlayer @AssistedInject constructor(
                         if (n < 0) break
                         remaining -= n
                     }
+                    // Argus Fix B (#79) — see the main consumer loop
+                    // above. Recap pipeline mirrors the same headroom
+                    // accounting; decrement after the AudioTrack write
+                    // so the underrun threshold is checked against
+                    // "audio not yet heard," not "audio in the queue."
+                    source.decrementHeadroomForChunk(chunk)
                 }
             } finally {
                 runCatching { track.pause() }
