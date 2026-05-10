@@ -20,7 +20,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -34,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import `in`.jphe.storyvox.data.repository.ContinueListeningEntry
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
+import `in`.jphe.storyvox.ui.component.BrassProgressBar
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
 import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
 import `in`.jphe.storyvox.ui.component.cascadeReveal
@@ -164,13 +164,15 @@ private fun ResumeCard(entry: ContinueListeningEntry, onResume: () -> Unit) {
                     maxLines = 1,
                 )
                 if (fraction != null) {
-                    LinearProgressIndicator(
-                        progress = { fraction },
+                    // BrassProgressBar smooth-animates the fill on resume —
+                    // when the user opens Library mid-chapter the bar
+                    // visibly settles to current progress instead of
+                    // snapping. Same brass palette as the rest of the row.
+                    BrassProgressBar(
+                        progress = fraction,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = spacing.xxs),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.outlineVariant,
                     )
                     Text(
                         "${(fraction * 100).toInt()}% through chapter ${entry.chapter.index}",
