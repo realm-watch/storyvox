@@ -26,7 +26,6 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -61,6 +60,7 @@ import `in`.jphe.storyvox.ui.component.ErrorBlock
 import `in`.jphe.storyvox.ui.component.ErrorPlacement
 import `in`.jphe.storyvox.ui.component.FictionCardSkeleton
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
+import `in`.jphe.storyvox.ui.component.MagicSpinner
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
 @Composable
@@ -270,7 +270,10 @@ fun BrowseScreen(
                                 modifier = Modifier.fillMaxWidth().padding(spacing.lg),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                                // Brass MagicSpinner while the next page is being
+                                // fetched — matches the rest of the realm's loading
+                                // vocabulary instead of the cool-grey M3 default.
+                                MagicSpinner(modifier = Modifier.size(32.dp))
                             }
                         }
                     } else if (!state.hasMore && state.items.isNotEmpty()) {
