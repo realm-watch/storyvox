@@ -564,6 +564,18 @@ class EnginePlayer @AssistedInject constructor(
                         KokoroEngine.getInstance().setActiveSpeakerId(
                             (active.engineType as EngineType.Kokoro).speakerId,
                         )
+                        // #196 — drive Kokoro's within-sentence comma
+                        // pause from the same punctuation-cadence
+                        // multiplier we use for between-sentence
+                        // silence. 0.2f baseline = engine default; the
+                        // multiplier scales it linearly so a 0× user
+                        // collapses commas, a 2× user stretches them
+                        // to ~0.4f. Field on the engine is read at
+                        // config-build time inside loadModel, so set
+                        // before loadModel — not after.
+                        KokoroEngine.getInstance().setSilenceScale(
+                            KOKORO_SILENCE_SCALE_BASELINE * currentPunctuationPauseMultiplier,
+                        )
                         KokoroEngine.getInstance().loadModel(context, onnx, tokens, voicesBin)
                             ?: "Error: load returned null"
                     }
@@ -1190,6 +1202,16 @@ class EnginePlayer @AssistedInject constructor(
      */
     fun setPunctuationPauseMultiplier(multiplier: Float) {
         currentPunctuationPauseMultiplier = multiplier.coerceIn(0f, 4f)
+        // #196 — push the new scale into the Kokoro engine immediately
+        // so within-sentence comma pauses take effect on the next
+        // generated sentence. The setter triggers an OfflineTts
+        // rebuild via _reloadIfActive (VoxSherpa v2.7.6+); the active
+        // sentence finishes with the old scale, the next one picks up
+        // the new value. No-op on Piper voices — VoiceEngine doesn't
+        // expose silenceScale because the issue is Kokoro-specific.
+        KokoroEngine.getInstance().setSilenceScale(
+            KOKORO_SILENCE_SCALE_BASELINE * currentPunctuationPauseMultiplier,
+        )
         if (_observableState.value.isPlaying) startPlaybackPipeline()
         invalidateState()
     }
@@ -1314,6 +1336,18 @@ class EnginePlayer @AssistedInject constructor(
                         KokoroEngine.getInstance().setActiveSpeakerId(
                             (active.engineType as EngineType.Kokoro).speakerId,
                         )
+                        // #196 — drive Kokoro's within-sentence comma
+                        // pause from the same punctuation-cadence
+                        // multiplier we use for between-sentence
+                        // silence. 0.2f baseline = engine default; the
+                        // multiplier scales it linearly so a 0× user
+                        // collapses commas, a 2× user stretches them
+                        // to ~0.4f. Field on the engine is read at
+                        // config-build time inside loadModel, so set
+                        // before loadModel — not after.
+                        KokoroEngine.getInstance().setSilenceScale(
+                            KOKORO_SILENCE_SCALE_BASELINE * currentPunctuationPauseMultiplier,
+                        )
                         KokoroEngine.getInstance().loadModel(context, onnx, tokens, voicesBin)
                             ?: "Error: load returned null"
                     }
@@ -1431,6 +1465,14 @@ class EnginePlayer @AssistedInject constructor(
         /** Fallback when the engine reports a non-positive sample rate (model
          *  not loaded yet). Piper voices are 22050Hz; Kokoro is 24000Hz. */
         const val DEFAULT_SAMPLE_RATE = 22050
+
+        /** Issue #196 — Kokoro's previously-hardcoded silence scale
+         *  (0.2f) is the multiplier=1.0 baseline. We linearly scale
+         *  with the user's punctuation-cadence multiplier so a 0×
+         *  user collapses commas and a 2× user stretches them to
+         *  ~0.4f, matching Thalia's recommended Off / Normal / Long
+         *  curve from the VoxSherpa knobs research doc. */
+        const val KOKORO_SILENCE_SCALE_BASELINE = 0.2f
 
         /** When buffered audio falls below this, pause AudioTrack and surface
          *  a "Buffering..." UI state. Tab A7 Lite's hardware buffer is ~2-3s
