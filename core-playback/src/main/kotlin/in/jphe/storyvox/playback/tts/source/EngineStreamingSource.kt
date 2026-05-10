@@ -137,12 +137,10 @@ class EngineStreamingSource(
 
     /** True when this source will use the streaming producer path —
      *  emit many small chunks per sentence as TLS records arrive.
-     *  EnginePlayer's consumer reads this to bypass the catchup-pause
-     *  thresholds (which are sized for full-sentence Piper/Kokoro
-     *  chunks; small streamed chunks would yo-yo the threshold and
-     *  starve the producer via queue back-pressure). */
-    override val isStreaming: Boolean =
-        engine is StreamingVoiceEngineHandle && secondaryEngines.isEmpty()
+     *  v0.4.92 — false because streaming dispatch is disabled in
+     *  startProducer. Once re-enabled, this should match the dispatch
+     *  condition: `engine is StreamingVoiceEngineHandle && secondaryEngines.isEmpty()`. */
+    override val isStreaming: Boolean = false
 
     /**
      * PR-7-bonus / Tier 2 (#87) — dedicated single-thread executor for
@@ -284,17 +282,19 @@ class EngineStreamingSource(
 
     private fun startProducer(fromIndex: Int): Job =
         when {
-            // v0.4.90 — streaming dispatch shipped. With v0.4.86's
-            // `isStreaming=true → bypass catchup-pause` fix the stall
-            // is gone and on-device testing confirmed end-to-end
-            // playback (Flip3, Andrew Multilingual @ westus, full
-            // chapter through 86-chunk sentences with headroom buffered
-            // to ~28 s). The Tier 3 lookahead path still wins when
-            // parallelSynthInstances > 1 (multiple sentences in flight
-            // beats single-sentence first-byte streaming for sustained
-            // throughput); streaming kicks in when instances == 1.
+            // v0.4.92 — streaming dispatch RE-DISABLED. v0.4.90/.91
+            // re-enabled it after diagnostic logs showed the producer/
+            // consumer pipeline running correctly (sentences flowing,
+            // headroom growing, AudioTrack state=started). But JP
+            // confirmed live: no audio output despite all signals
+            // green in logs. Without on-device debug capability we
+            // can't bisect the silent failure between track.write()
+            // and the speaker. Lookahead path (parallelSynthInstances
+            // >= 2) and buffered serial path (instances == 1) both
+            // produce real audio; streaming code is preserved on disk
+            // for offline reproduction. To re-enable when fixed:
+            //   engine is StreamingVoiceEngineHandle -> startStreamingSerialProducer(fromIndex)
             secondaryEngines.isNotEmpty() -> startParallelProducer(fromIndex)
-            engine is StreamingVoiceEngineHandle -> startStreamingSerialProducer(fromIndex)
             else -> startSerialProducer(fromIndex)
         }
 
