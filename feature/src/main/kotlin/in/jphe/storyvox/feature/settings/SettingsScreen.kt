@@ -326,6 +326,15 @@ fun SettingsScreen(
                 RssFeedManagementRow(viewModel = viewModel)
             }
             SettingsSwitchRow(
+                title = "Local EPUB files",
+                subtitle = "Show in Browse picker (#235).",
+                checked = s.sourceEpubEnabled,
+                onCheckedChange = viewModel::setSourceEpubEnabled,
+            )
+            if (s.sourceEpubEnabled) {
+                EpubFolderPickerRow(viewModel = viewModel)
+            }
+            SettingsSwitchRow(
                 title = "Wi-Fi only",
                 subtitle = "Don't poll on cellular.",
                 checked = s.downloadOnWifiOnly,
@@ -2051,4 +2060,76 @@ private fun RssFeedManagementRow(viewModel: SettingsViewModel) {
             )
         }
     }
+}
+
+/**
+ * Issue #235 — folder-picker row for the EPUB backend. SAF tree
+ * picker via OpenDocumentTree contract; the resolved URI is
+ * persistable so we don't have to re-prompt the user across
+ * launches.
+ */
+@Composable
+private fun EpubFolderPickerRow(viewModel: SettingsViewModel) {
+    val folder by viewModel.epubFolderUri.collectAsStateWithLifecycle()
+    val spacing = LocalSpacing.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        if (uri != null) {
+            // Persist the URI permission so the next launch can still
+            // read the folder without re-prompting. SAF grants are
+            // session-only by default; takePersistableUriPermission
+            // upgrades to a long-lived grant tied to our package.
+            val flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, flags)
+            }
+            viewModel.setEpubFolderUri(uri.toString())
+        }
+    }
+
+    Column(modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm)) {
+        Text(
+            "EPUB folder",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = spacing.xs),
+        )
+        Text(
+            text = folder?.let { abbreviateSafUri(it) }
+                ?: "No folder picked. Tap below to choose where your .epub files live.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = spacing.sm),
+            maxLines = 2,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            BrassButton(
+                label = if (folder == null) "Pick folder" else "Change folder",
+                onClick = { launcher.launch(null) },
+                variant = BrassButtonVariant.Primary,
+            )
+            if (folder != null) {
+                androidx.compose.material3.TextButton(
+                    onClick = viewModel::clearEpubFolder,
+                    modifier = Modifier.padding(start = spacing.sm),
+                ) { Text("Clear") }
+            }
+        }
+    }
+}
+
+/** SAF tree URIs look like `content://com.android.externalstorage.documents/tree/primary%3AAudiobooks`
+ *  — useful internally but not friendly to read. Strip the scheme +
+ *  authority and percent-decode the path so the user sees something
+ *  closer to "primary:Audiobooks". */
+private fun abbreviateSafUri(raw: String): String {
+    val tree = raw.substringAfterLast("/tree/", missingDelimiterValue = raw)
+    return runCatching { java.net.URLDecoder.decode(tree, "UTF-8") }.getOrDefault(tree)
 }

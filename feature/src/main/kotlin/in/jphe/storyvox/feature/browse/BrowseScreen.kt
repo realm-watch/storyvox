@@ -129,6 +129,9 @@ fun BrowseScreen(
                     // #236 — RSS has no filter sheet (subscription list
                     // is the entire surface); count is always zero.
                     BrowseSourceKey.Rss -> 0
+                    // #235 — EPUB also has no filter sheet (folder
+                    // picker is in Settings).
+                    BrowseSourceKey.Epub -> 0
                 },
                 onClick = { showFilterSheet = true },
             )
@@ -326,6 +329,9 @@ fun BrowseScreen(
             // #236 — RSS has no filter UI (the subscription list is
             // managed in Settings, not a Browse-side sheet).
             BrowseSourceKey.Rss -> { showFilterSheet = false }
+            // #235 — EPUB also has no filter UI (folder picker is in
+            // Settings).
+            BrowseSourceKey.Epub -> { showFilterSheet = false }
         }
     }
 }

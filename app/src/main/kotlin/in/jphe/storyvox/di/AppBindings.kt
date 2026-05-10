@@ -132,6 +132,11 @@ object AppBindings {
     @Provides @Singleton
     fun provideRssConfig(impl: `in`.jphe.storyvox.data.RssConfigImpl): `in`.jphe.storyvox.source.rss.config.RssConfig = impl
 
+    /** Bridges the source-epub [EpubConfig] read interface (#235) to
+     *  the concrete app-side SAF-backed impl. */
+    @Provides @Singleton
+    fun provideEpubConfig(impl: `in`.jphe.storyvox.data.EpubConfigImpl): `in`.jphe.storyvox.source.epub.config.EpubConfig = impl
+
     /**
      * Same singleton instance as [provideSettingsRepositoryUi], exposed under
      * the [PlaybackBufferConfig] contract so `core-playback`'s [EnginePlayer]

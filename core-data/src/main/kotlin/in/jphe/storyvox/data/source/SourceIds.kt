@@ -26,4 +26,8 @@ object SourceIds {
      *  backend; explicit author opt-in by definition (publishing RSS
      *  is a publishing protocol). */
     const val RSS: String = "rss"
+    /** Local EPUB files (#235) — user picks a folder via SAF, the
+     *  source enumerates .epub files there as fictions. Zero-network,
+     *  user-owned-content backend. */
+    const val EPUB: String = "epub"
 }

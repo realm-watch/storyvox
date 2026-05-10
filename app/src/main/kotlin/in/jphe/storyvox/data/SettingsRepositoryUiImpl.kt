@@ -186,6 +186,8 @@ private object Keys {
     val SOURCE_MEMPALACE_ENABLED = booleanPreferencesKey("pref_source_mempalace_enabled")
     /** Issue #236 — RSS backend on/off. */
     val SOURCE_RSS_ENABLED = booleanPreferencesKey("pref_source_rss_enabled")
+    /** Issue #235 — local EPUB backend on/off. */
+    val SOURCE_EPUB_ENABLED = booleanPreferencesKey("pref_source_epub_enabled")
 
     // ── Sleep timer shake-to-extend (issue #150) ───────────────────
     val SLEEP_SHAKE_TO_EXTEND_ENABLED = booleanPreferencesKey("pref_sleep_shake_to_extend_enabled")
@@ -244,6 +246,7 @@ class SettingsRepositoryUiImpl(
     private val githubAuth: GitHubAuthRepository,
     private val teamsAuth: AnthropicTeamsAuthRepository,
     private val rssConfig: RssConfigImpl,
+    private val epubConfig: EpubConfigImpl,
 ) : SettingsRepositoryUi,
     PlaybackBufferConfig,
     PlaybackModeConfig,
@@ -266,9 +269,10 @@ class SettingsRepositoryUiImpl(
         githubAuth: GitHubAuthRepository,
         teamsAuth: AnthropicTeamsAuthRepository,
         rssConfig: RssConfigImpl,
+        epubConfig: EpubConfigImpl,
     ) : this(
         context.settingsDataStore, auth, hydrator,
-        palaceConfig, palaceApi, llmCreds, githubAuth, teamsAuth, rssConfig,
+        palaceConfig, palaceApi, llmCreds, githubAuth, teamsAuth, rssConfig, epubConfig,
     )
 
     override val settings: Flow<UiSettings> = combine(
@@ -304,6 +308,7 @@ class SettingsRepositoryUiImpl(
             sourceGitHubEnabled = prefs[Keys.SOURCE_GITHUB_ENABLED] ?: true,
             sourceMemPalaceEnabled = prefs[Keys.SOURCE_MEMPALACE_ENABLED] ?: true,
             sourceRssEnabled = prefs[Keys.SOURCE_RSS_ENABLED] ?: true,
+            sourceEpubEnabled = prefs[Keys.SOURCE_EPUB_ENABLED] ?: true,
             sleepShakeToExtendEnabled = prefs[Keys.SLEEP_SHAKE_TO_EXTEND_ENABLED] ?: true,
             ai = UiAiSettings(
                 provider = prefs[Keys.AI_PROVIDER]
@@ -731,6 +736,13 @@ class SettingsRepositoryUiImpl(
     }
     override val rssSubscriptions: kotlinx.coroutines.flow.Flow<List<String>> =
         rssConfig.subscriptions.map { subs -> subs.map { it.url } }
+
+    override suspend fun setSourceEpubEnabled(enabled: Boolean) {
+        store.edit { it[Keys.SOURCE_EPUB_ENABLED] = enabled }
+    }
+    override val epubFolderUri: kotlinx.coroutines.flow.Flow<String?> = epubConfig.folderUriString
+    override suspend fun setEpubFolderUri(uri: String) = epubConfig.setFolder(uri)
+    override suspend fun clearEpubFolder() = epubConfig.clearFolder()
 
     override suspend fun setSleepShakeToExtendEnabled(enabled: Boolean) {
         store.edit { it[Keys.SLEEP_SHAKE_TO_EXTEND_ENABLED] = enabled }

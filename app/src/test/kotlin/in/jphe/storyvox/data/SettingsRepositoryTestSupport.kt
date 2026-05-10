@@ -113,6 +113,23 @@ internal fun makeFakeRssConfig(
     return RssConfigImpl(rssStore)
 }
 
+/** Real [EpubConfigImpl] over a temp DataStore (#235). Same pattern
+ *  as [makeFakeRssConfig] — the settings tests don't exercise SAF or
+ *  EPUB content, just need the dependency to satisfy the constructor.
+ *  Robolectric-supplied application context is used as the SAF context;
+ *  no SAF calls are exercised in these tests, so the empty
+ *  ApplicationProvider context is sufficient. */
+internal fun makeFakeEpubConfig(
+    dir: File,
+    scope: CoroutineScope,
+): EpubConfigImpl {
+    val epubStore = PreferenceDataStoreFactory.create(
+        scope = scope,
+        produceFile = { File(dir, "storyvox_epub.preferences_pb") },
+    )
+    return EpubConfigImpl.forTesting(epubStore)
+}
+
 /**
  * Real [PalaceDaemonApi] over an OkHttpClient + a fake config that emits
  * an empty [PalaceConfigState]. No HTTP is exercised by the settings

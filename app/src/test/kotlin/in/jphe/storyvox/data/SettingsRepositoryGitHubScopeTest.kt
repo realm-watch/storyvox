@@ -55,6 +55,7 @@ class SettingsRepositoryGitHubScopeTest {
             githubAuth = FakeGitHubAuth(),
             teamsAuth = fakeTeamsAuth(),
             rssConfig = makeFakeRssConfig(tempFolder.newFolder("rss_ds"), scope),
+            epubConfig = makeFakeEpubConfig(tempFolder.newFolder("epub_ds"), scope),
         )
     }
 

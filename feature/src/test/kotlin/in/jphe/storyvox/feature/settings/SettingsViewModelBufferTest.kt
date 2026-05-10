@@ -186,6 +186,10 @@ class SettingsViewModelBufferTest {
         override suspend fun removeRssFeed(fictionId: String) = Unit
         override suspend fun removeRssFeedByUrl(url: String) = Unit
         override val rssSubscriptions: kotlinx.coroutines.flow.Flow<List<String>> = kotlinx.coroutines.flow.flowOf(emptyList())
+        override suspend fun setSourceEpubEnabled(enabled: Boolean) = Unit
+        override val epubFolderUri: kotlinx.coroutines.flow.Flow<String?> = kotlinx.coroutines.flow.flowOf(null)
+        override suspend fun setEpubFolderUri(uri: String) = Unit
+        override suspend fun clearEpubFolder() = Unit
         override suspend fun setSleepShakeToExtendEnabled(enabled: Boolean) = Unit
         override suspend fun signOutTeams() = Unit
     }

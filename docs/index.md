@@ -1,7 +1,7 @@
 ---
 layout: default
-title: storyvox — neural-voice audiobook player for serial fiction
-description: Offline neural TTS. Royal Road and GitHub fiction sources. Brass-on-warm-dark Library Nocturne aesthetic. Free, GPL-3.0, no per-character billing.
+title: storyvox — neural-voice audiobook player for any text you have
+description: Offline neural TTS. Multiple sources — Royal Road, GitHub, Memory Palace, RSS feeds, local EPUB files. AI chat per fiction across seven LLM providers. Brass-on-warm-dark Library Nocturne aesthetic. Free, GPL-3.0, no per-character billing.
 ---
 
 <section class="hero">

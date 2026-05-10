@@ -123,6 +123,18 @@ class SettingsViewModel @Inject constructor(
      *  repo's removal-by-URL helper so the UI doesn't import
      *  source-rss internals. */
     fun removeRssFeedByUrl(url: String) = viewModelScope.launch { repo.removeRssFeedByUrl(url) }
+
+    /** Issue #235 — local EPUB backend on/off + folder picker. */
+    fun setSourceEpubEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setSourceEpubEnabled(enabled) }
+    fun setEpubFolderUri(uri: String) = viewModelScope.launch { repo.setEpubFolderUri(uri) }
+    fun clearEpubFolder() = viewModelScope.launch { repo.clearEpubFolder() }
+    val epubFolderUri: kotlinx.coroutines.flow.StateFlow<String?> =
+        repo.epubFolderUri.stateIn(
+            viewModelScope,
+            kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000),
+            null,
+        )
     val rssSubscriptions: kotlinx.coroutines.flow.StateFlow<List<String>> =
         repo.rssSubscriptions.stateIn(
             viewModelScope,

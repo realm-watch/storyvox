@@ -608,6 +608,10 @@ data class UiSettings(
      *  see the chip in the picker; if the user hasn't subscribed to
      *  any feeds yet the empty-state copy explains how to add one. */
     val sourceRssEnabled: Boolean = true,
+    /** Local EPUB backend toggle (#235). Default ON — fresh installs
+     *  see the chip in the picker; if the user hasn't picked a folder
+     *  yet the empty-state copy points back to Settings. */
+    val sourceEpubEnabled: Boolean = true,
     /** Issue #150 — when ON, a shake during the sleep timer's fade
      *  tail re-arms the timer. Default ON; users with bumpy commutes
      *  can disable to avoid accidental extensions. */
@@ -869,6 +873,14 @@ interface SettingsRepositoryUi {
     suspend fun removeRssFeed(fictionId: String)
     suspend fun removeRssFeedByUrl(url: String)
     val rssSubscriptions: Flow<List<String>>
+
+    /** Issue #235 — local EPUB backend on/off. */
+    suspend fun setSourceEpubEnabled(enabled: Boolean)
+
+    /** Issue #235 — currently-picked SAF folder URI (or null). */
+    val epubFolderUri: Flow<String?>
+    suspend fun setEpubFolderUri(uri: String)
+    suspend fun clearEpubFolder()
 
     /** Issue #150 — sleep timer shake-to-extend on/off. */
     suspend fun setSleepShakeToExtendEnabled(enabled: Boolean)

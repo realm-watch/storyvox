@@ -63,6 +63,9 @@ robolectric = "4.14.1"
 # Desugaring
 desugar = "2.1.3"
 
+# Storage Access Framework helpers (#235 EPUB import)
+documentfile = "1.0.1"
+
 [libraries]
 # AndroidX core
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core-ktx" }
@@ -73,6 +76,7 @@ androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 androidx-startup = { module = "androidx.startup:startup-runtime", version.ref = "startup" }
 androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "security-crypto" }
+androidx-documentfile = { module = "androidx.documentfile:documentfile", version.ref = "documentfile" }
 
 # Navigation
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation-compose" }

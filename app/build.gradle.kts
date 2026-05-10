@@ -33,8 +33,8 @@ android {
         applicationId = "in.jphe.storyvox"
         minSdk = 26
         targetSdk = 35
-        versionCode = 74
-        versionName = "0.4.62"
+        versionCode = 75
+        versionName = "0.4.63"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -153,6 +153,7 @@ dependencies {
     implementation(project(":source-github"))
     implementation(project(":source-mempalace"))
     implementation(project(":source-rss"))
+    implementation(project(":source-epub"))
     implementation(project(":feature"))
 
     implementation(libs.androidx.core.ktx)
@@ -185,6 +186,9 @@ dependencies {
 
     // DataStore (settings persistence)
     implementation(libs.androidx.datastore.preferences)
+
+    // SAF helper for the EPUB import folder picker (#235)
+    implementation(libs.androidx.documentfile)
 
     coreLibraryDesugaring(libs.android.desugar.jdk.libs)
 

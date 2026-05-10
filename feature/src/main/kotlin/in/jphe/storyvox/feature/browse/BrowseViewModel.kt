@@ -55,6 +55,9 @@ enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
      *  catalog. Each subscribed feed URL becomes one fiction; each item
      *  is one chapter. Pure user-content backend. */
     Rss(SourceIds.RSS, "RSS"),
+    /** Local EPUB files (#235) — user picks a folder via SAF, indexed
+     *  EPUBs render as fictions, spine items as chapters. Zero-network. */
+    Epub(SourceIds.EPUB, "Local"),
 }
 
 /** Tabs that are meaningful for [source]. GitHub registry doesn't
@@ -101,6 +104,13 @@ fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseT
     // order. Search filters by feed title. BestRated has no analogue.
     BrowseSourceKey.Rss -> listOf(
         BrowseTab.NewReleases,
+        BrowseTab.Popular,
+        BrowseTab.Search,
+    )
+    // Local EPUB files: indexed list + search by filename. NewReleases
+    // and Popular both list the indexed books in the same order
+    // (alphabetical by filename) since EPUBs are static.
+    BrowseSourceKey.Epub -> listOf(
         BrowseTab.Popular,
         BrowseTab.Search,
     )
@@ -268,6 +278,7 @@ class BrowseViewModel @Inject constructor(
                     if (s.sourceGitHubEnabled) add(BrowseSourceKey.GitHub)
                     if (s.sourceMemPalaceEnabled) add(BrowseSourceKey.MemPalace)
                     if (s.sourceRssEnabled) add(BrowseSourceKey.Rss)
+                    if (s.sourceEpubEnabled) add(BrowseSourceKey.Epub)
                 }
             }
             .distinctUntilChanged()
@@ -480,6 +491,12 @@ class BrowseViewModel @Inject constructor(
                 _githubFilter.value = GitHubSearchFilter()
                 _palaceFilter.value = MemPalaceFilter()
             }
+            BrowseSourceKey.Epub -> {
+                // Local EPUB: same as RSS — no per-source filter, clear siblings.
+                _filter.value = BrowseFilter()
+                _githubFilter.value = GitHubSearchFilter()
+                _palaceFilter.value = MemPalaceFilter()
+            }
         }
     }
 
@@ -594,6 +611,14 @@ private fun resolveSource(
         tab == BrowseTab.Search -> if (q.isBlank()) BrowseSource.NewReleases else BrowseSource.Search(q)
         tab == BrowseTab.Popular -> BrowseSource.Popular
         tab == BrowseTab.NewReleases -> BrowseSource.NewReleases
+        else -> null
+    }
+    // Local EPUB (#235): same shape as RSS — Popular = full list,
+    // Search filters by filename. No NewReleases concept (files are
+    // static). Library tab is hidden via supportedTabs.
+    BrowseSourceKey.Epub -> when {
+        tab == BrowseTab.Search -> if (q.isBlank()) BrowseSource.Popular else BrowseSource.Search(q)
+        tab == BrowseTab.Popular -> BrowseSource.Popular
         else -> null
     }
 }
