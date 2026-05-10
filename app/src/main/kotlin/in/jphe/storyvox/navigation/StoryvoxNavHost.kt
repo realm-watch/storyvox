@@ -29,6 +29,7 @@ import `in`.jphe.storyvox.auth.github.GitHubSignInScreen
 import `in`.jphe.storyvox.source.github.auth.GitHubAuthConfig
 import `in`.jphe.storyvox.feature.browse.BrowseScreen
 import `in`.jphe.storyvox.feature.chat.ChatScreen
+import `in`.jphe.storyvox.feature.debug.DebugScreen
 import `in`.jphe.storyvox.feature.engine.VoicePickerGate
 import `in`.jphe.storyvox.feature.fiction.FictionDetailScreen
 import `in`.jphe.storyvox.feature.follows.FollowsScreen
@@ -57,6 +58,10 @@ object StoryvoxRoutes {
      *  recap history, navigate back into the chat surface, delete
      *  individual sessions. */
     const val SETTINGS_AI_SESSIONS = "settings/ai/sessions"
+    /** Vesper (v0.4.97) — Settings → Developer → Debug. Pipeline/engine/
+     *  Azure live diagnostics + 20-event ring + clipboard export for bug
+     *  reports. */
+    const val SETTINGS_DEBUG = "settings/debug"
     const val AUTH_WEBVIEW = "auth/webview"
     /** Issue #91 — GitHub Device Flow sign-in modal. */
     const val GITHUB_SIGN_IN = "auth/github/signin"
@@ -373,7 +378,17 @@ private fun StoryvoxNavHostContent(
                     onOpenTeamsSignIn = { navController.navigate(StoryvoxRoutes.TEAMS_SIGN_IN) },
                     onOpenPronunciationDict = { navController.navigate(StoryvoxRoutes.SETTINGS_PRONUNCIATION) },
                     onOpenAiSessions = { navController.navigate(StoryvoxRoutes.SETTINGS_AI_SESSIONS) },
+                    onOpenDebug = { navController.navigate(StoryvoxRoutes.SETTINGS_DEBUG) },
                 )
+            }
+            composable(
+                StoryvoxRoutes.SETTINGS_DEBUG,
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+            ) {
+                DebugScreen(onBack = { navController.popBackStack() })
             }
             composable(
                 StoryvoxRoutes.SETTINGS_AI_SESSIONS,

@@ -10,6 +10,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import `in`.jphe.storyvox.feature.debug.DebugOverlay
+import `in`.jphe.storyvox.feature.debug.DebugViewModel
 import `in`.jphe.storyvox.ui.component.HybridReaderShell
 
 @Composable
@@ -40,6 +42,16 @@ fun HybridReaderScreen(
     val recapPlayback by viewModel.recapPlayback.collectAsStateWithLifecycle()
     val playback = state.playback
 
+    // Vesper (v0.4.97) — debug overlay. The DebugViewModel pulls the
+    // master switch from SettingsRepositoryUi so toggling in Settings →
+    // Developer immediately reflects here without a navController round-
+    // trip. The overlay is mounted INSIDE the shell so the reader's
+    // playback controls still respond to taps (the overlay only takes
+    // pointer events on its own bounding box). Hoisting outside the
+    // shell would intercept reader gestures.
+    val debugVm: DebugViewModel = hiltViewModel()
+    val debugEnabled by debugVm.overlayEnabled.collectAsStateWithLifecycle()
+
     if (playback == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No chapter loaded.", style = MaterialTheme.typography.bodyMedium)
@@ -47,6 +59,7 @@ fun HybridReaderScreen(
         return
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     HybridReaderShell(
         current = state.activePane,
         onViewChange = viewModel::setActivePane,
@@ -104,4 +117,13 @@ fun HybridReaderScreen(
         },
         onToggleReadAloud = viewModel::toggleRecapAloud,
     )
+
+    // Debug overlay — sits on top of everything (including the recap
+    // modal) when enabled. Pinned to the top of the screen via
+    // statusBarsPadding inside DebugOverlay itself, so the player
+    // controls at the bottom stay free.
+    if (debugEnabled) {
+        DebugOverlay(viewModel = debugVm)
+    }
+    }
 }

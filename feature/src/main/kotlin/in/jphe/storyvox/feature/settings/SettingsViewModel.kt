@@ -192,6 +192,10 @@ class SettingsViewModel @Inject constructor(
     fun setSleepShakeToExtendEnabled(enabled: Boolean) =
         viewModelScope.launch { repo.setSleepShakeToExtendEnabled(enabled) }
 
+    /** Vesper (v0.4.97) — debug overlay master switch. */
+    fun setShowDebugOverlay(enabled: Boolean) =
+        viewModelScope.launch { repo.setShowDebugOverlay(enabled) }
+
     fun previewVoice(voice: UiVoice) = voices.previewVoice(voice)
 
     // ─── Memory Palace (#79) ────────────────────────────────────────────
