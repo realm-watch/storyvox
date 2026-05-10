@@ -102,15 +102,17 @@ description: Offline neural TTS. Royal Road and GitHub fiction sources. Brass-on
 <section class="recent">
   <h2>What just shipped</h2>
   <p>
-    <strong>v0.4.31</strong> — fix(playback) infinite spin on track.pause() (regression from #77),
-    PCM cache filesystem layer landed, Performance &amp; buffering Settings section with
-    Mode A / Mode B toggles, voice library starring + Starred surface.
-    <a href="https://github.com/jphein/storyvox/releases/tag/v0.4.31">Full release notes →</a>
+    <strong>v0.4.55</strong> — sleep timer shake-to-extend during the fade tail (#150),
+    backend on/off toggles for Royal Road / GitHub / Memory Palace (#221A), bottom-nav
+    default lands on Playing instead of Library, GitHub gist scope fix (#234).
+    <a href="https://github.com/jphein/storyvox/releases/tag/v0.4.55">Full release notes →</a>
   </p>
   <p>
-    <strong>Since v0.4.31:</strong> MemPalace as a read-only fiction source (#107),
-    speed/pitch flow-to-engine fix (#113), continuous Punctuation Cadence slider (#115),
-    polished README. Next release builds on these.
+    <strong>v0.4 highlights since v0.4.31:</strong> seven-provider AI chat with grounding
+    controls, GitHub OAuth Device Flow (#91) with My Repos / Starred / Gists tabs, MemPalace
+    as third fiction backend with per-wing filter, Settings redesign (8 sections + brass icons +
+    Saga's row composables), AI-generated chapter recap with TTS read-aloud, "Who is X?"
+    word lookup, public/private repo filter, and the parallel feature bundle (10 PRs in v0.4.51).
   </p>
   <p class="muted">
     See the <a href="https://github.com/jphein/storyvox/wiki">wiki</a> for per-feature documentation,

@@ -12,22 +12,25 @@ Stream chapters from [Royal Road](https://royalroad.com) and [GitHub](https://gi
   <img src="docs/screenshots/03-reader.png" width="320" alt="storyvox reader playing The Archmage Coefficient" />
 </p>
 
-> **v0.4.31** — engine stable, PCM cache filesystem layer landed, performance modes shipping, voice tiers + favorites in the picker. GPL-3.0 (downstream of the engine, not a posture choice — see [License](#license)).
+> **v0.4.55** — three fiction sources, AI chat per fiction across seven LLM providers, GitHub OAuth, Memory Palace integration, Settings redesign (8 sections), shake-to-extend sleep timer, backend on/off toggles. GPL-3.0 (downstream of the engine, not a posture choice — see [License](#license)).
 
 ---
 
 ## What it does
 
-- **Two fiction sources, side by side.** Browse [Royal Road](https://royalroad.com) with the full filter set (tags include/exclude, status, type, length, rating, content warnings, sort) or browse fiction repos on GitHub via the curated [storyvox-registry](https://github.com/jphein/storyvox-registry) plus live `/search/repositories` results.
+- **Three fiction sources, side by side.** Browse [Royal Road](https://royalroad.com) with the full filter set (tags include/exclude, status, type, length, rating, content warnings, sort), browse fiction repos on GitHub via the curated [storyvox-registry](https://github.com/jphein/storyvox-registry) plus live `/search/repositories` results, or browse a [Memory Palace](https://github.com/jphein/mempalace) you host yourself. Each backend has its own on/off toggle in Settings.
 - **Plays chapters as audiobooks** through an in-process neural TTS engine. Two voice families ship: [Piper](https://github.com/rhasspy/piper) (compact, ~14–30 MB) and [Kokoro](https://github.com/hexgrad/kokoro) (multi-speaker, ~330 MB). Voice models download on demand from `voices-v2`; nothing is bundled in the APK. No cloud, no API keys, no per-character billing.
 - **Highlights the current sentence** in brass as the engine speaks. Swipe between audiobook view (cover, scrubber, transport) and reader view (chapter text). The highlight glides between sentences to match the read-aloud rhythm.
 - **Auto-advances** between chapters. Eager-downloads ahead so the next chapter is ready when the current ends. PCM cache buffering keeps playback smooth when synthesis falls behind — the player pauses, refills, resumes without a glitch.
+- **AI chat per fiction.** Per-book chat sessions across seven LLM providers (Claude direct, Anthropic Teams via OAuth, OpenAI, Vertex, Bedrock, Foundry, Ollama) with grounding controls — feed the AI the current sentence, the entire chapter, or the entire book so far. Long-press a word to ask "Who is X?". AI-generated chapter recaps you can read aloud through the same TTS pipeline.
+- **GitHub sign-in via OAuth Device Flow** (no API key paste). Lifts the anon 60 req/hr cap to 5,000, unlocks "My Repos" / "Starred" / "Gists" tabs in Browse, and (opt-in) private-repo access for treating private repos as your personal book library.
 - **Voice library with tiers and favorites.** Engine-grouped picker, star toggles for the voices you keep coming back to, and a Starred surface that floats them to the top.
-- **Sleep timer** with 15/30/45/60-minute presets, an "end of chapter" mode, and a countdown pulse as time runs out.
+- **Sleep timer** with 15/30/45/60-minute presets, an "end of chapter" mode, a countdown pulse as time runs out, and shake-to-extend during the fade-out tail (#150).
 - **Library + Follows tabs** with sign-in via WebView (your Royal Road follow list syncs into the app).
 - **Infinite-scroll Browse** across every tab.
 - **Cheap polling for new chapters.** GitHub-sourced fictions watch the repo's HEAD SHA; the manifest is only re-scanned when something changes — one HTTP request per fiction per check.
 - **MediaSession-aware** — lock-screen art, transport from Bluetooth headsets, headphone media buttons, notification shade.
+- **Settings redesign** — 8 sections in touch-frequency order (Voice & Playback, Reading, Performance, AI, Library & Sync, Account, Memory Palace, About) with brass section icons and a unified component vocabulary.
 - **Library Nocturne theme** — brass on warm dark, EB Garamond chapter body, Inter UI. Light mode is parchment cream.
 - **Adaptive layouts** — fills the screen on phones (2 columns), tablets (5), foldables (more).
 
@@ -177,15 +180,23 @@ Per-dreamer detail specs live in `scratch/dreamers/`.
 
 ## Roadmap
 
-The engine is stable. The next wave is structural fixes for slow-voice quality, settings polish, and new fiction sources.
+The v0.4 line shipped 50+ point releases — the engine, three fiction sources, AI chat, OAuth, the Settings redesign, and the perf trade space are all in. The next wave is the v0.5 line: more backends, better recall, smarter playback.
 
-- **PCM cache rollout (PRs C–H).** The filesystem layer landed in [#100](https://github.com/jphein/storyvox/pull/100); the remaining steps wire auto-population on add-fiction, settings UI for cache size and eviction, and graceful fallback when the cache is incomplete. End state: high-quality voices play gaplessly on the Tab A7 Lite class. Spec: [PCM cache](docs/superpowers/specs/2026-05-07-pcm-cache-design.md).
-- **Settings redesign.** Six grouped cards, five reusable row composables, brass containment. Indigo's spec landed; Saga is implementing structural-only — every existing knob's behavior preserved bit-for-bit. Spec: [Settings redesign](docs/superpowers/specs/2026-05-08-settings-redesign-design.md).
-- **VoxSherpa knobs.** Per-voice speed/pitch overrides, sentence-silence tuning, decoder choice. Catalog complete; JP triages which knobs ship. Spec: [VoxSherpa knobs](docs/superpowers/specs/2026-05-08-voxsherpa-knobs-research.md).
-- **Azure HD voices (BYOK).** Cloud TTS for premium quality on slow devices. Bring-your-own Azure Speech key, sentence-keyed SSML synthesis, drops into the existing PCM cache like a local voice. Spec: [Azure HD voices](docs/superpowers/specs/2026-05-08-azure-hd-voices-design.md).
-- **GitHub OAuth (Device Flow).** Optional sign-in unlocks your private repos, starred lists, and gists as fiction sources, plus a 5,000 req/hr ceiling. Smallest-scope first; private-repo access is a separate toggle. Spec: [GitHub OAuth](docs/superpowers/specs/2026-05-08-github-oauth-design.md).
-- **AI integration.** Multi-provider chat (Claude, Ollama, others) wired via [cloud-chat-assistant](https://github.com/jphein/cloud-chat-assistant) — summaries, character glossaries, "what did I miss?" recaps when you pick a fiction back up.
-- **Memory Palace as fiction source.** Read your own knowledge palace as serial fiction — diary entries and knowledge-graph timelines render as chapters.
+**Shipped in v0.4 (since v0.4.31):**
+- **AI chat per fiction.** Seven-provider matrix (Claude, Anthropic Teams OAuth, OpenAI, Vertex, Bedrock, Foundry, Ollama) with grounding controls, system-prompt context tuning, "Who is X?" word lookups, and AI-generated chapter recaps that read aloud through TTS.
+- **GitHub OAuth (Device Flow).** "My Repos", "Starred", "Gists" tabs in Browse. Optional private-repo toggle for treating private repos as your personal book library. Public/Private/Both filter on the Repo tab.
+- **Memory Palace as fiction source.** Hosted MemPalace mounts as a third Browse backend; diary entries and KG timelines render as chapters. Per-wing filter dropdown.
+- **Settings redesign.** 8 sections in touch-frequency order with brass icons. Saga's row composables (SettingsGroupCard, SettingsSwitchRow, SettingsSliderBlock, SettingsSegmentedBlock, SettingsLinkRow) are the unified vocabulary across the screen.
+- **Backend on/off toggles.** Three switches in Library & Sync hide individual backends from the Browse picker.
+- **Sleep timer shake-to-extend.** During the 10s fade tail, three sharp shakes re-arm the timer for 15 minutes (#150).
+
+**v0.5 candidates:**
+- **Notion as fourth fiction backend** ([#233](https://github.com/jphein/storyvox/issues/233)).
+- **Azure HD voices (BYOK).** Cloud TTS for premium quality on slow devices ([#182–#186](https://github.com/jphein/storyvox/issues/182)).
+- **Sessions surface.** Settings → AI → Sessions: review past chats and recap history ([#218](https://github.com/jphein/storyvox/issues/218)).
+- **AI chat voice read-back.** TTS for assistant turns ([#214](https://github.com/jphein/storyvox/issues/214)).
+- **Knowledge graph for fiction.** Per-book Notebook (characters, places, who-said-what) seeding into MemPalace ([#147](https://github.com/jphein/storyvox/issues/147)).
+- **PCM cache PRs C–H.** Auto-population, settings UI for cache size, graceful fallback ([#86](https://github.com/jphein/storyvox/issues/86)).
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the long-form roadmap and backlog.
 
