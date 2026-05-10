@@ -305,7 +305,17 @@ private class RealFictionRepositoryUi(
         chapters.getChapter(chapterId)?.text
 
     override fun chaptersFor(fictionId: String): Flow<List<UiChapter>> =
-        repo.observeFiction(fictionId).map { detail ->
+        // Issue #282 — the previous mapping hard-coded `isFinished = false`,
+        // so the played-indicator on the Fiction detail chapter list never
+        // updated after auto-advance (or any markChapterPlayed call). Now
+        // combine the chapter list with the observable set of "user marked
+        // played" chapter ids so the circle fills as soon as the DB row
+        // flips. Both flows are Room-backed and re-emit on any relevant
+        // write; downstream combine fires once with whichever lands last.
+        kotlinx.coroutines.flow.combine(
+            repo.observeFiction(fictionId),
+            chapters.observePlayedChapterIds(fictionId),
+        ) { detail, playedIds ->
             detail?.chapters.orEmpty().map { ch ->
                 UiChapter(
                     id = ch.id,
@@ -314,7 +324,7 @@ private class RealFictionRepositoryUi(
                     publishedRelative = relativeTime(ch.publishedAt),
                     durationLabel = ch.wordCount?.let { "${(it / 250).coerceAtLeast(1)} min" } ?: "",
                     isDownloaded = false,
-                    isFinished = false,
+                    isFinished = ch.id in playedIds,
                 )
             }
         }

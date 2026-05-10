@@ -42,6 +42,22 @@ interface ChapterDao {
     @Query("SELECT id, downloadState FROM chapter WHERE fictionId = :fictionId")
     fun observeDownloadStates(fictionId: String): Flow<List<ChapterDownloadStateRow>>
 
+    /**
+     * Issue #282 — observable per-fiction "which chapters are played"
+     * projection, separate from [observeChapterInfosByFiction]. Reading
+     * `userMarkedRead` would mean adding the column to [ChapterInfoRow]
+     * (which mirrors the source-side [ChapterInfo] model and is a 1:1
+     * mapper today) or denormalizing the chapter list. A slim sibling
+     * flow keeps the source/UI contract intact: AppBindings combines
+     * the chapter-list flow with this set to compute `isFinished`.
+     *
+     * Selecting only the rows where `userMarkedRead = 1` keeps the
+     * emission small for users with mostly-unplayed long fictions; the
+     * combine in AppBindings does a set-contains check per chapter.
+     */
+    @Query("SELECT id FROM chapter WHERE fictionId = :fictionId AND userMarkedRead = 1")
+    fun observePlayedChapterIds(fictionId: String): Flow<List<String>>
+
     @Query(
         """
         SELECT * FROM chapter
