@@ -224,8 +224,18 @@ class EnginePlayer @AssistedInject constructor(
 
     private fun observeBufferConfig() {
         scope.launch {
+            // Rebuild the pipeline whenever the buffer-chunks slider
+            // changes mid-listen so the new queueCapacity takes effect
+            // on the next sentence — without this the cache would
+            // update but [EngineStreamingSource] would keep its old
+            // capacity until the next chapter load. Same shape as
+            // setPunctuationPauseMultiplier's mid-listen seam. The
+            // initial hydration emission lands before isPlaying flips
+            // true, so there's no spurious rebuild on launch.
             bufferConfig.playbackBufferChunks.collect { v ->
+                if (cachedBufferChunks == v) return@collect
                 cachedBufferChunks = v
+                if (_observableState.value.isPlaying) startPlaybackPipeline()
             }
         }
     }
