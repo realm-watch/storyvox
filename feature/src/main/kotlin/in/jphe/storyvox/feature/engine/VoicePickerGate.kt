@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,6 +46,7 @@ import `in`.jphe.storyvox.playback.voice.VoiceManager.DownloadProgress
 import `in`.jphe.storyvox.playback.voice.flagForLanguage
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
+import `in`.jphe.storyvox.ui.component.BrassProgressBar
 import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
@@ -340,7 +340,9 @@ private fun DownloadProgressBlock(
         DownloadProgress.Resolving -> {
             Text("Resolving…", style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(spacing.xs))
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            // Indeterminate brass comet — the manifest fetch is brief but
+            // network-flaky enough that callers sit on this state for 1-3s.
+            BrassProgressBar(progress = null, modifier = Modifier.fillMaxWidth())
         }
         is DownloadProgress.Downloading -> {
             val pct = if (progress.totalBytes > 0L) {
@@ -353,14 +355,13 @@ private fun DownloadProgressBlock(
                 style = MaterialTheme.typography.bodySmall,
             )
             Spacer(Modifier.height(spacing.xs))
-            if (progress.totalBytes > 0L) {
-                LinearProgressIndicator(
-                    progress = { pct },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            } else {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            }
+            // Determinate when we know totalBytes (sherpa-onnx serves
+            // Content-Length on the canonical CDN). Indeterminate fallback
+            // for rarer CDNs that omit it.
+            BrassProgressBar(
+                progress = if (progress.totalBytes > 0L) pct else null,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
         DownloadProgress.Done -> {
             Text(
