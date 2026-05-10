@@ -73,7 +73,24 @@ internal object BrowseParser {
     }
 
     private fun absoluteCoverUrl(img: Element): String? {
-        val src = img.attr("src").ifEmpty { return null }
+        // Issue #283 — Royal Road's browse listing switched to lazy-loaded
+        // images sometime in late 2025: the `<img>` element now carries
+        // the real cover URL on `data-src` (or `data-lazy-src`), and
+        // the literal `src` attribute is a placeholder
+        // (typically `nocover-new-min.png` or a 1×1 pixel data URI)
+        // until JavaScript swaps it in on viewport entry. Since our
+        // parser runs on raw HTML with no JS execution, reading `src`
+        // alone yielded the placeholder and we mapped it to null →
+        // every browse card showed the brass '?' placeholder.
+        //
+        // Prefer the lazy attributes when present; fall through to
+        // `src` as a defensive fallback so the parser keeps working if
+        // RR reverts to non-lazy markup. The placeholder check below
+        // still strips the nocover sentinel either way.
+        val src = listOf("data-src", "data-lazy-src", "src")
+            .map { img.attr(it) }
+            .firstOrNull { it.isNotBlank() && !it.startsWith("data:") }
+            ?: return null
         if (src.endsWith("/dist/img/nocover-new-min.png")) return null
         return when {
             src.startsWith("http") -> src
