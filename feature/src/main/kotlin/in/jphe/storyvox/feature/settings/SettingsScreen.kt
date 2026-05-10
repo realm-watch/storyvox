@@ -49,8 +49,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -1864,11 +1865,57 @@ private fun AiSection(
                 onSetEntireBookSoFar = onSetChatGroundEntireBookSoFar,
             )
         }
-        BrassButton(
-            label = "Forget all AI settings",
-            onClick = onResetAi,
-            variant = BrassButtonVariant.Text,
-        )
+        // Issue #262 — destructive AI-reset path. Previously a plain
+        // brass-tinted TextButton that looked identical to a 'Save' or
+        // 'Show' affordance. Now error-tinted with a leading Delete icon
+        // + a confirmation AlertDialog so a single mis-tap can't erase
+        // every endpoint URL, API key, and chat history.
+        var showResetAiConfirm by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+        androidx.compose.material3.TextButton(
+            onClick = { showResetAiConfirm = true },
+            colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                contentColor = MaterialTheme.colorScheme.error,
+            ),
+        ) {
+            androidx.compose.material3.Icon(
+                imageVector = androidx.compose.material.icons.Icons.Outlined.DeleteOutline,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+            )
+            Spacer(androidx.compose.ui.Modifier.size(8.dp))
+            Text("Forget all AI settings")
+        }
+        if (showResetAiConfirm) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showResetAiConfirm = false },
+                title = { Text("Forget all AI settings?") },
+                text = {
+                    Text(
+                        "This erases your endpoint URLs, API keys, model " +
+                            "selections, and chat session history. " +
+                            "You'll need to re-enter every provider's " +
+                            "credentials to use AI features again.",
+                    )
+                },
+                confirmButton = {
+                    BrassButton(
+                        label = "Forget everything",
+                        onClick = {
+                            showResetAiConfirm = false
+                            onResetAi()
+                        },
+                        variant = BrassButtonVariant.Primary,
+                    )
+                },
+                dismissButton = {
+                    BrassButton(
+                        label = "Cancel",
+                        onClick = { showResetAiConfirm = false },
+                        variant = BrassButtonVariant.Secondary,
+                    )
+                },
+            )
+        }
     }
     }
 }
