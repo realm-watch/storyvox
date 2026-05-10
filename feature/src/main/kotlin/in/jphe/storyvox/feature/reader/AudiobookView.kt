@@ -69,6 +69,8 @@ import `in`.jphe.storyvox.feature.api.UiSleepTimerMode
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.BrassProgressTrack
+import `in`.jphe.storyvox.ui.component.ErrorBlock
+import `in`.jphe.storyvox.ui.component.ErrorPlacement
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
 import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
 import `in`.jphe.storyvox.ui.component.MagicSpinner
@@ -108,6 +110,17 @@ fun AudiobookView(
      *  fictionId on the playback state, so callees can rely on it
      *  being a fully-routed navigation. */
     onOpenChat: () -> Unit = {},
+    /** Issue #278 — loading-phase from the ReaderViewModel. Drives the
+     *  soft "Still working…" hint at 10s and the hard timeout/retry
+     *  error block at 30s. Defaults to NotLoading so previews / tests
+     *  that don't care about the loading lifecycle stay simple. */
+    loadingPhase: LoadingPhase = LoadingPhase.NotLoading,
+    /** Issue #278 — user tapped Retry on the timed-out error block. */
+    onRetryLoading: () -> Unit = {},
+    /** Issue #278 — user tapped "Pick a different voice" on the timed-out
+     *  error block. Goes to the voice library; the controller will pick
+     *  the new voice up next time play() is invoked. */
+    onCancelLoading: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val spacing = LocalSpacing.current
@@ -123,6 +136,26 @@ fun AudiobookView(
     val spinnerExit = if (reducedMotion) ExitTransition.None else
         fadeOut(animationSpec = tween(motion.standardDurationMs, easing = motion.standardEasing))
     var showSheet by remember { mutableStateOf(false) }
+
+    // Issue #278 — full-screen error block when the loading state has
+    // been stuck for 30+ seconds. Replaces the eternal conjuring sigil
+    // with Retry + Pick voice + an escape via the bottom nav. The
+    // underlying load isn't cancelled; if it eventually completes the
+    // state flow takes over and we route back to the normal player UI.
+    if (loadingPhase == LoadingPhase.TimedOut) {
+        ErrorBlock(
+            title = "Couldn't load this chapter",
+            message = "The voice or chapter text is taking longer than expected. " +
+                "Try again, or pick a different voice — some take a moment to warm up.",
+            onRetry = onRetryLoading,
+            retryLabel = "Try again",
+            onBack = onPickVoice,
+            backLabel = "Pick a different voice",
+            placement = ErrorPlacement.FullScreen,
+            modifier = modifier,
+        )
+        return
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -219,6 +252,19 @@ fun AudiobookView(
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (showSpinner) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // Issue #278 — soft slow hint: after the loading state has been
+            // stuck for 10s the user should know we're still trying. The
+            // hint appears under the existing "Loading voice + chapter text"
+            // / chapter-title subtitle and disappears as soon as state
+            // arrives. At 30s we flip to the full error block above and
+            // this hint never renders.
+            if (loadingPhase == LoadingPhase.Slow) {
+                Text(
+                    "Still working… slow voice or network. Hang tight.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Spacer(Modifier.height(spacing.xs))
             BrassProgressTrack(
                 positionMs = state.positionMs,
