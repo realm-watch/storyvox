@@ -1,13 +1,15 @@
 package `in`.jphe.storyvox.playback.tts.source
 
+import android.os.Process as AndroidProcess
 import `in`.jphe.storyvox.playback.SentenceRange
 import `in`.jphe.storyvox.playback.tts.Sentence
+import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -85,7 +87,28 @@ class EngineStreamingSource(
 
     override val sampleRate: Int = engine.sampleRate
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /**
+     * PR-7-bonus / Tier 2 (#87) — dedicated single-thread executor for
+     * the producer. Pre-Tier-2 the producer ran on `Dispatchers.IO`,
+     * a shared coroutine pool that migrates threads on every suspend.
+     * `Process.setThreadPriority(URGENT_AUDIO)` is per-OS-thread, so
+     * any priority bump leaked across resumptions when the coroutine
+     * landed on a different IO worker.
+     *
+     * Pinning to a single thread keeps the URGENT_AUDIO priority for
+     * the entire pipeline lifetime — same shape as the consumer
+     * thread that EnginePlayer's startPlaybackPipeline already pins.
+     * Reduces inter-sentence scheduling jitter, which was Hazel's
+     * Tier 2 recommendation after the multi-core pass (#86) closed
+     * the throughput gap. Closed in [close] so the executor doesn't
+     * leak across pipeline rebuilds.
+     */
+    private val producerExecutor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "storyvox-tts-producer").apply { isDaemon = true }
+    }
+    private val scope = CoroutineScope(
+        SupervisorJob() + producerExecutor.asCoroutineDispatcher(),
+    )
     private val running = AtomicBoolean(true)
     private val queue = LinkedBlockingQueue<Item>(queueCapacity)
 
@@ -161,9 +184,27 @@ class EngineStreamingSource(
         // Wake any consumer blocked in take() so nextChunk returns null.
         queue.offer(END_PILL)
         scope.cancel()
+        // Tier 2 (#87) — shut the dedicated producer executor down so
+        // the daemon thread exits and isn't leaked across pipeline
+        // rebuilds (next chapter / seek / voice swap each spin a
+        // fresh EngineStreamingSource → fresh executor). shutdownNow
+        // interrupts any in-flight task; the producer thread is
+        // already torn down by scope.cancel above so this is the
+        // belt-and-braces cleanup.
+        producerExecutor.shutdownNow()
     }
 
     private fun startProducer(fromIndex: Int): Job = scope.launch {
+        // Tier 2 (#87) — bump priority on the dedicated producer
+        // thread. setThreadPriority sticks because the dispatcher is
+        // single-threaded; coroutine suspends resume on the same OS
+        // thread so the priority survives the engineMutex.withLock
+        // and queue.put suspension points.
+        runCatching {
+            AndroidProcess.setThreadPriority(
+                AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO,
+            )
+        }
         try {
             for (i in fromIndex until sentences.size) {
                 if (!running.get()) return@launch
