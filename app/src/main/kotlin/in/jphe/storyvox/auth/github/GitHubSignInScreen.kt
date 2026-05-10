@@ -19,7 +19,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
@@ -40,6 +39,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
+import `in`.jphe.storyvox.ui.component.MagicSpinner
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
 /**
@@ -149,11 +149,7 @@ private fun StateBody(
                 horizontalArrangement = Arrangement.spacedBy(spacing.sm),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(24.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+                MagicSpinner(modifier = Modifier.size(24.dp))
                 Text("Asking GitHub for a code…", style = MaterialTheme.typography.bodyMedium)
             }
         }
@@ -200,11 +196,7 @@ private fun StateBody(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(spacing.sm),
             ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+                MagicSpinner(modifier = Modifier.size(18.dp))
                 Text(
                     "Waiting for confirmation…",
                     style = MaterialTheme.typography.bodySmall,
@@ -218,11 +210,7 @@ private fun StateBody(
                 horizontalArrangement = Arrangement.spacedBy(spacing.sm),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(24.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+                MagicSpinner(modifier = Modifier.size(24.dp))
                 Text("Fetching your profile…", style = MaterialTheme.typography.bodyMedium)
             }
         }
