@@ -137,12 +137,10 @@ class EngineStreamingSource(
 
     /** True when this source will use the streaming producer path —
      *  emit many small chunks per sentence as TLS records arrive.
-     *  EnginePlayer's consumer reads this to bypass the catchup-pause
-     *  thresholds (which are sized for full-sentence Piper/Kokoro
-     *  chunks; small streamed chunks would yo-yo the threshold and
-     *  starve the producer via queue back-pressure). */
-    override val isStreaming: Boolean =
-        engine is StreamingVoiceEngineHandle && secondaryEngines.isEmpty()
+     *  Currently always false: streaming dispatch is disabled in
+     *  startProducer pending bug fix. Once re-enabled, this becomes
+     *  `engine is StreamingVoiceEngineHandle && secondaryEngines.isEmpty()`. */
+    override val isStreaming: Boolean = false
 
     /**
      * PR-7-bonus / Tier 2 (#87) — dedicated single-thread executor for
@@ -284,15 +282,16 @@ class EngineStreamingSource(
 
     private fun startProducer(fromIndex: Int): Job =
         when {
-            // Tier 3 + streaming combined is a follow-up; streaming
-            // currently only kicks in when no secondaries are wired.
-            // Lookahead is the easier compounding win when both are
-            // available (the user gets sentence-N+1..N+k pre-rendered
-            // while N plays); streaming is the bigger first-byte win.
-            // Pick lookahead when both could apply; pure-streaming when
-            // lookahead is off (parallelSynthInstances == 1).
+            // v0.4.87: streaming serial path is shipped but disabled by
+            // default — surfacing a "plays for ~165 ms then stalls" bug
+            // we couldn't reproduce in unit tests. Lookahead path
+            // (parallelSynthInstances >= 2) and buffered serial path
+            // (instances == 1, no streaming) both work fine; the
+            // StreamingVoiceEngineHandle implementation is preserved on
+            // disk so a fix can land without re-doing the wiring. Once
+            // resolved, restore the previous dispatch:
+            //   engine is StreamingVoiceEngineHandle -> startStreamingSerialProducer(fromIndex)
             secondaryEngines.isNotEmpty() -> startParallelProducer(fromIndex)
-            engine is StreamingVoiceEngineHandle -> startStreamingSerialProducer(fromIndex)
             else -> startSerialProducer(fromIndex)
         }
 
