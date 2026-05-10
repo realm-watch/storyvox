@@ -1,5 +1,6 @@
 package `in`.jphe.storyvox.feature.reader
 
+import androidx.compose.foundation.clickable
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
@@ -531,21 +532,32 @@ private fun PlayerOptionsSheet(
         )
 
         SheetHeader("Voice", null)
+        // Issue #284 + #277 — the whole row must be clickable, not just
+        // the chevron. The previous IconButton-only wiring was a 36dp
+        // hit target at the screen edge; users (and tablets) routinely
+        // missed it. Wrapping the parent Row in `clickable` makes the
+        // entire row the touch target — Material rows standard.
+        //
+        // Issue #284 also asks for a more informative voice label:
+        // [engine] · [voice name]. The state's `voiceLabel` carries the
+        // raw voiceId (e.g. "piper:en_US-amy-medium" or
+        // "azure:en-US-AvaMultilingualNeural"); [formatVoiceLabel] splits
+        // the engine prefix off and dot-joins it with the voice name so
+        // it reads cleanly without pulling in the voice-catalog dep.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .clickable(onClick = onPickVoice)
                 .padding(vertical = spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
             Icon(Icons.Outlined.RecordVoiceOver, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             Column(modifier = Modifier.weight(1f)) {
-                Text(state.voiceLabel, style = MaterialTheme.typography.bodyMedium)
+                Text(formatVoiceLabel(state.voiceLabel), style = MaterialTheme.typography.bodyMedium)
                 Text("Tap to change", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = onPickVoice) {
-                Icon(Icons.Outlined.ChevronRight, contentDescription = "Pick voice")
-            }
+            Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
         // ── Chapter Recap (issue #81) — opens the librarian modal ──
@@ -553,6 +565,7 @@ private fun PlayerOptionsSheet(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .clickable(onClick = onRequestRecap)
                 .padding(vertical = spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(spacing.sm),
@@ -570,18 +583,18 @@ private fun PlayerOptionsSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            IconButton(onClick = onRequestRecap) {
-                Icon(
-                    Icons.Outlined.ChevronRight,
-                    contentDescription = "Recap so far",
-                )
-            }
+            Icon(
+                Icons.Outlined.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         // ── Q&A chat (#81 follow-up) — opens the librarian chat surface ──
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .clickable(onClick = onOpenChat)
                 .padding(vertical = spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(spacing.sm),
@@ -599,12 +612,11 @@ private fun PlayerOptionsSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            IconButton(onClick = onOpenChat) {
-                Icon(
-                    Icons.Outlined.ChevronRight,
-                    contentDescription = "Ask the AI",
-                )
-            }
+            Icon(
+                Icons.Outlined.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         Spacer(Modifier.height(spacing.md))
     }
@@ -669,3 +681,34 @@ private fun brassFilterChipColors() = FilterChipDefaults.filterChipColors(
     selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
     selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
 )
+
+/**
+ * Issue #284 — format the voiceId carried on [UiPlaybackState.voiceLabel]
+ * into a human-readable `[engine] · [voice]` string for the player-
+ * options sheet.
+ *
+ *  - `piper:en_US-amy-medium`            → `Piper · en_US-amy-medium`
+ *  - `azure:en-US-AvaMultilingualNeural` → `Azure · en-US-AvaMultilingualNeural`
+ *  - `voxsherpa:tier3/narrator-warm`     → `VoxSherpa · tier3/narrator-warm`
+ *  - `Default` (no active voice yet)     → `Default`
+ *  - bare strings without `:` prefix     → returned untouched
+ *
+ *  We deliberately don't try to resolve the voice's *display name* from
+ *  the voice catalog here — that would couple this composable to the
+ *  voicelibrary module + force a Hilt-injected lookup at every Player
+ *  Options sheet open. The raw voice id is already engine + voice name;
+ *  reformatting the prefix is enough for the QA / verification use case
+ *  the issue calls out.
+ */
+internal fun formatVoiceLabel(raw: String): String {
+    if (raw.isBlank() || !raw.contains(':')) return raw
+    val (engineId, voiceId) = raw.split(':', limit = 2)
+    val engine = when (engineId.lowercase()) {
+        "piper" -> "Piper"
+        "azure" -> "Azure"
+        "voxsherpa", "sherpa", "kokoro" -> "VoxSherpa"
+        "android", "system" -> "System TTS"
+        else -> engineId.replaceFirstChar { it.uppercase() }
+    }
+    return "$engine · $voiceId"
+}
