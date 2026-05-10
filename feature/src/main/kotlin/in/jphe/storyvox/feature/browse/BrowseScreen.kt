@@ -105,13 +105,33 @@ fun BrowseScreen(
                     Tab(
                         selected = tab == state.tab,
                         onClick = { viewModel.selectTab(tab) },
-                        text = {
-                            Text(
-                                text = tab.label,
-                                style = MaterialTheme.typography.labelLarge,
-                                maxLines = 1,
-                                softWrap = false,
-                            )
+                        // Issues #258 + #270 — render Search as an icon-only
+                        // tab so the row fits on Flip3 (1080px inner display
+                        // and similar narrow phones). When "Search" was a
+                        // text tab between Best Rated and the filter funnel,
+                        // it got clipped to 'S' and dragged the row into
+                        // horizontal-scroll territory, which then clipped
+                        // 'Popular' to 'ar' on the other edge. Magnifying-
+                        // glass is the universal affordance for search and
+                        // the contentDescription keeps a11y intact.
+                        icon = if (tab == BrowseTab.Search) {
+                            {
+                                Icon(
+                                    imageVector = Icons.Filled.Search,
+                                    contentDescription = "Search",
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        } else null,
+                        text = if (tab == BrowseTab.Search) null else {
+                            {
+                                Text(
+                                    text = tab.label,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                )
+                            }
                         },
                     )
                 }
