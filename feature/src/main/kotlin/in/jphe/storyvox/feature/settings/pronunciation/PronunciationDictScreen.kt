@@ -9,9 +9,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -61,7 +65,23 @@ fun PronunciationDictScreen(
     var editor by remember { mutableStateOf<EditorTarget?>(null) }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Pronunciation") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Pronunciation") },
+                // Issues #275 + #276 — standardize the back affordance
+                // across all settings sub-screens to the TopAppBar arrow
+                // (matching Sessions). The old inline 'Back' BrassButton
+                // mid-screen was iOS-style and the only one of its kind.
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                        )
+                    }
+                },
+            )
+        },
     ) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(spacing.md),
@@ -107,13 +127,10 @@ fun PronunciationDictScreen(
                 }
             }
 
-            Box(modifier = Modifier.fillMaxWidth()) {
-                BrassButton(
-                    label = "Back",
-                    onClick = onBack,
-                    variant = BrassButtonVariant.Text,
-                )
-            }
+            // Issues #275 + #276 — the inline 'Back' BrassButton that
+            // used to live here was iOS-modal style and the only such
+            // affordance in the settings stack. Back-navigation is now
+            // exclusively the TopAppBar arrow above (and OS gesture-back).
         }
 
         editor?.let { target ->
