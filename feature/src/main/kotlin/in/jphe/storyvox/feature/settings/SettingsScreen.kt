@@ -1533,7 +1533,12 @@ private fun PunctuationPauseSlider(
         // but only at evenly-spaced fractions of the range; our stops aren't
         // evenly spaced (0/1/1.75/4 fractions are 0, 0.25, 0.4375, 1) so
         // we render them as a separate row.
-        PunctuationPauseTickLabels()
+        //
+        // Issue #261 — labels are tappable; tap snaps the slider to the
+        // tick's value. The '▲' caret pointing up at the slider already
+        // reads as 'tap to move me here'; the click handler delivers on
+        // that affordance.
+        PunctuationPauseTickLabels(onSnap = onMultiplierChange)
     }
 }
 
@@ -1545,8 +1550,21 @@ private fun PunctuationPauseSlider(
  * selector can find their preferred cadence at a glance.
  */
 @Composable
-private fun PunctuationPauseTickLabels() {
+private fun PunctuationPauseTickLabels(
+    onSnap: (Float) -> Unit,
+) {
     val total = PUNCTUATION_PAUSE_MAX_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER
+    // Issue #261 — labels now snap the slider when tapped. The '▲'
+    // caret already points up at the slider as if to say 'I will move
+    // you here'; the click handler makes the affordance honest. The
+    // tick values mirror the position fractions so the same array can
+    // drive both placement and snap targets.
+    val tickValues = listOf(
+        PUNCTUATION_PAUSE_OFF_MULTIPLIER,
+        PUNCTUATION_PAUSE_NORMAL_MULTIPLIER,
+        PUNCTUATION_PAUSE_LONG_MULTIPLIER,
+        PUNCTUATION_PAUSE_MAX_MULTIPLIER,
+    )
     SliderTickLabels(
         ticks = listOf(
             "▲ Off" to ((PUNCTUATION_PAUSE_OFF_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER) / total),
@@ -1554,6 +1572,7 @@ private fun PunctuationPauseTickLabels() {
             "▲ Long" to ((PUNCTUATION_PAUSE_LONG_MULTIPLIER - PUNCTUATION_PAUSE_MIN_MULTIPLIER) / total),
             "▲ 4×" to 1f,
         ),
+        onTickTap = { index -> onSnap(tickValues[index]) },
     )
 }
 
@@ -1588,6 +1607,13 @@ private fun PunctuationPauseTickLabels() {
 @Composable
 private fun SliderTickLabels(
     ticks: List<Pair<String, Float>>,
+    /** Issue #261 — when non-null, tapping a tick label invokes the
+     *  callback with the tick's index. The visible '▲' caret pointing
+     *  up at the slider track reads as 'tap to snap here', so wiring
+     *  the click is what makes the affordance honest. Callers that
+     *  don't want tap behaviour (the buffer-size slider's single
+     *  preview tick) pass null. */
+    onTickTap: ((Int) -> Unit)? = null,
 ) {
     if (ticks.isEmpty()) return
 
@@ -1602,11 +1628,16 @@ private fun SliderTickLabels(
     Layout(
         modifier = Modifier.fillMaxWidth(),
         content = {
-            ticks.forEach { (label, _) ->
+            ticks.forEachIndexed { index, (label, _) ->
                 Text(
                     text = label,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = if (onTickTap != null) {
+                        Modifier.clickable { onTickTap(index) }
+                    } else {
+                        Modifier
+                    },
                 )
             }
         },
