@@ -823,6 +823,7 @@ private fun AzureSection(
         ) {
             listOf(
                 "eastus" to "US East",
+                "westus" to "US West",
                 "westus2" to "US West 2",
                 "westeurope" to "West Europe",
                 "eastasia" to "East Asia",
