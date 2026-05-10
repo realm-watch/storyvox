@@ -40,9 +40,11 @@ object GitHubAuthConfig {
      * of `public_repo` (full repo: read/write to private + public),
      * so flipping ON re-runs Device Flow and the new token replaces
      * the old. Flipping OFF on next sign-in downgrades back to
-     * [DEFAULT_SCOPES].
+     * [DEFAULT_SCOPES]. `gist` parallels [DEFAULT_SCOPES] — without it,
+     * enabling private repos would silently drop Gists access in
+     * Browse, which is a regression rather than an intent (#234).
      */
-    const val PRIVATE_REPO_SCOPES: String = "read:user repo"
+    const val PRIVATE_REPO_SCOPES: String = "read:user repo gist"
 
     /**
      * Resolve the scope string for a fresh Device Flow request given the

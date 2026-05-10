@@ -246,7 +246,8 @@ class GitHubSignInViewModelTest {
         val vm = makeVm(flow, scopePrefs = FakeScopePrefs(privateRepos = false))
         vm.start()
         advanceUntilIdle()
-        assertEquals("read:user public_repo", flow.lastRequestedScopes)
+        // `gist` is appended unconditionally since #202 (Gists in Browse).
+        assertEquals("read:user public_repo gist", flow.lastRequestedScopes)
     }
 
     @Test
@@ -265,7 +266,8 @@ class GitHubSignInViewModelTest {
         val vm = makeVm(flow, scopePrefs = FakeScopePrefs(privateRepos = true))
         vm.start()
         advanceUntilIdle()
-        assertEquals("read:user repo", flow.lastRequestedScopes)
+        // `gist` is appended unconditionally since #202 (Gists in Browse).
+        assertEquals("read:user repo gist", flow.lastRequestedScopes)
     }
 
     // ── Test fakes ──────────────────────────────────────────────────
