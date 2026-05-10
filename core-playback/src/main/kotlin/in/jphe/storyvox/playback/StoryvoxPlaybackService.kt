@@ -24,6 +24,7 @@ import androidx.media3.session.MediaSessionService
 import androidx.media3.session.MediaStyleNotificationHelper
 import androidx.media3.session.SimpleBitmapLoader
 import dagger.hilt.android.AndroidEntryPoint
+import `in`.jphe.storyvox.playback.sleep.ShakeDetector
 import `in`.jphe.storyvox.playback.tts.EnginePlayer
 import `in`.jphe.storyvox.playback.wear.PhoneWearBridge
 import javax.inject.Inject
@@ -68,6 +69,19 @@ class StoryvoxPlaybackService : MediaSessionService() {
      *  correct reader, not whatever was playing the moment the service started. */
     private var sessionActivityJob: Job? = null
 
+    /** Issue #150 — sleep timer shake-to-extend.
+     *  - [shakeDetector] is created once with a fixed callback that
+     *    re-arms the timer at 15min if currently in the fade tail.
+     *  - [shakeJob] watches `(remainingMs, shakeToExtendEnabled)` and
+     *    starts/stops the detector so the accelerometer is only on
+     *    during the 10s fade tail of an armed timer (not full
+     *    playback sessions). */
+    private var shakeDetector: ShakeDetector? = null
+    private var shakeJob: Job? = null
+    /** Tracks whether the detector is currently registered to avoid
+     *  redundant register/unregister churn on every state emission. */
+    private var shakeListening: Boolean = false
+
     override fun onCreate() {
         super.onCreate()
         ensureNotificationChannel()
@@ -100,6 +114,36 @@ class StoryvoxPlaybackService : MediaSessionService() {
                 .distinctUntilChanged()
                 .collect { (fid, cid) ->
                     session.setSessionActivity(buildSessionActivity(fid, cid))
+                }
+        }
+
+        // Issue #150 — register the shake-to-extend detector only
+        // during the sleep timer's fade tail. The 10s window is when
+        // shaking is meaningful: before fade, the user wouldn't shake
+        // proactively; after pause, audio is gone. Outside the window
+        // the accelerometer stays off so we don't drain battery on
+        // long playback sessions.
+        shakeDetector = ShakeDetector(
+            context = applicationContext,
+            onShake = {
+                if (controller.state.value.sleepTimerRemainingMs?.let { it <= SHAKE_FADE_WINDOW_MS } == true) {
+                    controller.startSleepTimer(SleepTimerMode.Duration(SHAKE_EXTEND_MINUTES))
+                }
+            },
+        )
+        shakeJob = scope.launch {
+            controller.state
+                .map { (it.sleepTimerRemainingMs ?: -1L) to it.shakeToExtendEnabled }
+                .distinctUntilChanged()
+                .collect { (remaining, enabled) ->
+                    val inFadeWindow = enabled && remaining in 0L..SHAKE_FADE_WINDOW_MS
+                    if (inFadeWindow && !shakeListening) {
+                        shakeDetector?.start()
+                        shakeListening = true
+                    } else if (!inFadeWindow && shakeListening) {
+                        shakeDetector?.stop()
+                        shakeListening = false
+                    }
                 }
         }
     }
@@ -260,6 +304,12 @@ class StoryvoxPlaybackService : MediaSessionService() {
         controller.unbindPlayer()
         session.release()
         player.releaseEngine()
+        if (shakeListening) {
+            shakeDetector?.stop()
+            shakeListening = false
+        }
+        shakeDetector = null
+        shakeJob = null
         scope.cancel()
         super.onDestroy()
     }
@@ -292,5 +342,15 @@ class StoryvoxPlaybackService : MediaSessionService() {
         /** Mirrors [in.jphe.storyvox.navigation.DeepLinkResolver.EXTRA_OPEN_READER_FICTION_ID]. */
         private const val EXTRA_OPEN_READER_FICTION_ID = "storyvox.open_reader.fiction_id"
         private const val EXTRA_OPEN_READER_CHAPTER_ID = "storyvox.open_reader.chapter_id"
+        /** Issue #150 — duration of the sleep timer's fade tail. The
+         *  shake-to-extend listener only runs when remainingMs is in
+         *  this window, matching SleepTimer.FADE_TAIL_MS. Fixed
+         *  default for now; if the timer's fade duration ever moves
+         *  to settings, plumb that through controller.state too. */
+        private const val SHAKE_FADE_WINDOW_MS = 10_000L
+        /** Default extension on shake-detect — "previous duration"
+         *  (Listen Audiobook style) is a tracked enhancement; for v1
+         *  use a conservative 15-min extension (#150 spec). */
+        private const val SHAKE_EXTEND_MINUTES = 15
     }
 }

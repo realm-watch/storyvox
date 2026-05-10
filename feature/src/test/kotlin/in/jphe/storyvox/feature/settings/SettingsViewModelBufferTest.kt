@@ -181,6 +181,7 @@ class SettingsViewModelBufferTest {
         override suspend fun setSourceRoyalRoadEnabled(enabled: Boolean) = Unit
         override suspend fun setSourceGitHubEnabled(enabled: Boolean) = Unit
         override suspend fun setSourceMemPalaceEnabled(enabled: Boolean) = Unit
+        override suspend fun setSleepShakeToExtendEnabled(enabled: Boolean) = Unit
         override suspend fun signOutTeams() = Unit
     }
 

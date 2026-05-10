@@ -533,6 +533,16 @@ internal class RealPlaybackControllerUi(
                 .distinctUntilChanged()
                 .collect { cachedWarmupWait = it }
         }
+        // Issue #150 — surface the shake-to-extend toggle into
+        // PlaybackState so StoryvoxPlaybackService can gate the
+        // accelerometer registration on it. Same seam shape as
+        // speed/pitch/punctuation above.
+        scope.launch {
+            settings.settings
+                .map { it.sleepShakeToExtendEnabled }
+                .distinctUntilChanged()
+                .collect { controller.setShakeToExtendEnabled(it) }
+        }
     }
 
     /**

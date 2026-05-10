@@ -190,6 +190,7 @@ class RealPlaybackControllerUiTest {
         override fun startSleepTimer(mode: SleepTimerMode) = Unit
         override fun cancelSleepTimer() = Unit
         override fun toggleSleepTimer() = Unit
+        override fun setShakeToExtendEnabled(enabled: Boolean) = Unit
         override suspend fun speakText(text: String) = Unit
         override fun stopSpeaking() = Unit
     }
@@ -264,6 +265,7 @@ class RealPlaybackControllerUiTest {
         override suspend fun setSourceRoyalRoadEnabled(enabled: Boolean) = Unit
         override suspend fun setSourceGitHubEnabled(enabled: Boolean) = Unit
         override suspend fun setSourceMemPalaceEnabled(enabled: Boolean) = Unit
+        override suspend fun setSleepShakeToExtendEnabled(enabled: Boolean) = Unit
         override suspend fun signOutTeams() = Unit
     }
 

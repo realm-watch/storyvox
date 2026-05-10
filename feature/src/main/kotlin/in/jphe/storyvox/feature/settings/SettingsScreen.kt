@@ -157,6 +157,16 @@ fun SettingsScreen(
                 selectedIndex = ThemeOverride.entries.indexOf(s.themeOverride).coerceAtLeast(0),
                 onSelected = { idx -> viewModel.setTheme(ThemeOverride.entries[idx]) },
             )
+            // #150 — when the sleep timer hits its 10s fade tail,
+            // shaking the device re-arms the timer for 15 minutes
+            // and ramps volume back up. Off for users in moving
+            // vehicles where accidental shakes are a problem.
+            SettingsSwitchRow(
+                title = "Shake to extend sleep timer",
+                subtitle = "Shake during the fade-out to add 15 more minutes.",
+                checked = s.sleepShakeToExtendEnabled,
+                onCheckedChange = viewModel::setSleepShakeToExtendEnabled,
+            )
         }
 
         // ── 3. Performance & buffering ───────────────────────────────

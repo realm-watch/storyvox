@@ -19,6 +19,11 @@ data class PlaybackState(
     val speed: Float = 1.0f,
     val pitch: Float = 1.0f,
     val sleepTimerRemainingMs: Long? = null,
+    /** Issue #150 — when true (default), a shake gesture during the
+     *  sleep timer's fade tail re-arms the timer. Surfaces in
+     *  Settings → Reading so users with bumpy commutes can opt out.
+     *  Driven from SettingsRepositoryUi via AppBindings. */
+    val shakeToExtendEnabled: Boolean = true,
     val bookTitle: String? = null,
     val chapterTitle: String? = null,
     val coverUri: String? = null,

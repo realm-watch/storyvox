@@ -114,6 +114,10 @@ class SettingsViewModel @Inject constructor(
     fun setSourceMemPalaceEnabled(enabled: Boolean) =
         viewModelScope.launch { repo.setSourceMemPalaceEnabled(enabled) }
 
+    /** Issue #150 — sleep timer shake-to-extend on/off. */
+    fun setSleepShakeToExtendEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setSleepShakeToExtendEnabled(enabled) }
+
     fun previewVoice(voice: UiVoice) = voices.previewVoice(voice)
 
     // ─── Memory Palace (#79) ────────────────────────────────────────────

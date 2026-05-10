@@ -605,6 +605,10 @@ data class UiSettings(
     val sourceRoyalRoadEnabled: Boolean = true,
     val sourceGitHubEnabled: Boolean = true,
     val sourceMemPalaceEnabled: Boolean = true,
+    /** Issue #150 — when ON, a shake during the sleep timer's fade
+     *  tail re-arms the timer. Default ON; users with bumpy commutes
+     *  can disable to avoid accidental extensions. */
+    val sleepShakeToExtendEnabled: Boolean = true,
 )
 
 /**
@@ -832,6 +836,9 @@ interface SettingsRepositoryUi {
     suspend fun setSourceRoyalRoadEnabled(enabled: Boolean)
     suspend fun setSourceGitHubEnabled(enabled: Boolean)
     suspend fun setSourceMemPalaceEnabled(enabled: Boolean)
+
+    /** Issue #150 — sleep timer shake-to-extend on/off. */
+    suspend fun setSleepShakeToExtendEnabled(enabled: Boolean)
 }
 
 /** Outcome of [`SettingsRepositoryUi.testPalaceConnection`]. */

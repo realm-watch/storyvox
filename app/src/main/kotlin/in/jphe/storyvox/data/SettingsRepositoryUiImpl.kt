@@ -177,6 +177,9 @@ private object Keys {
     val SOURCE_GITHUB_ENABLED = booleanPreferencesKey("pref_source_github_enabled")
     val SOURCE_MEMPALACE_ENABLED = booleanPreferencesKey("pref_source_mempalace_enabled")
 
+    // ── Sleep timer shake-to-extend (issue #150) ───────────────────
+    val SLEEP_SHAKE_TO_EXTEND_ENABLED = booleanPreferencesKey("pref_sleep_shake_to_extend_enabled")
+
     // ── Chat grounding (issue #212) ────────────────────────────────
     /** Defaults match pre-#212 ChatViewModel behaviour: chapter title
      *  on, every more-expensive level off. */
@@ -266,6 +269,7 @@ class SettingsRepositoryUiImpl(
             sourceRoyalRoadEnabled = prefs[Keys.SOURCE_ROYALROAD_ENABLED] ?: true,
             sourceGitHubEnabled = prefs[Keys.SOURCE_GITHUB_ENABLED] ?: true,
             sourceMemPalaceEnabled = prefs[Keys.SOURCE_MEMPALACE_ENABLED] ?: true,
+            sleepShakeToExtendEnabled = prefs[Keys.SLEEP_SHAKE_TO_EXTEND_ENABLED] ?: true,
             ai = UiAiSettings(
                 provider = prefs[Keys.AI_PROVIDER]
                     ?.takeIf { it.isNotBlank() }
@@ -650,6 +654,10 @@ class SettingsRepositoryUiImpl(
 
     override suspend fun setSourceMemPalaceEnabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_MEMPALACE_ENABLED] = enabled }
+    }
+
+    override suspend fun setSleepShakeToExtendEnabled(enabled: Boolean) {
+        store.edit { it[Keys.SLEEP_SHAKE_TO_EXTEND_ENABLED] = enabled }
     }
 
     /**

@@ -46,6 +46,11 @@ interface PlaybackController {
     fun cancelSleepTimer()
     fun toggleSleepTimer()
 
+    /** Issue #150 — push the user's shake-to-extend setting into the
+     *  state stream so [StoryvoxPlaybackService] can gate sensor
+     *  registration on it without taking a feature-module dep. */
+    fun setShakeToExtendEnabled(enabled: Boolean)
+
     /** Issue #189 — synthesize and play [text] as a one-shot utterance via
      *  the active voice. Used by the chapter-recap modal to read the
      *  AI-generated recap aloud. The caller is responsible for pausing
@@ -176,6 +181,11 @@ class DefaultPlaybackController @Inject constructor(
     override fun toggleSleepTimer() {
         if (state.value.sleepTimerRemainingMs != null) cancelSleepTimer()
         else startSleepTimer(SleepTimerMode.Duration(15))
+    }
+
+    override fun setShakeToExtendEnabled(enabled: Boolean) {
+        if (_state.value.shakeToExtendEnabled == enabled) return
+        _state.value = _state.value.copy(shakeToExtendEnabled = enabled)
     }
 
     override suspend fun speakText(text: String) {
