@@ -206,6 +206,12 @@ private object Keys {
     // ── Sleep timer shake-to-extend (issue #150) ───────────────────
     val SLEEP_SHAKE_TO_EXTEND_ENABLED = booleanPreferencesKey("pref_sleep_shake_to_extend_enabled")
 
+    // ── Debug overlay (Vesper, v0.4.97) ────────────────────────────
+    /** Master switch for the on-Reader debug overlay. Default false;
+     *  power users opt in from Settings → Developer. The dedicated
+     *  /debug screen is reachable regardless of this toggle. */
+    val SHOW_DEBUG_OVERLAY = booleanPreferencesKey("pref_show_debug_overlay")
+
     // ── Azure offline-fallback (issue #185, PR-6) ──────────────────
     val AZURE_FALLBACK_ENABLED = booleanPreferencesKey("pref_azure_fallback_enabled")
     val AZURE_FALLBACK_VOICE_ID = stringPreferencesKey("pref_azure_fallback_voice_id")
@@ -372,6 +378,7 @@ class SettingsRepositoryUiImpl(
             sourceEpubEnabled = prefs[Keys.SOURCE_EPUB_ENABLED] ?: false,
             sourceOutlineEnabled = prefs[Keys.SOURCE_OUTLINE_ENABLED] ?: false,
             sleepShakeToExtendEnabled = prefs[Keys.SLEEP_SHAKE_TO_EXTEND_ENABLED] ?: true,
+            showDebugOverlay = prefs[Keys.SHOW_DEBUG_OVERLAY] ?: false,
             azure = run {
                 // #182 — read the encrypted snapshot imperatively each
                 // emission. The azureTick flow above guarantees a fresh
@@ -907,6 +914,10 @@ class SettingsRepositoryUiImpl(
 
     override suspend fun setSleepShakeToExtendEnabled(enabled: Boolean) {
         store.edit { it[Keys.SLEEP_SHAKE_TO_EXTEND_ENABLED] = enabled }
+    }
+
+    override suspend fun setShowDebugOverlay(enabled: Boolean) {
+        store.edit { it[Keys.SHOW_DEBUG_OVERLAY] = enabled }
     }
 
     // ── Azure Speech Services BYOK (#182, PR-3) ────────────────────

@@ -753,6 +753,18 @@ data class UiSettings(
      * core count + thermal envelope.
      */
     val synthThreadsPerInstance: Int = 0,
+    /**
+     * Vesper (v0.4.97) — debug overlay master switch. When true, the
+     * Reader and home shells draw [DebugOverlay] on top of their
+     * normal content as a swipe-down-to-collapse card. Wires through
+     * to the same DataStore key as every other Boolean toggle. Default
+     * `false` — power users opt in from Settings → Developer.
+     *
+     * The dedicated `/debug` screen is reachable from Settings →
+     * Developer regardless of this toggle; the switch only controls
+     * the *overlay* surface.
+     */
+    val showDebugOverlay: Boolean = false,
 ) {
     /** Speed value the engine should run at right now — the active
      *  voice's override if set, otherwise the global default (#195). */
@@ -1084,6 +1096,17 @@ interface SettingsRepositoryUi {
      *  1..[PARALLEL_SYNTH_MAX_INSTANCES] = explicit value passed to
      *  sherpa-onnx. */
     suspend fun setSynthThreadsPerInstance(count: Int)
+
+    /**
+     * Vesper (v0.4.97) — toggle the debug overlay master switch
+     * ([UiSettings.showDebugOverlay]). Default implementation no-ops so
+     * existing fakes in the feature test suite don't need to be touched
+     * — only the real DataStore impl persists the value. Test fakes
+     * that *do* care about the overlay's persistence can override.
+     */
+    suspend fun setShowDebugOverlay(enabled: Boolean) {
+        // default no-op for test fakes; SettingsRepositoryUiImpl overrides.
+    }
 }
 
 /** Tier 3 (#88) slider bounds. Min 1 (serial), max 8 (the Snapdragon
