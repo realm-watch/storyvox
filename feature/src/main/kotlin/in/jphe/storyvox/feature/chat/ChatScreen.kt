@@ -24,6 +24,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Stop
+import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -137,7 +140,13 @@ fun ChatScreen(
                     verticalArrangement = Arrangement.spacedBy(spacing.sm),
                 ) {
                     items(state.turns, key = { "${it.role}:${it.text.hashCode()}" }) { turn ->
-                        TurnBubble(turn = turn)
+                        TurnBubble(
+                            turn = turn,
+                            isReadingThis = state.readingText == turn.text,
+                            isAnythingReading = state.readingText != null,
+                            onReadAloud = { viewModel.readAloud(turn.text) },
+                            onStopReadAloud = viewModel::stopReadAloud,
+                        )
                     }
                     state.streaming?.let { partial ->
                         item(key = "streaming") { StreamingBubble(partial) }
@@ -168,7 +177,13 @@ fun ChatScreen(
 // ── Bubbles ────────────────────────────────────────────────────────
 
 @Composable
-private fun TurnBubble(turn: ChatTurn) {
+private fun TurnBubble(
+    turn: ChatTurn,
+    isReadingThis: Boolean = false,
+    isAnythingReading: Boolean = false,
+    onReadAloud: () -> Unit = {},
+    onStopReadAloud: () -> Unit = {},
+) {
     val isUser = turn.role == ChatTurn.Role.User
     val containerColor = if (isUser) {
         MaterialTheme.colorScheme.primaryContainer
@@ -198,6 +213,61 @@ private fun TurnBubble(turn: ChatTurn) {
                 color = textColor,
             )
         }
+        // Issue #214 — assistant turns get a Read-aloud / Stop
+        // affordance below the bubble. Hidden on user turns (no point
+        // reading what the user typed back to them) and on the
+        // streaming partial (bubble has its own cursor, the read
+        // would beat the response).
+        if (!isUser && turn.text.isNotBlank()) {
+            ReadAloudButton(
+                isReadingThis = isReadingThis,
+                isAnythingReading = isAnythingReading,
+                onReadAloud = onReadAloud,
+                onStopReadAloud = onStopReadAloud,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReadAloudButton(
+    isReadingThis: Boolean,
+    isAnythingReading: Boolean,
+    onReadAloud: () -> Unit,
+    onStopReadAloud: () -> Unit,
+) {
+    // Three-state button: this-is-reading (Stop), nothing-reading (Play),
+    // another-bubble-reading (Play, dimmed). The dimmed state is
+    // tappable — pressing Play on bubble B while bubble A reads will
+    // stop A and start B, which matches user intent ("read THAT one").
+    val (icon, label, onClick) = when {
+        isReadingThis -> Triple(Icons.Outlined.Stop, "Stop reading", onStopReadAloud)
+        else -> Triple(Icons.Outlined.VolumeUp, "Read aloud", onReadAloud)
+    }
+    val tint = if (isReadingThis) {
+        MaterialTheme.colorScheme.primary
+    } else if (isAnythingReading) {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+    } else {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+    }
+    androidx.compose.material3.TextButton(
+        onClick = onClick,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            horizontal = 8.dp, vertical = 0.dp,
+        ),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.padding(end = 4.dp),
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = tint,
+        )
     }
 }
 

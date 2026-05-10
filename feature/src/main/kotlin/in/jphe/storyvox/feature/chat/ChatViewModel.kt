@@ -9,6 +9,7 @@ import `in`.jphe.storyvox.feature.api.FictionRepositoryUi
 import `in`.jphe.storyvox.feature.api.PlaybackControllerUi
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.UiChatGrounding
+import `in`.jphe.storyvox.feature.api.UiRecapPlaybackState
 import `in`.jphe.storyvox.llm.FeatureKind
 import `in`.jphe.storyvox.llm.LlmConfig
 import `in`.jphe.storyvox.llm.LlmError
@@ -61,6 +62,11 @@ data class ChatUiState(
     /** When non-null, the last send hit an error. UI surfaces it as
      *  a recoverable banner above the input. */
     val error: ChatError? = null,
+    /** Issue #214 — text of the assistant turn currently being read
+     *  aloud through the TTS engine, or null when nothing is reading.
+     *  The matching turn's bubble shows a stop icon; other bubbles
+     *  show a play icon. */
+    val readingText: String? = null,
 )
 
 /** UI-side classification of [LlmError] so the screen can pick the
@@ -149,23 +155,63 @@ class ChatViewModel @Inject constructor(
      *  rapid double-taps on Send don't race two `createSession` calls. */
     private var sessionEnsured: Boolean = false
 
+    /** Issue #214 — text currently being read aloud (or null). When
+     *  the engine finishes naturally [observeReadingDone] clears this;
+     *  user-pressed stop also clears it via [stopReadAloud]. */
+    private val _readingText = MutableStateFlow<String?>(null)
+
     /** Public state. Combines storage + in-flight + provider config
-     *  + fiction metadata into one immutable [ChatUiState]. */
-    val uiState: StateFlow<ChatUiState> = combine(
-        sessionRepo.observeMessages(sessionId).map { msgs -> msgs.map { it.toTurn() } },
-        _streaming,
-        _error,
-        fictionRepo.fictionById(fictionId).map { it?.title },
-        configFlow.map { it.provider == null },
-    ) { turns, streaming, error, title, noProvider ->
-        ChatUiState(
-            turns = turns,
-            streaming = streaming,
-            fictionTitle = title,
-            noProvider = noProvider,
-            error = error,
-        )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChatUiState())
+     *  + fiction metadata into one immutable [ChatUiState]. The 5-arg
+     *  combine ceiling forces a nested shape — the inner combine
+     *  builds the base state, the outer folds in the read-aloud text. */
+    val uiState: StateFlow<ChatUiState> = run {
+        val base = combine(
+            sessionRepo.observeMessages(sessionId).map { msgs -> msgs.map { it.toTurn() } },
+            _streaming,
+            _error,
+            fictionRepo.fictionById(fictionId).map { it?.title },
+            configFlow.map { it.provider == null },
+        ) { turns, streaming, error, title, noProvider ->
+            ChatUiState(
+                turns = turns,
+                streaming = streaming,
+                fictionTitle = title,
+                noProvider = noProvider,
+                error = error,
+            )
+        }
+        combine(base, _readingText) { state, reading ->
+            state.copy(readingText = reading)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChatUiState())
+    }
+
+    init {
+        // Auto-clear [_readingText] when the engine naturally finishes
+        // an utterance (the user didn't tap stop — the AI text just
+        // ended). Without this the UI would stay stuck on the
+        // "Stop" icon for the played-out turn.
+        viewModelScope.launch {
+            playback.recapPlayback.collect { state ->
+                if (state == UiRecapPlaybackState.Idle) _readingText.value = null
+            }
+        }
+    }
+
+    /** Issue #214 — read [text] aloud through the TTS engine. Reuses
+     *  the same one-shot path as the chapter-recap modal (#189). The
+     *  caller is responsible for trimming the text; we surface it
+     *  exactly as the model emitted it. */
+    fun readAloud(text: String) {
+        if (text.isBlank()) return
+        _readingText.value = text
+        viewModelScope.launch { playback.speakText(text) }
+    }
+
+    /** Issue #214 — cancel the in-flight read-aloud. Idempotent. */
+    fun stopReadAloud() {
+        _readingText.value = null
+        playback.stopSpeaking()
+    }
 
     /** Send [text] as a user turn and stream the assistant reply.
      *  Cancels any in-flight stream first — the user-facing input
