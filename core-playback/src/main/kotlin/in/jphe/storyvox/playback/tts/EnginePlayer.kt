@@ -678,7 +678,12 @@ class EnginePlayer @AssistedInject constructor(
         // time. Mid-pipeline slider movements take effect on the next
         // construction (next chapter / seek / voice swap); the bounded queue
         // can't be resized live. Issue #84 — this is the LMK probe knob.
-        val queueCapacity = cachedBufferChunks.coerceIn(2, 1500)
+        // Cap matches BUFFER_MAX_CHUNKS (3000). The previous 1500 cap
+        // silently truncated slider values above 1500, contradicting
+        // the slider's 3000-chunk max — JP set the slider to 3000 to
+        // probe the gap and got 1500 in practice. Lifted to 3000 so
+        // the configured value reaches the queue verbatim.
+        val queueCapacity = cachedBufferChunks.coerceIn(2, 3000)
         // Issue #135: snapshot the dict at construction time. The
         // capture is by-value (the dict is an immutable data class) so
         // a mid-chapter edit doesn't mutate the active pipeline's
@@ -1390,7 +1395,7 @@ class EnginePlayer @AssistedInject constructor(
             pitch = currentPitch,
             engineMutex = engineMutex,
             punctuationPauseMultiplier = currentPunctuationPauseMultiplier,
-            queueCapacity = cachedBufferChunks.coerceIn(2, 1500),
+            queueCapacity = cachedBufferChunks.coerceIn(2, 3000),
             pronunciationDictApply = cachedPronunciationDict::apply,
         )
         recapPcmSource = source
@@ -1479,16 +1484,38 @@ class EnginePlayer @AssistedInject constructor(
         const val KOKORO_SILENCE_SCALE_BASELINE = 0.2f
 
         /** When buffered audio falls below this, pause AudioTrack and surface
-         *  a "Buffering..." UI state. Tab A7 Lite's hardware buffer is ~2-3s
-         *  deep; pausing at 2s gives the listener clear feedback before the
-         *  silence fully drains the buffer and they hear dead air. */
-        const val BUFFER_UNDERRUN_THRESHOLD_MS = 2_000L
+         *  a "Buffering..." UI state.
+         *
+         *  Calibrated for the Helio P22T worst case (Piper-high "cori" at
+         *  0.285× realtime = 3.5× slower than playback). The original 2s
+         *  threshold was designed for a near-realtime engine; on a 3.5×
+         *  slow producer, the consumer would resume on 4s of headroom,
+         *  drain the first chunk, then block on `queue.take()` for ~7s
+         *  while the producer finished generating the next 2s sentence —
+         *  the audible gap JP reports on the tablet (#79).
+         *
+         *  Bumping to 7s pauses earlier so the producer has more runway
+         *  before the consumer empties the queue; combined with the
+         *  raised resume threshold below, the consumer resumes only when
+         *  there's enough audio queued to outlast the next generation
+         *  cycle. Trade-off: the buffering spinner appears more often
+         *  on slow-engine + low-buffer setups. Acceptable — silent
+         *  gaps are worse than visible spinners. */
+        const val BUFFER_UNDERRUN_THRESHOLD_MS = 7_000L
 
         /** Hysteresis. Don't resume until we have this much queued or we'll
-         *  thrash pause/play on every chunk transition. 4s ≈ 2 sentences of
-         *  Piper-high audio average; the consumer can drain that before the
-         *  producer puts the next one. */
-        const val BUFFER_RESUME_THRESHOLD_MS = 4_000L
+         *  thrash pause/play on every chunk transition.
+         *
+         *  Sized to outlast one full producer-generation cycle on the
+         *  Helio P22T worst case. With Piper-high at 3.5× realtime, a 2s
+         *  sentence takes ~7s of CPU time to render; we want the
+         *  consumer to have at least one full cycle of headroom on
+         *  resume so it doesn't immediately re-stall. 10s = 7s
+         *  generation budget + 3s slack for trailing silence + GC
+         *  pauses. Pre-#79 value was 4s, which was sized for near-
+         *  realtime engines and produced audible gaps with all
+         *  Performance & Buffering toggles ON at buffer=3000. */
+        const val BUFFER_RESUME_THRESHOLD_MS = 10_000L
 
         /** Shared zero-filled buffer the consumer writes from to spool
          *  inter-sentence silence. Sized for one chunk @ 24 kHz mono 16-bit
