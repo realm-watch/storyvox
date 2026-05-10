@@ -33,8 +33,8 @@ android {
         applicationId = "in.jphe.storyvox"
         minSdk = 26
         targetSdk = 35
-        versionCode = 77
-        versionName = "0.4.65"
+        versionCode = 78
+        versionName = "0.4.66"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -191,6 +191,9 @@ dependencies {
     implementation(libs.androidx.documentfile)
 
     coreLibraryDesugaring(libs.android.desugar.jdk.libs)
+
+    // OkHttp for the suggested-feeds registry fetch (#246).
+    implementation(libs.okhttp)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

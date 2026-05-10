@@ -190,6 +190,7 @@ class SettingsViewModelBufferTest {
         override val epubFolderUri: kotlinx.coroutines.flow.Flow<String?> = kotlinx.coroutines.flow.flowOf(null)
         override suspend fun setEpubFolderUri(uri: String) = Unit
         override suspend fun clearEpubFolder() = Unit
+        override val suggestedRssFeeds: kotlinx.coroutines.flow.Flow<List<`in`.jphe.storyvox.feature.api.SuggestedFeed>> = kotlinx.coroutines.flow.flowOf(emptyList())
         override suspend fun setSleepShakeToExtendEnabled(enabled: Boolean) = Unit
         override suspend fun signOutTeams() = Unit
     }

@@ -135,6 +135,17 @@ class SettingsViewModel @Inject constructor(
             kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000),
             null,
         )
+
+    /** Issue #246 — curated suggested RSS feeds, fetched from the
+     *  jphein/storyvox-feeds GitHub repo at runtime. Falls back to
+     *  the baked-in seed list while the fetch is in flight or if it
+     *  fails. */
+    val suggestedRssFeeds: kotlinx.coroutines.flow.StateFlow<List<`in`.jphe.storyvox.feature.api.SuggestedFeed>> =
+        repo.suggestedRssFeeds.stateIn(
+            viewModelScope,
+            kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000),
+            BAKED_IN_SUGGESTED_FEEDS,
+        )
     val rssSubscriptions: kotlinx.coroutines.flow.StateFlow<List<String>> =
         repo.rssSubscriptions.stateIn(
             viewModelScope,

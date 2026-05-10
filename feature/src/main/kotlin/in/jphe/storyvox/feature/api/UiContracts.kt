@@ -40,6 +40,29 @@ data class UiFollow(
 
 enum class DownloadMode { Lazy, Eager, Subscribe }
 
+/**
+ * Issue #246 — one curated RSS feed suggestion. Surfaces in
+ * Settings → Library & Sync → RSS → Suggested feeds with a one-tap
+ * Add button. Fetched from the jphein/storyvox-feeds GitHub repo at
+ * runtime so categories + feeds can be added without an app rebuild.
+ */
+data class SuggestedFeed(
+    val title: String,
+    val description: String,
+    val url: String,
+    val category: String,
+    val kind: SuggestedFeedKind,
+)
+
+enum class SuggestedFeedKind {
+    /** Text-article feed — narrates well via TTS. */
+    Text,
+
+    /** Audio-podcast feed — show-notes narrate, audio enclosure
+     *  doesn't (storyvox doesn't currently stream feed audio). */
+    AudioPodcast,
+}
+
 /** Outcome of pasting a URL into the add-fiction sheet. */
 sealed class UiAddByUrlResult {
     /** Resolved + persisted; UI navigates to the detail screen. */
@@ -881,6 +904,12 @@ interface SettingsRepositoryUi {
     val epubFolderUri: Flow<String?>
     suspend fun setEpubFolderUri(uri: String)
     suspend fun clearEpubFolder()
+
+    /** Issue #246 — curated suggested feeds, fetched from the
+     *  jphein/storyvox-feeds GitHub repo on first observation,
+     *  cached for the app session, falling back to a baked-in list
+     *  on parse failure / first-launch-offline. */
+    val suggestedRssFeeds: Flow<List<SuggestedFeed>>
 
     /** Issue #150 — sleep timer shake-to-extend on/off. */
     suspend fun setSleepShakeToExtendEnabled(enabled: Boolean)

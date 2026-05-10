@@ -1,43 +1,20 @@
 package `in`.jphe.storyvox.feature.settings
 
-/**
- * Curated suggested-feeds list (#236 follow-up). Surfaces in Settings →
- * Library & Sync → RSS as one-tap-add buttons. Hand-curated; verified
- * RSS-valid as of the date in [SuggestedFeed.verifiedOn] field.
- *
- * Categorization:
- *  - **Text articles** narrate cleanly via TTS — full body text in
- *    `<content:encoded>`, suitable for listening.
- *  - **Audio podcasts** have audio enclosures but only show-notes
- *    text; storyvox narrates the show-notes (not the original audio).
- *    Still useful for *browsing* what's been released.
- *
- * Adding a feed: append to [SUGGESTED_FEEDS]. The data class fields
- * are stable; [SuggestedFeed.kind] drives the visual treatment.
- */
-data class SuggestedFeed(
-    val title: String,
-    val description: String,
-    val url: String,
-    val category: String,
-    val kind: SuggestedFeedKind,
-)
+import `in`.jphe.storyvox.feature.api.SuggestedFeed
+import `in`.jphe.storyvox.feature.api.SuggestedFeedKind
 
-enum class SuggestedFeedKind {
-    /** Text-article feed — narrates well via TTS. */
-    Text,
-
-    /** Audio-podcast feed — show-notes narrate, audio enclosure
-     *  doesn't (storyvox doesn't currently stream feed audio). */
-    AudioPodcast,
-}
+// SuggestedFeed + SuggestedFeedKind moved to feature/api/UiContracts.kt
+// in #246 so the SettingsRepositoryUi interface can expose them.
 
 /**
- * Hand-curated, verified-valid RSS feeds. Grouped by [category] for
- * the picker UI. Order within a category matters (most-recommended
- * first).
+ * Baked-in fallback list (#246) — used when the storyvox-feeds remote
+ * fetch hasn't completed yet (cold start, offline) or when parsing the
+ * JSON fails. Kept lean — just enough to make Settings → Suggested
+ * feeds non-empty on first launch. The remote registry at
+ * github.com/jphein/storyvox-feeds is the source of truth for
+ * additions / changes; this list rarely needs editing.
  */
-val SUGGESTED_FEEDS: List<SuggestedFeed> = listOf(
+val BAKED_IN_SUGGESTED_FEEDS: List<SuggestedFeed> = listOf(
     // ── Buddhist & dharma ────────────────────────────────────────
     SuggestedFeed(
         title = "Tricycle: The Buddhist Review",

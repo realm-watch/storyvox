@@ -247,6 +247,7 @@ class SettingsRepositoryUiImpl(
     private val teamsAuth: AnthropicTeamsAuthRepository,
     private val rssConfig: RssConfigImpl,
     private val epubConfig: EpubConfigImpl,
+    private val suggestedFeedsRegistry: SuggestedFeedsRegistry,
 ) : SettingsRepositoryUi,
     PlaybackBufferConfig,
     PlaybackModeConfig,
@@ -270,9 +271,11 @@ class SettingsRepositoryUiImpl(
         teamsAuth: AnthropicTeamsAuthRepository,
         rssConfig: RssConfigImpl,
         epubConfig: EpubConfigImpl,
+        suggestedFeedsRegistry: SuggestedFeedsRegistry,
     ) : this(
         context.settingsDataStore, auth, hydrator,
         palaceConfig, palaceApi, llmCreds, githubAuth, teamsAuth, rssConfig, epubConfig,
+        suggestedFeedsRegistry,
     )
 
     override val settings: Flow<UiSettings> = combine(
@@ -743,6 +746,18 @@ class SettingsRepositoryUiImpl(
     override val epubFolderUri: kotlinx.coroutines.flow.Flow<String?> = epubConfig.folderUriString
     override suspend fun setEpubFolderUri(uri: String) = epubConfig.setFolder(uri)
     override suspend fun clearEpubFolder() = epubConfig.clearFolder()
+
+    /** #246 — bridge to SuggestedFeedsRegistry. The fallback list
+     *  passed in is the baked-in seed; the registry emits it
+     *  immediately, then re-emits with the remote list once the
+     *  fetch resolves. */
+    override val suggestedRssFeeds: kotlinx.coroutines.flow.Flow<List<`in`.jphe.storyvox.feature.api.SuggestedFeed>> =
+        suggestedFeedsRegistry.observe(
+            // Seed list lives in feature/settings module; the impl
+            // reaches across to read it. If the feature dependency
+            // direction ever inverts, the seed moves to :app instead.
+            fallback = `in`.jphe.storyvox.feature.settings.BAKED_IN_SUGGESTED_FEEDS,
+        )
 
     override suspend fun setSleepShakeToExtendEnabled(enabled: Boolean) {
         store.edit { it[Keys.SLEEP_SHAKE_TO_EXTEND_ENABLED] = enabled }

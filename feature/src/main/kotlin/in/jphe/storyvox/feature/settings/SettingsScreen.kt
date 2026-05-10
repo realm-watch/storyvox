@@ -2173,8 +2173,11 @@ private fun RssSuggestedFeedsRow(viewModel: SettingsViewModel) {
         }
 
         // Group by category, render each category as a small header
-        // followed by the suggestion rows.
-        val byCategory = SUGGESTED_FEEDS.groupBy { it.category }
+        // followed by the suggestion rows. List is fetched from
+        // jphein/storyvox-feeds at runtime (#246) — falls back to
+        // BAKED_IN_SUGGESTED_FEEDS while the fetch is in flight.
+        val suggested by viewModel.suggestedRssFeeds.collectAsStateWithLifecycle()
+        val byCategory = suggested.groupBy { it.category }
         val canonicalSubs = subs.map { it.lowercase() }.toSet()
         byCategory.forEach { (category, suggestions) ->
             Text(
@@ -2202,8 +2205,9 @@ private fun RssSuggestedFeedsRow(viewModel: SettingsViewModel) {
                             // notes, not the audio file itself).
                             Text(
                                 text = when (feed.kind) {
-                                    SuggestedFeedKind.Text -> "Text articles — narrate well"
-                                    SuggestedFeedKind.AudioPodcast ->
+                                    `in`.jphe.storyvox.feature.api.SuggestedFeedKind.Text ->
+                                        "Text articles — narrate well"
+                                    `in`.jphe.storyvox.feature.api.SuggestedFeedKind.AudioPodcast ->
                                         "Audio podcast — storyvox narrates show notes only"
                                 },
                                 style = MaterialTheme.typography.labelSmall,
