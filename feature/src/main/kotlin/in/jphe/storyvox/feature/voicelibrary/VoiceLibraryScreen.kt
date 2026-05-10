@@ -26,7 +26,6 @@ import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -53,6 +52,7 @@ import `in`.jphe.storyvox.playback.voice.VoiceLibrarySection
 import `in`.jphe.storyvox.playback.voice.flagForLanguage
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
+import `in`.jphe.storyvox.ui.component.BrassProgressBar
 import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
 import `in`.jphe.storyvox.ui.component.cascadeReveal
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
@@ -503,14 +503,14 @@ private fun VoiceRow(
             }
             if (downloadingProgress != null) {
                 Spacer(modifier = Modifier.size(spacing.xxs))
-                if (downloadingProgress < 0f) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                } else {
-                    LinearProgressIndicator(
-                        progress = { downloadingProgress },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
+                // Negative progress = the upstream signal has no
+                // Content-Length yet (sherpa-onnx HEAD probe in flight),
+                // so we render the indeterminate brass comet. Otherwise
+                // the determinate fill smooth-animates as bytes roll in.
+                BrassProgressBar(
+                    progress = if (downloadingProgress < 0f) null else downloadingProgress,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }
