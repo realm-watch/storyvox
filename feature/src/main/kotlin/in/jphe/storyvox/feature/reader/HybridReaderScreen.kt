@@ -85,6 +85,11 @@ fun HybridReaderScreen(
                 onOpenChat = {
                     playback.fictionId?.let { onOpenChat(it, null) }
                 },
+                // Issue #278 — surface loading-phase + retry path. The
+                // view decides what to render based on phase (regular /
+                // slow-hint at 10s / full error block at 30s).
+                loadingPhase = state.loadingPhase,
+                onRetryLoading = viewModel::retryLoading,
             )
         },
         readerContent = {

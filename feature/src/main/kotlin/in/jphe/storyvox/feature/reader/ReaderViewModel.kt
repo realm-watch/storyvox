@@ -15,12 +15,15 @@ import `in`.jphe.storyvox.llm.feature.ChapterRecap
 import `in`.jphe.storyvox.ui.component.ReaderView
 import javax.inject.Inject
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -30,7 +33,38 @@ data class ReaderUiState(
     val playback: UiPlaybackState? = null,
     val chapterText: String = "",
     val activePane: ReaderView = ReaderView.Audiobook,
+    /** Issue #278 — how long the player has been stuck in the "no chapter
+     *  title + no chapter text" loading state. Drives the soft slow hint
+     *  + the hard timeout/retry error path in [AudiobookView]. Reset to
+     *  [LoadingPhase.NotLoading] as soon as either piece of state arrives. */
+    val loadingPhase: LoadingPhase = LoadingPhase.NotLoading,
 )
+
+/** Issue #278 — the player loading screen used to be a silent eternity:
+ *  if the chapter fetch or voice-model load hung, the user stared at
+ *  "Conjuring your chapter…" forever with no retry, no error, no escape.
+ *
+ *  This sealed surface tracks progress through the loading window so
+ *  [AudiobookView] can layer in:
+ *   - a soft "Still working… (slow voice / network)" hint at 10s, and
+ *   - a hard error block with Retry / Pick a different voice / Cancel
+ *     at 30s.
+ *
+ *  Once chapter text or a chapter title arrives, the phase snaps back to
+ *  [NotLoading] regardless of where we were on the timer. */
+enum class LoadingPhase {
+    /** Player has chapter title / chapter text — not loading. */
+    NotLoading,
+    /** First 10s of a fresh load — show the regular sigil + copy. */
+    Loading,
+    /** 10-30s into a load — show a "Still working…" secondary line so
+     *  the user knows we haven't deadlocked. */
+    Slow,
+    /** 30s+ — surface a friendly error block with Retry / Pick voice /
+     *  Cancel. The loading flow itself isn't cancelled; we just give the
+     *  user a way out. */
+    TimedOut,
+}
 
 /** UI state for the Chapter Recap modal. Sealed because the
  *  states are mutually exclusive — at any given moment the modal is
@@ -99,13 +133,76 @@ class ReaderViewModel @Inject constructor(
      *  billing). */
     private var recapJob: Job? = null
 
+    /** Issue #278 — derive a `isLoading` boolean directly from the
+     *  playback state so we can drive a timer off it. "Loading" matches
+     *  the same condition AudiobookView already uses for the brass
+     *  spinner: no chapter title yet AND no chapter text yet. As soon as
+     *  either arrives the flow flips false and the timer below resets. */
+    private val isLoading: StateFlow<Boolean> = combine(
+        playback.state,
+        playback.chapterText,
+    ) { state, text ->
+        state.chapterTitle.isBlank() && text.isBlank()
+    }.distinctUntilChanged().stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5_000), true,
+    )
+
+    /** Issue #278 — phase tracker. When the loading edge flips true we
+     *  fire a coroutine that walks Loading → Slow (10s) → TimedOut (30s).
+     *  When it flips false we cancel the timer and reset to NotLoading.
+     *
+     *  The thresholds match the values called out in the issue body:
+     *  10s for the soft slow hint, 30s for the hard error path. They're
+     *  intentionally non-private so the unit test can pin them. */
+    private val _loadingPhase = MutableStateFlow(LoadingPhase.Loading)
+    private var loadingTimerJob: Job? = null
+
+    init {
+        viewModelScope.launch {
+            isLoading.collect { loading ->
+                loadingTimerJob?.cancel()
+                if (!loading) {
+                    _loadingPhase.value = LoadingPhase.NotLoading
+                    return@collect
+                }
+                _loadingPhase.value = LoadingPhase.Loading
+                loadingTimerJob = launch {
+                    delay(LOADING_SLOW_HINT_MS)
+                    _loadingPhase.value = LoadingPhase.Slow
+                    delay(LOADING_TIMEOUT_MS - LOADING_SLOW_HINT_MS)
+                    _loadingPhase.value = LoadingPhase.TimedOut
+                }
+            }
+        }
+    }
+
     val uiState: StateFlow<ReaderUiState> = combine(
         playback.state,
         playback.chapterText,
         _activePane,
-    ) { state, text, pane ->
-        ReaderUiState(playback = state, chapterText = text, activePane = pane)
+        _loadingPhase,
+    ) { state, text, pane, phase ->
+        ReaderUiState(
+            playback = state,
+            chapterText = text,
+            activePane = pane,
+            loadingPhase = phase,
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReaderUiState())
+
+    /** Issue #278 — user-initiated retry from the timed-out error block.
+     *  Re-invokes the playback `play()` path; the underlying controller
+     *  will re-fetch the chapter / re-prime the voice. We also reset the
+     *  loading phase so the UI immediately shows the regular spinner
+     *  instead of staying on the error block.
+     *
+     *  No fictionId/chapterId check — the playback controller is the
+     *  source of truth for what's "currently loaded"; if neither is set,
+     *  play() is a documented no-op. */
+    fun retryLoading() {
+        _loadingPhase.value = LoadingPhase.Loading
+        playback.play()
+    }
 
     fun setActivePane(pane: ReaderView) { _activePane.value = pane }
 
@@ -216,6 +313,23 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             playback.speakText(text)
         }
+    }
+
+    companion object {
+        /** Issue #278 — soft hint threshold. After 10s of being stuck in
+         *  the loading state, the AudiobookView adds a "Still working…
+         *  (slow voice / network)" secondary line under the conjuring
+         *  copy. The threshold is conservative — real warmups on Flip3
+         *  routinely take 5-8s, so 10s is the cutoff between "expected"
+         *  and "starting to feel off." */
+        const val LOADING_SLOW_HINT_MS = 10_000L
+
+        /** Issue #278 — hard timeout threshold. At 30s we flip to a
+         *  user-actionable error: Retry / Pick voice / Cancel. The
+         *  underlying load isn't cancelled — if it eventually completes
+         *  the regular state flow takes over again — but the user has
+         *  a way out of the conjuring screen instead of staring forever. */
+        const val LOADING_TIMEOUT_MS = 30_000L
     }
 
     private fun mapErrorToUi(e: Throwable): RecapUiState.Error = when (e) {
