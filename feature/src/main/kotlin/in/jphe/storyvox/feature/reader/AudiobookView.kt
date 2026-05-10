@@ -24,8 +24,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.Forward30
+import androidx.compose.material.icons.filled.Replay30
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -286,7 +286,13 @@ fun AudiobookView(
                     Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous chapter", modifier = Modifier.size(32.dp))
                 }
                 IconButton(onClick = onSkipBack) {
-                    Icon(Icons.Filled.FastRewind, contentDescription = "Skip back 30 seconds", modifier = Modifier.size(32.dp))
+                    // Issue #268 — Replay30 / Forward30 show the literal '30'
+                    // inside a curved-arrow glyph, so the seek interval is
+                    // legible at a glance instead of just an abstract
+                    // double-chevron. The skip-30 duration is hard-coded to
+                    // 30s today; if/when a configurable duration lands the
+                    // icon will need a swap to a dynamic glyph too.
+                    Icon(Icons.Filled.Replay30, contentDescription = "Skip back 30 seconds", modifier = Modifier.size(32.dp))
                 }
                 // "Warming up" = user has hit play and chapter has loaded, but
                 // the TTS engine hasn't produced the first sentence yet (no
@@ -322,7 +328,7 @@ fun AudiobookView(
                     }
                 }
                 IconButton(onClick = onSkipForward) {
-                    Icon(Icons.Filled.FastForward, contentDescription = "Skip forward 30 seconds", modifier = Modifier.size(32.dp))
+                    Icon(Icons.Filled.Forward30, contentDescription = "Skip forward 30 seconds", modifier = Modifier.size(32.dp))
                 }
                 IconButton(onClick = onNextChapter) {
                     Icon(Icons.Filled.SkipNext, contentDescription = "Next chapter", modifier = Modifier.size(32.dp))
