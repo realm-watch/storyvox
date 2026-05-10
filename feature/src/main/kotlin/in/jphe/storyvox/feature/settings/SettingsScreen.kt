@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.ui.platform.LocalUriHandler
@@ -810,23 +809,17 @@ private fun MemoryPalaceSection(
     )
 
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(spacing.sm)) {
-        if (probing) {
-            // Inline spinner; the BrassButton doesn't have a loading state
-            // and adding one for one site felt heavy. 16dp matches the
-            // text height on either side.
-            CircularProgressIndicator(
-                modifier = Modifier.size(16.dp),
-                strokeWidth = 2.dp,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text("Testing…", style = MaterialTheme.typography.bodySmall)
-        } else {
-            BrassButton(
-                label = "Test connection",
-                onClick = onTest,
-                variant = BrassButtonVariant.Primary,
-            )
-        }
+        // BrassButton.loading keeps the button at its measured width and
+        // overlays a brass spinner — the row no longer reflows when the
+        // probe starts. Replaces the older swap-to-CircularProgressIndicator
+        // pattern (off-palette grey + width jump from "Test connection" to
+        // "Testing…").
+        BrassButton(
+            label = "Test connection",
+            onClick = onTest,
+            variant = BrassButtonVariant.Primary,
+            loading = probing,
+        )
         if (palace.isConfigured) {
             BrassButton(
                 label = "Clear",
@@ -836,6 +829,7 @@ private fun MemoryPalaceSection(
                     onClear()
                 },
                 variant = BrassButtonVariant.Secondary,
+                enabled = !probing,
             )
         }
     }
@@ -985,20 +979,12 @@ private fun AzureSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
-            if (probing) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(16.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Text("Testing…", style = MaterialTheme.typography.bodySmall)
-            } else {
-                BrassButton(
-                    label = "Test connection",
-                    onClick = onTest,
-                    variant = BrassButtonVariant.Primary,
-                )
-            }
+            BrassButton(
+                label = "Test connection",
+                onClick = onTest,
+                variant = BrassButtonVariant.Primary,
+                loading = probing,
+            )
             if (azure.isConfigured) {
                 BrassButton(
                     label = "Forget key",
@@ -1007,6 +993,7 @@ private fun AzureSection(
                         onClear()
                     },
                     variant = BrassButtonVariant.Secondary,
+                    enabled = !probing,
                 )
             }
         }
