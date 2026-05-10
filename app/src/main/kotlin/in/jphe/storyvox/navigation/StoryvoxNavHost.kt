@@ -103,6 +103,23 @@ object StoryvoxRoutes {
 
     private val HOME_ROUTES = setOf(PLAYING, LIBRARY, FOLLOWS, BROWSE, SETTINGS)
     fun isHome(route: String?) = route in HOME_ROUTES
+
+    /** Issue #267 — Reader / Audiobook routes ARE the player surface, just
+     *  reached via drill-down from a chapter row instead of via the
+     *  Playing tab. Keep the bottom nav visible on those so the user can
+     *  switch tabs (Browse another book, hit Library) without backing out
+     *  of the player. The drill-down is still a back-stack push (so OS
+     *  Back returns to the chapter list); the bottom bar is purely a
+     *  cross-cutting nav surface here.
+     *
+     *  When a full mini-player strip lands (sibling of #267 — collapse
+     *  the player into a top-of-bottom-bar mini), this set goes away and
+     *  the strip becomes the always-present transport surface. Until
+     *  then, "bottom nav present + player fills the body" is the
+     *  Apple-Books pattern and the lowest-cost win. */
+    private val PLAYER_ROUTES_WITH_BOTTOM_NAV = setOf(READER, AUDIOBOOK)
+    fun showsBottomNav(route: String?): Boolean =
+        isHome(route) || route in PLAYER_ROUTES_WITH_BOTTOM_NAV
 }
 
 @Composable
@@ -124,7 +141,7 @@ private fun StoryvoxNavHostContent(
 ) {
     val currentEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentEntry?.destination?.route
-    val showBottomBar = StoryvoxRoutes.isHome(currentRoute)
+    val showBottomBar = StoryvoxRoutes.showsBottomNav(currentRoute)
 
     val reducedMotion = LocalReducedMotion.current
 
@@ -133,11 +150,17 @@ private fun StoryvoxNavHostContent(
         bottomBar = {
             if (showBottomBar) {
                 BottomTabBar(
-                    selected = when (currentRoute) {
-                        StoryvoxRoutes.PLAYING -> HomeTab.Playing
-                        StoryvoxRoutes.FOLLOWS -> HomeTab.Follows
-                        StoryvoxRoutes.BROWSE -> HomeTab.Browse
-                        StoryvoxRoutes.SETTINGS -> HomeTab.Settings
+                    selected = when {
+                        currentRoute == StoryvoxRoutes.PLAYING -> HomeTab.Playing
+                        currentRoute == StoryvoxRoutes.FOLLOWS -> HomeTab.Follows
+                        currentRoute == StoryvoxRoutes.BROWSE -> HomeTab.Browse
+                        currentRoute == StoryvoxRoutes.SETTINGS -> HomeTab.Settings
+                        // Issue #267 — the Reader / Audiobook drill-downs ARE
+                        // the player surface, so light the Playing tab while
+                        // we're on them. Without this branch they'd fall
+                        // through to Library, which is misleading.
+                        currentRoute == StoryvoxRoutes.READER ||
+                            currentRoute == StoryvoxRoutes.AUDIOBOOK -> HomeTab.Playing
                         else -> HomeTab.Library
                     },
                     onSelect = { tab ->
