@@ -702,8 +702,25 @@ class EnginePlayer @AssistedInject constructor(
                         val tokens = File(voiceDir, "tokens.txt").absolutePath
                         val parallelState = parallelSynthConfig.currentParallelSynthState()
                         val nt = parallelState.threadsPerInstance
+                        // PR-Tier3-Diag — log slider snapshot at pipeline-
+                        // construction time so we can confirm the read is
+                        // actually returning the user's value (vs. a stale
+                        // 1). If you see "Tier 3 init Piper instances=N
+                        // threadsPerInstance=M" in logcat with N>=2, the
+                        // loop below WILL execute; if you also see no
+                        // "Tier 3 secondary K loaded" lines, the loadModel
+                        // is returning a non-Success status silently.
+                        android.util.Log.i(
+                            "EnginePlayer",
+                            "Tier 3 init Piper instances=${parallelState.instances} " +
+                                "threadsPerInstance=$nt onnx=${onnx.takeLast(60)}",
+                        )
                         val primaryResult = VoiceEngine.getInstance()
                             .loadModel(context, onnx, tokens, nt)
+                        android.util.Log.i(
+                            "EnginePlayer",
+                            "Tier 3 primary Piper load: result=$primaryResult",
+                        )
                         // Tier 3 (#88) — slider replaces the boolean
                         // toggle. Construct (instances-1) secondaries
                         // when instances >= 2. Each gets its own
@@ -715,10 +732,32 @@ class EnginePlayer @AssistedInject constructor(
                         secondaryPiperEngines = emptyList()
                         val secondaries = mutableListOf<com.CodeBySonu.VoxSherpa.VoiceEngine>()
                         for (i in 1 until parallelState.instances) {
+                            android.util.Log.i(
+                                "EnginePlayer",
+                                "Tier 3 attempting secondary Piper $i",
+                            )
                             val secondary = com.CodeBySonu.VoxSherpa.VoiceEngine()
+                            // Propagate noiseScale settings so all
+                            // instances render with the same prosody.
+                            // Without this, secondaries use default
+                            // 0.35/0.667 (Steady) while primary uses
+                            // whatever cachedVoiceSteady dictates,
+                            // causing audible mismatch between
+                            // sentences depending on which instance
+                            // rendered them.
+                            val ns = if (cachedVoiceSteady) NOISE_SCALE_STEADY
+                                     else NOISE_SCALE_EXPRESSIVE
+                            val nsW = if (cachedVoiceSteady) NOISE_SCALE_W_STEADY
+                                      else NOISE_SCALE_W_EXPRESSIVE
+                            secondary.setNoiseScale(ns)
+                            secondary.setNoiseScaleW(nsW)
                             val r = secondary.loadModel(context, onnx, tokens, nt)
                             if (r == "Success") {
                                 secondaries += secondary
+                                android.util.Log.i(
+                                    "EnginePlayer",
+                                    "Tier 3 secondary Piper $i loaded ok",
+                                )
                             } else {
                                 runCatching { secondary.destroy() }
                                 android.util.Log.w(

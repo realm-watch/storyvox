@@ -129,11 +129,17 @@ class EngineStreamingSource(
      */
     private val producerExecutor = run {
         // Tier 3 (#88): N parallel workers when secondaries are wired,
-        // single thread otherwise (Tier 2 shape). Pool size = primary
-        // (1) + secondaries.size. Each worker bumps URGENT_AUDIO on
-        // its first task; the fixed-pool guarantees dedicated threads
-        // so the priority sticks.
-        val poolSize = 1 + secondaryEngines.size
+        // single thread otherwise (Tier 2 shape). Pool size for the
+        // parallel path = workers (1 + secondaries) + 2 for the
+        // sequencer + feeder coroutines. Without those extra two
+        // slots the sequencer can starve when all worker threads are
+        // blocked in JNI generateAudioPCM calls — produced chunks
+        // get stuck in the completed map and never reach the
+        // consumer queue → zero audio output despite pegged CPU.
+        // (Bug surfaced 2026-05-10 on tablet w/ instances=2,2: 2
+        // workers occupied both threads, sequencer never dispatched.)
+        val workerCount = 1 + secondaryEngines.size
+        val poolSize = if (secondaryEngines.isEmpty()) 1 else workerCount + 2
         val counter = java.util.concurrent.atomic.AtomicInteger(0)
         Executors.newFixedThreadPool(poolSize) { r ->
             Thread(r, "storyvox-tts-producer-${counter.incrementAndGet()}").apply {
