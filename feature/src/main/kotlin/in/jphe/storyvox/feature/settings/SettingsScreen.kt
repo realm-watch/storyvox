@@ -1,6 +1,7 @@
 package `in`.jphe.storyvox.feature.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -671,6 +672,18 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // Calliope (v0.5.00) — graduation milestone pill. Brass
+                // outline, no fill, small. Shown only when the build's
+                // VERSION_NAME parses ≥ 0.5.00; on 0.4.x and lower it's
+                // absent so the About card stays minimal. We check
+                // versionName here rather than the persisted milestone
+                // flag because the pill is a permanent build-identity
+                // marker, not a "have I seen the dialog" trace — every
+                // qualifying build wears the badge, regardless of
+                // whether the user has dismissed the celebration.
+                if (isV0500MilestoneBuild(s.sigil.versionName)) {
+                    MilestoneBadgePill()
+                }
             }
         }
 
@@ -2964,3 +2977,144 @@ private fun SettingsSkeleton(modifier: Modifier = Modifier) {
         }
     }
 }
+
+/**
+ * Calliope (v0.5.00) — version-string gate for the About-card pill.
+ *
+ * Mirrors `in.jphe.storyvox.sigil.Milestone.qualifies` from the app
+ * module, deliberately re-implemented here so the feature module
+ * doesn't need to depend back on `:app`. Parse rule: split on `.`,
+ * `-`, or `+`; take the first three integer components; default
+ * missing tail components to 0. Any parse failure returns false
+ * (fail-closed). Safe for previews and tests — pass `"0.5.00"` for
+ * the on-state, anything else for off.
+ */
+internal fun isV0500MilestoneBuild(versionName: String): Boolean {
+    val parts = versionName.split('.', '-', '+')
+    val major = parts.getOrNull(0)?.toIntOrNull() ?: return false
+    val minor = parts.getOrNull(1)?.toIntOrNull() ?: 0
+    val patch = parts.getOrNull(2)?.toIntOrNull() ?: 0
+    // (major, minor, patch) ≥ (0, 5, 0).
+    if (major != 0) return major > 0
+    if (minor != 5) return minor > 5
+    return patch >= 0
+}
+
+/**
+ * The small "🎉 0.5.00 milestone" pill under the build's sigil
+ * line. Brass outline, no fill, small — same visual posture as the
+ * StatusPill component but without the colored fill (a quiet
+ * achievement marker, not a status warning). Single emoji per the
+ * dialog's tone — the brass details celebrate, not the copy.
+ */
+@Composable
+private fun MilestoneBadgePill() {
+    val spacing = LocalSpacing.current
+    Box(
+        modifier = Modifier
+            .padding(top = spacing.xs)
+            .clip(MaterialTheme.shapes.small)
+            .background(Color.Transparent)
+            .padding(0.dp),
+    ) {
+        androidx.compose.foundation.layout.Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(spacing.xxs),
+            modifier = Modifier
+                .clip(MaterialTheme.shapes.small)
+                .background(MaterialTheme.colorScheme.surface)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                    shape = MaterialTheme.shapes.small,
+                )
+                .padding(horizontal = spacing.xs, vertical = spacing.xxs),
+        ) {
+            Text(text = "🎉", style = MaterialTheme.typography.bodySmall)
+            Text(
+                text = "0.5.00 milestone",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
+/**
+ * Preview-only About card with the milestone pill. Hand-rolls the
+ * column to avoid spinning up the full SettingsViewModel + DI graph
+ * in a Preview pane — the pill is the only piece this preview
+ * cares about. Confirms the brass-outline pill sits below the
+ * sigil-name line and reads as a quiet achievement marker.
+ */
+@androidx.compose.ui.tooling.preview.Preview(
+    name = "About — with v0.5.00 milestone pill (dark)",
+    widthDp = 360, heightDp = 240,
+)
+@Composable
+private fun PreviewAboutCardWithMilestonePillDark() =
+    `in`.jphe.storyvox.ui.theme.LibraryNocturneTheme(darkTheme = true) {
+        val spacing = LocalSpacing.current
+        Box(modifier = Modifier
+            .background(MaterialTheme.colorScheme.background)
+            .padding(spacing.md),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.large)
+                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    .padding(spacing.md),
+                verticalArrangement = Arrangement.spacedBy(spacing.xxs),
+            ) {
+                Text("storyvox v0.5.00", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = "Spectral Forge · ef6a4cf3",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = "main · built 2026-05-10",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                MilestoneBadgePill()
+            }
+        }
+    }
+
+@androidx.compose.ui.tooling.preview.Preview(
+    name = "About — with v0.5.00 milestone pill (light)",
+    widthDp = 360, heightDp = 240,
+)
+@Composable
+private fun PreviewAboutCardWithMilestonePillLight() =
+    `in`.jphe.storyvox.ui.theme.LibraryNocturneTheme(darkTheme = false) {
+        val spacing = LocalSpacing.current
+        Box(modifier = Modifier
+            .background(MaterialTheme.colorScheme.background)
+            .padding(spacing.md),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.large)
+                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    .padding(spacing.md),
+                verticalArrangement = Arrangement.spacedBy(spacing.xxs),
+            ) {
+                Text("storyvox v0.5.00", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = "Spectral Forge · ef6a4cf3",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = "main · built 2026-05-10",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                MilestoneBadgePill()
+            }
+        }
+    }

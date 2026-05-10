@@ -54,6 +54,7 @@ import `in`.jphe.storyvox.feature.browse.RealBrowsePaginator
 import `in`.jphe.storyvox.feature.browse.toUiFiction
 import `in`.jphe.storyvox.playback.PlaybackController
 import `in`.jphe.storyvox.playback.PlaybackState
+import `in`.jphe.storyvox.playback.PlaybackUiEvent
 import `in`.jphe.storyvox.playback.tts.RecapPlaybackState
 import `in`.jphe.storyvox.playback.SPEED_BASELINE_CHARS_PER_SECOND
 import `in`.jphe.storyvox.playback.SleepTimerMode
@@ -696,6 +697,15 @@ internal class RealPlaybackControllerUi(
                 RecapPlaybackState.Speaking -> UiRecapPlaybackState.Speaking
             }
         }
+
+    /** Calliope (v0.5.00) — forward the PlaybackController's events
+     *  SharedFlow into the feature layer. Used by HybridReaderScreen
+     *  to drive the milestone confetti easter-egg on the first
+     *  natural [PlaybackUiEvent.ChapterDone] after a v0.5.00+ install.
+     *  No mapping — the event types live in `:core-playback` which the
+     *  feature module already depends on, and re-wrapping would just
+     *  add a stale duplication seam. */
+    override val events: Flow<PlaybackUiEvent> = controller.events
 
     override suspend fun speakText(text: String) {
         controller.speakText(text)
