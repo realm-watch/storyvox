@@ -88,6 +88,13 @@ open class AzureSpeechClient @Inject constructor(
     protected open fun endpointUrlFor(regionId: String): String =
         "https://$regionId.tts.speech.microsoft.com/cognitiveservices/v1"
 
+    /** Open for tests — MockWebServer overrides this. The voices/list
+     *  endpoint is a cheap GET that exercises auth + DNS + TLS without
+     *  billing any synthesis characters; Settings → Cloud Voices →
+     *  Azure → "Test connection" hits it. */
+    protected open fun voicesListUrlFor(regionId: String): String =
+        "https://$regionId.tts.speech.microsoft.com/cognitiveservices/voices/list"
+
     /**
      * POST [ssml] to Azure, return the raw PCM body.
      *
@@ -139,6 +146,92 @@ open class AzureSpeechClient @Inject constructor(
                     throw AzureError.Throttled(
                         "Azure throttled the request (HTTP 429). " +
                             "Free-tier quota exhausted, or burst limit hit.",
+                    )
+                }
+                resp.code in 400..499 -> {
+                    val excerpt = resp.body?.string()?.take(256) ?: resp.message
+                    throw AzureError.BadRequest(
+                        resp.code,
+                        "Azure rejected request (HTTP ${resp.code}): $excerpt",
+                    )
+                }
+                resp.code in 500..599 -> {
+                    throw AzureError.ServerError(
+                        resp.code,
+                        "Azure server error (HTTP ${resp.code}): " +
+                            (resp.message.takeIf { it.isNotBlank() } ?: "unknown"),
+                    )
+                }
+                else -> {
+                    throw AzureError.ServerError(
+                        resp.code,
+                        "Unexpected HTTP ${resp.code} from Azure",
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * GET the `voices/list` endpoint and return the parsed voice count.
+     * No SSML, no billing — just a cheap auth/connectivity probe that
+     * Settings → Cloud Voices → Azure → "Test connection" calls.
+     *
+     * Returns the count of voice entries in the JSON array on success.
+     * Throws the same [AzureError] hierarchy as [synthesize] so the
+     * caller can branch on auth-fail vs network-fail vs server-fail
+     * with the same shape it'd see during real synthesis.
+     *
+     * The body parse is intentionally cheap — we don't deserialize the
+     * full voice schema (Azure's voices/list payload is ~150 KB of JSON
+     * with 600+ voices), just walk the response counting top-level
+     * `{` braces inside the array. PR-7 (full roster fetch) parses the
+     * full payload; for the test-connection probe, "200 OK + non-empty
+     * array" is enough.
+     *
+     * @throws AzureError.AuthFailed   on 401 / 403
+     * @throws AzureError.BadRequest   on other 4xx
+     * @throws AzureError.ServerError  on 5xx
+     * @throws AzureError.NetworkError on TCP / TLS / DNS failure
+     */
+    open fun voicesList(): Int {
+        val key = credentials.key()
+            ?: throw AzureError.AuthFailed("No Azure subscription key configured")
+        val regionId = credentials.regionId()
+
+        val request = Request.Builder()
+            .url(voicesListUrlFor(regionId))
+            .header(HEADER_KEY, key)
+            .header(HEADER_USER_AGENT, USER_AGENT)
+            .get()
+            .build()
+
+        val response = try {
+            http.newCall(request).execute()
+        } catch (e: IOException) {
+            throw AzureError.NetworkError(e)
+        }
+
+        return response.use { resp ->
+            when {
+                resp.isSuccessful -> {
+                    // Cheap voice-count: count top-level objects in the
+                    // array. Azure's payload is `[{...},{...}]` —
+                    // counting `{` is correct because JSON object
+                    // values inside a voice are flat (no nested
+                    // objects) per the published schema. Worst case a
+                    // future schema change inflates the count; the
+                    // user sees a successful Reachable result with a
+                    // confusing number, never a wrong-direction
+                    // failure. PR-7 swaps this for a real parse.
+                    val body = resp.body?.string().orEmpty()
+                    body.count { it == '{' }
+                }
+                resp.code == 401 || resp.code == 403 -> {
+                    throw AzureError.AuthFailed(
+                        "Azure rejected key (HTTP ${resp.code}): " +
+                            (resp.message.takeIf { it.isNotBlank() }
+                                ?: "authentication failed"),
                     )
                 }
                 resp.code in 400..499 -> {

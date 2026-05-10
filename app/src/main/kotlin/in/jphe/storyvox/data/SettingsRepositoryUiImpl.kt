@@ -30,14 +30,20 @@ import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_MAX_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_MIN_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_NORMAL_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_OFF_MULTIPLIER
+import `in`.jphe.storyvox.feature.api.AzureProbeResult
 import `in`.jphe.storyvox.feature.api.PalaceProbeResult
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiAiSettings
+import `in`.jphe.storyvox.feature.api.UiAzureConfig
 import `in`.jphe.storyvox.feature.api.UiChatGrounding
 import `in`.jphe.storyvox.feature.api.UiGitHubAuthState
 import `in`.jphe.storyvox.feature.api.UiLlmProvider
 import `in`.jphe.storyvox.feature.api.UiPalaceConfig
+import `in`.jphe.storyvox.source.azure.AzureCredentials
+import `in`.jphe.storyvox.source.azure.AzureError
+import `in`.jphe.storyvox.source.azure.AzureRegion
+import `in`.jphe.storyvox.source.azure.AzureSpeechClient
 import `in`.jphe.storyvox.feature.api.UiSettings
 import `in`.jphe.storyvox.feature.api.UiSigil
 import `in`.jphe.storyvox.source.github.auth.GitHubAuthRepository
@@ -251,6 +257,8 @@ class SettingsRepositoryUiImpl(
     private val epubConfig: EpubConfigImpl,
     private val outlineConfig: OutlineConfigImpl,
     private val suggestedFeedsRegistry: SuggestedFeedsRegistry,
+    private val azureCreds: AzureCredentials,
+    private val azureClient: AzureSpeechClient,
 ) : SettingsRepositoryUi,
     PlaybackBufferConfig,
     PlaybackModeConfig,
@@ -276,18 +284,32 @@ class SettingsRepositoryUiImpl(
         epubConfig: EpubConfigImpl,
         outlineConfig: OutlineConfigImpl,
         suggestedFeedsRegistry: SuggestedFeedsRegistry,
+        azureCreds: AzureCredentials,
+        azureClient: AzureSpeechClient,
     ) : this(
         context.settingsDataStore, auth, hydrator,
         palaceConfig, palaceApi, llmCreds, githubAuth, teamsAuth, rssConfig, epubConfig,
-        outlineConfig, suggestedFeedsRegistry,
+        outlineConfig, suggestedFeedsRegistry, azureCreds, azureClient,
     )
+
+    /**
+     * Tick that bumps on every Azure setter so the [settings] flow
+     * re-emits with the fresh [AzureCredentials] snapshot. The
+     * encrypted-prefs store doesn't expose a Flow of its own (it's a
+     * bare [SharedPreferences] for cross-language compatibility with
+     * [LlmCredentialsStore]), so this internal tick fills the gap —
+     * same shape as `MutableStateFlow<Long>(0)` used elsewhere in the
+     * app for non-flow-aware deps.
+     */
+    private val azureTick = kotlinx.coroutines.flow.MutableStateFlow(0L)
 
     override val settings: Flow<UiSettings> = combine(
         store.data,
         palaceConfig.state,
         githubAuth.sessionState,
         teamsAuth.sessionState,
-    ) { prefs, palace, githubSession, teamsSession ->
+        azureTick,
+    ) { prefs, palace, githubSession, teamsSession, _ ->
         UiSettings(
             ttsEngine = "VoxSherpa",
             defaultVoiceId = prefs[Keys.DEFAULT_VOICE_ID],
@@ -321,6 +343,19 @@ class SettingsRepositoryUiImpl(
             sourceEpubEnabled = prefs[Keys.SOURCE_EPUB_ENABLED] ?: false,
             sourceOutlineEnabled = prefs[Keys.SOURCE_OUTLINE_ENABLED] ?: false,
             sleepShakeToExtendEnabled = prefs[Keys.SLEEP_SHAKE_TO_EXTEND_ENABLED] ?: true,
+            azure = run {
+                // #182 — read the encrypted snapshot imperatively each
+                // emission. The azureTick flow above guarantees a fresh
+                // re-emission after every setter; combining the bare
+                // SharedPreferences-backed creds in directly would need
+                // a Flow we don't currently expose from :source-azure.
+                val regionId = azureCreds.regionId()
+                UiAzureConfig(
+                    key = azureCreds.key().orEmpty(),
+                    regionId = regionId,
+                    regionDisplayName = AzureRegion.byId(regionId)?.displayName ?: regionId,
+                )
+            },
             ai = UiAiSettings(
                 provider = prefs[Keys.AI_PROVIDER]
                     ?.takeIf { it.isNotBlank() }
@@ -778,6 +813,53 @@ class SettingsRepositoryUiImpl(
 
     override suspend fun setSleepShakeToExtendEnabled(enabled: Boolean) {
         store.edit { it[Keys.SLEEP_SHAKE_TO_EXTEND_ENABLED] = enabled }
+    }
+
+    // ── Azure Speech Services BYOK (#182, PR-3) ────────────────────
+
+    override suspend fun setAzureKey(key: String?) {
+        if (key.isNullOrBlank()) azureCreds.clear() else azureCreds.setKey(key.trim())
+        // Don't also wipe the region on a key-only clear — the user may
+        // want to re-paste the same region's key. clearAzureCredentials()
+        // is the explicit wipe-both surface.
+        azureTick.value = azureTick.value + 1
+    }
+
+    override suspend fun setAzureRegion(regionId: String) {
+        azureCreds.setRegion(regionId)
+        azureTick.value = azureTick.value + 1
+    }
+
+    override suspend fun clearAzureCredentials() {
+        azureCreds.clear()
+        azureTick.value = azureTick.value + 1
+    }
+
+    override suspend fun testAzureConnection(): AzureProbeResult {
+        if (!azureCreds.isConfigured) return AzureProbeResult.NotConfigured
+        // voicesList() is blocking OkHttp work — push to IO so the
+        // suspend-fun signature isn't a lie. Settings VM already
+        // launches this on viewModelScope, but a blocking JVM thread
+        // off the main dispatcher is the wrong shape for a "suspend"
+        // contract — withContext(IO) makes it cancellable + correct.
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val count = azureClient.voicesList()
+                AzureProbeResult.Reachable(voiceCount = count)
+            } catch (e: AzureError.AuthFailed) {
+                AzureProbeResult.AuthFailed(
+                    e.message ?: "Azure rejected the subscription key.",
+                )
+            } catch (e: AzureError.NetworkError) {
+                AzureProbeResult.Unreachable(
+                    e.message ?: "Network error reaching Azure.",
+                )
+            } catch (e: AzureError) {
+                AzureProbeResult.Unreachable(
+                    e.message ?: "Azure returned an unexpected error.",
+                )
+            }
+        }
     }
 
     /**

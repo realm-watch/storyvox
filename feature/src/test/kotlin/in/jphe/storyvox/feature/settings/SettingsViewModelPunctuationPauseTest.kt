@@ -210,6 +210,11 @@ class SettingsViewModelPunctuationPauseTest {
         override suspend fun clearOutlineConfig() = Unit
         override val suggestedRssFeeds: kotlinx.coroutines.flow.Flow<List<`in`.jphe.storyvox.feature.api.SuggestedFeed>> = kotlinx.coroutines.flow.flowOf(emptyList())
         override suspend fun setSleepShakeToExtendEnabled(enabled: Boolean) = Unit
+        override suspend fun setAzureKey(key: String?) = Unit
+        override suspend fun setAzureRegion(regionId: String) = Unit
+        override suspend fun clearAzureCredentials() = Unit
+        override suspend fun testAzureConnection(): `in`.jphe.storyvox.feature.api.AzureProbeResult =
+            `in`.jphe.storyvox.feature.api.AzureProbeResult.NotConfigured
         override suspend fun signOutTeams() = Unit
     }
 

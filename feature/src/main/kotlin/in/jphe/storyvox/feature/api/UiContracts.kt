@@ -668,6 +668,13 @@ data class UiSettings(
      */
     val voiceSpeedOverrides: Map<String, Float> = emptyMap(),
     val voicePitchOverrides: Map<String, Float> = emptyMap(),
+    /**
+     * Azure Speech Services BYOK config (#182). Empty key = source not
+     * yet configured; the picker shows Azure rows greyed-out with a
+     * "Configure Azure key →" CTA until [UiAzureConfig.isConfigured]
+     * flips to true.
+     */
+    val azure: UiAzureConfig = UiAzureConfig(),
 ) {
     /** Speed value the engine should run at right now — the active
      *  voice's override if set, otherwise the global default (#195). */
@@ -712,6 +719,32 @@ data class UiPalaceConfig(
     val apiKey: String = "",
 ) {
     val isConfigured: Boolean get() = host.isNotBlank()
+}
+
+/**
+ * UI projection of the Azure Speech Services BYOK config (#182).
+ * Settings → Cloud Voices → Azure shows three fields: masked API key,
+ * region dropdown, and a "Test connection" button. Mirrors
+ * [UiPalaceConfig]'s read-back-the-secret shape — the user typed the
+ * key, they can read it back to verify it's right.
+ *
+ * The plaintext copy here lives only in the UI projection; the
+ * persisted copy is in `EncryptedSharedPreferences` via
+ * `AzureCredentials`. Same trust shape as the GitHub PAT and Memory
+ * Palace key.
+ */
+data class UiAzureConfig(
+    val key: String = "",
+    /** Persisted region id (e.g. `eastus`). Used verbatim in the
+     *  endpoint URL, so it stays as a String — supports the
+     *  user-pasted "Other" region beyond the curated dropdown. */
+    val regionId: String = "eastus",
+    /** Display label for the dropdown, derived from [regionId]. Falls
+     *  back to the raw id when no curated entry matches (the "Other"
+     *  affordance). */
+    val regionDisplayName: String = "US East",
+) {
+    val isConfigured: Boolean get() = key.isNotBlank()
 }
 
 /** Default queue depth — current hardcoded `EngineStreamingSource(queueCapacity = 8)`. */
@@ -938,6 +971,24 @@ interface SettingsRepositoryUi {
 
     /** Issue #150 — sleep timer shake-to-extend on/off. */
     suspend fun setSleepShakeToExtendEnabled(enabled: Boolean)
+
+    // ── Azure Speech Services BYOK (#182) ──────────────────────────
+    /** Persist the user's Azure subscription key. `null` clears it. */
+    suspend fun setAzureKey(key: String?)
+    /** Persist the Azure resource region id (e.g. `eastus`). The id is
+     *  used verbatim in the endpoint URL; pass a raw region id to
+     *  support the "Other" affordance. */
+    suspend fun setAzureRegion(regionId: String)
+    /** Wipe both key and region — Settings "Forget key" button. */
+    suspend fun clearAzureCredentials()
+    /**
+     * One-shot reachability probe against the configured Azure region
+     * + key. Hits the `voices/list` endpoint, which is a cheap GET
+     * that exercises auth + DNS + TLS but doesn't bill any synthesis
+     * characters. Returns the voice count on success, an error
+     * message on failure.
+     */
+    suspend fun testAzureConnection(): AzureProbeResult
 }
 
 /** Outcome of [`SettingsRepositoryUi.testPalaceConnection`]. */
@@ -945,4 +996,21 @@ sealed class PalaceProbeResult {
     data class Reachable(val daemonVersion: String) : PalaceProbeResult()
     data class Unreachable(val message: String) : PalaceProbeResult()
     object NotConfigured : PalaceProbeResult()
+}
+
+/**
+ * Outcome of [`SettingsRepositoryUi.testAzureConnection`] (#182).
+ * Distinct cases for `AuthFailed` and `Unreachable` so the Settings
+ * UI can render different copy ("re-paste your key" vs. "check your
+ * connection") without string-matching on error messages.
+ */
+sealed class AzureProbeResult {
+    /** voices/list returned 200 — key + region are good. */
+    data class Reachable(val voiceCount: Int) : AzureProbeResult()
+    /** 401 / 403 — key rejected. UX: prompt to re-paste. */
+    data class AuthFailed(val message: String) : AzureProbeResult()
+    /** Network failure, 5xx, or any other transport-level problem. */
+    data class Unreachable(val message: String) : AzureProbeResult()
+    /** No key configured — Test button still fires this for clarity. */
+    object NotConfigured : AzureProbeResult()
 }

@@ -159,6 +159,39 @@ internal fun makeFakePalaceApi(): PalaceDaemonApi =
     )
 
 /**
+ * In-memory [AzureCredentials] for the settings tests (#182). Settings
+ * tests don't exercise BYOK plumbing but the repo signature requires
+ * the binding since the Azure PR-3 ship; this returns a no-op stub.
+ * `forTesting()` already returns an instance backed by `NullSharedPreferences`,
+ * so we just wrap it.
+ */
+internal fun makeFakeAzureCredentials(): `in`.jphe.storyvox.source.azure.AzureCredentials =
+    `in`.jphe.storyvox.source.azure.AzureCredentials.forTesting()
+
+/**
+ * Stub [AzureSpeechClient] for the settings tests. Real synthesis is
+ * never called; the test-connection probe path isn't exercised here
+ * either. We hand back a client whose `voicesList()` throws — any test
+ * that needs the probe will need its own subclass override.
+ */
+internal fun makeFakeAzureClient(): `in`.jphe.storyvox.source.azure.AzureSpeechClient {
+    val creds = makeFakeAzureCredentials()
+    return object : `in`.jphe.storyvox.source.azure.AzureSpeechClient(
+        http = OkHttpClient(),
+        credentials = creds,
+    ) {
+        override fun synthesize(ssml: String): ByteArray =
+            throw `in`.jphe.storyvox.source.azure.AzureError.AuthFailed(
+                "stub — settings test should not exercise synthesis",
+            )
+        override fun voicesList(): Int =
+            throw `in`.jphe.storyvox.source.azure.AzureError.AuthFailed(
+                "stub — settings test should not exercise voices/list",
+            )
+    }
+}
+
+/**
  * Minimal SharedPreferences stub — only `getString` / `edit` are reached
  * by the palace code paths the test fixtures touch.
  */

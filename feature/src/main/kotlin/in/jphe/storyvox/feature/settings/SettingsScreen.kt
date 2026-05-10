@@ -11,10 +11,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.AutoStories
+import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
@@ -63,9 +71,11 @@ import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_MAX_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_MIN_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_NORMAL_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_OFF_MULTIPLIER
+import `in`.jphe.storyvox.feature.api.AzureProbeResult
 import `in`.jphe.storyvox.feature.api.PalaceProbeResult
 import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiAiSettings
+import `in`.jphe.storyvox.feature.api.UiAzureConfig
 import `in`.jphe.storyvox.feature.api.UiChatGrounding
 import `in`.jphe.storyvox.feature.api.UiGitHubAuthState
 import `in`.jphe.storyvox.feature.api.UiLlmProvider
@@ -430,7 +440,25 @@ fun SettingsScreen(
             )
         }
 
-        // ── 8. About ─────────────────────────────────────────────────
+        // ── 8. Cloud Voices (#182) ───────────────────────────────────
+        // BYOK config for Azure HD voices. Voice rows in the picker
+        // stay greyed-out until PR-4 (the engine wiring) lands; this
+        // section ships first as a "preparation" release so users can
+        // configure their key ahead of the engine.
+        SettingsSectionHeader("Cloud voices", icon = Icons.Outlined.Cloud)
+        SettingsGroupCard {
+            AzureSection(
+                azure = s.azure,
+                probe = state.azureProbe,
+                probing = state.azureProbing,
+                onSetKey = viewModel::setAzureKey,
+                onSetRegion = viewModel::setAzureRegion,
+                onClear = viewModel::clearAzureCredentials,
+                onTest = viewModel::testAzureConnection,
+            )
+        }
+
+        // ── 9. About ─────────────────────────────────────────────────
         // Realm-sigil "name" is deterministic adjective+noun from the
         // fantasy realm word list, keyed on the build's git hash. Same
         // hash → same name across rebuilds. The brass sigil name is
@@ -690,6 +718,194 @@ private fun MemoryPalaceSection(
             )
         }
     }
+    }
+}
+
+/**
+ * Settings → Cloud voices → Azure section (#182, PR-3).
+ *
+ * BYOK config for Azure HD voices. Mirrors [MemoryPalaceSection]'s
+ * shape: status pill at the top, text fields, then Test/Clear buttons.
+ * The "host" equivalent here is the **region** (a chip strip) since
+ * Azure resource keys are region-scoped — the wrong region returns 401
+ * even with a valid key.
+ *
+ * **The picker stays greyed-out for Azure voices until PR-4 wires the
+ * engine.** This section ships first as a "preparation" release so
+ * users can configure their key ahead of the engine landing.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AzureSection(
+    azure: UiAzureConfig,
+    probe: AzureProbeResult?,
+    probing: Boolean,
+    onSetKey: (String?) -> Unit,
+    onSetRegion: (String) -> Unit,
+    onClear: () -> Unit,
+    onTest: () -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    val uriHandler = LocalUriHandler.current
+
+    Column(
+        modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+    ) {
+        Text(
+            "Bring your own Azure Speech Services subscription key to use " +
+                "HD Neural and Dragon HD voices for synthesis. The key is " +
+                "stored encrypted on this device only — storyvox never " +
+                "sees it. Pricing is paid to Azure directly (≈ $30 / 1M " +
+                "characters; F0 free tier covers 500K chars/month).",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        // Status pill — reflects key configuration + last probe.
+        val (statusText, statusColor) = when {
+            !azure.isConfigured ->
+                "No key configured" to MaterialTheme.colorScheme.onSurfaceVariant
+            probe == null ->
+                "Tap “Test connection” to verify" to MaterialTheme.colorScheme.onSurfaceVariant
+            probe is AzureProbeResult.Reachable ->
+                "Connected · ${probe.voiceCount} voices available" to MaterialTheme.colorScheme.primary
+            probe is AzureProbeResult.AuthFailed ->
+                "Key rejected · re-paste from Azure portal" to MaterialTheme.colorScheme.error
+            probe is AzureProbeResult.Unreachable ->
+                "Offline · ${probe.message}" to MaterialTheme.colorScheme.error
+            probe is AzureProbeResult.NotConfigured ->
+                "No key configured" to MaterialTheme.colorScheme.onSurfaceVariant
+            else -> "" to MaterialTheme.colorScheme.onSurfaceVariant
+        }
+        Text(
+            statusText,
+            style = MaterialTheme.typography.bodySmall,
+            color = statusColor,
+        )
+
+        // Region chip strip. Mirrors the Browse source-picker chip
+        // pattern — 4 curated regions, picked one at a time. The
+        // picker isn't a free-text "Other" affordance for v1; users
+        // with a region outside the curated list (the rare case) can
+        // still set it via [SettingsRepositoryUi.setAzureRegion]
+        // programmatically, just not from Settings UI in PR-3.
+        Text(
+            "Region — must match the region your Azure resource is in.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            verticalArrangement = Arrangement.spacedBy(spacing.xs),
+        ) {
+            listOf(
+                "eastus" to "US East",
+                "westus2" to "US West 2",
+                "westeurope" to "West Europe",
+                "eastasia" to "East Asia",
+            ).forEach { (id, label) ->
+                FilterChip(
+                    selected = azure.regionId == id,
+                    onClick = { onSetRegion(id) },
+                    label = { Text(label) },
+                    colors = FilterChipDefaults.filterChipColors(),
+                )
+            }
+        }
+
+        // Subscription key — masked. Same shape as the palace API-key
+        // field; the encrypted persistence happens on every keystroke
+        // via the onValueChange so a navigation-away mid-edit doesn't
+        // lose the in-progress paste.
+        var keyInput by remember(azure.key) { mutableStateOf(azure.key) }
+        var keyVisible by remember { mutableStateOf(false) }
+        OutlinedTextField(
+            value = keyInput,
+            onValueChange = {
+                keyInput = it
+                onSetKey(it)
+            },
+            label = { Text("Subscription key") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            visualTransformation = if (keyVisible) {
+                VisualTransformation.None
+            } else {
+                PasswordVisualTransformation()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            // "Show key" toggle — useful when the user wants to verify
+            // they pasted the right thing. Same shape as the palace
+            // section's "show" pattern, but inline rather than a
+            // trailing-icon button.
+            Text(
+                if (keyVisible) "Hide key" else "Show key",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable { keyVisible = !keyVisible },
+            )
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            if (probing) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text("Testing…", style = MaterialTheme.typography.bodySmall)
+            } else {
+                BrassButton(
+                    label = "Test connection",
+                    onClick = onTest,
+                    variant = BrassButtonVariant.Primary,
+                )
+            }
+            if (azure.isConfigured) {
+                BrassButton(
+                    label = "Forget key",
+                    onClick = {
+                        keyInput = ""
+                        onClear()
+                    },
+                    variant = BrassButtonVariant.Secondary,
+                )
+            }
+        }
+
+        // Help link — opens the Azure portal docs in the browser. The
+        // 4-step path is "Azure portal → Speech resource → keys &
+        // endpoint → paste here", which the linked page covers; we
+        // don't reproduce it inline because it'd rot when Microsoft
+        // reorganizes their portal navigation.
+        val helpUrl = "https://learn.microsoft.com/azure/ai-services/speech-service/get-started"
+        val annotated = buildAnnotatedString {
+            append("New here? ")
+            withStyle(
+                SpanStyle(
+                    color = MaterialTheme.colorScheme.primary,
+                    textDecoration = TextDecoration.Underline,
+                ),
+            ) {
+                append("How do I get an Azure Speech key?")
+            }
+        }
+        Text(
+            annotated,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.clickable { uriHandler.openUri(helpUrl) },
+        )
     }
 }
 

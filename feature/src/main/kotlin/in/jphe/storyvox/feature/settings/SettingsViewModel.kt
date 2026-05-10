@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import `in`.jphe.storyvox.feature.api.AzureProbeResult
 import `in`.jphe.storyvox.feature.api.PalaceProbeResult
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
@@ -33,6 +34,12 @@ data class SettingsUiState(
     val palaceProbe: PalaceProbeResult? = null,
     /** True while a probe is in flight (button shows spinner). */
     val palaceProbing: Boolean = false,
+    /** #182 — last [`SettingsRepositoryUi.testAzureConnection`] result,
+     *  or null before the user has tried. Drives the inline status
+     *  under the Cloud Voices → Azure section. */
+    val azureProbe: AzureProbeResult? = null,
+    /** True while an Azure test-connection is in flight. */
+    val azureProbing: Boolean = false,
     /** Most recent Test-connection probe outcome. Settings UI
      *  surfaces this as a transient toast/message under the Test
      *  button. */
@@ -57,20 +64,35 @@ class SettingsViewModel @Inject constructor(
     private val palaceProbe = MutableStateFlow<PalaceProbeResult?>(null)
     private val palaceProbing = MutableStateFlow(false)
     private val _probe = MutableStateFlow<ProbeOutcome?>(null)
+    private val azureProbe = MutableStateFlow<AzureProbeResult?>(null)
+    private val azureProbing = MutableStateFlow(false)
+
+    /**
+     * Two-step combine: kotlinx.coroutines's typed [combine] caps at 5
+     * heterogeneous flow inputs, and we have 7 once Azure's probe pair
+     * lands (#182). Pre-combining the palace trio and the Azure pair
+     * each into a single tuple flow drops us back under the 5-flow
+     * ceiling without losing type safety.
+     */
+    private val palaceTrio = combine(palaceProbe, palaceProbing, _probe) { p, isProbing, probe ->
+        Triple(p, isProbing, probe)
+    }
+    private val azurePair = combine(azureProbe, azureProbing) { p, isProbing -> p to isProbing }
 
     val uiState: StateFlow<SettingsUiState> = combine(
         repo.settings,
         voices.installedVoices,
-        palaceProbe,
-        palaceProbing,
-        _probe,
-    ) { settings, installed, palaceProbeResult, probing, probe ->
+        palaceTrio,
+        azurePair,
+    ) { settings, installed, palace, azure ->
         SettingsUiState(
             settings = settings,
             voices = installed,
-            palaceProbe = palaceProbeResult,
-            palaceProbing = probing,
-            probeOutcome = probe,
+            palaceProbe = palace.first,
+            palaceProbing = palace.second,
+            probeOutcome = palace.third,
+            azureProbe = azure.first,
+            azureProbing = azure.second,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -197,6 +219,34 @@ class SettingsViewModel @Inject constructor(
             palaceProbe.value = repo.testPalaceConnection()
         } finally {
             palaceProbing.value = false
+        }
+    }
+
+    // ─── Azure Speech Services BYOK (#182) ──────────────────────────
+    fun setAzureKey(key: String?) = viewModelScope.launch {
+        repo.setAzureKey(key)
+        // Reset the probe — the user is editing the key, so the
+        // previous test result is no longer authoritative.
+        azureProbe.value = null
+    }
+
+    fun setAzureRegion(regionId: String) = viewModelScope.launch {
+        repo.setAzureRegion(regionId)
+        azureProbe.value = null
+    }
+
+    fun clearAzureCredentials() = viewModelScope.launch {
+        repo.clearAzureCredentials()
+        azureProbe.value = null
+    }
+
+    fun testAzureConnection() = viewModelScope.launch {
+        if (azureProbing.value) return@launch
+        azureProbing.value = true
+        try {
+            azureProbe.value = repo.testAzureConnection()
+        } finally {
+            azureProbing.value = false
         }
     }
 

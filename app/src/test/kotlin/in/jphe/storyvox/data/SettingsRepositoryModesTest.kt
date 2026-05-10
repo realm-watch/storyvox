@@ -61,6 +61,8 @@ class SettingsRepositoryModesTest {
             epubConfig = makeFakeEpubConfig(tempFolder.newFolder("epub_ds"), scope),
             outlineConfig = makeFakeOutlineConfig(tempFolder.newFolder("outline_ds"), scope),
             suggestedFeedsRegistry = SuggestedFeedsRegistry(),
+            azureCreds = makeFakeAzureCredentials(),
+            azureClient = makeFakeAzureClient(),
         )
     }
 
