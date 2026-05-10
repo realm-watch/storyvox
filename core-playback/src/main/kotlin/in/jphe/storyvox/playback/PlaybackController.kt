@@ -32,6 +32,12 @@ interface PlaybackController {
     fun seekTo(charOffset: Int)
     fun skipForward30s()
     fun skipBack30s()
+    /** #120 — step to the next sentence boundary. No-op when already
+     *  on the last sentence of the chapter. */
+    fun nextSentence()
+    /** #120 — step to the previous sentence boundary. No-op when
+     *  already on sentence 0. */
+    fun previousSentence()
     suspend fun nextChapter()
     suspend fun previousChapter()
     suspend fun jumpToChapter(chapterId: String)
@@ -160,6 +166,9 @@ class DefaultPlaybackController @Inject constructor(
         val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * s.speed
         player?.seekToCharOffset((s.charOffset - (charsPerSec * 30).toInt()).coerceAtLeast(0))
     }
+
+    override fun nextSentence() { player?.seekSentence(direction = 1) }
+    override fun previousSentence() { player?.seekSentence(direction = -1) }
 
     override suspend fun nextChapter() { player?.advanceChapter(direction = 1) }
     override suspend fun previousChapter() { player?.advanceChapter(direction = -1) }

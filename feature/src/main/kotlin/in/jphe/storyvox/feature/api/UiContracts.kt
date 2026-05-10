@@ -381,6 +381,10 @@ interface PlaybackControllerUi {
     fun seekToChar(charOffset: Int)
     fun skipForward()
     fun skipBack()
+    /** #120 — step to the next sentence boundary. No-op at chapter end. */
+    fun nextSentence()
+    /** #120 — step to the previous sentence boundary. No-op at sentence 0. */
+    fun previousSentence()
     fun nextChapter()
     fun previousChapter()
     fun setSpeed(speed: Float)

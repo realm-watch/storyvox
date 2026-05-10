@@ -120,6 +120,8 @@ class ReaderViewModel @Inject constructor(
     fun skipBack() = playback.skipBack()
     fun nextChapter() = playback.nextChapter()
     fun previousChapter() = playback.previousChapter()
+    fun nextSentence() = playback.nextSentence()
+    fun previousSentence() = playback.previousSentence()
 
     fun setSpeed(speed: Float) {
         playback.setSpeed(speed)

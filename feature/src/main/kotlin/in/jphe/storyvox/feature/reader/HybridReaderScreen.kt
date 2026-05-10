@@ -59,6 +59,8 @@ fun HybridReaderScreen(
                 onSkipBack = viewModel::skipBack,
                 onNextChapter = viewModel::nextChapter,
                 onPreviousChapter = viewModel::previousChapter,
+                onPreviousSentence = viewModel::previousSentence,
+                onNextSentence = viewModel::nextSentence,
                 onPickVoice = onPickVoice,
                 onSetSpeed = viewModel::setSpeed,
                 onPersistSpeed = viewModel::persistSpeed,

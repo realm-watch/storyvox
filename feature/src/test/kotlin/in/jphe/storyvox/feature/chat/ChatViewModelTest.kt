@@ -471,6 +471,8 @@ private class FakePlayback(initial: UiPlaybackState) : PlaybackControllerUi {
     override fun seekToChar(charOffset: Int) = Unit
     override fun skipForward() = Unit
     override fun skipBack() = Unit
+    override fun nextSentence() = Unit
+    override fun previousSentence() = Unit
     override fun nextChapter() = Unit
     override fun previousChapter() = Unit
     override fun setSpeed(speed: Float) = Unit

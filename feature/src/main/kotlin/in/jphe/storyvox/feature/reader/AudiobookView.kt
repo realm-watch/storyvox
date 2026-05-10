@@ -66,6 +66,8 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.unit.dp
 import `in`.jphe.storyvox.feature.api.UiPlaybackState
 import `in`.jphe.storyvox.feature.api.UiSleepTimerMode
+import `in`.jphe.storyvox.ui.component.BrassButton
+import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.BrassProgressTrack
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
 import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
@@ -85,6 +87,11 @@ fun AudiobookView(
     onSkipBack: () -> Unit,
     onNextChapter: () -> Unit,
     onPreviousChapter: () -> Unit,
+    /** #120 — step back one sentence boundary. Default no-op so older
+     *  callsites (tests, previews) keep compiling. */
+    onPreviousSentence: () -> Unit = {},
+    /** #120 — step forward one sentence boundary. */
+    onNextSentence: () -> Unit = {},
     onPickVoice: () -> Unit,
     onSetSpeed: (Float) -> Unit,
     onPersistSpeed: (Float) -> Unit,
@@ -300,6 +307,8 @@ fun AudiobookView(
                     onPersistPitch = onPersistPitch,
                     onStartSleepTimer = onStartSleepTimer,
                     onCancelSleepTimer = onCancelSleepTimer,
+                    onPreviousSentence = onPreviousSentence,
+                    onNextSentence = onNextSentence,
                     onPickVoice = {
                         coroutineScope.launch { sheetState.hide() }
                         showSheet = false
@@ -391,6 +400,10 @@ private fun PlayerOptionsSheet(
     onStartSleepTimer: (UiSleepTimerMode) -> Unit,
     onCancelSleepTimer: () -> Unit,
     onPickVoice: () -> Unit,
+    /** #120 — step back one sentence boundary. No-op at sentence 0. */
+    onPreviousSentence: () -> Unit = {},
+    /** #120 — step forward one sentence boundary. No-op at chapter end. */
+    onNextSentence: () -> Unit = {},
     onRequestRecap: () -> Unit = {},
     onOpenChat: () -> Unit = {},
 ) {
@@ -436,6 +449,33 @@ private fun PlayerOptionsSheet(
                 stateDescription = "%.2f, neutral at one".format(state.pitch)
             },
         )
+
+        // #120 — sentence-step transport. The main bottom-bar buttons
+        // do ±30 s (consistent with audiobook-player muscle memory);
+        // these sit in the options sheet for users who want
+        // sentence-precision rewind/fast-forward (re-listen the line
+        // you just heard, or skip a sentence you didn't want).
+        SheetHeader("Step by sentence", null)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = spacing.xs),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BrassButton(
+                label = "← Previous",
+                onClick = onPreviousSentence,
+                variant = BrassButtonVariant.Secondary,
+                modifier = Modifier.weight(1f),
+            )
+            BrassButton(
+                label = "Next →",
+                onClick = onNextSentence,
+                variant = BrassButtonVariant.Secondary,
+                modifier = Modifier.weight(1f),
+            )
+        }
 
         SheetHeader("Sleep timer", null)
         SleepTimerChips(

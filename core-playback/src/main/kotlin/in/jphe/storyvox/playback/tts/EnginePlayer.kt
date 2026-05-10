@@ -1574,6 +1574,23 @@ class EnginePlayer @AssistedInject constructor(
         invalidateState()
     }
 
+    /**
+     * #120 — step to the previous (direction=-1) or next (direction=+1)
+     * sentence boundary. Wraps the same seek path used by
+     * [seekToCharOffset] / tap-to-seek; the producer restarts at the
+     * new sentence, the brass underline + reader auto-scroll move
+     * with it. Clamps at chapter boundaries — no-op if we're on
+     * sentence 0 and direction=-1, same for last sentence + direction=+1.
+     */
+    fun seekSentence(direction: Int) {
+        if (sentences.isEmpty()) return
+        val targetIndex = (currentSentenceIndex + direction)
+            .coerceIn(0, sentences.size - 1)
+        if (targetIndex == currentSentenceIndex) return
+        val target = sentences[targetIndex]
+        seekToCharOffset(target.startChar)
+    }
+
     fun seekToCharOffset(offset: Int) {
         if (sentences.isEmpty()) return
         val clamped = offset.coerceAtLeast(0)
