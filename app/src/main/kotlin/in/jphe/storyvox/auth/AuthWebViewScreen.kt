@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
@@ -28,6 +27,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import `in`.jphe.storyvox.feature.auth.AuthViewModel
 import `in`.jphe.storyvox.feature.auth.CaptureState
 import `in`.jphe.storyvox.source.royalroad.auth.RoyalRoadAuthWebView
+import `in`.jphe.storyvox.ui.component.MagicSpinner
 
 /**
  * Hosts the Royal Road login WebView and pipes captured cookies into
@@ -83,15 +83,15 @@ fun AuthWebViewScreen(
             }
 
             if (capture is CaptureState.Capturing) {
-                CircularProgressIndicator(
+                MagicSpinner(
                     // TalkBack #160 — without contentDescription the spinner
                     // announces nothing, leaving a screen-reader user
                     // wondering if the OAuth flow froze. Mirror the visible
                     // semantics of "we're working on it".
                     modifier = Modifier
                         .align(Alignment.Center)
+                        .size(40.dp)
                         .semantics { contentDescription = "Loading sign-in page" },
-                    color = MaterialTheme.colorScheme.primary,
                 )
             }
         }
