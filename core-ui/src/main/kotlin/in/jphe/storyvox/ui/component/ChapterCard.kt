@@ -82,7 +82,14 @@ fun ChapterCard(
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    state.title,
+                    // Issue #256 — the left-side brass index already shows the
+                    // chapter number (e.g. "06"), so titles that start with
+                    // their own "Ch. N -" / "Chapter N:" prefix produced two
+                    // numbers racing on the same row: brass '06' + 'CH. 116
+                    // - Insurmountable Foe'. Strip the redundant prefix so
+                    // the visible title is the actual title; the brass
+                    // numeral remains the canonical chapter number.
+                    stripChapterPrefix(state.title),
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 2,
                 )
@@ -111,4 +118,28 @@ fun ChapterCard(
             )
         }
     }
+}
+
+/**
+ * Issue #256 — strip a redundant chapter-number prefix from a chapter
+ * title. RR titles routinely look like:
+ *   "Ch. 116 - Insurmountable Foe"
+ *   "Chapter 7: The Brass Sigil"
+ *   "Ch.7 - Greed"
+ *   "CH. 0 - "
+ * which collide with the brass left-side index. The regex covers the
+ * common shapes; if no prefix matches the title is returned untouched
+ * so non-conforming sources (mdbook chapters, RSS items) keep rendering
+ * as-is. The trailing colon strip in #265 lives at a different layer
+ * (source side) but the same intent — collapse double signals into one.
+ */
+internal fun stripChapterPrefix(title: String): String {
+    // Matches: optional `Ch`/`Chapter` (case-insensitive), optional `.`,
+    // whitespace, integer, optional whitespace + dash/colon/em-dash,
+    // followed by optional whitespace.
+    val regex = Regex("^(?:ch(?:apter)?\\.?)\\s*\\d+\\s*[-:—–]\\s*", RegexOption.IGNORE_CASE)
+    val stripped = regex.replaceFirst(title, "").trim()
+    // Don't return an empty string — that'd render as a blank row.
+    // Fall back to the original if stripping leaves nothing readable.
+    return stripped.ifEmpty { title }
 }
