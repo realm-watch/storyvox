@@ -1,5 +1,6 @@
 package `in`.jphe.storyvox.feature.browse
 
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -66,14 +67,23 @@ fun BrowseFilterSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = spacing.md)
-                .padding(bottom = spacing.xl),
-            verticalArrangement = Arrangement.spacedBy(spacing.md),
-        ) {
+        // Issue #259 — Apply / Reset used to sit at the very bottom of
+        // the scrollable Column, past 50+ chips of Include tags and
+        // another 50+ for Exclude. On Flip3 inner display that meant
+        // three+ swipes to reach the primary CTA. Lift Apply / Reset
+        // out of the scrollable area so they stay pinned at the bottom
+        // of the sheet — any change is one tap from confirmation.
+        androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = spacing.md)
+                    // Reserve room at the bottom of the scroll content so
+                    // the last section isn't hidden by the sticky CTA bar.
+                    .padding(bottom = 80.dp),
+                verticalArrangement = Arrangement.spacedBy(spacing.md),
+            ) {
             Text(
                 "Filter Royal Road",
                 style = MaterialTheme.typography.titleLarge,
@@ -209,19 +219,34 @@ fun BrowseFilterSheet(
                 }
             }
 
-            // Apply / Reset buttons
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = spacing.md),
-                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        }
+
+            // Issue #259 — sticky Apply / Reset bar pinned at the bottom
+            // of the sheet. The Column above scrolls under this, so the
+            // primary CTA is always one tap away regardless of how many
+            // tags the user has expanded. surfaceContainerHigh + a small
+            // shadow elevates the bar above the scrolling content so the
+            // separation reads visually.
+            androidx.compose.material3.Surface(
+                modifier = Modifier
+                    .align(androidx.compose.ui.Alignment.BottomCenter)
+                    .fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shadowElevation = 6.dp,
             ) {
-                OutlinedButton(
-                    onClick = onReset,
-                    modifier = Modifier.weight(1f),
-                ) { Text("Reset") }
-                Button(
-                    onClick = { onApply(local) },
-                    modifier = Modifier.weight(2f),
-                ) { Text("Apply") }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(spacing.md),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                ) {
+                    OutlinedButton(
+                        onClick = onReset,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Reset") }
+                    Button(
+                        onClick = { onApply(local) },
+                        modifier = Modifier.weight(2f),
+                    ) { Text("Apply") }
+                }
             }
         }
     }
