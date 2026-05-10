@@ -126,6 +126,13 @@ internal class RssSource @Inject constructor(
             "Failed to fetch feed", null,
         )
 
+        // #236 instrumentation
+        android.util.Log.i(
+            "RssSource",
+            "fictionDetail(fictionId=$fictionId) feed.items.size=${feed.items.size} " +
+                "first 3 ids=${feed.items.take(3).joinToString { it.id.take(40) }}",
+        )
+
         val chapters = feed.items.mapIndexed { idx, item -> item.toChapterInfo(idx, fictionId) }
 
         // Authors-of-feed = first item's author or feed-level author.
@@ -160,9 +167,25 @@ internal class RssSource @Inject constructor(
             "Failed to fetch feed", null,
         )
 
+        // #236 instrumentation: log every chapter request so we can see
+        // which chapterId comes in vs which item gets matched. Surfaces
+        // the routing bug Shawna reported (every tap played item 0).
+        val candidates = feed.items.mapIndexed { i, it ->
+            i to it.toChapterId(fictionId)
+        }
+        android.util.Log.i(
+            "RssSource",
+            "chapter(fictionId=$fictionId, chapterId=$chapterId) → " +
+                "candidates=${candidates.joinToString { (i, cid) -> "$i:$cid" }}",
+        )
+
         val (idx, item) = feed.items.withIndex()
             .firstOrNull { (_, it) -> it.toChapterId(fictionId) == chapterId }
             ?: return FictionResult.NotFound("Chapter not in feed: $chapterId")
+        android.util.Log.i(
+            "RssSource",
+            "chapter resolved idx=$idx title=${item.title.take(50)}",
+        )
 
         val info = item.toChapterInfo(idx, fictionId)
         return FictionResult.Success(
