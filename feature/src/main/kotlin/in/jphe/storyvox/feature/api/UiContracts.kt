@@ -692,6 +692,24 @@ data class UiSettings(
      * fallback is a no-op (we have no voice to swap to).
      */
     val azureFallbackVoiceId: String? = null,
+    /**
+     * Tier 3 (#88) — experimental parallel synth toggle. When ON,
+     * `EngineStreamingSource` constructs TWO Piper VoiceEngine
+     * instances and synthesizes sentence N and N+1 in parallel.
+     * Doubles effective producer throughput on Helio P22T-class
+     * devices that haven't yet hit realtime under Tier 1+2 alone.
+     *
+     * **Memory cost is real.** Each loaded Piper-high session is
+     * ~150 MB resident; two instances ≈ 310 MB on top of the app's
+     * baseline. On a 3 GB device this fits but trims the LMK
+     * headroom. Off by default, behind an explicit
+     * "Experimental — uses more RAM" label so casual users don't
+     * trip it without intent.
+     *
+     * Kokoro and Azure ignore this toggle (one shared model + cloud
+     * synth respectively). Only Piper voices benefit.
+     */
+    val experimentalParallelSynth: Boolean = false,
 ) {
     /** Speed value the engine should run at right now — the active
      *  voice's override if set, otherwise the global default (#195). */
@@ -1012,6 +1030,9 @@ interface SettingsRepositoryUi {
     /** PR-6 (#185) — voice id used when fallback fires. Pass null to
      *  clear so the toggle becomes a no-op until a voice is picked. */
     suspend fun setAzureFallbackVoiceId(voiceId: String?)
+
+    /** Tier 3 (#88) — experimental parallel synth toggle. */
+    suspend fun setExperimentalParallelSynth(enabled: Boolean)
 }
 
 /** Outcome of [`SettingsRepositoryUi.testPalaceConnection`]. */

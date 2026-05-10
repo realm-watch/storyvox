@@ -256,6 +256,10 @@ class SettingsViewModel @Inject constructor(
     fun setAzureFallbackVoiceId(voiceId: String?) =
         viewModelScope.launch { repo.setAzureFallbackVoiceId(voiceId) }
 
+    /** Tier 3 (#88) — experimental parallel-synth toggle. */
+    fun setExperimentalParallelSynth(enabled: Boolean) =
+        viewModelScope.launch { repo.setExperimentalParallelSynth(enabled) }
+
     // ── AI settings (issue #81) ────────────────────────────────────
 
     fun setAiProvider(provider: UiLlmProvider?) = viewModelScope.launch {

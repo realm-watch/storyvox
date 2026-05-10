@@ -244,6 +244,23 @@ fun SettingsScreen(
                 multiplier = s.punctuationPauseMultiplier,
                 onMultiplierChange = viewModel::setPunctuationPauseMultiplier,
             )
+            // Tier 3 (#88) — experimental parallel synth. Two Piper
+            // engine instances synthesize sentence N and N+1 in
+            // parallel; ~2× throughput on slow CPUs but uses ~150 MB
+            // extra RAM for the second model. Off by default; the
+            // "Experimental" framing is intentional friction so
+            // casual users don't trip it.
+            SettingsSwitchRow(
+                title = "Experimental: parallel synth",
+                subtitle = if (s.experimentalParallelSynth) {
+                    "ON — two Piper engines run in parallel " +
+                        "(uses ~150 MB extra RAM). Restart playback to apply."
+                } else {
+                    "OFF — single-engine synth (default; less RAM)."
+                },
+                checked = s.experimentalParallelSynth,
+                onCheckedChange = viewModel::setExperimentalParallelSynth,
+            )
         }
 
         // ── 4. AI ────────────────────────────────────────────────────

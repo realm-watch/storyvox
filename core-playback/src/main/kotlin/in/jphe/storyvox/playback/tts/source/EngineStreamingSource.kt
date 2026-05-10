@@ -14,6 +14,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
@@ -75,6 +76,23 @@ class EngineStreamingSource(
     private val punctuationPauseMultiplier: Float = 1f,
     private val queueCapacity: Int = 8,
     private val pronunciationDictApply: (String) -> String = { it },
+    /**
+     * Tier 3 (#88) — when non-null, the producer fans out across two
+     * engines so sentence N+1 generates while N is still finishing.
+     * Each engine has its own onnxruntime session (constructed via
+     * VoxSherpa's public constructor in v2.7.8+), so calls into them
+     * run truly in parallel without serializing on the engineMutex.
+     *
+     * Memory cost: each loaded Piper-high session is ~150 MB. On a
+     * 3 GB Helio P22T two instances fit but three would risk
+     * LMK-killing. Settings gates this behind an experimental toggle
+     * so users opt in only if they want the throughput trade.
+     *
+     * The sequencer in [startParallelProducer] keeps queue order even
+     * though completions arrive out-of-order; the consumer side sees
+     * the same monotonic stream of sentence indices either way.
+     */
+    private val secondaryEngine: VoiceEngineHandle? = null,
 ) : PcmSource {
 
     /** SAM-style handle so tests can fake the engine without pulling the
@@ -103,8 +121,18 @@ class EngineStreamingSource(
      * the throughput gap. Closed in [close] so the executor doesn't
      * leak across pipeline rebuilds.
      */
-    private val producerExecutor = Executors.newSingleThreadExecutor { r ->
-        Thread(r, "storyvox-tts-producer").apply { isDaemon = true }
+    private val producerExecutor = run {
+        // Tier 3 (#88): if a secondary engine is wired, the producer
+        // runs two parallel workers — fixed-pool of 2 OS threads,
+        // each pinned at URGENT_AUDIO when they pick up their first
+        // task. Single-thread pool otherwise (Tier 2 shape).
+        val poolSize = if (secondaryEngine != null) 2 else 1
+        val counter = java.util.concurrent.atomic.AtomicInteger(0)
+        Executors.newFixedThreadPool(poolSize) { r ->
+            Thread(r, "storyvox-tts-producer-${counter.incrementAndGet()}").apply {
+                isDaemon = true
+            }
+        }
     }
     private val scope = CoroutineScope(
         SupervisorJob() + producerExecutor.asCoroutineDispatcher(),
@@ -194,7 +222,133 @@ class EngineStreamingSource(
         producerExecutor.shutdownNow()
     }
 
-    private fun startProducer(fromIndex: Int): Job = scope.launch {
+    private fun startProducer(fromIndex: Int): Job =
+        if (secondaryEngine != null) startParallelProducer(fromIndex)
+        else startSerialProducer(fromIndex)
+
+    /**
+     * Tier 3 (#88) — two-engine parallel producer. Sentences fan out
+     * via a [Channel]; two workers each grab the next index and synth
+     * concurrently. A sequencer drains a `ConcurrentHashMap<Int,
+     * PcmChunk>` in monotonic sentence order to the existing
+     * LinkedBlockingQueue, so consumers see the same in-order stream
+     * they would in serial mode.
+     *
+     * Headroom accounting fires only when the sequencer pushes a
+     * chunk to the queue — same point the serial producer increments
+     * — so the underrun threshold sees consistent values regardless
+     * of mode.
+     */
+    private fun startParallelProducer(fromIndex: Int): Job = scope.launch {
+        val secondary = secondaryEngine!!  // smart-cast through the dispatch above
+        val jobChan = kotlinx.coroutines.channels.Channel<Int>(
+            kotlinx.coroutines.channels.Channel.UNLIMITED,
+        )
+        val completed = java.util.concurrent.ConcurrentHashMap<Int, PcmChunk>()
+        val signal = MutableStateFlow(0L)
+
+        // Feeder: walks sentence indices into the worker channel.
+        val feeder = scope.launch {
+            try {
+                for (i in fromIndex until sentences.size) {
+                    if (!running.get()) break
+                    jobChan.send(i)
+                }
+            } finally {
+                jobChan.close()
+            }
+        }
+
+        // Workers: each owns one engine. No shared engineMutex needed —
+        // two distinct engine instances have independent synchronized
+        // monitors at the JVM level (VoxSherpa v2.7.8+).
+        // Primary worker acquires engineMutex so a voice swap inside
+        // EnginePlayer.loadAndPlay can wait for the in-flight synth
+        // before destroying the model. Secondary worker owns its
+        // instance fully (constructed/destroyed by the source); no
+        // shared destroy path → no mutex needed.
+        val workerA = scope.launch {
+            runParallelWorker(engine, jobChan, completed, signal, useEngineMutex = true)
+        }
+        val workerB = scope.launch {
+            runParallelWorker(secondary, jobChan, completed, signal, useEngineMutex = false)
+        }
+
+        // Sequencer: drain in order. Blocks on [signal] until the
+        // next-expected sentence index has been completed.
+        try {
+            var next = fromIndex
+            while (next < sentences.size && running.get()) {
+                while (running.get() && !completed.containsKey(next)) {
+                    signal.first { it != signal.value || completed.containsKey(next) }
+                }
+                if (!running.get()) break
+                val chunk = completed.remove(next) ?: continue
+                runInterruptible { queue.put(Item(chunk)) }
+                _bufferHeadroomMs.update {
+                    it + pcmDurationMs(chunk.pcm.size) +
+                        pcmDurationMs(chunk.trailingSilenceBytes)
+                }
+                next++
+            }
+            // Natural end — push pill once both workers are drained.
+            runInterruptible { queue.put(END_PILL) }
+        } catch (_: Throwable) {
+            // Cancelled (close, seek, voice swap) — silent.
+        } finally {
+            feeder.cancel()
+            workerA.cancel()
+            workerB.cancel()
+        }
+    }
+
+    private suspend fun runParallelWorker(
+        workerEngine: VoiceEngineHandle,
+        jobChan: kotlinx.coroutines.channels.ReceiveChannel<Int>,
+        completed: java.util.concurrent.ConcurrentHashMap<Int, PcmChunk>,
+        signal: MutableStateFlow<Long>,
+        useEngineMutex: Boolean,
+    ) {
+        // Bump priority on the worker's OS thread. The fixed-thread
+        // pool guarantees this thread is dedicated; calls into the
+        // engine don't suspend (they're synchronized JNI calls), so
+        // the priority sticks for the worker's lifetime.
+        runCatching {
+            AndroidProcess.setThreadPriority(
+                AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO,
+            )
+        }
+        try {
+            for (i in jobChan) {
+                if (!running.get()) break
+                val s = sentences[i]
+                val spokenText = pronunciationDictApply(s.text)
+                val pcm = if (useEngineMutex) {
+                    engineMutex.withLock {
+                        if (!running.get()) return@withLock null
+                        workerEngine.generateAudioPCM(spokenText, speed, pitch)
+                    }
+                } else {
+                    workerEngine.generateAudioPCM(spokenText, speed, pitch)
+                } ?: continue
+                if (!running.get()) break
+                val mult = punctuationPauseMultiplier.coerceAtLeast(0f)
+                val pauseMs = (trailingPauseMs(s.text) * mult) / speed.coerceAtLeast(0.5f)
+                val silenceBytes = silenceBytesFor(pauseMs.toInt(), sampleRate)
+                completed[i] = PcmChunk(
+                    sentenceIndex = i,
+                    range = SentenceRange(s.index, s.startChar, s.endChar),
+                    pcm = pcm,
+                    trailingSilenceBytes = silenceBytes,
+                )
+                signal.update { it + 1 }
+            }
+        } catch (_: Throwable) {
+            // Cancelled — silent.
+        }
+    }
+
+    private fun startSerialProducer(fromIndex: Int): Job = scope.launch {
         // Tier 2 (#87) — bump priority on the dedicated producer
         // thread. setThreadPriority sticks because the dispatcher is
         // single-threaded; coroutine suspends resume on the same OS

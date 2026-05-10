@@ -75,7 +75,7 @@ dependencies {
     // single-module path `com.github.jphein:VoxSherpa-TTS:vX.Y.Z` (it
     // collapses multi-module configs to one root coordinate). The actual
     // AAR file at this URL is engine-lib's release artifact.
-    implementation("com.github.jphein:VoxSherpa-TTS:v2.7.7")
+    implementation("com.github.jphein:VoxSherpa-TTS:v2.7.8")
     implementation("com.github.k2-fsa:sherpa-onnx:1.12.26")
 
     // Media3 — session, player base classes

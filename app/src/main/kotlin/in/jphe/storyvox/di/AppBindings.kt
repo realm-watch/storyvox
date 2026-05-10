@@ -178,6 +178,11 @@ object AppBindings {
     fun provideAzureFallbackConfig(impl: SettingsRepositoryUiImpl):
         `in`.jphe.storyvox.data.repository.playback.AzureFallbackConfig = impl
 
+    /** Tier 3 (#88) — parallel-synth toggle binding. Same singleton. */
+    @Provides @Singleton
+    fun provideParallelSynthConfig(impl: SettingsRepositoryUiImpl):
+        `in`.jphe.storyvox.data.repository.playback.ParallelSynthConfig = impl
+
     /**
      * Issue #135 — pronunciation dictionary contract for `core-playback`'s
      * EnginePlayer + the Settings UI. Same singleton instance as the rest;

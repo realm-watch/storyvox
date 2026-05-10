@@ -15,6 +15,7 @@ import `in`.jphe.storyvox.data.auth.SessionHydrator
 import `in`.jphe.storyvox.data.repository.AuthRepository
 import `in`.jphe.storyvox.data.repository.playback.AzureFallbackConfig
 import `in`.jphe.storyvox.data.repository.playback.AzureFallbackState
+import `in`.jphe.storyvox.data.repository.playback.ParallelSynthConfig
 import `in`.jphe.storyvox.data.repository.playback.PlaybackBufferConfig
 import `in`.jphe.storyvox.data.repository.playback.PlaybackModeConfig
 import `in`.jphe.storyvox.data.repository.playback.VoiceTuningConfig
@@ -206,6 +207,9 @@ private object Keys {
     val AZURE_FALLBACK_ENABLED = booleanPreferencesKey("pref_azure_fallback_enabled")
     val AZURE_FALLBACK_VOICE_ID = stringPreferencesKey("pref_azure_fallback_voice_id")
 
+    // ── Tier 3 parallel synth (issue #88) ──────────────────────────
+    val EXPERIMENTAL_PARALLEL_SYNTH = booleanPreferencesKey("pref_experimental_parallel_synth")
+
     // ── Chat grounding (issue #212) ────────────────────────────────
     /** Defaults match pre-#212 ChatViewModel behaviour: chapter title
      *  on, every more-expensive level off. */
@@ -270,6 +274,7 @@ class SettingsRepositoryUiImpl(
     PlaybackModeConfig,
     VoiceTuningConfig,
     AzureFallbackConfig,
+    ParallelSynthConfig,
     PronunciationDictRepository,
     LlmConfigProvider,
     GitHubScopePreferences {
@@ -371,6 +376,7 @@ class SettingsRepositoryUiImpl(
             // dedicated tick flow.
             azureFallbackEnabled = prefs[Keys.AZURE_FALLBACK_ENABLED] ?: false,
             azureFallbackVoiceId = prefs[Keys.AZURE_FALLBACK_VOICE_ID],
+            experimentalParallelSynth = prefs[Keys.EXPERIMENTAL_PARALLEL_SYNTH] ?: false,
             ai = UiAiSettings(
                 provider = prefs[Keys.AI_PROVIDER]
                     ?.takeIf { it.isNotBlank() }
@@ -535,6 +541,13 @@ class SettingsRepositoryUiImpl(
     }
 
     override suspend fun currentAzureFallback(): AzureFallbackState = state.first()
+
+    // --- ParallelSynthConfig (#88, Tier 3) ---
+    override val parallelSynth: Flow<Boolean> = store.data.map { prefs ->
+        prefs[Keys.EXPERIMENTAL_PARALLEL_SYNTH] ?: false
+    }
+
+    override suspend fun currentParallelSynth(): Boolean = parallelSynth.first()
 
     override suspend fun signIn() {
         // Just flips the persisted UI flag; the cookie capture is owned by
@@ -873,6 +886,10 @@ class SettingsRepositoryUiImpl(
             if (voiceId == null) it.remove(Keys.AZURE_FALLBACK_VOICE_ID)
             else it[Keys.AZURE_FALLBACK_VOICE_ID] = voiceId
         }
+    }
+
+    override suspend fun setExperimentalParallelSynth(enabled: Boolean) {
+        store.edit { it[Keys.EXPERIMENTAL_PARALLEL_SYNTH] = enabled }
     }
 
     override suspend fun testAzureConnection(): AzureProbeResult {
