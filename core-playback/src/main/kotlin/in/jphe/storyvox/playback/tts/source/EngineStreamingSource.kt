@@ -137,10 +137,12 @@ class EngineStreamingSource(
 
     /** True when this source will use the streaming producer path —
      *  emit many small chunks per sentence as TLS records arrive.
-     *  Currently always false: streaming dispatch is disabled in
-     *  startProducer pending bug fix. Once re-enabled, this becomes
-     *  `engine is StreamingVoiceEngineHandle && secondaryEngines.isEmpty()`. */
-    override val isStreaming: Boolean = false
+     *  EnginePlayer's consumer reads this to bypass the catchup-pause
+     *  thresholds (which are sized for full-sentence Piper/Kokoro
+     *  chunks; small streamed chunks would yo-yo the threshold and
+     *  starve the producer via queue back-pressure). */
+    override val isStreaming: Boolean =
+        engine is StreamingVoiceEngineHandle && secondaryEngines.isEmpty()
 
     /**
      * PR-7-bonus / Tier 2 (#87) — dedicated single-thread executor for
@@ -282,16 +284,17 @@ class EngineStreamingSource(
 
     private fun startProducer(fromIndex: Int): Job =
         when {
-            // v0.4.87: streaming serial path is shipped but disabled by
-            // default — surfacing a "plays for ~165 ms then stalls" bug
-            // we couldn't reproduce in unit tests. Lookahead path
-            // (parallelSynthInstances >= 2) and buffered serial path
-            // (instances == 1, no streaming) both work fine; the
-            // StreamingVoiceEngineHandle implementation is preserved on
-            // disk so a fix can land without re-doing the wiring. Once
-            // resolved, restore the previous dispatch:
-            //   engine is StreamingVoiceEngineHandle -> startStreamingSerialProducer(fromIndex)
+            // v0.4.90 — streaming dispatch shipped. With v0.4.86's
+            // `isStreaming=true → bypass catchup-pause` fix the stall
+            // is gone and on-device testing confirmed end-to-end
+            // playback (Flip3, Andrew Multilingual @ westus, full
+            // chapter through 86-chunk sentences with headroom buffered
+            // to ~28 s). The Tier 3 lookahead path still wins when
+            // parallelSynthInstances > 1 (multiple sentences in flight
+            // beats single-sentence first-byte streaming for sustained
+            // throughput); streaming kicks in when instances == 1.
             secondaryEngines.isNotEmpty() -> startParallelProducer(fromIndex)
+            engine is StreamingVoiceEngineHandle -> startStreamingSerialProducer(fromIndex)
             else -> startSerialProducer(fromIndex)
         }
 
