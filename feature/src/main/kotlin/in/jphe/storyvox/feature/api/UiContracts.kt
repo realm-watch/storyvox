@@ -393,7 +393,20 @@ interface PlaybackControllerUi {
      * sentence boundary, mirroring [setSpeed]/[setPitch].
      */
     fun setPunctuationPauseMultiplier(multiplier: Float)
-    fun startListening(fictionId: String, chapterId: String, charOffset: Int = 0)
+    /**
+     * @param autoPlay when true (default), playback starts immediately
+     *   after chapter+voice load completes. When false (#90 smart-resume
+     *   path), the chapter loads + navigation fires but the engine
+     *   remains paused — user has to tap play. Library's Resume CTA
+     *   passes `lastWasPlaying` here so an explicit pre-pause is
+     *   respected on next resume.
+     */
+    fun startListening(
+        fictionId: String,
+        chapterId: String,
+        charOffset: Int = 0,
+        autoPlay: Boolean = true,
+    )
     fun startSleepTimer(mode: UiSleepTimerMode)
     fun cancelSleepTimer()
 

@@ -7,6 +7,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import `in`.jphe.storyvox.data.repository.ContinueListeningEntry
 import `in`.jphe.storyvox.data.repository.FictionRepository
 import `in`.jphe.storyvox.data.repository.PlaybackPositionRepository
+import `in`.jphe.storyvox.data.repository.playback.PlaybackResumePolicyConfig
 import `in`.jphe.storyvox.data.source.model.FictionSummary
 import `in`.jphe.storyvox.feature.api.DownloadMode
 import `in`.jphe.storyvox.feature.api.FictionRepositoryUi
@@ -55,6 +56,9 @@ class LibraryViewModel @Inject constructor(
     positionRepo: PlaybackPositionRepository,
     private val uiRepo: FictionRepositoryUi,
     private val playback: PlaybackControllerUi,
+    /** #90 — read the user's last play/pause intent to decide whether
+     *  the Resume CTA should auto-start playback. */
+    private val resumePolicy: PlaybackResumePolicyConfig,
 ) : ViewModel() {
 
     private val _events = Channel<LibraryUiEvent>(Channel.BUFFERED)
@@ -80,11 +84,24 @@ class LibraryViewModel @Inject constructor(
 
     fun resume() {
         val entry = uiState.value.resume ?: return
-        // Cold-start: the controller may have nothing loaded (fresh app launch),
-        // in which case `play()` is a no-op. `startListening` queues the chapter
-        // download and kicks the TTS engine, which is what we actually want.
-        playback.startListening(entry.fiction.id, entry.chapter.id, entry.charOffset)
         viewModelScope.launch {
+            // #90 smart-resume — read the user's last play/pause
+            // intent. If they explicitly paused before, we still load
+            // the chapter (so the player tab is ready) but don't
+            // auto-start audio. App-killed-mid-playback (no explicit
+            // pause) leaves the flag at its prior `true` so the
+            // common "phone died, want to keep listening" case
+            // auto-resumes as before.
+            val autoPlay = resumePolicy.currentLastWasPlaying()
+            // Cold-start: the controller may have nothing loaded (fresh app launch),
+            // in which case `play()` is a no-op. `startListening` queues the chapter
+            // download and kicks the TTS engine, which is what we actually want.
+            playback.startListening(
+                entry.fiction.id,
+                entry.chapter.id,
+                entry.charOffset,
+                autoPlay = autoPlay,
+            )
             _events.send(LibraryUiEvent.OpenReader(entry.fiction.id, entry.chapter.id))
         }
     }

@@ -183,6 +183,11 @@ object AppBindings {
     fun provideParallelSynthConfig(impl: SettingsRepositoryUiImpl):
         `in`.jphe.storyvox.data.repository.playback.ParallelSynthConfig = impl
 
+    /** #90 — Smart-resume policy config. Same singleton. */
+    @Provides @Singleton
+    fun providePlaybackResumePolicyConfig(impl: SettingsRepositoryUiImpl):
+        `in`.jphe.storyvox.data.repository.playback.PlaybackResumePolicyConfig = impl
+
     /**
      * Issue #135 — pronunciation dictionary contract for `core-playback`'s
      * EnginePlayer + the Settings UI. Same singleton instance as the rest;
@@ -680,7 +685,12 @@ internal class RealPlaybackControllerUi(
         controller.stopSpeaking()
     }
 
-    override fun startListening(fictionId: String, chapterId: String, charOffset: Int) {
+    override fun startListening(
+        fictionId: String,
+        chapterId: String,
+        charOffset: Int,
+        autoPlay: Boolean,
+    ) {
         // Start the service synchronously while we still have the click's foreground
         // attribution. Calling startForegroundService from inside scope.launch (even on
         // Dispatchers.Main.immediate) lost the FG attribution on Android 12+ and threw
@@ -696,6 +706,13 @@ internal class RealPlaybackControllerUi(
             // Wait for the first non-null body to land in the DB.
             chapters.observeChapter(chapterId).filterNotNull().first()
             controller.play(fictionId, chapterId, charOffset = charOffset)
+            // #90 smart-resume — when the user explicitly paused the
+            // last session, Library's Resume CTA loads the chapter
+            // (above) but immediately re-pauses so playback waits for
+            // an explicit play tap. Engine cold-load + 10s buffer
+            // threshold means the audio output window for any leak
+            // is essentially zero on slow voices like Piper-high.
+            if (!autoPlay) controller.pause()
         }
     }
 

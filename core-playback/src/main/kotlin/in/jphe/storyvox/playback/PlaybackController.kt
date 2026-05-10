@@ -77,6 +77,9 @@ interface PlaybackController {
 class DefaultPlaybackController @Inject constructor(
     private val chunker: SentenceChunker,
     private val sleepTimer: SleepTimer,
+    /** #90 — write the user's last play/pause intent so the
+     *  Library Resume CTA can decide whether to auto-start. */
+    private val resumePolicy: `in`.jphe.storyvox.data.repository.playback.PlaybackResumePolicyConfig,
 ) : PlaybackController {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -121,11 +124,25 @@ class DefaultPlaybackController @Inject constructor(
     }
 
     override suspend fun play(fictionId: String, chapterId: String, charOffset: Int) {
+        // #90 — record the play intent BEFORE loadAndPlay (which can take
+        // 30+s to return on a cold engine load). If the user kills the
+        // app mid-load we want resume-on-reopen to autoplay.
+        scope.launch { runCatching { resumePolicy.setLastWasPlaying(true) } }
         player?.loadAndPlay(fictionId, chapterId, charOffset)
     }
 
-    override fun pause() { player?.pauseTts() }
-    override fun resume() { player?.resume() }
+    override fun pause() {
+        // #90 — explicit pause is a user intent. Persist so the next
+        // Library Resume CTA respects it (load chapter, stay paused).
+        scope.launch { runCatching { resumePolicy.setLastWasPlaying(false) } }
+        player?.pauseTts()
+    }
+
+    override fun resume() {
+        scope.launch { runCatching { resumePolicy.setLastWasPlaying(true) } }
+        player?.resume()
+    }
+
     override fun togglePlayPause() {
         if (state.value.isPlaying) pause() else resume()
     }

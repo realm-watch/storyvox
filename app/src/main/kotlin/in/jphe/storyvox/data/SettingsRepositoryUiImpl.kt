@@ -19,6 +19,7 @@ import `in`.jphe.storyvox.data.repository.playback.ParallelSynthConfig
 import `in`.jphe.storyvox.data.repository.playback.ParallelSynthState
 import `in`.jphe.storyvox.data.repository.playback.PlaybackBufferConfig
 import `in`.jphe.storyvox.data.repository.playback.PlaybackModeConfig
+import `in`.jphe.storyvox.data.repository.playback.PlaybackResumePolicyConfig
 import `in`.jphe.storyvox.data.repository.playback.VoiceTuningConfig
 import `in`.jphe.storyvox.data.repository.pronunciation.PronunciationDict
 import `in`.jphe.storyvox.data.repository.pronunciation.PronunciationDictRepository
@@ -217,6 +218,11 @@ private object Keys {
     /** Slider-era Int key — 0 = Auto, 1..8 = numThreads override per engine. */
     val SYNTH_THREADS_PER_INSTANCE = intPreferencesKey("pref_synth_threads_per_instance")
 
+    // ── Resume policy (issue #90) ──────────────────────────────────
+    /** Tracks the user's last play/pause intent. true = was playing,
+     *  false = explicitly paused. Library's Resume CTA reads this. */
+    val LAST_WAS_PLAYING = booleanPreferencesKey("pref_last_was_playing")
+
     // ── Chat grounding (issue #212) ────────────────────────────────
     /** Defaults match pre-#212 ChatViewModel behaviour: chapter title
      *  on, every more-expensive level off. */
@@ -282,6 +288,7 @@ class SettingsRepositoryUiImpl(
     VoiceTuningConfig,
     AzureFallbackConfig,
     ParallelSynthConfig,
+    PlaybackResumePolicyConfig,
     PronunciationDictRepository,
     LlmConfigProvider,
     GitHubScopePreferences {
@@ -579,6 +586,17 @@ class SettingsRepositoryUiImpl(
 
     override suspend fun currentParallelSynthState(): ParallelSynthState =
         parallelSynthState.first()
+
+    // --- PlaybackResumePolicyConfig (#90) ---
+    override val lastWasPlaying: Flow<Boolean> = store.data.map { prefs ->
+        prefs[Keys.LAST_WAS_PLAYING] ?: true
+    }
+
+    override suspend fun currentLastWasPlaying(): Boolean = lastWasPlaying.first()
+
+    override suspend fun setLastWasPlaying(playing: Boolean) {
+        store.edit { it[Keys.LAST_WAS_PLAYING] = playing }
+    }
 
     override suspend fun signIn() {
         // Just flips the persisted UI flag; the cookie capture is owned by
