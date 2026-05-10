@@ -38,7 +38,7 @@ androidx-webkit = "1.12.1"
 androidx-browser = "1.8.0"
 
 # Concurrency
-coroutines = "1.9.0"
+coroutines = "1.10.2"
 
 # Serialization
 kotlinx-serialization = "1.7.3"
