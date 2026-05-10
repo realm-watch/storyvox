@@ -228,11 +228,25 @@ class EngineStreamingSource(
         // Tier 2 (#87) — shut the dedicated producer executor down so
         // the daemon thread exits and isn't leaked across pipeline
         // rebuilds (next chapter / seek / voice swap each spin a
-        // fresh EngineStreamingSource → fresh executor). shutdownNow
-        // interrupts any in-flight task; the producer thread is
-        // already torn down by scope.cancel above so this is the
-        // belt-and-braces cleanup.
+        // fresh EngineStreamingSource → fresh executor).
         producerExecutor.shutdownNow()
+        // #89 — block until the executor's threads actually finish.
+        // shutdownNow() interrupts but doesn't wait; if a worker is
+        // mid-JNI generateAudioPCM the interrupt is queued and the
+        // thread keeps running until the JNI call returns. Without
+        // awaitTermination, EnginePlayer.loadAndPlay can race ahead
+        // and destroy() the secondary engines while a producer
+        // thread is still inside generateAudioPCM on them — JNI
+        // use-after-free on the native tts pointer.
+        //
+        // Generous 5s budget covers Piper-high's worst-case sentence
+        // synth on Helio P22T (~3.5× realtime → ~7s for a 2s
+        // sentence). If we exceed that, the rogue worker thread
+        // leaks but at least subsequent state is consistent — the
+        // app re-init at next pipeline rebuild gets a fresh executor.
+        runCatching {
+            producerExecutor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)
+        }
     }
 
     private fun startProducer(fromIndex: Int): Job =

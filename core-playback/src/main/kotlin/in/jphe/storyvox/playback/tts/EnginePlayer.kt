@@ -675,6 +675,25 @@ class EnginePlayer @AssistedInject constructor(
         }
         invalidateState()
 
+        // #89 — stop the OLD pipeline FIRST, before we destroy any of
+        // its engines. The pre-#89 code did `engineMutex.withLock {
+        // destroy old secondaries; load new }` and only THEN called
+        // startPlaybackPipeline (which internally calls
+        // stopPlaybackPipeline first). That meant the old pipeline's
+        // producer threads were still alive — and possibly inside a
+        // JNI generateAudioPCM call on a secondary engine — when we
+        // destroyed those secondaries. JNI use-after-free on the
+        // native tts pointer.
+        //
+        // Stopping first ensures the old producer pool's
+        // awaitTermination (#89 in EngineStreamingSource.close)
+        // blocks until in-flight JNI calls return, so subsequent
+        // destroy() calls run on idle instances. Primary singleton
+        // is still protected by engineMutex (the in-loadModel
+        // destroy + reload path), so this only matters for the
+        // secondary instances.
+        stopPlaybackPipeline()
+
         val loadResult: String = withContext(Dispatchers.IO) {
             // Critical: serialize loadModel against in-flight generateAudioPCM
             // by holding engineMutex (issue #11). Without it, a Piper-to-Piper
