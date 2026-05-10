@@ -79,6 +79,16 @@ class FictionDetailViewModel @Inject constructor(
     }
 
     fun listen(chapterId: String) {
+        // Issue #288 — tapping Listen is a stronger intent than tapping
+        // 'Add to library'. The user is committing to listen RIGHT NOW.
+        // Silently follow the fiction if it isn't already in their
+        // library so it survives app restart and the Resume card can
+        // surface it on Library. Mirror the gesture-only-add pattern
+        // (no confirm dialog) — remove-from-library still requires the
+        // explicit AlertDialog from issue #169.
+        if (!uiState.value.isInLibrary) {
+            viewModelScope.launch { repo.follow(fictionId, true) }
+        }
         playback.startListening(fictionId, chapterId)
         viewModelScope.launch { _events.send(FictionDetailUiEvent.OpenReader(fictionId, chapterId)) }
     }
