@@ -2,6 +2,8 @@ package `in`.jphe.storyvox.source.azure
 
 import `in`.jphe.storyvox.data.source.AzureVoiceDescriptor
 import `in`.jphe.storyvox.source.azure.di.AzureHttp
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -160,6 +162,95 @@ open class AzureSpeechClient @Inject constructor(
      */
     open fun synthesize(ssml: String): ByteArray = withRetry {
         synthesizeOnce(ssml)
+    }
+
+    /**
+     * Streaming variant — emits PCM bytes as they arrive over the
+     * wire instead of buffering the full sentence first. Lets callers
+     * begin writing to AudioTrack on the first frame, dropping
+     * first-audio latency from "TLS + full server-side render"
+     * (~2–4 s for Dragon HD) to "TLS + first-byte" (~200–400 ms).
+     *
+     * **Auth + region** identical to [synthesize]. **Errors thrown**
+     * before the first emit (auth / network / 4xx); errors mid-stream
+     * close the flow with the typed [AzureError].
+     *
+     * **Chunk size**: emits whatever OkHttp's source hands us per
+     * read — typically ~8 KB on the SSL transport. ~165 ms of audio
+     * at 24 kHz mono.
+     *
+     * **No retry.** Mid-stream retry would replay sentence audio
+     * already heard by the user; the [withRetry] wrapper around
+     * [synthesize] only makes sense when we can hand back a fresh
+     * ByteArray. Streaming callers handle errors by aborting that
+     * sentence and moving on.
+     */
+    open fun synthesizeStreaming(ssml: String): Flow<ByteArray> = flow {
+        val key = credentials.key()
+            ?: throw AzureError.AuthFailed("No Azure subscription key configured")
+        val regionId = credentials.regionId()
+
+        val request = Request.Builder()
+            .url(endpointUrlFor(regionId))
+            .header(HEADER_KEY, key)
+            .header(HEADER_OUTPUT_FORMAT, OUTPUT_FORMAT_PCM_24KHZ)
+            .header(HEADER_CONTENT_TYPE, CONTENT_TYPE_SSML)
+            .header(HEADER_USER_AGENT, USER_AGENT)
+            .post(ssml.toRequestBody(SSML_MEDIA_TYPE))
+            .build()
+
+        val response = try {
+            http.newCall(request).execute()
+        } catch (e: IOException) {
+            throw AzureError.NetworkError(e)
+        }
+
+        response.use { resp ->
+            when {
+                resp.isSuccessful -> {
+                    val source = resp.body?.source() ?: return@use
+                    val buf = ByteArray(STREAM_CHUNK_BYTES)
+                    while (!source.exhausted()) {
+                        val n = try {
+                            source.read(buf, 0, buf.size).toInt()
+                        } catch (e: IOException) {
+                            throw AzureError.NetworkError(e)
+                        }
+                        if (n <= 0) break
+                        emit(buf.copyOfRange(0, n))
+                    }
+                }
+                resp.code == 401 || resp.code == 403 ->
+                    throw AzureError.AuthFailed(
+                        "Azure rejected key (HTTP ${resp.code}): " +
+                            (resp.message.takeIf { it.isNotBlank() }
+                                ?: "authentication failed"),
+                    )
+                resp.code == 429 ->
+                    throw AzureError.Throttled(
+                        "Azure throttled the request (HTTP 429). " +
+                            "Free-tier quota exhausted, or burst limit hit.",
+                    )
+                resp.code in 400..499 -> {
+                    val excerpt = resp.body?.string()?.take(256) ?: resp.message
+                    throw AzureError.BadRequest(
+                        resp.code,
+                        "Azure rejected request (HTTP ${resp.code}): $excerpt",
+                    )
+                }
+                resp.code in 500..599 ->
+                    throw AzureError.ServerError(
+                        resp.code,
+                        "Azure server error (HTTP ${resp.code}): " +
+                            (resp.message.takeIf { it.isNotBlank() } ?: "unknown"),
+                    )
+                else ->
+                    throw AzureError.ServerError(
+                        resp.code,
+                        "Unexpected HTTP ${resp.code} from Azure",
+                    )
+            }
+        }
     }
 
     private fun synthesizeOnce(ssml: String): ByteArray {
@@ -432,5 +523,11 @@ open class AzureSpeechClient @Inject constructor(
          *  version suffix is filled by Hilt at runtime; tests use
          *  the literal string. */
         internal const val USER_AGENT = "storyvox/azure-tts"
+
+        /** Read size for the streaming variant. 8 KB lines up with TLS
+         *  record sizes (most chunks come in at one record per read)
+         *  and amortizes AudioTrack.write() overhead in the consumer.
+         *  ~165 ms of audio per chunk at 24 kHz mono. */
+        internal const val STREAM_CHUNK_BYTES = 8192
     }
 }
