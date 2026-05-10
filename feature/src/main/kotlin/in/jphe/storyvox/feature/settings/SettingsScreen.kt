@@ -337,6 +337,15 @@ fun SettingsScreen(
                 EpubFolderPickerRow(viewModel = viewModel)
             }
             SettingsSwitchRow(
+                title = "Outline (self-hosted wiki)",
+                subtitle = "Show in Browse picker (#245).",
+                checked = s.sourceOutlineEnabled,
+                onCheckedChange = viewModel::setSourceOutlineEnabled,
+            )
+            if (s.sourceOutlineEnabled) {
+                OutlineConfigRow(viewModel = viewModel)
+            }
+            SettingsSwitchRow(
                 title = "Wi-Fi only",
                 subtitle = "Don't poll on cellular.",
                 checked = s.downloadOnWifiOnly,
@@ -2231,6 +2240,79 @@ private fun RssSuggestedFeedsRow(viewModel: SettingsViewModel) {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Issue #245 — host + API-key entry for the Outline self-hosted-wiki
+ * backend. Inline section under the toggle in Library & Sync, mirroring
+ * the EPUB folder picker / RSS feed manager. Keeps the user inside
+ * Library & Sync rather than navigating to a sub-screen.
+ */
+@Composable
+private fun OutlineConfigRow(viewModel: SettingsViewModel) {
+    val host by viewModel.outlineHost.collectAsStateWithLifecycle()
+    val spacing = LocalSpacing.current
+    var hostDraft by remember(host) { mutableStateOf(host) }
+    var apiKeyDraft by remember { mutableStateOf("") }
+
+    Column(modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm)) {
+        Text(
+            "Outline instance",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = spacing.xs),
+        )
+        Text(
+            text = if (host.isBlank()) "Set your Outline host + API token below."
+            else "Currently configured: $host",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = spacing.sm),
+        )
+        androidx.compose.material3.OutlinedTextField(
+            value = hostDraft,
+            onValueChange = { hostDraft = it },
+            label = { Text("Outline host") },
+            placeholder = { Text("wiki.example.com") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        androidx.compose.material3.OutlinedTextField(
+            value = apiKeyDraft,
+            onValueChange = { apiKeyDraft = it },
+            label = { Text("API token") },
+            placeholder = { Text("From Outline → Account → API Tokens") },
+            singleLine = true,
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth().padding(top = spacing.xs),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            BrassButton(
+                label = "Save",
+                onClick = {
+                    val trimmedHost = hostDraft.trim()
+                    if (trimmedHost.isNotEmpty()) viewModel.setOutlineHost(trimmedHost)
+                    if (apiKeyDraft.isNotBlank()) {
+                        viewModel.setOutlineApiKey(apiKeyDraft)
+                        apiKeyDraft = ""
+                    }
+                },
+                variant = BrassButtonVariant.Primary,
+            )
+            if (host.isNotBlank()) {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        viewModel.clearOutlineConfig()
+                        hostDraft = ""
+                        apiKeyDraft = ""
+                    },
+                ) { Text("Clear") }
             }
         }
     }

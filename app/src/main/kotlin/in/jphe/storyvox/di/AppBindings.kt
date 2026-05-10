@@ -137,6 +137,11 @@ object AppBindings {
     @Provides @Singleton
     fun provideEpubConfig(impl: `in`.jphe.storyvox.data.EpubConfigImpl): `in`.jphe.storyvox.source.epub.config.EpubConfig = impl
 
+    /** Bridges source-outline OutlineConfig (#245) to the app-side
+     *  DataStore + EncryptedSharedPreferences impl. */
+    @Provides @Singleton
+    fun provideOutlineConfig(impl: `in`.jphe.storyvox.data.OutlineConfigImpl): `in`.jphe.storyvox.source.outline.config.OutlineConfig = impl
+
     /**
      * Same singleton instance as [provideSettingsRepositoryUi], exposed under
      * the [PlaybackBufferConfig] contract so `core-playback`'s [EnginePlayer]

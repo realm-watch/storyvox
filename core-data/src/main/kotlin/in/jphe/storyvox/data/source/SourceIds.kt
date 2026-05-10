@@ -30,4 +30,8 @@ object SourceIds {
      *  source enumerates .epub files there as fictions. Zero-network,
      *  user-owned-content backend. */
     const val EPUB: String = "epub"
+    /** Outline (#245) — self-hosted wiki. User configures host +
+     *  API token; collections become fictions, documents become
+     *  chapters. Zero third-party ToS surface. */
+    const val OUTLINE: String = "outline"
 }

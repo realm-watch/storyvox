@@ -63,6 +63,7 @@ class SettingsRepositoryBufferTest {
             teamsAuth = fakeTeamsAuth(),
             rssConfig = makeFakeRssConfig(tempFolder.newFolder("rss_ds"), scope),
             epubConfig = makeFakeEpubConfig(tempFolder.newFolder("epub_ds"), scope),
+            outlineConfig = makeFakeOutlineConfig(tempFolder.newFolder("outline_ds"), scope),
             suggestedFeedsRegistry = SuggestedFeedsRegistry(),
         )
     }

@@ -59,6 +59,7 @@ class SettingsRepositoryModesTest {
             teamsAuth = fakeTeamsAuth(),
             rssConfig = makeFakeRssConfig(tempFolder.newFolder("rss_ds"), scope),
             epubConfig = makeFakeEpubConfig(tempFolder.newFolder("epub_ds"), scope),
+            outlineConfig = makeFakeOutlineConfig(tempFolder.newFolder("outline_ds"), scope),
             suggestedFeedsRegistry = SuggestedFeedsRegistry(),
         )
     }
@@ -99,11 +100,13 @@ class SettingsRepositoryModesTest {
     // ---- Mode B — Catch-up Pause ----
 
     @Test
-    fun `default catchup pause is off`() = runTest {
-        // 2026-05-09: defaults flipped per JP — see warmupWait kdoc.
-        assertEquals(false, repo.currentCatchupPause())
-        assertEquals(false, repo.settings.first().catchupPause)
-        assertEquals(false, repo.catchupPause.first())
+    fun `default catchup pause is on`() = runTest {
+        // 2026-05-09: warmupWait flipped off but catchupPause stayed
+        // on — JP reported audible gaps with Mode B disabled. See
+        // UiSettings.catchupPause kdoc.
+        assertEquals(true, repo.currentCatchupPause())
+        assertEquals(true, repo.settings.first().catchupPause)
+        assertEquals(true, repo.catchupPause.first())
     }
 
     @Test

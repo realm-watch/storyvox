@@ -265,6 +265,11 @@ class SettingsViewModelModesTest {
         override val epubFolderUri: kotlinx.coroutines.flow.Flow<String?> = kotlinx.coroutines.flow.flowOf(null)
         override suspend fun setEpubFolderUri(uri: String) = Unit
         override suspend fun clearEpubFolder() = Unit
+        override suspend fun setSourceOutlineEnabled(enabled: Boolean) = Unit
+        override val outlineHost: kotlinx.coroutines.flow.Flow<String> = kotlinx.coroutines.flow.flowOf("")
+        override suspend fun setOutlineHost(host: String) = Unit
+        override suspend fun setOutlineApiKey(apiKey: String) = Unit
+        override suspend fun clearOutlineConfig() = Unit
         override val suggestedRssFeeds: kotlinx.coroutines.flow.Flow<List<`in`.jphe.storyvox.feature.api.SuggestedFeed>> = kotlinx.coroutines.flow.flowOf(emptyList())
         override suspend fun setSleepShakeToExtendEnabled(enabled: Boolean) = Unit
         override suspend fun signOutTeams() = Unit

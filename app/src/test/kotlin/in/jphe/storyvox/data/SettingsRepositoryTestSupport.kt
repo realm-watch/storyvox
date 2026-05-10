@@ -130,6 +130,20 @@ internal fun makeFakeEpubConfig(
     return EpubConfigImpl.forTesting(epubStore)
 }
 
+/** Real [OutlineConfigImpl] over a temp DataStore + fake secrets
+ *  (#245). Settings tests don't exercise Outline state — the
+ *  signature requires the dep, this satisfies it. */
+internal fun makeFakeOutlineConfig(
+    dir: File,
+    scope: CoroutineScope,
+): OutlineConfigImpl {
+    val outlineStore = PreferenceDataStoreFactory.create(
+        scope = scope,
+        produceFile = { File(dir, "storyvox_outline.preferences_pb") },
+    )
+    return OutlineConfigImpl(outlineStore, FakeSecrets())
+}
+
 /**
  * Real [PalaceDaemonApi] over an OkHttpClient + a fake config that emits
  * an empty [PalaceConfigState]. No HTTP is exercised by the settings

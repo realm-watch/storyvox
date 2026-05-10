@@ -188,6 +188,8 @@ private object Keys {
     val SOURCE_RSS_ENABLED = booleanPreferencesKey("pref_source_rss_enabled")
     /** Issue #235 — local EPUB backend on/off. */
     val SOURCE_EPUB_ENABLED = booleanPreferencesKey("pref_source_epub_enabled")
+    /** Issue #245 — Outline backend on/off. */
+    val SOURCE_OUTLINE_ENABLED = booleanPreferencesKey("pref_source_outline_enabled")
 
     // ── Sleep timer shake-to-extend (issue #150) ───────────────────
     val SLEEP_SHAKE_TO_EXTEND_ENABLED = booleanPreferencesKey("pref_sleep_shake_to_extend_enabled")
@@ -247,6 +249,7 @@ class SettingsRepositoryUiImpl(
     private val teamsAuth: AnthropicTeamsAuthRepository,
     private val rssConfig: RssConfigImpl,
     private val epubConfig: EpubConfigImpl,
+    private val outlineConfig: OutlineConfigImpl,
     private val suggestedFeedsRegistry: SuggestedFeedsRegistry,
 ) : SettingsRepositoryUi,
     PlaybackBufferConfig,
@@ -271,11 +274,12 @@ class SettingsRepositoryUiImpl(
         teamsAuth: AnthropicTeamsAuthRepository,
         rssConfig: RssConfigImpl,
         epubConfig: EpubConfigImpl,
+        outlineConfig: OutlineConfigImpl,
         suggestedFeedsRegistry: SuggestedFeedsRegistry,
     ) : this(
         context.settingsDataStore, auth, hydrator,
         palaceConfig, palaceApi, llmCreds, githubAuth, teamsAuth, rssConfig, epubConfig,
-        suggestedFeedsRegistry,
+        outlineConfig, suggestedFeedsRegistry,
     )
 
     override val settings: Flow<UiSettings> = combine(
@@ -301,9 +305,10 @@ class SettingsRepositoryUiImpl(
                 .coerceIn(PUNCTUATION_PAUSE_MIN_MULTIPLIER, PUNCTUATION_PAUSE_MAX_MULTIPLIER),
             playbackBufferChunks = (prefs[Keys.PLAYBACK_BUFFER_CHUNKS] ?: BUFFER_DEFAULT_CHUNKS)
                 .coerceIn(BUFFER_MIN_CHUNKS, BUFFER_MAX_CHUNKS),
-            // Defaults flipped on 2026-05-09 per JP — see UiSettings kdoc.
+            // 2026-05-09: warmupWait default off (UX), catchupPause
+            // default back on (perf — see UiSettings.catchupPause kdoc).
             warmupWait = prefs[Keys.WARMUP_WAIT] ?: false,
-            catchupPause = prefs[Keys.CATCHUP_PAUSE] ?: false,
+            catchupPause = prefs[Keys.CATCHUP_PAUSE] ?: true,
             voiceSteady = prefs[Keys.VOICE_STEADY] ?: true,
             palace = UiPalaceConfig(host = palace.host, apiKey = palace.apiKey),
             github = githubSession.toUi(),
@@ -314,6 +319,7 @@ class SettingsRepositoryUiImpl(
             sourceMemPalaceEnabled = prefs[Keys.SOURCE_MEMPALACE_ENABLED] ?: false,
             sourceRssEnabled = prefs[Keys.SOURCE_RSS_ENABLED] ?: true,
             sourceEpubEnabled = prefs[Keys.SOURCE_EPUB_ENABLED] ?: false,
+            sourceOutlineEnabled = prefs[Keys.SOURCE_OUTLINE_ENABLED] ?: false,
             sleepShakeToExtendEnabled = prefs[Keys.SLEEP_SHAKE_TO_EXTEND_ENABLED] ?: true,
             ai = UiAiSettings(
                 provider = prefs[Keys.AI_PROVIDER]
@@ -457,7 +463,7 @@ class SettingsRepositoryUiImpl(
     // --- PlaybackModeConfig (issue #98) ---
 
     override val warmupWait: Flow<Boolean> = store.data.map { it[Keys.WARMUP_WAIT] ?: false }
-    override val catchupPause: Flow<Boolean> = store.data.map { it[Keys.CATCHUP_PAUSE] ?: false }
+    override val catchupPause: Flow<Boolean> = store.data.map { it[Keys.CATCHUP_PAUSE] ?: true }
     override suspend fun currentWarmupWait(): Boolean = warmupWait.first()
     override suspend fun currentCatchupPause(): Boolean = catchupPause.first()
 
@@ -748,6 +754,15 @@ class SettingsRepositoryUiImpl(
     override val epubFolderUri: kotlinx.coroutines.flow.Flow<String?> = epubConfig.folderUriString
     override suspend fun setEpubFolderUri(uri: String) = epubConfig.setFolder(uri)
     override suspend fun clearEpubFolder() = epubConfig.clearFolder()
+
+    override suspend fun setSourceOutlineEnabled(enabled: Boolean) {
+        store.edit { it[Keys.SOURCE_OUTLINE_ENABLED] = enabled }
+    }
+    override val outlineHost: kotlinx.coroutines.flow.Flow<String> =
+        outlineConfig.state.map { it.host }
+    override suspend fun setOutlineHost(host: String) = outlineConfig.setHost(host)
+    override suspend fun setOutlineApiKey(apiKey: String) = outlineConfig.setApiKey(apiKey)
+    override suspend fun clearOutlineConfig() = outlineConfig.clear()
 
     /** #246 — bridge to SuggestedFeedsRegistry. The fallback list
      *  passed in is the baked-in seed; the registry emits it

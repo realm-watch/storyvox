@@ -136,6 +136,19 @@ class SettingsViewModel @Inject constructor(
             null,
         )
 
+    /** Issue #245 — Outline backend on/off + host/API-key plumbing. */
+    fun setSourceOutlineEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setSourceOutlineEnabled(enabled) }
+    fun setOutlineHost(host: String) = viewModelScope.launch { repo.setOutlineHost(host) }
+    fun setOutlineApiKey(apiKey: String) = viewModelScope.launch { repo.setOutlineApiKey(apiKey) }
+    fun clearOutlineConfig() = viewModelScope.launch { repo.clearOutlineConfig() }
+    val outlineHost: kotlinx.coroutines.flow.StateFlow<String> =
+        repo.outlineHost.stateIn(
+            viewModelScope,
+            kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000),
+            "",
+        )
+
     /** Issue #246 — curated suggested RSS feeds, fetched from the
      *  jphein/storyvox-feeds GitHub repo at runtime. Falls back to
      *  the baked-in seed list while the fetch is in flight or if it

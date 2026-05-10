@@ -586,9 +586,15 @@ data class UiSettings(
      * hears moments of dead air instead of paused-then-resumed playback,
      * but never sees the buffering spinner.
      */
-    /** Default flipped to false on 2026-05-09 — see [warmupWait]
-     *  kdoc; same directive. */
-    val catchupPause: Boolean = false,
+    /** Default flipped to false on 2026-05-09 then back to true the
+     *  same evening — JP reported audible inter-chunk gaps with
+     *  buffer=3000 immediately after the off-default landed. Mode B
+     *  is what handles "buffer underrun → pause AudioTrack → wait
+     *  for refill → resume" smoothing; turning it off means every
+     *  generation-vs-playback miss surfaces as a gap. Keeping it
+     *  default-on now; Mode A (warmupWait) stays default-off as a
+     *  separate UX call. */
+    val catchupPause: Boolean = true,
     /**
      * Issue #85 — Voice-Determinism preset for the VoxSherpa engine. When
      * true (default), the engine runs with VoxSherpa's calmed VITS defaults
@@ -643,6 +649,10 @@ data class UiSettings(
     val sourceMemPalaceEnabled: Boolean = false,
     val sourceRssEnabled: Boolean = true,
     val sourceEpubEnabled: Boolean = false,
+    /** Outline self-hosted-wiki backend (#245). Default off per the
+     *  RSS-only first-launch story; user opts in from Settings →
+     *  Library & Sync. */
+    val sourceOutlineEnabled: Boolean = false,
     /** Issue #150 — when ON, a shake during the sleep timer's fade
      *  tail re-arms the timer. Default ON; users with bumpy commutes
      *  can disable to avoid accidental extensions. */
@@ -898,6 +908,13 @@ interface SettingsRepositoryUi {
 
     /** Issue #236 — RSS / Atom backend on/off. */
     suspend fun setSourceRssEnabled(enabled: Boolean)
+
+    /** Issue #245 — Outline self-hosted-wiki backend on/off + config. */
+    suspend fun setSourceOutlineEnabled(enabled: Boolean)
+    val outlineHost: Flow<String>
+    suspend fun setOutlineHost(host: String)
+    suspend fun setOutlineApiKey(apiKey: String)
+    suspend fun clearOutlineConfig()
 
     /** Issue #236 — manage subscribed feed URLs. */
     suspend fun addRssFeed(url: String)

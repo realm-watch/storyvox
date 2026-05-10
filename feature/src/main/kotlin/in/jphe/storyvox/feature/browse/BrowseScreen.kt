@@ -132,6 +132,9 @@ fun BrowseScreen(
                     // #235 — EPUB also has no filter sheet (folder
                     // picker is in Settings).
                     BrowseSourceKey.Epub -> 0
+                    // #245 — Outline has no filter sheet (host + API
+                    // key are in Settings).
+                    BrowseSourceKey.Outline -> 0
                 },
                 onClick = { showFilterSheet = true },
             )
@@ -332,6 +335,7 @@ fun BrowseScreen(
             // #235 — EPUB also has no filter UI (folder picker is in
             // Settings).
             BrowseSourceKey.Epub -> { showFilterSheet = false }
+            BrowseSourceKey.Outline -> { showFilterSheet = false }
         }
     }
 }
