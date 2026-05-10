@@ -1,5 +1,6 @@
 package `in`.jphe.storyvox.feature.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -7,9 +8,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.ui.platform.LocalUriHandler
@@ -85,6 +89,7 @@ import `in`.jphe.storyvox.feature.settings.components.StatusPill
 import `in`.jphe.storyvox.feature.settings.components.StatusTone
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
+import `in`.jphe.storyvox.ui.component.SkeletonBlock
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 import kotlinx.coroutines.delay
 
@@ -105,7 +110,16 @@ fun SettingsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val spacing = LocalSpacing.current
-    val s = state.settings ?: return
+    // Issue #281 — Settings used to flash black for ~1-2s on tab open
+    // while the DataStore-backed flow hydrated. `state.settings == null`
+    // is the loading edge; before the fix we returned and rendered
+    // nothing. Show a brass-shimmer skeleton instead so the user knows
+    // the tab is loading, matching the FictionDetailSkeleton / Library
+    // skeleton pattern shipped in v0.4.96.
+    val s = state.settings ?: run {
+        SettingsSkeleton(modifier = Modifier.fillMaxSize().padding(spacing.md))
+        return
+    }
 
     Scaffold { padding ->
     Column(
@@ -2880,6 +2894,72 @@ private fun OutlineConfigRow(viewModel: SettingsViewModel) {
                         apiKeyDraft = ""
                     },
                 ) { Text("Clear") }
+            }
+        }
+    }
+}
+
+/**
+ * Issue #281 — loading skeleton for the Settings tab. Mirrors the
+ * structure SettingsScreen renders once `state.settings` hydrates:
+ * a section heading shimmer + a grouped-card shimmer per section.
+ * Matches the Library Nocturne 1200ms brass pulse from SkeletonBlock.
+ *
+ * Intentionally not the fancy MagicSkeletonTile — settings rows are
+ * short text rows, not artwork. A row-stack of opacity-pulse bars
+ * reads as "settings are loading" without the cover-art sigil that
+ * would feel out of place on this surface.
+ */
+@Composable
+private fun SettingsSkeleton(modifier: Modifier = Modifier) {
+    val spacing = LocalSpacing.current
+    Column(
+        modifier = modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(spacing.lg),
+    ) {
+        // Five sections worth of placeholder — matches roughly what the
+        // real SettingsScreen renders so the visual height doesn't pop
+        // when settings hydrate.
+        repeat(5) {
+            // Section heading skeleton: icon (24dp circle) + a wide
+            // title bar + a narrower descriptor bar.
+            Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                ) {
+                    SkeletonBlock(
+                        modifier = Modifier.size(24.dp),
+                        shape = MaterialTheme.shapes.small,
+                    )
+                    SkeletonBlock(
+                        modifier = Modifier
+                            .fillMaxWidth(0.45f)
+                            .height(20.dp),
+                    )
+                }
+                SkeletonBlock(
+                    modifier = Modifier
+                        .fillMaxWidth(0.7f)
+                        .height(14.dp),
+                )
+            }
+            // Group card skeleton — three row-shaped bars.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.large)
+                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    .padding(spacing.md),
+                verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            ) {
+                repeat(3) {
+                    SkeletonBlock(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(40.dp),
+                    )
+                }
             }
         }
     }
