@@ -609,7 +609,28 @@ data class UiSettings(
      *  tail re-arms the timer. Default ON; users with bumpy commutes
      *  can disable to avoid accidental extensions. */
     val sleepShakeToExtendEnabled: Boolean = true,
-)
+    /**
+     * Issue #195 — per-voice speed/pitch tweaks. Different voices have
+     * different "natural pitch centers" and pacing; storing one global
+     * value applies the previous voice's offset when the user switches.
+     * The maps key on `voiceId` (matches [defaultVoiceId]) and override
+     * the global [defaultSpeed] / [defaultPitch] when present. Voices
+     * not in the map fall back to the global defaults — the migration
+     * path preserves pre-#195 behavior.
+     */
+    val voiceSpeedOverrides: Map<String, Float> = emptyMap(),
+    val voicePitchOverrides: Map<String, Float> = emptyMap(),
+) {
+    /** Speed value the engine should run at right now — the active
+     *  voice's override if set, otherwise the global default (#195). */
+    val effectiveSpeed: Float
+        get() = defaultVoiceId?.let { voiceSpeedOverrides[it] } ?: defaultSpeed
+
+    /** Pitch value the engine should run at right now — the active
+     *  voice's override if set, otherwise the global default (#195). */
+    val effectivePitch: Float
+        get() = defaultVoiceId?.let { voicePitchOverrides[it] } ?: defaultPitch
+}
 
 /**
  * UI projection of the GitHub OAuth session (#91). The Settings row

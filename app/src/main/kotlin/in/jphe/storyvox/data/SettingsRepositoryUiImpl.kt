@@ -109,6 +109,14 @@ private object Keys {
     val DEFAULT_SPEED = floatPreferencesKey("pref_default_speed")
     val DEFAULT_PITCH = floatPreferencesKey("pref_default_pitch")
     val DEFAULT_VOICE_ID = stringPreferencesKey("pref_default_voice_id")
+
+    // Issue #195 — per-voice speed/pitch override maps. Stored as a
+    // simple `voiceId=value;voiceId=value` string to avoid pulling in
+    // kotlinx-serialization for one tiny map (and to keep DataStore's
+    // type-safe key API). Empty when no overrides are present, which
+    // is the migration default for pre-#195 installs.
+    val VOICE_SPEED_OVERRIDES = stringPreferencesKey("pref_voice_speed_overrides")
+    val VOICE_PITCH_OVERRIDES = stringPreferencesKey("pref_voice_pitch_overrides")
     val THEME_OVERRIDE = stringPreferencesKey("pref_theme_override")
     val DOWNLOAD_WIFI_ONLY = booleanPreferencesKey("pref_download_wifi_only")
     val POLL_INTERVAL_HOURS = intPreferencesKey("pref_poll_interval_hours")
@@ -202,6 +210,26 @@ private object Keys {
     val PRONUNCIATION_DICT = stringPreferencesKey("pref_pronunciation_dict_v1")
 }
 
+/** Issue #195 — flat string codec for `Map<voiceId, Float>` overrides.
+ *  Format: `voiceId=value;voiceId=value`. Voice IDs from the catalog
+ *  are alphanumeric + underscores (`piper_amy_x_low`, `kokoro_af_bella`)
+ *  so neither `=` nor `;` collide with valid IDs. Empty / null input
+ *  parses to an empty map. Bad entries are dropped silently — the
+ *  override map is non-critical state. */
+private fun encodeVoiceFloatMap(map: Map<String, Float>): String =
+    map.entries.joinToString(";") { (k, v) -> "$k=$v" }
+
+private fun decodeVoiceFloatMap(raw: String?): Map<String, Float> {
+    if (raw.isNullOrBlank()) return emptyMap()
+    return raw.split(';').mapNotNull { entry ->
+        val eq = entry.indexOf('=')
+        if (eq <= 0) return@mapNotNull null
+        val k = entry.substring(0, eq)
+        val v = entry.substring(eq + 1).toFloatOrNull() ?: return@mapNotNull null
+        k to v
+    }.toMap()
+}
+
 
 @Singleton
 class SettingsRepositoryUiImpl(
@@ -250,6 +278,8 @@ class SettingsRepositoryUiImpl(
             defaultVoiceId = prefs[Keys.DEFAULT_VOICE_ID],
             defaultSpeed = prefs[Keys.DEFAULT_SPEED] ?: 1.0f,
             defaultPitch = prefs[Keys.DEFAULT_PITCH] ?: 1.0f,
+            voiceSpeedOverrides = decodeVoiceFloatMap(prefs[Keys.VOICE_SPEED_OVERRIDES]),
+            voicePitchOverrides = decodeVoiceFloatMap(prefs[Keys.VOICE_PITCH_OVERRIDES]),
             themeOverride = prefs[Keys.THEME_OVERRIDE]?.let { runCatching { ThemeOverride.valueOf(it) }.getOrNull() }
                 ?: ThemeOverride.System,
             downloadOnWifiOnly = prefs[Keys.DOWNLOAD_WIFI_ONLY] ?: true,
@@ -322,17 +352,42 @@ class SettingsRepositoryUiImpl(
     }
 
     override suspend fun setDefaultSpeed(speed: Float) {
-        store.edit { it[Keys.DEFAULT_SPEED] = speed.coerceIn(0.5f, 3.0f) }
+        // #195 — per-voice override when a voice is active; otherwise
+        // fall back to the global default for fresh installs that
+        // haven't picked a voice yet. Pre-#195 callers never wrote to
+        // the global key when a voice was selected, so behavior of
+        // existing voices migrates cleanly: their previous global
+        // value is the implicit fallback until the user tweaks the
+        // slider with that voice active.
+        val coerced = speed.coerceIn(0.5f, 3.0f)
+        store.edit { prefs ->
+            val voiceId = prefs[Keys.DEFAULT_VOICE_ID]
+            if (voiceId != null) {
+                val map = decodeVoiceFloatMap(prefs[Keys.VOICE_SPEED_OVERRIDES]).toMutableMap()
+                map[voiceId] = coerced
+                prefs[Keys.VOICE_SPEED_OVERRIDES] = encodeVoiceFloatMap(map)
+            } else {
+                prefs[Keys.DEFAULT_SPEED] = coerced
+            }
+        }
     }
 
     override suspend fun setDefaultPitch(pitch: Float) {
-        // Persistence band matches the UI sliders (SettingsScreen +
-        // AudiobookView). Tightened from 0.5..2.0 → 0.6..1.4 in Thalia's
-        // VoxSherpa P0 #1 (2026-05-08): below ~0.7 Sonic introduces audible
-        // artifacts on Piper-medium voices, and above 1.4 the chipmunk
-        // territory is unlistenable. Stale prefs from before the widen
-        // (which covered 0.85..1.15) all sit comfortably inside the new band.
-        store.edit { it[Keys.DEFAULT_PITCH] = pitch.coerceIn(0.6f, 1.4f) }
+        // #195 — same dual-write story as setDefaultSpeed, with the
+        // tightened pitch band from Thalia's VoxSherpa P0 #1
+        // (2026-05-08): below ~0.7 Sonic introduces audible artifacts
+        // on Piper-medium voices, and above 1.4 is unlistenable.
+        val coerced = pitch.coerceIn(0.6f, 1.4f)
+        store.edit { prefs ->
+            val voiceId = prefs[Keys.DEFAULT_VOICE_ID]
+            if (voiceId != null) {
+                val map = decodeVoiceFloatMap(prefs[Keys.VOICE_PITCH_OVERRIDES]).toMutableMap()
+                map[voiceId] = coerced
+                prefs[Keys.VOICE_PITCH_OVERRIDES] = encodeVoiceFloatMap(map)
+            } else {
+                prefs[Keys.DEFAULT_PITCH] = coerced
+            }
+        }
     }
 
     override suspend fun setDefaultVoice(voiceId: String?) {

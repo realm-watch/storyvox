@@ -104,36 +104,42 @@ fun SettingsScreen(
                 subtitle = "Pick a voice and hear samples.",
                 onClick = onOpenVoiceLibrary,
             )
+            // #195 — sliders read+write the *effective* value (the
+            // active voice's override, falling back to the global
+            // default). The slider still appears global from the
+            // user's perspective; the persistence is per-voice
+            // silently. Switching voices brings their stored values
+            // back automatically.
             SettingsSliderBlock(
                 title = "Speed",
-                valueLabel = "${"%.2f".format(s.defaultSpeed)}×",
+                valueLabel = "${"%.2f".format(s.effectiveSpeed)}×",
                 slider = {
                     Slider(
-                        value = s.defaultSpeed,
+                        value = s.effectiveSpeed,
                         onValueChange = viewModel::setSpeed,
                         // Widened past Thalia's P1 #5 (commute listeners
                         // benefit from 3-4× on familiar narrators).
                         valueRange = 0.5f..4.0f,
                         modifier = Modifier.semantics {
                             contentDescription = "Default speech speed"
-                            stateDescription = "%.2f times".format(s.defaultSpeed)
+                            stateDescription = "%.2f times".format(s.effectiveSpeed)
                         },
                     )
                 },
             )
             SettingsSliderBlock(
                 title = "Pitch",
-                valueLabel = "${"%.2f".format(s.defaultPitch)}×",
+                valueLabel = "${"%.2f".format(s.effectivePitch)}×",
                 slider = {
                     Slider(
-                        value = s.defaultPitch,
+                        value = s.effectivePitch,
                         onValueChange = viewModel::setPitch,
                         // Narration-friendly band — matches AudiobookView. Hard
                         // floor at 0.6: Sonic introduces artifacts below ~0.7.
                         valueRange = 0.6f..1.4f,
                         modifier = Modifier.semantics {
                             contentDescription = "Default pitch"
-                            stateDescription = "%.2f, neutral at one".format(s.defaultPitch)
+                            stateDescription = "%.2f, neutral at one".format(s.effectivePitch)
                         },
                     )
                 },

@@ -513,14 +513,20 @@ internal class RealPlaybackControllerUi(
         // the playback pipeline if anything's playing, so a duplicate emission
         // from DataStore hydration would interrupt audio for no reason.
         scope.launch {
+            // #195 — observe the *effective* speed/pitch (per-voice
+            // override, with global fallback) so a voice swap that
+            // brings new override values triggers setSpeed/setPitch
+            // automatically. distinctUntilChanged is still load-bearing
+            // — same value re-emitting (e.g. settings hydration) would
+            // otherwise rebuild the playback pipeline mid-sentence.
             settings.settings
-                .map { it.defaultSpeed }
+                .map { it.effectiveSpeed }
                 .distinctUntilChanged()
                 .collect { controller.setSpeed(it) }
         }
         scope.launch {
             settings.settings
-                .map { it.defaultPitch }
+                .map { it.effectivePitch }
                 .distinctUntilChanged()
                 .collect { controller.setPitch(it) }
         }
