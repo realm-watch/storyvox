@@ -14,6 +14,7 @@ import `in`.jphe.storyvox.playback.voice.VoiceFavorites
 import `in`.jphe.storyvox.playback.voice.VoiceLibraryCollapse
 import `in`.jphe.storyvox.playback.voice.VoiceLibrarySection
 import `in`.jphe.storyvox.playback.voice.VoiceManager
+import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -80,11 +82,20 @@ class VoiceLibraryViewModel @Inject constructor(
     private val voiceManager: VoiceManager,
     private val voiceFavorites: VoiceFavorites,
     private val voiceLibraryCollapse: VoiceLibraryCollapse,
+    /** PR-4 (#183) — Azure rows in the picker are tappable iff a key
+     *  is configured. We observe the settings flow's `azure.isConfigured`
+     *  bit and project Azure entries from `availableVoices` into the
+     *  installed bucket when true, so the existing activate path Just
+     *  Works. The actual key + region stay encrypted in
+     *  [AzureCredentials]; this VM only needs the boolean. */
+    private val settingsRepo: SettingsRepositoryUi,
 ) : ViewModel() {
 
     private val _currentDownload = MutableStateFlow<DownloadingVoice?>(null)
     private val _pendingDelete = MutableStateFlow<UiVoiceInfo?>(null)
     private val _error = MutableStateFlow<String?>(null)
+
+    private val azureKeyConfigured = settingsRepo.settings.map { it.azure.isConfigured }
 
     val uiState: StateFlow<VoiceLibraryUiState> = combine(
         voiceManager.installedVoices,
@@ -92,15 +103,35 @@ class VoiceLibraryViewModel @Inject constructor(
         voiceManager.activeVoice,
         voiceFavorites.favoriteIds,
         // Pack the three local mutable sources + collapse-store flipped
-        // set into one combined flow so the outer combine fits in 5 slots.
-        // Quintuple shape: download / pendingDelete / error / flipped.
+        // set + azure-configured bit into one combined flow so the outer
+        // combine fits in 5 slots. The Azure bit lives here rather than
+        // as its own outer slot specifically because adding a 6th outer
+        // slot would push us past kotlinx.coroutines's typed combine
+        // ceiling and force a less-typed Iterable<Flow<*>> path.
         combine(
             _currentDownload.asStateFlow(),
             _pendingDelete.asStateFlow(),
             _error.asStateFlow(),
             voiceLibraryCollapse.flippedKeys,
-        ) { d, p, e, flipped -> CollapsedAndLocal(d, p, e, flipped) },
-    ) { installed, available, active, favIds, locals ->
+            azureKeyConfigured,
+        ) { d, p, e, flipped, azureConfigured ->
+            CollapsedAndLocal(d, p, e, flipped, azureConfigured)
+        },
+    ) { installedFromManager, available, active, favIds, locals ->
+        // PR-4: when an Azure key is configured, project all Azure
+        // catalog entries into the installed bucket so the existing
+        // "tappable iff installed" picker logic activates them. Without
+        // a key, Azure rows stay in availableByEngine and the user
+        // sees them greyed out as "available but not yet downloaded"
+        // — onRowTapped surfaces a friendly "configure key in Settings"
+        // message instead of attempting download() (which would throw).
+        val installed = if (locals.azureConfigured) {
+            installedFromManager + available
+                .filter { it.engineType is EngineType.Azure }
+                .map { it.copy(isInstalled = true) }
+        } else {
+            installedFromManager
+        }
         val installedIds = installed.mapTo(mutableSetOf()) { it.id }
         // Favourites pulls from installed first (preserving the
         // installed-flag) and falls back to the catalog for voices the
@@ -152,24 +183,21 @@ class VoiceLibraryViewModel @Inject constructor(
     }
 
     fun onRowTapped(voice: UiVoiceInfo) {
-        // Azure voices have no downloadable assets and no activation
-        // path until PR-4 (Solara's plan) wires the engine. Showing
-        // them in the picker is intentional — see [VoiceCatalog.azureEntries] —
-        // but tapping must surface a "Coming soon" message rather than
-        // entering download() (which throws by design — VoiceManager
+        // PR-4 (#183) — Azure voices activate when a key is configured;
+        // otherwise the row is greyed out (not isInstalled) and tapping
+        // surfaces a "configure key in Settings" pointer rather than
+        // hitting download() (which throws by design — VoiceManager
         // rejects Azure download attempts so a future regression in
         // this branch can't quietly start hammering Azure for a
         // missing model).
-        //
-        // The friendly error is the right shape for PR-1: users see
-        // the new section and learn it's coming, but no crash, no
-        // surprising download progress bar, no half-baked Settings
-        // detour. PR-3 lands the Settings UI; PR-4 replaces this
-        // branch with `activate(voice.id)`.
         if (voice.engineType is EngineType.Azure) {
-            _error.value =
-                "Azure cloud voices arrive in a follow-up update. " +
-                "(See issue #85.)"
+            if (voice.isInstalled) {
+                activate(voice.id)
+            } else {
+                _error.value =
+                    "Configure your Azure Speech key in " +
+                    "Settings → Cloud voices to use this voice."
+            }
             return
         }
         if (voice.isInstalled) activate(voice.id) else download(voice.id)
@@ -284,6 +312,9 @@ private data class CollapsedAndLocal(
     val pendingDelete: UiVoiceInfo?,
     val error: String?,
     val flipped: Set<String>,
+    /** PR-4 (#183) — projected from `settings.azure.isConfigured`.
+     *  Drives whether Azure rows in the picker are tappable. */
+    val azureConfigured: Boolean,
 )
 
 /** Compute the rendered collapsed-engines set from the persisted

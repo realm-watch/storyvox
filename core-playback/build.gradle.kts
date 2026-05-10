@@ -50,6 +50,10 @@ android {
 
 dependencies {
     implementation(project(":core-data"))
+    // PR-4 (#183) — wires AzureVoiceEngine into EnginePlayer's
+    // generateAudioPCM dispatch table. Pure-JVM module, no AAR; brings
+    // OkHttp + the SSML builder + the engine handle adapter.
+    implementation(project(":source-azure"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)

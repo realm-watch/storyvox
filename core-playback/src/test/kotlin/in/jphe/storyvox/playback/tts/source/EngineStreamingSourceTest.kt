@@ -310,10 +310,22 @@ class EngineStreamingSourceTest {
 
         val first = source.nextChunk()
         assertEquals(0, first?.sentenceIndex)
-        val after = source.bufferHeadroomMs.value
+        // Argus Fix B (#79): headroom no longer drops at nextChunk()
+        // dequeue. The decrement now fires when the consumer calls
+        // decrementHeadroomForChunk(chunk) AFTER AudioTrack has accepted
+        // the bytes — the dequeue itself doesn't change "audio not yet
+        // heard." Verify both the new (no-op-on-take) AND post-fix
+        // (drop-on-decrement) shapes.
+        val afterTake = source.bufferHeadroomMs.value
+        assertEquals(
+            "post-Fix-B: nextChunk does NOT decrement headroom (was $before)",
+            before, afterTake,
+        )
+        source.decrementHeadroomForChunk(first!!)
+        val afterDecrement = source.bufferHeadroomMs.value
         // Headroom should drop by ~1350 ms (1000 ms PCM + 350 ms cadence).
-        assert(after < before - 1_000) {
-            "expected headroom to drop by > 1000 ms after take; was $before → $after"
+        assert(afterDecrement < before - 1_000) {
+            "expected headroom to drop by > 1000 ms after decrementHeadroomForChunk; was $before → $afterDecrement"
         }
 
         source.close()

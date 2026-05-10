@@ -114,6 +114,12 @@ class EnginePlayer @AssistedInject constructor(
     private val modeConfig: PlaybackModeConfig,
     private val voiceTuningConfig: VoiceTuningConfig,
     private val pronunciationDictRepo: PronunciationDictRepository,
+    /** PR-4 (#183) — Azure HD voices BYOK plumbing. The credentials
+     *  store is the gate (no key → can't activate); the engine adapter
+     *  satisfies the same `VoiceEngineHandle` contract Piper/Kokoro
+     *  use, with HTTPS round-trips replacing JNI calls. */
+    private val azureCredentials: `in`.jphe.storyvox.source.azure.AzureCredentials,
+    private val azureVoiceEngine: `in`.jphe.storyvox.source.azure.AzureVoiceEngine,
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
 
     @AssistedFactory
@@ -590,21 +596,23 @@ class EnginePlayer @AssistedInject constructor(
                             ?: "Error: load returned null"
                     }
                     is EngineType.Azure -> {
-                        // Cloud voice — no model to load. PR-4 (Solara's
-                        // plan) replaces this guard with the
-                        // AzureVoiceEngine activation path: credentials
-                        // check + optional voices/list verify + straight
-                        // to startPlaybackPipeline. PR-1+2 wire the type
-                        // and the synthesis client; PR-4 wires the
-                        // activation. Until PR-4 lands, the picker UI
-                        // greys Azure rows out (they're not "installed"
-                        // — see VoiceManager.installedVoices) so this
-                        // branch should be unreachable. If we hit it, a
-                        // catalog or filter regression has let an Azure
-                        // entry through to playback before its time.
-                        error("Azure voice activation arrives in PR-4 (#85). " +
-                            "Reaching this branch means a non-Azure-aware " +
-                            "code path made an Azure voice selectable.")
+                        // PR-4 (#183) — cloud voice activation. Nothing
+                        // to load JNI-side; the "model" is the remote
+                        // synthesis endpoint. Credentials gate is the
+                        // only check we run here. The voices/list
+                        // verify ping that PR-3's Test-connection
+                        // button uses is *not* run here — synthesis
+                        // itself will surface 401 on a bad key, and
+                        // we don't want to add an extra HTTP round
+                        // trip to every chapter start. PR-5's error
+                        // handling pass elevates synth failures to
+                        // typed PlaybackState errors.
+                        if (!azureCredentials.isConfigured) {
+                            "Error: Azure key not configured. " +
+                                "Open Settings → Cloud voices to paste a key."
+                        } else {
+                            "Success"
+                        }
                     }
                 }
             }
@@ -669,6 +677,7 @@ class EnginePlayer @AssistedInject constructor(
         val engineType = activeEngineType
         val sampleRate = when (engineType) {
             is EngineType.Kokoro -> KokoroEngine.getInstance().sampleRate
+            is EngineType.Azure -> azureVoiceEngine.sampleRate
             else -> VoiceEngine.getInstance().sampleRate
         }.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
         val track = createAudioTrack(sampleRate)
@@ -946,6 +955,7 @@ class EnginePlayer @AssistedInject constructor(
         object : EngineStreamingSource.VoiceEngineHandle {
             override val sampleRate: Int = when (engineType) {
                 is EngineType.Kokoro -> KokoroEngine.getInstance().sampleRate
+                is EngineType.Azure -> azureVoiceEngine.sampleRate
                 else -> VoiceEngine.getInstance().sampleRate
             }.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
 
@@ -954,6 +964,8 @@ class EnginePlayer @AssistedInject constructor(
                 return when (engineType) {
                     is EngineType.Kokoro -> KokoroEngine.getInstance()
                         .generateAudioPCM(text, speed, pitch)
+                    is EngineType.Azure -> azureVoiceEngine
+                        .synthesize(text, engineType.voiceName, speed, pitch)
                     else -> VoiceEngine.getInstance()
                         .generateAudioPCM(text, speed, pitch)
                 }

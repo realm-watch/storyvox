@@ -1,6 +1,5 @@
 package `in`.jphe.storyvox.source.azure
 
-import `in`.jphe.storyvox.playback.voice.EngineType
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -52,7 +51,7 @@ class AzureVoiceEngineTest {
 
         val pcm = engine.synthesize(
             text = "Hello.",
-            engineType = EngineType.Azure("en-US-AvaDragonHDLatestNeural", "eastus"),
+            voiceName = "en-US-AvaDragonHDLatestNeural",
             speed = 1.0f,
             pitch = 1.0f,
         )
@@ -69,14 +68,14 @@ class AzureVoiceEngineTest {
 
         engine.synthesize(
             text = "x",
-            engineType = EngineType.Azure("en-US-AndrewDragonHDLatestNeural", "westus2"),
+            voiceName = "en-US-AndrewDragonHDLatestNeural",
             speed = 1.0f,
             pitch = 1.0f,
         )
 
         val ssml = client.captured.single()
         assertEquals(
-            "voice tag matches engineType.voiceName",
+            "voice tag matches voiceName arg",
             true,
             ssml.contains("name=\"en-US-AndrewDragonHDLatestNeural\""),
         )
@@ -89,7 +88,7 @@ class AzureVoiceEngineTest {
 
         val pcm = engine.synthesize(
             text = "   ",
-            engineType = EngineType.Azure("v", "eastus"),
+            voiceName = "v",
             speed = 1.0f,
             pitch = 1.0f,
         )
@@ -105,7 +104,7 @@ class AzureVoiceEngineTest {
 
         val pcm = engine.synthesize(
             text = "Hello.",
-            engineType = EngineType.Azure("v", "eastus"),
+            voiceName = "v",
             speed = 1.0f,
             pitch = 1.0f,
         )
@@ -123,7 +122,7 @@ class AzureVoiceEngineTest {
 
         val pcm = engine.synthesize(
             text = "x",
-            engineType = EngineType.Azure("v", "eastus"),
+            voiceName = "v",
             speed = 1.0f,
             pitch = 1.0f,
         )
@@ -142,7 +141,7 @@ class AzureVoiceEngineTest {
 
         val pcm = engine.synthesize(
             text = "x",
-            engineType = EngineType.Azure("v", "eastus"),
+            voiceName = "v",
             speed = 1.0f,
             pitch = 1.0f,
         )
@@ -159,41 +158,12 @@ class AzureVoiceEngineTest {
 
         val pcm = engine.synthesize(
             text = "x",
-            engineType = EngineType.Azure("v", "eastus"),
+            voiceName = "v",
             speed = 1.0f,
             pitch = 1.0f,
         )
 
         assertNull(pcm)
-    }
-
-    @Test
-    fun `asEngineHandle exposes the right sample rate`() {
-        val client = RecordingClient()
-        val engine = AzureVoiceEngine(client, creds(configured = true))
-        val handle = engine.asEngineHandle(
-            EngineType.Azure("v", "eastus"),
-        )
-
-        assertEquals(AzureSpeechClient.SAMPLE_RATE_HZ, handle.sampleRate)
-    }
-
-    @Test
-    fun `asEngineHandle generateAudioPCM delegates to synthesize`() {
-        val client = RecordingClient(response = byteArrayOf(0x42))
-        val engine = AzureVoiceEngine(client, creds(configured = true))
-        val handle = engine.asEngineHandle(
-            EngineType.Azure("en-US-JennyMultilingualNeural", "eastus"),
-        )
-
-        val pcm = handle.generateAudioPCM("hi", 1.0f, 1.0f)
-
-        assertArrayEquals(byteArrayOf(0x42), pcm)
-        val ssml = client.captured.single()
-        assertEquals(
-            true,
-            ssml.contains("name=\"en-US-JennyMultilingualNeural\""),
-        )
     }
 
     @Test

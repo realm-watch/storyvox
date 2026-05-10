@@ -1,8 +1,6 @@
 package `in`.jphe.storyvox.source.azure
 
 import android.util.Log
-import `in`.jphe.storyvox.playback.tts.source.EngineStreamingSource
-import `in`.jphe.storyvox.playback.voice.EngineType
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -65,18 +63,21 @@ open class AzureVoiceEngine @Inject constructor(
      *   offline-fallback path.
      *
      * @param text the sentence to synthesize.
-     * @param engineType the active [EngineType.Azure] descriptor.
-     *                   The voice name comes from here, not from the
-     *                   credentials store; the credentials store
-     *                   knows region+key, but voice is a per-render
-     *                   choice (the user can voice-swap between Azure
-     *                   voices without re-pasting the key).
+     * @param voiceName the Azure voice id (e.g.
+     *                  `en-US-AvaDragonHDLatestNeural`). Surfaced
+     *                  verbatim in the SSML `<voice name=...>` attr.
+     *                  Pre-PR-4 this was an `EngineType.Azure`
+     *                  descriptor; PR-4 unwraps to the raw String
+     *                  because :source-azure can no longer depend on
+     *                  :core-playback (where EngineType lives) without
+     *                  introducing a Gradle dep cycle. Region + key
+     *                  still come from [credentials].
      * @param speed   storyvox speed multiplier; mapped to SSML rate.
      * @param pitch   storyvox pitch multiplier; mapped to SSML pitch.
      */
     open fun synthesize(
         text: String,
-        engineType: EngineType.Azure,
+        voiceName: String,
         speed: Float,
         pitch: Float,
     ): ByteArray? {
@@ -87,7 +88,7 @@ open class AzureVoiceEngine @Inject constructor(
         }
         val ssml = AzureSsmlBuilder.build(
             text = text,
-            voiceName = engineType.voiceName,
+            voiceName = voiceName,
             speed = speed,
             pitch = pitch,
         )
@@ -103,28 +104,12 @@ open class AzureVoiceEngine @Inject constructor(
         }
     }
 
-    /**
-     * Hot-swap-friendly view of this engine as the
-     * [EngineStreamingSource.VoiceEngineHandle] the existing producer
-     * loop wraps. Captures [engineType] at handle-construction time;
-     * [EnginePlayer.startPlaybackPipeline] reconstructs the handle on
-     * voice swap, so the captured engineType always matches the
-     * pipeline's current voice.
-     *
-     * **Currently unused.** PR-4 calls this from
-     * `EnginePlayer.activeVoiceEngineHandle(EngineType.Azure)`. We
-     * ship the adapter in PR-2 so PR-4 is a one-line change to the
-     * `when` block; the seam stays test-friendly here.
-     */
-    fun asEngineHandle(engineType: EngineType.Azure): EngineStreamingSource.VoiceEngineHandle =
-        object : EngineStreamingSource.VoiceEngineHandle {
-            override val sampleRate: Int = this@AzureVoiceEngine.sampleRate
-            override fun generateAudioPCM(
-                text: String,
-                speed: Float,
-                pitch: Float,
-            ): ByteArray? = synthesize(text, engineType, speed, pitch)
-        }
+    // 2026-05-09 (PR-4): the `asEngineHandle(...)` adapter was here
+    // pre-PR-4 to give EnginePlayer a one-liner switch. PR-4 inlines
+    // the adapter directly in EnginePlayer.activeVoiceEngineHandle's
+    // object literal so :source-azure no longer needs a reverse dep
+    // on :core-playback (which would create a Gradle cycle now that
+    // :core-playback depends on :source-azure for the engine wiring).
 
     private companion object {
         const val TAG = "AzureVoiceEngine"

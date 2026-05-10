@@ -47,12 +47,17 @@ dependencies {
     // :core-data in as a dep keeps :source-azure single-purpose
     // (synthesize SSML → PCM) without re-binding crypto.
     implementation(project(":core-data"))
-    // VoiceEngineHandle interface that AzureVoiceEngine satisfies — that's
-    // the exact seam EngineStreamingSource in :core-playback already uses
-    // for Piper + Kokoro. Wiring AzureVoiceEngine through that same
-    // interface means PR-4 (engine activation) is a one-line switch in
-    // EnginePlayer.activeVoiceEngineHandle, no new contract.
-    implementation(project(":core-playback"))
+    // PR-4 (#183) note: pre-PR-4 this module also depended on
+    // :core-playback so AzureVoiceEngine could expose an
+    // EngineStreamingSource.VoiceEngineHandle adapter. With PR-4
+    // wiring AzureVoiceEngine into EnginePlayer.activeVoiceEngineHandle
+    // directly via an object literal, the adapter became dead code AND
+    // :core-playback's reverse dependency on :source-azure introduced
+    // a cycle. Dropping the dep here breaks the cycle; the adapter's
+    // shape lives in EnginePlayer's `is EngineType.Azure ->` branch
+    // instead. If a future PR needs the adapter again, lift
+    // VoiceEngineHandle into :core-data (a leaf both modules depend on)
+    // before re-adding the dep.
 
     implementation(libs.bundles.coroutines)
     implementation(libs.okhttp)
