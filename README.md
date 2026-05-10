@@ -5,27 +5,30 @@
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-b88746.svg)](LICENSE)
 [![Built by dream-team](https://img.shields.io/badge/built%20by-dream--team-7d5fff.svg)](#how-it-was-built)
 
-**A neural-voice audiobook player for serial fiction.**
-Stream chapters from [Royal Road](https://royalroad.com) and [GitHub](https://github.com/), read aloud by an offline neural TTS engine. A hybrid reader/audiobook view highlights the spoken sentence in brass as you listen. Built for Android phones, tablets, and Wear OS.
+**A neural-voice audiobook player for any text you have.**
+Stream chapters from [Royal Road](https://royalroad.com), [GitHub](https://github.com/), an [Outline](https://www.getoutline.com) wiki, an RSS / Atom feed, a [Memory Palace](https://github.com/jphein/mempalace) you host yourself, or a folder of EPUB files on your device — read aloud by an offline neural TTS engine. A hybrid reader/audiobook view highlights the spoken sentence in brass as you listen. Built for Android phones, tablets, and Wear OS.
 
 <p align="center">
   <img src="docs/screenshots/03-reader.png" width="320" alt="storyvox reader playing The Archmage Coefficient" />
 </p>
 
-> **v0.4.55** — three fiction sources, AI chat per fiction across seven LLM providers, GitHub OAuth, Memory Palace integration, Settings redesign (8 sections), shake-to-extend sleep timer, backend on/off toggles. GPL-3.0 (downstream of the engine, not a posture choice — see [License](#license)).
+> **v0.4.83** — six fiction sources (Royal Road, GitHub, RSS, EPUB, Outline, Memory Palace), Azure HD voices as an optional cloud TTS backend (BYOK), Tier 3 multi-engine parallel synthesis (1–8 engines × N threads each), smart-resume CTA, AI chat per fiction across seven LLM providers, GitHub OAuth, Settings redesign (8 sections), shake-to-extend sleep timer. GPL-3.0 (downstream of the engine, not a posture choice — see [License](#license)).
 
 ---
 
 ## What it does
 
-- **Three fiction sources, side by side.** Browse [Royal Road](https://royalroad.com) with the full filter set (tags include/exclude, status, type, length, rating, content warnings, sort), browse fiction repos on GitHub via the curated [storyvox-registry](https://github.com/jphein/storyvox-registry) plus live `/search/repositories` results, or browse a [Memory Palace](https://github.com/jphein/mempalace) you host yourself. Each backend has its own on/off toggle in Settings.
+- **Six fiction sources, side by side.** Browse [Royal Road](https://royalroad.com) with the full filter set (tags include/exclude, status, type, length, rating, content warnings, sort); browse fiction repos on GitHub via the curated [storyvox-registry](https://github.com/jphein/storyvox-registry) plus live `/search/repositories` results; subscribe to any **RSS / Atom feed** with a managed suggested-feeds list from [storyvox-feeds](https://github.com/jphein/storyvox-feeds); pull articles from a self-hosted **[Outline](https://www.getoutline.com)** wiki; mount a **[Memory Palace](https://github.com/jphein/mempalace)** you host yourself; or open **local EPUB files** from any folder via the system file picker. Each backend has its own on/off toggle in Settings.
 - **Plays chapters as audiobooks** through an in-process neural TTS engine. Two voice families ship: [Piper](https://github.com/rhasspy/piper) (compact, ~14–30 MB) and [Kokoro](https://github.com/hexgrad/kokoro) (multi-speaker, ~330 MB). Voice models download on demand from `voices-v2`; nothing is bundled in the APK. No cloud, no API keys, no per-character billing.
+- **Optional cloud voices** — bring-your-own-key [Azure Cognitive Services HD voices](https://learn.microsoft.com/azure/ai-services/speech-service/text-to-speech) for studio-grade narration on slow devices. Offline fallback to the local engine if your key fails or the network drops. Azure is opt-in, never required, never billed by storyvox.
+- **Tier 3 multi-engine parallel synthesis.** Run 1–8 VoxSherpa engine instances side-by-side, each with its own thread pool, so a single sentence's chunks render in parallel and the next sentence is already queued before the current one finishes. Twin sliders in **Settings → Performance** (Engines, Threads/engine) let you tune for your CPU. The producer pins to a dedicated `URGENT_AUDIO` thread to keep audio scheduling honest under load.
 - **Highlights the current sentence** in brass as the engine speaks. Swipe between audiobook view (cover, scrubber, transport) and reader view (chapter text). The highlight glides between sentences to match the read-aloud rhythm.
 - **Auto-advances** between chapters. Eager-downloads ahead so the next chapter is ready when the current ends. PCM cache buffering keeps playback smooth when synthesis falls behind — the player pauses, refills, resumes without a glitch.
 - **AI chat per fiction.** Per-book chat sessions across seven LLM providers (Claude direct, Anthropic Teams via OAuth, OpenAI, Vertex, Bedrock, Foundry, Ollama) with grounding controls — feed the AI the current sentence, the entire chapter, or the entire book so far. Long-press a word to ask "Who is X?". AI-generated chapter recaps you can read aloud through the same TTS pipeline.
 - **GitHub sign-in via OAuth Device Flow** (no API key paste). Lifts the anon 60 req/hr cap to 5,000, unlocks "My Repos" / "Starred" / "Gists" tabs in Browse, and (opt-in) private-repo access for treating private repos as your personal book library.
 - **Voice library with tiers and favorites.** Engine-grouped picker, star toggles for the voices you keep coming back to, and a Starred surface that floats them to the top.
 - **Sleep timer** with 15/30/45/60-minute presets, an "end of chapter" mode, a countdown pulse as time runs out, and shake-to-extend during the fade-out tail (#150).
+- **Smart-resume CTA** — the Library "Resume" button respects your last paused/playing intent so it never auto-plays at you when you opened the app to *read*.
 - **Library + Follows tabs** with sign-in via WebView (your Royal Road follow list syncs into the app).
 - **Infinite-scroll Browse** across every tab.
 - **Cheap polling for new chapters.** GitHub-sourced fictions watch the repo's HEAD SHA; the manifest is only re-scanned when something changes — one HTTP request per fiction per check.
@@ -56,9 +59,11 @@ Stream chapters from [Royal Road](https://royalroad.com) and [GitHub](https://gi
 
 ## TTS engine
 
-storyvox links the TTS engine in-process via the [VoxSherpa-TTS](https://github.com/jphein/VoxSherpa-TTS) `:engine-lib` AAR (published to JitPack). That AAR re-projects [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) inference plus the Piper and Kokoro wrappers into a single dependency. We bypass Android's `TextToSpeech` framework entirely, manage our own `AudioTrack` with a fat buffer, and pipeline next-sentence generation against current playback. No second APK, no install gate, no engine-binding handshake — synthesis runs in storyvox's own process.
+storyvox links a local TTS engine in-process via the [VoxSherpa-TTS](https://github.com/jphein/VoxSherpa-TTS) `:engine-lib` AAR (published to JitPack). That AAR re-projects [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) inference plus the Piper and Kokoro wrappers into a single dependency. We bypass Android's `TextToSpeech` framework entirely, manage our own `AudioTrack` with a fat buffer, and pipeline next-sentence generation against current playback. No second APK, no install gate, no engine-binding handshake — synthesis runs in storyvox's own process.
 
-Voice model weights are downloaded on demand by `VoiceManager` from the `voices-v2` GitHub release; the in-app picker shows what's installed and what's available. See [`docs/VOICES.md`](docs/VOICES.md) for the catalog and refresh workflow.
+For users who want studio-grade narration on slow devices, **Azure Cognitive Services HD voices** are wired in as an optional remote backend (BYOK). Add your key and region in **Settings → Voice & Playback → Azure** and pick from the full Azure HD voice roster. If your key fails or the network drops, storyvox falls back to your selected local voice for the rest of the chapter — playback never just stops on you.
+
+Voice model weights for the local engine are downloaded on demand by `VoiceManager` from the `voices-v2` GitHub release; the in-app picker shows what's installed and what's available. See [`docs/VOICES.md`](docs/VOICES.md) for the catalog and refresh workflow.
 
 ## Install (sideload)
 
@@ -117,39 +122,44 @@ The CI workflow (`.github/workflows/android.yml`) shows the canonical build step
        │       │  :feature            │
        │       │  Library / Follows / │
        │       │  Browse / Reader /   │
-       │       │  Detail / Settings   │
-       │       └──────┬─────┬─────────┘
-       │              │     │
-       ▼              ▼     ▼
-┌────────────┐  ┌─────────────────┐  ┌───────────────┐
-│ :core-data │  │ :core-playback  │  │  :core-ui     │
-│  Room +    │  │  EnginePlayer + │  │  Library      │
-│  repos +   │  │  PcmSource +    │  │  Nocturne     │
-│  Fiction   │  │  VoiceManager + │  │  theme +      │
-│  Source    │  │  SentenceTracker│  │  components   │
-│  Map       │  │  (in-proc TTS)  │  │               │
-└─────┬──────┘  └────────┬────────┘  └───────────────┘
-      │                  │
-      ▼                  │ JitPack: VoxSherpa-TTS :engine-lib
-┌──────────────────────┐ │ (Piper + Kokoro + sherpa-onnx)
-│ :source-royalroad    │ │
-│  Cloudflare-aware    │ │
-│  fetch, parsers,     │ │
-│  login WebView,      │ │
-│  honeypot filter     │ │
-└──────────────────────┘ │
-┌──────────────────────┐ │
-│ :source-github       │ │
-│  GitHub API client,  │ │
-│  book.toml +         │ │
-│  storyvox.json,      │ │
-│  commonmark renderer │ │
-└──────────────────────┘ │
+       │       │  Detail / Settings / │
+       │       │  AI Chat             │
+       │       └──┬──────┬─────┬──────┘
+       │          │      │     │
+       ▼          ▼      ▼     ▼
+┌────────────┐ ┌─────────────┐ ┌───────────────┐ ┌───────────────┐
+│ :core-data │ │ :core-      │ │  :core-llm    │ │  :core-ui     │
+│  Room +    │ │  playback   │ │  Provider     │ │  Library      │
+│  repos +   │ │  EnginePlyr │ │  matrix       │ │  Nocturne     │
+│  Fiction   │ │  + PcmCache │ │  (Claude /    │ │  theme +      │
+│  Source    │ │  + Voice    │ │   Teams /     │ │  components   │
+│  Map       │ │  Manager +  │ │   OpenAI /    │ │               │
+│            │ │  Sentence   │ │   Vertex /    │ │               │
+│            │ │  Tracker    │ │   Bedrock /   │ │               │
+│            │ │  (in-proc + │ │   Foundry /   │ │               │
+│            │ │   Azure)    │ │   Ollama)     │ │               │
+└─────┬──────┘ └──────┬──────┘ └───────────────┘ └───────────────┘
+      │               │
+      ▼               │ JitPack: VoxSherpa-TTS :engine-lib
+┌──────────────────────┐  (Piper + Kokoro + sherpa-onnx, in-process)
+│ Fiction sources      │
+│ ──────────────────── │
+│ :source-royalroad    │  Cloudflare-aware fetch, login WebView
+│ :source-github       │  GitHub API + book.toml + commonmark
+│ :source-rss          │  RSS / Atom + storyvox-feeds registry
+│ :source-epub         │  SAF folder picker + OPF parser
+│ :source-outline      │  Outline wiki API
+│ :source-mempalace    │  LAN-only MemPalace daemon
+│                      │
+│ TTS backends         │
+│ ──────────────────── │
+│ :source-azure        │  Azure Cognitive Services HD (BYOK, remote)
+└──────────────────────┘
                          ▼
                    (audio out)
 ```
 
-Eight Gradle modules. Sources implement an interface declared in `:core-data` and bind into `Map<String, FictionSource>` via Hilt `@IntoMap @StringKey`. The playback layer is independent of the UI; the engine library is a single transitive dep on `:core-playback`.
+Thirteen Gradle modules. Fiction sources and TTS backends both implement small interfaces declared in `:core-data` / `:core-playback` and bind into `Map<String, …>` registries via Hilt `@IntoMap @StringKey`. The playback layer is independent of the UI; the local engine library is a single transitive dep on `:core-playback`. AI chat lives in its own `:core-llm` module so the TTS app doesn't drag in HTTP clients for providers it isn't using at runtime.
 
 Design specs (each shipped or in flight) read as a thread:
 
@@ -172,30 +182,34 @@ Per-dreamer detail specs live in `scratch/dreamers/`.
 | DI | Hilt (KSP) |
 | Storage | Room, DataStore Preferences, EncryptedSharedPreferences |
 | Networking | OkHttp + Jsoup (RR is HTML, not JSON) + commonmark (GitHub markdown) |
-| Playback | Media3 SimpleBasePlayer + custom AudioTrack pipeline |
-| TTS | VoxSherpa-TTS engine-lib (Piper + Kokoro on sherpa-onnx) — in-process |
+| Playback | Media3 SimpleBasePlayer + custom AudioTrack pipeline + Tier 3 multi-engine producer |
+| TTS (local) | VoxSherpa-TTS engine-lib (Piper + Kokoro on sherpa-onnx) — in-process |
+| TTS (cloud, optional) | Azure Cognitive Services HD voices (BYOK) with offline fallback |
 | Async | Coroutines + Flow |
 | Wear OS | Compose for Wear, `play-services-wearable` |
 | CI | GitHub Actions |
 
 ## Roadmap
 
-The v0.4 line shipped 50+ point releases — the engine, three fiction sources, AI chat, OAuth, the Settings redesign, and the perf trade space are all in. The next wave is the v0.5 line: more backends, better recall, smarter playback.
+The v0.4 line shipped 80+ point releases — the engine, six fiction sources, AI chat, OAuth, the Settings redesign, Azure HD as a remote TTS option, and the Tier 3 perf lane are all in. The next wave is the v0.5 line: better recall, more shaping of the read-aloud, and the long-promised knowledge graph.
 
-**Shipped in v0.4 (since v0.4.31):**
-- **AI chat per fiction.** Seven-provider matrix (Claude, Anthropic Teams OAuth, OpenAI, Vertex, Bedrock, Foundry, Ollama) with grounding controls, system-prompt context tuning, "Who is X?" word lookups, and AI-generated chapter recaps that read aloud through TTS.
-- **GitHub OAuth (Device Flow).** "My Repos", "Starred", "Gists" tabs in Browse. Optional private-repo toggle for treating private repos as your personal book library. Public/Private/Both filter on the Repo tab.
-- **Memory Palace as fiction source.** Hosted MemPalace mounts as a third Browse backend; diary entries and KG timelines render as chapters. Per-wing filter dropdown.
-- **Settings redesign.** 8 sections in touch-frequency order with brass icons. Saga's row composables (SettingsGroupCard, SettingsSwitchRow, SettingsSliderBlock, SettingsSegmentedBlock, SettingsLinkRow) are the unified vocabulary across the screen.
-- **Backend on/off toggles.** Three switches in Library & Sync hide individual backends from the Browse picker.
-- **Sleep timer shake-to-extend.** During the 10s fade tail, three sharp shakes re-arm the timer for 15 minutes (#150).
+**Shipped in v0.4 (since v0.4.55):**
+- **Azure HD voices (BYOK).** Optional cloud TTS via Azure Cognitive Services. Settings UI ([#182](https://github.com/jphein/storyvox/issues/182)), engine wiring ([#183](https://github.com/jphein/storyvox/issues/183)), error handling and retries ([#184](https://github.com/jphein/storyvox/issues/184)), offline fallback ([#185](https://github.com/jphein/storyvox/issues/185)), full voice roster + cache eviction priority ([#186](https://github.com/jphein/storyvox/issues/186)). Bring your own key — never billed by storyvox.
+- **Tier 3 multi-engine parallel synthesis.** Twin sliders for Engines × Threads/engine in Settings → Performance, producer pinned to a dedicated `URGENT_AUDIO` thread, VoxSherpa multi-core synced with upstream main.
+- **EPUB import** ([#235](https://github.com/jphein/storyvox/issues/235)). Folder picker via Storage Access Framework + an OPF parser; any folder of EPUB files becomes a Browse tab.
+- **RSS / Atom feeds** ([#236](https://github.com/jphein/storyvox/issues/236)). Subscribe to any feed; suggested feeds curated in [storyvox-feeds](https://github.com/jphein/storyvox-feeds) ([#246](https://github.com/jphein/storyvox/issues/246)).
+- **Outline self-hosted-wiki backend** ([#245](https://github.com/jphein/storyvox/issues/245)). Treat your Outline collections as fictions, articles as chapters.
+- **Smart-resume CTA.** Library Resume button respects last paused/playing intent — no more surprise auto-play.
+- **AI Sessions surface** ([#218](https://github.com/jphein/storyvox/issues/218)) — Settings → AI → Sessions to review past chats.
+- **AI read-aloud per assistant turn** ([#214](https://github.com/jphein/storyvox/issues/214)) — speak any chat reply through the same TTS pipeline.
+- **Per-voice speed and pitch defaults** ([#195](https://github.com/jphein/storyvox/issues/195)).
+- **Punctuation cadence drives Kokoro `silence_scale`** ([#196](https://github.com/jphein/storyvox/issues/196)) — one slider, two engines, consistent feel.
+- **Stable debug-keystore signing** — clean upgrades over older debug builds without uninstall.
 
 **v0.5 candidates:**
-- **Notion as fourth fiction backend** ([#233](https://github.com/jphein/storyvox/issues/233)).
-- **Azure HD voices (BYOK).** Cloud TTS for premium quality on slow devices ([#182–#186](https://github.com/jphein/storyvox/issues/182)).
-- **Sessions surface.** Settings → AI → Sessions: review past chats and recap history ([#218](https://github.com/jphein/storyvox/issues/218)).
-- **AI chat voice read-back.** TTS for assistant turns ([#214](https://github.com/jphein/storyvox/issues/214)).
+- **Notion as a seventh fiction backend** ([#233](https://github.com/jphein/storyvox/issues/233)).
 - **Knowledge graph for fiction.** Per-book Notebook (characters, places, who-said-what) seeding into MemPalace ([#147](https://github.com/jphein/storyvox/issues/147)).
+- **VoxSherpa knob exposure.** Loudness normalization, breath pause, pitch envelope as user-tunable settings ([research draft](docs/superpowers/specs/2026-05-08-voxsherpa-knobs-research.md)).
 - **PCM cache PRs C–H.** Auto-population, settings UI for cache size, graceful fallback ([#86](https://github.com/jphein/storyvox/issues/86)).
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the long-form roadmap and backlog.
@@ -212,9 +226,9 @@ storyvox was built starting May 5, 2026 by JP Hein orchestrating teams of dream-
 
 The v0.4 line landed the in-process VoxSherpa engine, voice library, GitHub fiction source, infinite-scroll browse, motion polish, and the PCM cache filesystem layer. Aurelia owned the perf lane and benched Piper-high "cori" at 0.285× realtime on the target device — the number that justifies the cache work. Bryn shipped Performance Mode A/B toggles. The voice picker grew tiers, stars, and a Starred surface.
 
-The May 8 round was the largest single-day landing yet — 30+ agents in parallel under JP's orchestration. Indigo specced the Settings redesign; Saga is implementing it. Solara specced Azure HD; Ember specced GitHub OAuth; Thalia catalogued every VoxSherpa knob worth exposing. Iris refreshed the README and clarified the GPL-3.0 license posture (downstream obligation, not branding). Calliope chased an auth-cookie race. Briar polished the README you're reading.
+The May 8 round was the largest single-day landing yet — 30+ agents in parallel under JP's orchestration. Indigo specced the Settings redesign; Saga implemented it. Solara specced Azure HD; Ember specced GitHub OAuth; Thalia catalogued every VoxSherpa knob worth exposing. Iris refreshed the README and clarified the GPL-3.0 license posture (downstream obligation, not branding). Calliope chased an auth-cookie race. Briar polished the README you're reading.
 
-Each commit message preserves who did what — `git log` reads as a team retro.
+Through the v0.4.56 → v0.4.83 stretch the dream-team kept landing: Solara's Azure work shipped end-to-end (BYOK Settings → engine wiring → retries → offline fallback → roster + eviction priority); Reeve and Lyra opened the source surface to RSS, EPUB, and Outline; Aurelia cut Tier 3 multi-engine parallel synthesis with twin Engines/Threads sliders; Hazel landed the smart-resume CTA so the Library button stops auto-playing at you. The dream-team retro reads as a thread of small, named contributions — each commit message preserves who did what, and `git log` reads as the credits.
 
 ## License
 
