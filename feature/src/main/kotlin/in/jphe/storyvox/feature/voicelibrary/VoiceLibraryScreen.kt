@@ -485,7 +485,14 @@ private fun VoiceRow(
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             } else MaterialTheme.colorScheme.onSurface,
                             fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
-                            maxLines = 1,
+                            // Issue #263 — Azure variant suffixes (Multilingual /
+                            // Turbo / Studio / HD) fall exactly where the
+                            // 1-line cutoff used to clip on Flip3's 1080px
+                            // inner display, so users couldn't distinguish
+                            // 'Adam Multilingual' from 'Adam Studio'. Allow
+                            // two lines; ellipsis still kicks in past that
+                            // for the rare 30+ char name.
+                            maxLines = 2,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false),
                         )
