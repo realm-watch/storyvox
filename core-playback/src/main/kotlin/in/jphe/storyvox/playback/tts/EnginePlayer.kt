@@ -1311,23 +1311,55 @@ class EnginePlayer @AssistedInject constructor(
      *  on the active engine type and EngineStreamingSource stays
      *  test-friendly without depending on VoxSherpa AARs. */
     private fun activeVoiceEngineHandle(engineType: EngineType?): EngineStreamingSource.VoiceEngineHandle =
-        object : EngineStreamingSource.VoiceEngineHandle {
-            override val sampleRate: Int = when (engineType) {
-                is EngineType.Kokoro -> KokoroEngine.getInstance().sampleRate
-                is EngineType.Azure -> azureVoiceEngine.sampleRate
-                else -> VoiceEngine.getInstance().sampleRate
-            }.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
+        when (engineType) {
+            is EngineType.Azure -> azureStreamingHandle(engineType)
+            else -> object : EngineStreamingSource.VoiceEngineHandle {
+                override val sampleRate: Int = when (engineType) {
+                    is EngineType.Kokoro -> KokoroEngine.getInstance().sampleRate
+                    else -> VoiceEngine.getInstance().sampleRate
+                }.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
+
+                override fun generateAudioPCM(text: String, speed: Float, pitch: Float): ByteArray? {
+                    AndroidProcess.setThreadPriority(AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO)
+                    return when (engineType) {
+                        is EngineType.Kokoro -> KokoroEngine.getInstance()
+                            .generateAudioPCM(text, speed, pitch)
+                        else -> VoiceEngine.getInstance()
+                            .generateAudioPCM(text, speed, pitch)
+                    }
+                }
+            }
+        }
+
+    /**
+     * Streaming-capable Azure handle. Implements the streaming
+     * variant so [EngineStreamingSource] can take the
+     * startStreamingSerialProducer path when no Tier 3 secondaries
+     * are wired (i.e. parallelSynthInstances == 1). With secondaries
+     * the parallel path runs the non-streaming generateAudioPCM —
+     * lookahead wins over streaming when both could apply (the user
+     * gets sentences N+1..N+k pre-rendered in parallel; streaming
+     * helps sentence 1 alone).
+     */
+    private fun azureStreamingHandle(
+        engineType: EngineType.Azure,
+    ): EngineStreamingSource.StreamingVoiceEngineHandle =
+        object : EngineStreamingSource.StreamingVoiceEngineHandle {
+            override val sampleRate: Int = azureVoiceEngine.sampleRate
+                .takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
 
             override fun generateAudioPCM(text: String, speed: Float, pitch: Float): ByteArray? {
                 AndroidProcess.setThreadPriority(AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO)
-                return when (engineType) {
-                    is EngineType.Kokoro -> KokoroEngine.getInstance()
-                        .generateAudioPCM(text, speed, pitch)
-                    is EngineType.Azure -> azureVoiceEngine
-                        .synthesize(text, engineType.voiceName, speed, pitch)
-                    else -> VoiceEngine.getInstance()
-                        .generateAudioPCM(text, speed, pitch)
-                }
+                return azureVoiceEngine.synthesize(text, engineType.voiceName, speed, pitch)
+            }
+
+            override fun generateAudioPCMStream(
+                text: String, speed: Float, pitch: Float,
+            ): kotlinx.coroutines.flow.Flow<ByteArray> {
+                AndroidProcess.setThreadPriority(AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO)
+                return azureVoiceEngine.synthesizeStreaming(
+                    text, engineType.voiceName, speed, pitch,
+                )
             }
         }
 
