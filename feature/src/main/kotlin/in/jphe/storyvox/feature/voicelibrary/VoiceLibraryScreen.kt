@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ExpandLess
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -76,6 +78,21 @@ fun VoiceLibraryScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Voice library") },
+                // Issues #275 + #276 — all settings sub-screens get a
+                // back arrow on the left of the TopAppBar, matching the
+                // Sessions screen pattern (which is already canonical).
+                // Voice library had a TopAppBar but no navigationIcon;
+                // Pronunciation had no TopAppBar at all and a bare
+                // 'Back' BrassButton mid-screen — three different
+                // patterns for the same role across three screens.
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                        )
+                    }
+                },
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
