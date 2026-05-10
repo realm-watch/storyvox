@@ -1,5 +1,6 @@
 package `in`.jphe.storyvox.source.azure
 
+import `in`.jphe.storyvox.data.source.AzureVoiceDescriptor
 import `in`.jphe.storyvox.source.azure.di.AzureHttp
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -253,6 +254,77 @@ open class AzureSpeechClient @Inject constructor(
      */
     open fun voicesList(): Int = withRetry {
         voicesListOnce()
+    }
+
+    /**
+     * Like [voicesList] but parses the response into structured
+     * [AzureVoiceDescriptor]s instead of just counting `{` braces.
+     * Used by the live-roster path that feeds the picker. Same auth /
+     * region handling as [voicesList]; same retry/error taxonomy.
+     *
+     * Returns an empty list rather than throwing on a parse failure —
+     * the caller should surface "no voices in this region" the same
+     * way it does for the no-key case. Network and auth failures
+     * still throw [AzureError] so the caller can distinguish "your
+     * key is bad" from "your region has no voices".
+     */
+    open fun voicesListDetailed(): List<AzureVoiceDescriptor> = withRetry {
+        voicesListDetailedOnce()
+    }
+
+    private fun voicesListDetailedOnce(): List<AzureVoiceDescriptor> {
+        val key = credentials.key()
+            ?: throw AzureError.AuthFailed("No Azure subscription key configured")
+        val regionId = credentials.regionId()
+
+        val request = Request.Builder()
+            .url(voicesListUrlFor(regionId))
+            .header(HEADER_KEY, key)
+            .header(HEADER_USER_AGENT, USER_AGENT)
+            .get()
+            .build()
+
+        val response = try {
+            http.newCall(request).execute()
+        } catch (e: IOException) {
+            throw AzureError.NetworkError(e)
+        }
+
+        return response.use { resp ->
+            when {
+                resp.isSuccessful -> {
+                    val body = resp.body?.string().orEmpty()
+                    AzureVoiceListParser.parse(body)
+                }
+                resp.code == 401 || resp.code == 403 -> {
+                    throw AzureError.AuthFailed(
+                        "Azure rejected key (HTTP ${resp.code}): " +
+                            (resp.message.takeIf { it.isNotBlank() }
+                                ?: "authentication failed"),
+                    )
+                }
+                resp.code in 400..499 -> {
+                    val excerpt = resp.body?.string()?.take(256) ?: resp.message
+                    throw AzureError.BadRequest(
+                        resp.code,
+                        "Azure rejected request (HTTP ${resp.code}): $excerpt",
+                    )
+                }
+                resp.code in 500..599 -> {
+                    throw AzureError.ServerError(
+                        resp.code,
+                        "Azure server error (HTTP ${resp.code}): " +
+                            (resp.message.takeIf { it.isNotBlank() } ?: "unknown"),
+                    )
+                }
+                else -> {
+                    throw AzureError.ServerError(
+                        resp.code,
+                        "Unexpected HTTP ${resp.code} from Azure",
+                    )
+                }
+            }
+        }
     }
 
     private fun voicesListOnce(): Int {

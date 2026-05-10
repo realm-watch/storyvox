@@ -49,6 +49,7 @@ import `in`.jphe.storyvox.source.azure.AzureCredentials
 import `in`.jphe.storyvox.source.azure.AzureError
 import `in`.jphe.storyvox.source.azure.AzureRegion
 import `in`.jphe.storyvox.source.azure.AzureSpeechClient
+import `in`.jphe.storyvox.source.azure.AzureVoiceRoster
 import `in`.jphe.storyvox.feature.api.UiSettings
 import `in`.jphe.storyvox.feature.api.UiSigil
 import `in`.jphe.storyvox.source.github.auth.GitHubAuthRepository
@@ -282,6 +283,7 @@ class SettingsRepositoryUiImpl(
     private val suggestedFeedsRegistry: SuggestedFeedsRegistry,
     private val azureCreds: AzureCredentials,
     private val azureClient: AzureSpeechClient,
+    private val azureRoster: AzureVoiceRoster,
 ) : SettingsRepositoryUi,
     PlaybackBufferConfig,
     PlaybackModeConfig,
@@ -312,10 +314,11 @@ class SettingsRepositoryUiImpl(
         suggestedFeedsRegistry: SuggestedFeedsRegistry,
         azureCreds: AzureCredentials,
         azureClient: AzureSpeechClient,
+        azureRoster: AzureVoiceRoster,
     ) : this(
         context.settingsDataStore, auth, hydrator,
         palaceConfig, palaceApi, llmCreds, githubAuth, teamsAuth, rssConfig, epubConfig,
-        outlineConfig, suggestedFeedsRegistry, azureCreds, azureClient,
+        outlineConfig, suggestedFeedsRegistry, azureCreds, azureClient, azureRoster,
     )
 
     /**
@@ -909,21 +912,37 @@ class SettingsRepositoryUiImpl(
     // ── Azure Speech Services BYOK (#182, PR-3) ────────────────────
 
     override suspend fun setAzureKey(key: String?) {
-        if (key.isNullOrBlank()) azureCreds.clear() else azureCreds.setKey(key.trim())
         // Don't also wipe the region on a key-only clear — the user may
         // want to re-paste the same region's key. clearAzureCredentials()
-        // is the explicit wipe-both surface.
+        // is the explicit wipe-both surface. The bug fixed in v0.4.84:
+        // pre-fix this called azureCreds.clear() (which wiped both),
+        // contradicting the comment and silently bouncing region back
+        // to the default mid-paste, so a CTRL+A+DELETE during a UI
+        // re-key flow lost the user's region selection.
+        if (key.isNullOrBlank()) azureCreds.clearKey() else azureCreds.setKey(key.trim())
         azureTick.value = azureTick.value + 1
+        // Live roster needs a refresh: a new key may unlock a different
+        // set of voices than the previous one (different Azure resource,
+        // different SKU, different regional rollout). Async so the
+        // settings setter returns immediately for snappy UI feedback.
+        azureRoster.refreshAsync()
     }
 
     override suspend fun setAzureRegion(regionId: String) {
         azureCreds.setRegion(regionId)
         azureTick.value = azureTick.value + 1
+        // Region change → new roster. eastus carries Dragon HD, westus
+        // doesn't, etc. Async refresh keeps the picker live.
+        azureRoster.refreshAsync()
     }
 
     override suspend fun clearAzureCredentials() {
         azureCreds.clear()
         azureTick.value = azureTick.value + 1
+        // Force the roster to re-evaluate — refresh() will see no key
+        // and clear the cached voice list, collapsing the picker's
+        // Azure section back to "Configure key" empty state.
+        azureRoster.refreshAsync()
     }
 
     override suspend fun setAzureFallbackEnabled(enabled: Boolean) {

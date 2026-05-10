@@ -66,6 +66,7 @@ class SettingsRepositoryVoiceSteadyTest {
             suggestedFeedsRegistry = SuggestedFeedsRegistry(),
             azureCreds = makeFakeAzureCredentials(),
             azureClient = makeFakeAzureClient(),
+            azureRoster = makeFakeAzureRoster(),
         )
     }
 

@@ -23,6 +23,10 @@ enum class AzureRegion(val id: String, val displayName: String) {
     /** US East — cheapest, most-feature-complete (Solara's recommended
      *  default). Paid tier, F0 free tier, and Dragon HD all available. */
     EastUs("eastus", "US East"),
+    /** US East 2 — second-most-feature-complete US region. Same Dragon HD
+     *  coverage as East; Foundry / multi-service Cognitive resources
+     *  often land here. */
+    EastUs2("eastus2", "US East 2"),
     /** US West — Pacific-coast resources land here; same tier coverage
      *  as EastUs in practice. */
     WestUs("westus", "US West"),

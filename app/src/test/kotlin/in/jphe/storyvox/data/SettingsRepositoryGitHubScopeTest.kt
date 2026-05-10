@@ -60,6 +60,7 @@ class SettingsRepositoryGitHubScopeTest {
             suggestedFeedsRegistry = SuggestedFeedsRegistry(),
             azureCreds = makeFakeAzureCredentials(),
             azureClient = makeFakeAzureClient(),
+            azureRoster = makeFakeAzureRoster(),
         )
     }
 

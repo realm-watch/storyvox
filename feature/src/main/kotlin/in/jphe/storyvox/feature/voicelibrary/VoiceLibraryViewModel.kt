@@ -99,7 +99,7 @@ class VoiceLibraryViewModel @Inject constructor(
 
     val uiState: StateFlow<VoiceLibraryUiState> = combine(
         voiceManager.installedVoices,
-        flowOf(voiceManager.availableVoices),
+        voiceManager.availableVoicesFlow,
         voiceManager.activeVoice,
         voiceFavorites.favoriteIds,
         // Pack the three local mutable sources + collapse-store flipped

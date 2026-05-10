@@ -63,6 +63,7 @@ class SettingsRepositoryModesTest {
             suggestedFeedsRegistry = SuggestedFeedsRegistry(),
             azureCreds = makeFakeAzureCredentials(),
             azureClient = makeFakeAzureClient(),
+            azureRoster = makeFakeAzureRoster(),
         )
     }
 

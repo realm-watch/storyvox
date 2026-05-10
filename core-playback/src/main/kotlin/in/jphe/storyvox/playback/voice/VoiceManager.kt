@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.annotation.VisibleForTesting
 import dagger.hilt.android.qualifiers.ApplicationContext
+import `in`.jphe.storyvox.data.source.AzureVoiceProvider
 import java.io.File
 import java.io.IOException
 import javax.inject.Inject
@@ -18,6 +19,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -61,6 +64,14 @@ private object VoiceKeys {
 @Singleton
 class VoiceManager @Inject constructor(
     @ApplicationContext private val context: Context,
+    /**
+     * Live Azure roster — surfaces voices that actually exist in the
+     * user's configured region. Replaces the v0.4.x hardcoded Azure
+     * catalog (which carried wrong Dragon HD names and ignored
+     * region-scoped availability). Empty until the user configures a
+     * key + the first fetch completes.
+     */
+    private val azureVoiceProvider: AzureVoiceProvider,
 ) {
 
     private val store: DataStore<Preferences> = context.voicesSettingsStore
@@ -131,37 +142,61 @@ class VoiceManager @Inject constructor(
         }
     }
 
-    /** Catalog projected as [UiVoiceInfo]. Static — never changes at runtime. */
+    /** Catalog projected as [UiVoiceInfo]. The Piper / Kokoro half is
+     *  static — the Azure half is empty until the live roster fetch
+     *  populates it. Callers that want the live state should use
+     *  [availableVoicesFlow] instead. */
     val availableVoices: List<UiVoiceInfo>
         get() = VoiceCatalog.voices.map { it.toUiVoiceInfo(installed = false) }
+
+    /** Hot Flow of [availableVoices] — combines the static catalog
+     *  with the live Azure roster. Use this when you want the picker
+     *  to react to roster updates (region change, key change,
+     *  refresh). */
+    val availableVoicesFlow: Flow<List<UiVoiceInfo>> = azureVoiceProvider.voices
+        .map { roster ->
+            VoiceCatalog.voicesWithAzure(roster).map { it.toUiVoiceInfo(installed = false) }
+        }
 
     /** Hot Flow of installed voices, derived from the DataStore-backed installed-id set.
      *  All 53 Kokoro speakers report installed once the shared model has been
      *  downloaded — they all share one set of files, the speaker id is just
      *  metadata baked into a generate() call.
      *
+     *  Azure rows are reported installed whenever they're in the live
+     *  roster — there's no per-voice download (the model lives on
+     *  Azure's side), so "available in the roster" IS "installed" for
+     *  picker purposes.
+     *
      *  Reads `_int8`-suffixed legacy IDs through [normalizeId] so users
      *  upgrading from v0.4.5–v0.4.13 don't briefly see "no voices installed"
      *  if the async [migrateInt8VoiceIds] hasn't completed by the time the
      *  first collector observes this Flow. */
-    val installedVoices: Flow<List<UiVoiceInfo>> = store.data.map { prefs ->
-        val installedIds = prefs[VoiceKeys.INSTALLED_IDS].orEmpty().map(::normalizeId).toSet()
-        val kokoroReady = isKokoroSharedModelInstalled()
-        VoiceCatalog.voices
-            .filter { it.id in installedIds || (it.engineType is EngineType.Kokoro && kokoroReady) }
-            .map { it.toUiVoiceInfo(installed = true) }
-    }
+    val installedVoices: Flow<List<UiVoiceInfo>> = store.data
+        .combine(azureVoiceProvider.voices) { prefs, roster ->
+            val installedIds = prefs[VoiceKeys.INSTALLED_IDS].orEmpty().map(::normalizeId).toSet()
+            val kokoroReady = isKokoroSharedModelInstalled()
+            VoiceCatalog.voicesWithAzure(roster)
+                .filter {
+                    it.id in installedIds ||
+                        (it.engineType is EngineType.Kokoro && kokoroReady) ||
+                        it.engineType is EngineType.Azure
+                }
+                .map { it.toUiVoiceInfo(installed = true) }
+        }
 
     /** Hot Flow of the active voice (or null if nothing chosen yet).
      *  Same legacy-ID normalization as [installedVoices]. */
-    val activeVoice: Flow<UiVoiceInfo?> = store.data.map { prefs ->
-        val activeId = prefs[VoiceKeys.ACTIVE_ID]?.let(::normalizeId) ?: return@map null
-        val installed = prefs[VoiceKeys.INSTALLED_IDS].orEmpty().map(::normalizeId).toSet()
-        val entry = VoiceCatalog.byId(activeId) ?: return@map null
-        val isInstalled = activeId in installed ||
-            (entry.engineType is EngineType.Kokoro && isKokoroSharedModelInstalled())
-        entry.toUiVoiceInfo(installed = isInstalled)
-    }
+    val activeVoice: Flow<UiVoiceInfo?> = store.data
+        .combine(azureVoiceProvider.voices) { prefs, roster ->
+            val activeId = prefs[VoiceKeys.ACTIVE_ID]?.let(::normalizeId) ?: return@combine null
+            val installed = prefs[VoiceKeys.INSTALLED_IDS].orEmpty().map(::normalizeId).toSet()
+            val entry = VoiceCatalog.byIdWithAzure(activeId, roster) ?: return@combine null
+            val isInstalled = activeId in installed ||
+                (entry.engineType is EngineType.Kokoro && isKokoroSharedModelInstalled()) ||
+                entry.engineType is EngineType.Azure
+            entry.toUiVoiceInfo(installed = isInstalled)
+        }
 
     /** Strip the historical `_int8` suffix so legacy stored IDs resolve
      *  against the current catalog. Used on every read; the async migration

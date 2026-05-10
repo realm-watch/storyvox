@@ -68,6 +68,7 @@ class SettingsRepositoryPronunciationDictTest {
             suggestedFeedsRegistry = SuggestedFeedsRegistry(),
             azureCreds = makeFakeAzureCredentials(),
             azureClient = makeFakeAzureClient(),
+            azureRoster = makeFakeAzureRoster(),
         )
     }
 

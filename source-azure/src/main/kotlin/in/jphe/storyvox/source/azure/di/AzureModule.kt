@@ -1,9 +1,12 @@
 package `in`.jphe.storyvox.source.azure.di
 
+import dagger.Binds
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import `in`.jphe.storyvox.data.source.AzureVoiceProvider
+import `in`.jphe.storyvox.source.azure.AzureVoiceRoster
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import java.util.concurrent.TimeUnit
@@ -77,4 +80,23 @@ object AzureModule {
             .addInterceptor(logger)
             .build()
     }
+}
+
+/**
+ * Binds [AzureVoiceRoster] (the in-memory live-roster cache) as the
+ * [AzureVoiceProvider] interface that `:core-playback` consumes. The
+ * roster has constructor injection on [AzureSpeechClient] +
+ * [AzureCredentials] so Hilt builds it without further wiring; the
+ * @Binds here just supplies the interface→impl mapping.
+ *
+ * Separate module from [AzureModule] because @Binds requires an
+ * abstract class and AzureModule is an `object` (the @Provides
+ * functions there are state-less so the singleton-object form fits).
+ */
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class AzureBindings {
+    @Binds
+    @Singleton
+    abstract fun bindAzureVoiceProvider(impl: AzureVoiceRoster): AzureVoiceProvider
 }

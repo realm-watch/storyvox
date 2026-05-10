@@ -1,5 +1,7 @@
 package `in`.jphe.storyvox.playback.voice
 
+import `in`.jphe.storyvox.data.source.AzureVoiceDescriptor
+import `in`.jphe.storyvox.data.source.AzureVoiceTier
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -7,19 +9,47 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Catalog-seam tests for the Azure HD voice integration. PR-1 of
- * Solara's Azure spec lands the data-shape changes; this file pins
- * them so a future catalog refactor can't quietly drop the cost
- * field or the Azure entries.
+ * Catalog-seam tests for the Azure HD voice integration.
+ *
+ * Originally these pinned the v0.4.x hardcoded Azure roster against
+ * regression. After the v0.4.84 pivot to live fetch
+ * (AzureVoiceProvider) the static catalog no longer carries Azure
+ * entries — these tests now exercise [VoiceCatalog.azureEntriesFromRoster]
+ * to verify the projection shape (cost field, sizeBytes, ID prefix, etc.)
+ * stays correct against a synthesized roster.
  */
 class AzureCatalogTest {
 
+    private fun sampleRoster(): List<AzureVoiceDescriptor> = listOf(
+        AzureVoiceDescriptor(
+            shortName = "en-US-AriaNeural",
+            displayName = "Aria",
+            locale = "en-US",
+            gender = "Female",
+            tier = AzureVoiceTier.Neural,
+        ),
+        AzureVoiceDescriptor(
+            shortName = "en-US-Ava:DragonHDLatestNeural",
+            displayName = "Ava",
+            locale = "en-US",
+            gender = "Female",
+            tier = AzureVoiceTier.DragonHd,
+        ),
+        AzureVoiceDescriptor(
+            shortName = "en-GB-SoniaNeural",
+            displayName = "Sonia",
+            locale = "en-GB",
+            gender = "Female",
+            tier = AzureVoiceTier.Neural,
+        ),
+    )
+
     @Test
     fun `EngineType Azure equality is structural over voice and region`() {
-        val a = EngineType.Azure("en-US-AvaDragonHDLatestNeural", "eastus")
-        val b = EngineType.Azure("en-US-AvaDragonHDLatestNeural", "eastus")
-        val c = EngineType.Azure("en-US-AvaDragonHDLatestNeural", "westus2")
-        val d = EngineType.Azure("en-US-AndrewDragonHDLatestNeural", "eastus")
+        val a = EngineType.Azure("en-US-Ava:DragonHDLatestNeural", "eastus")
+        val b = EngineType.Azure("en-US-Ava:DragonHDLatestNeural", "eastus")
+        val c = EngineType.Azure("en-US-Ava:DragonHDLatestNeural", "westus2")
+        val d = EngineType.Azure("en-US-Andrew:DragonHDLatestNeural", "eastus")
 
         assertEquals("identical params equal", a, b)
         assertEquals("identical hashCodes", a.hashCode(), b.hashCode())
@@ -28,31 +58,28 @@ class AzureCatalogTest {
     }
 
     @Test
-    fun `Azure entries surface in the catalog`() {
-        val azureEntries = VoiceCatalog.voices.filter { it.engineType is EngineType.Azure }
+    fun `static catalog has no Azure entries — they come from the live roster`() {
+        val staticAzure = VoiceCatalog.voices.filter { it.engineType is EngineType.Azure }
         assertTrue(
-            "at least one Azure voice in the catalog",
-            azureEntries.isNotEmpty(),
-        )
-        // PR-7 (#186) widened from PR-1's ~5 entries to the full
-        // curated roster (~20: Dragon HD set + en-US/GB/AU/IN/CA HD
-        // Neural). Upper bound stays in place to defend against the
-        // "hardcoded curated for v1" decision (open question #5)
-        // silently mushrooming into the full ~400-voice fetch.
-        assertTrue(
-            "curated list stays bounded (≤25 entries)",
-            azureEntries.size <= 25,
+            "static catalog must not include Azure (post live-fetch pivot)",
+            staticAzure.isEmpty(),
         )
     }
 
     @Test
-    fun `Azure entries carry a non-null cost`() {
-        val azureEntries = VoiceCatalog.voices.filter { it.engineType is EngineType.Azure }
-        for (entry in azureEntries) {
+    fun `azureEntriesFromRoster projects descriptors into Azure CatalogEntries`() {
+        val entries = VoiceCatalog.azureEntriesFromRoster(sampleRoster())
+        assertEquals("one entry per descriptor", 3, entries.size)
+        for (entry in entries) {
+            assertTrue("engineType is Azure", entry.engineType is EngineType.Azure)
+        }
+    }
+
+    @Test
+    fun `azureEntriesFromRoster carries non-null cost at 3000c per 1M chars`() {
+        val entries = VoiceCatalog.azureEntriesFromRoster(sampleRoster())
+        for (entry in entries) {
             assertNotNull("entry ${entry.id} has cost", entry.cost)
-            // Solara's spec pins $30/1M chars across the curated set —
-            // both Dragon HD and HD Neural land at the same price as
-            // of 2026-05. If pricing diverges we'll add per-tier cost.
             assertEquals(
                 "entry ${entry.id} priced at 3000¢/1M chars",
                 3000,
@@ -67,9 +94,9 @@ class AzureCatalogTest {
     }
 
     @Test
-    fun `Azure entries are Studio tier`() {
-        val azureEntries = VoiceCatalog.voices.filter { it.engineType is EngineType.Azure }
-        for (entry in azureEntries) {
+    fun `azureEntriesFromRoster surfaces voices as Studio tier`() {
+        val entries = VoiceCatalog.azureEntriesFromRoster(sampleRoster())
+        for (entry in entries) {
             assertEquals(
                 "entry ${entry.id} surfaces as Studio tier",
                 QualityLevel.Studio,
@@ -79,13 +106,9 @@ class AzureCatalogTest {
     }
 
     @Test
-    fun `Azure entries have zero sizeBytes`() {
-        // Cloud voices have nothing to download; sizeBytes drives the
-        // download progress bar in the picker, which would be nonsense
-        // for an Azure voice. PR-4 will surface a "configure key"
-        // affordance instead.
-        val azureEntries = VoiceCatalog.voices.filter { it.engineType is EngineType.Azure }
-        for (entry in azureEntries) {
+    fun `azureEntriesFromRoster has zero sizeBytes`() {
+        val entries = VoiceCatalog.azureEntriesFromRoster(sampleRoster())
+        for (entry in entries) {
             assertEquals("entry ${entry.id} sizeBytes is 0", 0L, entry.sizeBytes)
         }
     }
@@ -108,10 +131,9 @@ class AzureCatalogTest {
     }
 
     @Test
-    fun `Azure voice ids are uniquely prefixed`() {
-        val azureIds = VoiceCatalog.voices
-            .filter { it.engineType is EngineType.Azure }
-            .map { it.id }
+    fun `azure voice ids are uniquely prefixed`() {
+        val azureEntries = VoiceCatalog.azureEntriesFromRoster(sampleRoster())
+        val azureIds = azureEntries.map { it.id }
         for (id in azureIds) {
             assertTrue("$id starts with azure_", id.startsWith("azure_"))
         }
@@ -126,16 +148,35 @@ class AzureCatalogTest {
     }
 
     @Test
-    fun `byId resolves an Azure entry`() {
-        val entry = VoiceCatalog.byId("azure_ava_en_US_dragon_hd")
+    fun `azure voice ID escapes colons in DragonHD ShortNames`() {
+        // Azure's Dragon HD ShortNames use a colon — `en-US-Ava:DragonHDLatestNeural`.
+        // The catalog ID must keep the original ShortName recoverable but
+        // not embed a literal colon (some splitters / route-builders treat
+        // `:` as a separator). We replace with `_`.
+        val entries = VoiceCatalog.azureEntriesFromRoster(sampleRoster())
+        val ava = entries.first { (it.engineType as EngineType.Azure).voiceName == "en-US-Ava:DragonHDLatestNeural" }
+        assertEquals("azure_en-US-Ava_DragonHDLatestNeural", ava.id)
+    }
+
+    @Test
+    fun `byIdWithAzure resolves a live Azure entry`() {
+        val roster = sampleRoster()
+        val entry = VoiceCatalog.byIdWithAzure("azure_en-US-AriaNeural", roster)
         assertNotNull(entry)
         assertTrue(
             "engineType is Azure",
             entry!!.engineType is EngineType.Azure,
         )
         val azure = entry.engineType as EngineType.Azure
-        assertEquals("en-US-AvaDragonHDLatestNeural", azure.voiceName)
-        assertEquals("eastus", azure.region)
+        assertEquals("en-US-AriaNeural", azure.voiceName)
+    }
+
+    @Test
+    fun `byId without roster returns null for Azure entries`() {
+        // Static [byId] no longer sees Azure rows — callers that need
+        // Azure resolution must use [byIdWithAzure].
+        val entry = VoiceCatalog.byId("azure_en-US-AriaNeural")
+        assertNull(entry)
     }
 
     @Test

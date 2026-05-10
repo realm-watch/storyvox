@@ -67,6 +67,7 @@ class SettingsRepositoryBufferTest {
             suggestedFeedsRegistry = SuggestedFeedsRegistry(),
             azureCreds = makeFakeAzureCredentials(),
             azureClient = makeFakeAzureClient(),
+            azureRoster = makeFakeAzureRoster(),
         )
     }
 

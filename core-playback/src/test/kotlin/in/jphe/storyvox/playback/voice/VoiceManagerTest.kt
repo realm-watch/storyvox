@@ -9,9 +9,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import `in`.jphe.storyvox.data.source.AzureVoiceDescriptor
+import `in`.jphe.storyvox.data.source.AzureVoiceProvider
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -87,7 +91,7 @@ class VoiceManagerTest {
      */
     @Test
     fun kokoro_realFailure_wipesSharedDir() = runBlocking {
-        val vm = VoiceManager(context)
+        val vm = VoiceManager(context, EmptyAzureProvider)
         vm.http = httpClientReturning500()
 
         // Seed a "prior partial run" file inside the shared dir.
@@ -125,7 +129,7 @@ class VoiceManagerTest {
      */
     @Test
     fun kokoro_cancel_preservesSharedDir() = runBlocking {
-        val vm = VoiceManager(context)
+        val vm = VoiceManager(context, EmptyAzureProvider)
         // 256 KiB body → at least four 64 KiB read iterations → multiple
         // onProgress suspend points to land the cancel on. The bytes are
         // garbage; nothing in the test reads what gets written.
@@ -179,7 +183,7 @@ class VoiceManagerTest {
      */
     @Test
     fun piper_realFailure_wipesVoiceDir() = runBlocking {
-        val vm = VoiceManager(context)
+        val vm = VoiceManager(context, EmptyAzureProvider)
         vm.http = httpClientReturning500()
 
         val voiceId = "piper_lessac_en_US_high"
@@ -204,7 +208,7 @@ class VoiceManagerTest {
      */
     @Test
     fun kokoro_realFailure_emitsResolvingThenFailed() = runBlocking {
-        val vm = VoiceManager(context)
+        val vm = VoiceManager(context, EmptyAzureProvider)
         vm.http = httpClientReturning500()
 
         val progress = vm.download("kokoro_aoede_en_US_1").toList()
@@ -223,6 +227,15 @@ class VoiceManagerTest {
      * No socket, no DNS, no actual network — Robolectric's lack of
      * networking primitives is a non-issue.
      */
+
+    /** Empty roster — no live Azure voices. The download-policy tests in
+     *  this class never exercise Azure paths (the static catalog covers
+     *  Piper + Kokoro), so a no-op provider is sufficient. */
+    private object EmptyAzureProvider : AzureVoiceProvider {
+        override val voices: Flow<List<AzureVoiceDescriptor>> = flowOf(emptyList())
+        override suspend fun refresh() = Unit
+    }
+
     private fun httpClientReturning500(): OkHttpClient =
         OkHttpClient.Builder()
             .addInterceptor(Interceptor { chain ->

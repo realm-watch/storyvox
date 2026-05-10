@@ -1,8 +1,37 @@
 package `in`.jphe.storyvox.playback.voice
 
+import `in`.jphe.storyvox.data.source.AzureVoiceDescriptor
+import `in`.jphe.storyvox.data.source.AzureVoiceTier
+
 object VoiceCatalog {
-    val voices: List<CatalogEntry> = piperEntries() + kokoroEntries() + azureEntries()
+    /**
+     * The static catalog — Piper and Kokoro entries that ship in-app.
+     * Azure voices are NOT here anymore; they're populated at runtime
+     * from the live roster (see [azureEntriesFromRoster] and
+     * `AzureVoiceProvider`). Combine via [voicesWithAzure] when you
+     * need a unified list.
+     */
+    val voices: List<CatalogEntry> = piperEntries() + kokoroEntries()
+
+    /**
+     * Combine the static catalog with the live Azure roster — used by
+     * VoiceManager when projecting catalog rows to the picker. The
+     * roster is parameterized so the catalog stays a pure object;
+     * callers provide the current roster snapshot.
+     */
+    fun voicesWithAzure(roster: List<AzureVoiceDescriptor>): List<CatalogEntry> =
+        voices + azureEntriesFromRoster(roster)
+
     fun byId(id: String): CatalogEntry? = voices.firstOrNull { it.id == id }
+
+    /**
+     * Lookup that includes live Azure entries. Used by playback /
+     * VoiceManager paths that need to resolve an active voice ID
+     * which may be Azure. Lookups against [byId] alone will miss
+     * Azure rows now.
+     */
+    fun byIdWithAzure(id: String, roster: List<AzureVoiceDescriptor>): CatalogEntry? =
+        voicesWithAzure(roster).firstOrNull { it.id == id }
 
     /** The three voices we hand-picked as the strongest starters. Surfaced
      *  on the first-launch [VoicePickerGate] picker so newcomers don't
@@ -697,185 +726,83 @@ object VoiceCatalog {
     }
 
     /**
-     * Azure Speech Services HD voices — cloud-rendered TTS over HTTPS,
-     * BYOK (user pastes their Azure resource key into Settings →
-     * Sources → Azure). [Solara's spec](docs/superpowers/specs/2026-05-08-azure-hd-voices-design.md)
-     * recommends a hardcoded curated list for v1; the full ~400-voice
-     * Azure roster is fetchable via `voices/list` but most users only
-     * want the obvious picks.
+     * Project the live Azure voice roster into [CatalogEntry] rows.
+     * Originally this was a hardcoded curated list, but the curated
+     * names drifted out of date with Azure's actual catalog (Dragon HD
+     * voices use a colon-separated form like
+     * `en-US-Ava:DragonHDLatestNeural` that v0.4.75 had wrong, and the
+     * Dragon HD tier itself is region-scoped: eastus has it, westus
+     * doesn't). The live roster — fetched on demand from Azure's
+     * `voices/list` endpoint via `AzureVoiceProvider` — solves both
+     * problems at once: the picker only ever surfaces voices that
+     * actually exist in the user's configured region.
      *
-     * Curated set: Dragon HD voices (the 2025 generative tier — best
-     * quality Azure offers) + a handful of HD Neural multilingual
-     * voices for accent variety. en-US dominates because that's the
-     * primary user locale; en-GB Sonia covers British English.
+     * Filters and sort:
+     * - English locales first (en-*), then everything else.
+     * - Within English, US → GB → AU → IN → CA, then alphabetical.
+     * - Tiers grouped Dragon HD → HD Multilingual → Neural (Dragon HD
+     *   surfaces first because it's the highest quality).
+     * - Display name composes "☁️ {name} · {locale} · {tier}" so the
+     *   picker can render a single line without computing the
+     *   subtitle separately.
      *
-     * `sizeBytes = 0` because there's no per-voice download — the model
-     * lives on Azure's side.
-     *
-     * `region = "eastus"` is the default region. Per Solara's open
-     * question #3 the user can change it in Settings; the catalog
-     * entry's region is the activation default. The actual region
-     * used at runtime is read from `AzureCredentials.region()`, not
-     * from this catalog field — the catalog default just seeds the
-     * `EngineType.Azure` discriminator with a non-empty region for
-     * code paths that key on it before the user opens Settings.
-     *
-     * Pricing: $30/1M chars (3000¢) for both Dragon HD and HD Neural
-     * voices. Azure's F0 free tier covers 500K chars/month for HD.
-     * Pricing-page estimate as of 2026-05-08; flagged for verification
-     * at GA. If pricing churns, edit one constant — the picker chip,
-     * the cost-disclosure modal, and the per-chapter hint all read
-     * from `cost`.
-     *
-     * **PR-1 (this PR) ships the catalog entries.** The picker
-     * surfaces them in a "Cloud — Azure" section but rows are
-     * unselectable until PR-4 lands the engine wiring (Solara's plan).
-     * That keeps the layout reviewable in isolation without
-     * exercising the cloud round-trip path.
+     * `sizeBytes = 0` — Azure voices live server-side; nothing to
+     * download. The runtime region used for the actual SSML POST
+     * comes from `AzureCredentials.region()`; the catalog entry's
+     * region is just a seed for code paths that key on
+     * `EngineType.Azure.region` before the user opens Settings.
      */
-    private fun azureEntries(): List<CatalogEntry> {
+    fun azureEntriesFromRoster(roster: List<AzureVoiceDescriptor>): List<CatalogEntry> {
+        if (roster.isEmpty()) return emptyList()
         val cost = VoiceCost(centsPer1MChars = 3000, billedBy = "Azure")
         val defaultRegion = "eastus"
-        fun azure(id: String, displayName: String, language: String, voiceName: String) =
-            CatalogEntry(
-                id = id,
-                displayName = displayName,
-                language = language,
-                sizeBytes = 0L,
-                qualityLevel = QualityLevel.Studio,
-                engineType = EngineType.Azure(voiceName, defaultRegion),
-                piper = null,
-                cost = cost,
-            )
-        return listOf(
-            // ── Dragon HD (Azure's 2025 generative tier — highest quality) ──
-            azure(
-                "azure_ava_en_US_dragon_hd",
-                "☁️ Ava (Dragon HD)",
-                "en_US",
-                "en-US-AvaDragonHDLatestNeural",
-            ),
-            azure(
-                "azure_andrew_en_US_dragon_hd",
-                "☁️ Andrew (Dragon HD)",
-                "en_US",
-                "en-US-AndrewDragonHDLatestNeural",
-            ),
-            azure(
-                "azure_brian_en_US_dragon_hd",
-                "☁️ Brian (Dragon HD)",
-                "en_US",
-                "en-US-BrianMultilingualNeural",
-            ),
-            azure(
-                "azure_emma_en_US_dragon_hd",
-                "☁️ Emma (Dragon HD)",
-                "en_US",
-                "en-US-EmmaMultilingualNeural",
-            ),
-            // ── en-US HD Neural — broad gender/age coverage ────────────
-            azure(
-                "azure_aria_en_US_hd",
-                "☁️ Aria (HD Neural)",
-                "en_US",
-                "en-US-AriaNeural",
-            ),
-            azure(
-                "azure_jenny_en_US_hd",
-                "☁️ Jenny (HD Neural)",
-                "en_US",
-                "en-US-JennyMultilingualNeural",
-            ),
-            azure(
-                "azure_guy_en_US_hd",
-                "☁️ Guy (HD Neural)",
-                "en_US",
-                "en-US-GuyNeural",
-            ),
-            azure(
-                "azure_davis_en_US_hd",
-                "☁️ Davis (HD Neural)",
-                "en_US",
-                "en-US-DavisMultilingualNeural",
-            ),
-            azure(
-                "azure_tony_en_US_hd",
-                "☁️ Tony (HD Neural)",
-                "en_US",
-                "en-US-TonyNeural",
-            ),
-            azure(
-                "azure_sara_en_US_hd",
-                "☁️ Sara (HD Neural)",
-                "en_US",
-                "en-US-SaraNeural",
-            ),
-            azure(
-                "azure_christopher_en_US_hd",
-                "☁️ Christopher (HD Neural)",
-                "en_US",
-                "en-US-ChristopherNeural",
-            ),
-            azure(
-                "azure_nancy_en_US_hd",
-                "☁️ Nancy (HD Neural)",
-                "en_US",
-                "en-US-NancyNeural",
-            ),
-            // ── en-GB HD Neural — UK English ───────────────────────────
-            azure(
-                "azure_sonia_en_GB_hd",
-                "☁️ Sonia (HD Neural, British)",
-                "en_GB",
-                "en-GB-SoniaNeural",
-            ),
-            azure(
-                "azure_ryan_en_GB_hd",
-                "☁️ Ryan (HD Neural, British)",
-                "en_GB",
-                "en-GB-RyanNeural",
-            ),
-            azure(
-                "azure_libby_en_GB_hd",
-                "☁️ Libby (HD Neural, British)",
-                "en_GB",
-                "en-GB-LibbyNeural",
-            ),
-            // ── en-AU HD Neural — Australian English ──────────────────
-            azure(
-                "azure_natasha_en_AU_hd",
-                "☁️ Natasha (HD Neural, Australian)",
-                "en_AU",
-                "en-AU-NatashaNeural",
-            ),
-            azure(
-                "azure_william_en_AU_hd",
-                "☁️ William (HD Neural, Australian)",
-                "en_AU",
-                "en-AU-WilliamNeural",
-            ),
-            // ── en-IN HD Neural — Indian English ──────────────────────
-            azure(
-                "azure_neerja_en_IN_hd",
-                "☁️ Neerja (HD Neural, Indian)",
-                "en_IN",
-                "en-IN-NeerjaNeural",
-            ),
-            azure(
-                "azure_prabhat_en_IN_hd",
-                "☁️ Prabhat (HD Neural, Indian)",
-                "en_IN",
-                "en-IN-PrabhatNeural",
-            ),
-            // ── en-CA HD Neural — Canadian English ────────────────────
-            azure(
-                "azure_clara_en_CA_hd",
-                "☁️ Clara (HD Neural, Canadian)",
-                "en_CA",
-                "en-CA-ClaraNeural",
-            ),
-        )
+        // ShortName carries colons for Dragon HD entries — sanitize to
+        // underscores when building the catalog ID so the ID stays
+        // greppable and survives any code path that splits on ':'.
+        fun stableId(shortName: String): String =
+            "azure_" + shortName.replace(':', '_')
+        return roster
+            .asSequence()
+            .sortedWith(compareBy(
+                { englishLocaleRank(it.locale) },
+                { tierRank(it.tier) },
+                { it.shortName },
+            ))
+            .map { v ->
+                val localeUnderscored = v.locale.replace('-', '_')
+                CatalogEntry(
+                    id = stableId(v.shortName),
+                    displayName = "☁️ ${v.displayName} · ${v.locale} · ${v.tier.displayLabel}",
+                    language = localeUnderscored,
+                    sizeBytes = 0L,
+                    qualityLevel = QualityLevel.Studio,
+                    engineType = EngineType.Azure(v.shortName, defaultRegion),
+                    piper = null,
+                    cost = cost,
+                )
+            }
+            .toList()
     }
+
+    /** English locales surface first, then the rest in alpha order.
+     *  Returns a sortable key — lower = earlier in the list. */
+    private fun englishLocaleRank(locale: String): Int = when {
+        locale == "en-US" -> 0
+        locale == "en-GB" -> 1
+        locale == "en-AU" -> 2
+        locale == "en-IN" -> 3
+        locale == "en-CA" -> 4
+        locale.startsWith("en-") -> 5
+        else -> 100
+    }
+
+    /** Dragon HD first (best quality), then HD Multilingual, then plain Neural. */
+    private fun tierRank(tier: AzureVoiceTier): Int = when (tier) {
+        AzureVoiceTier.DragonHd -> 0
+        AzureVoiceTier.HdMultilingual -> 1
+        AzureVoiceTier.Neural -> 2
+    }
+
 }
 
 data class CatalogEntry(

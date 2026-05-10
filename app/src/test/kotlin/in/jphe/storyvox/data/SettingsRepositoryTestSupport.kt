@@ -192,6 +192,19 @@ internal fun makeFakeAzureClient(): `in`.jphe.storyvox.source.azure.AzureSpeechC
 }
 
 /**
+ * Stub [AzureVoiceRoster] for settings tests. The settings setters
+ * call `refreshAsync()` to invalidate the live roster on key/region
+ * changes; tests don't observe the roster state, so the stub is a
+ * no-op around the same fake client+credentials the other Azure
+ * helpers use.
+ */
+internal fun makeFakeAzureRoster(): `in`.jphe.storyvox.source.azure.AzureVoiceRoster =
+    `in`.jphe.storyvox.source.azure.AzureVoiceRoster(
+        client = makeFakeAzureClient(),
+        credentials = makeFakeAzureCredentials(),
+    )
+
+/**
  * Minimal SharedPreferences stub — only `getString` / `edit` are reached
  * by the palace code paths the test fixtures touch.
  */
