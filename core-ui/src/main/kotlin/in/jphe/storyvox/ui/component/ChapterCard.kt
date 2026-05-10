@@ -55,7 +55,14 @@ fun ChapterCard(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .semantics {
+            // Issue #266 — the un-merged `semantics {}` here used to split the
+            // a11y tree: this node got role=Button + contentDescription, while
+            // the Card's own clickable lived on a child node. Espresso/
+            // UIAutomator reported clickable='false' on the row because the
+            // role node and the action node were different. Merging
+            // descendants flattens them, so the row reads as a single
+            // clickable Button with our content-desc.
+            .semantics(mergeDescendants = true) {
                 role = Role.Button
                 contentDescription = "Chapter ${state.number}, ${state.title}, ${state.durationLabel}" +
                     if (state.isDownloaded) ", downloaded" else ""
