@@ -16,12 +16,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +51,7 @@ import `in`.jphe.storyvox.ui.component.FictionDetailSkeleton
 import `in`.jphe.storyvox.ui.layout.isAtLeastTablet
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FictionDetailScreen(
     onOpenReader: (String, String) -> Unit,
@@ -105,7 +111,38 @@ fun FictionDetailScreen(
     }
 
     val fiction = state.fiction
-    Box(modifier = Modifier.fillMaxSize()) {
+    // Issue #257 — Fiction detail used to fade from the system status bar
+    // straight into the cover image with no app bar — no back arrow, no
+    // title, no place for overflow actions (Refresh, Mark all read, etc).
+    // Wrap in a Scaffold + TopAppBar so back-navigation has a visible
+    // affordance (in addition to OS gesture) and the fiction title sits
+    // at the top of the screen as standard for a detail surface. The
+    // existing Hero composable still renders the bigger title; the bar
+    // copy is intentionally compact so the dual rendering reads as
+    // 'context + content' not 'duplicate'.
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = fiction?.title ?: "",
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                        )
+                    }
+                },
+            )
+        },
+    ) { scaffoldPadding ->
+    Box(modifier = Modifier.fillMaxSize().padding(scaffoldPadding)) {
         if (fiction == null && state.error != null) {
             // First-load failure with no cached fiction. Issue #169 —
             // this path used to be a dead-end (no Back, no Retry, only
@@ -220,6 +257,7 @@ fun FictionDetailScreen(
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
+    }
     }
 }
 
