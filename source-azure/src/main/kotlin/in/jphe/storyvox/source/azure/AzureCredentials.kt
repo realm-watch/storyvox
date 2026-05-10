@@ -72,6 +72,17 @@ open class AzureCredentials @Inject constructor(
         remove(KEY_AZURE_REGION)
     }
 
+    /** Wipe only the key, leaving the region as-is. Used by the
+     *  setter path when the user blanks the key field — they may
+     *  re-paste a new key for the same region, and resetting region
+     *  to the default would force them to re-pick it (and silently
+     *  re-route requests to a region the new key may not authorize).
+     *  Matches the documented intent in
+     *  `SettingsRepositoryUi.setAzureKey`. */
+    open fun clearKey() = prefs.edit {
+        remove(KEY_AZURE_KEY)
+    }
+
     /** True when a key is persisted. The Voice Library (PR-4) reads
      *  this to decide whether Azure rows in the picker activate or
      *  collapse to a "Configure Azure key →" CTA. */
