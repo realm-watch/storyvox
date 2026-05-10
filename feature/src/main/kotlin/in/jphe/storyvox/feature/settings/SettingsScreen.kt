@@ -244,22 +244,16 @@ fun SettingsScreen(
                 multiplier = s.punctuationPauseMultiplier,
                 onMultiplierChange = viewModel::setPunctuationPauseMultiplier,
             )
-            // Tier 3 (#88) — experimental parallel synth. Two Piper
-            // engine instances synthesize sentence N and N+1 in
-            // parallel; ~2× throughput on slow CPUs but uses ~150 MB
-            // extra RAM for the second model. Off by default; the
-            // "Experimental" framing is intentional friction so
-            // casual users don't trip it.
-            SettingsSwitchRow(
-                title = "Experimental: parallel synth",
-                subtitle = if (s.experimentalParallelSynth) {
-                    "ON — two Piper engines run in parallel " +
-                        "(uses ~150 MB extra RAM). Restart playback to apply."
-                } else {
-                    "OFF — single-engine synth (default; less RAM)."
-                },
-                checked = s.experimentalParallelSynth,
-                onCheckedChange = viewModel::setExperimentalParallelSynth,
+            // Tier 3 (#88) — experimental parallel synth sliders.
+            // Two independent knobs: how many engine INSTANCES storyvox
+            // loads (1..8) and how many THREADS each instance gets
+            // inside sherpa-onnx (Auto..8). Both Piper and Kokoro
+            // honor both knobs. Restart playback to apply changes.
+            ParallelSynthSliders(
+                instances = s.parallelSynthInstances,
+                threadsPerInstance = s.synthThreadsPerInstance,
+                onInstancesChange = viewModel::setParallelSynthInstances,
+                onThreadsChange = viewModel::setSynthThreadsPerInstance,
             )
         }
 
@@ -1002,6 +996,116 @@ private fun AzureSection(
                 }
             }
         }
+    }
+}
+
+/**
+ * Tier 3 (#88) — twin sliders for the experimental parallel-synth
+ * feature. Replaces the pre-slider Boolean toggle. Two knobs:
+ *
+ *  - **Engines (1..8)**: how many VoiceEngine / KokoroEngine instances
+ *    storyvox constructs at loadModel time. 1 = serial. Each instance
+ *    is ~150 MB (Piper) or ~325 MB (Kokoro) resident.
+ *  - **Threads/engine (Auto, 1..8)**: numThreads passed to sherpa-onnx
+ *    per instance. Auto = VoxSherpa's getOptimalThreadCount heuristic
+ *    (defaults to the device's core count). Lower this on Snapdragon
+ *    888-class chips that thermally throttle after sustained inference.
+ *
+ *  Total compute = engines × threads. Both sliders cap at 8 because
+ *  beyond that the OS scheduler dominates and instance memory cost
+ *  becomes pathological even on flagship hardware.
+ */
+@Composable
+private fun ParallelSynthSliders(
+    instances: Int,
+    threadsPerInstance: Int,
+    onInstancesChange: (Int) -> Unit,
+    onThreadsChange: (Int) -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    Column(
+        modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+    ) {
+        Text(
+            "Experimental: parallel synth",
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        Text(
+            "Two knobs for trading RAM and CPU for sustained throughput. " +
+                "Restart playback to apply changes — the engines load on " +
+                "the next chapter or voice swap.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        // Engines slider
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = "Engines",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = if (instances <= 1) "1 (serial)" else "$instances",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Slider(
+            value = instances.toFloat(),
+            onValueChange = { onInstancesChange(it.toInt().coerceIn(1, 8)) },
+            valueRange = 1f..8f,
+            steps = 6,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            text = when {
+                instances <= 1 -> "Single engine, no extra RAM."
+                else -> "$instances Piper engines ≈ ${instances * 150} MB · " +
+                    "$instances Kokoro engines ≈ ${instances * 325} MB"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        // Threads-per-engine slider
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = spacing.sm),
+        ) {
+            Text(
+                text = "Threads / engine",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = if (threadsPerInstance == 0) "Auto" else "$threadsPerInstance",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Slider(
+            value = threadsPerInstance.toFloat(),
+            onValueChange = { onThreadsChange(it.toInt().coerceIn(0, 8)) },
+            valueRange = 0f..8f,
+            steps = 7,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            text = when {
+                threadsPerInstance == 0 ->
+                    "Auto — uses your device's core count (default)."
+                else ->
+                    "$threadsPerInstance threads per engine. Lower this if " +
+                        "playback degrades after sustained use (Snapdragon 888 " +
+                        "et al. thermally throttle when all cores are pegged)."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

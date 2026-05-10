@@ -693,23 +693,49 @@ data class UiSettings(
      */
     val azureFallbackVoiceId: String? = null,
     /**
-     * Tier 3 (#88) — experimental parallel synth toggle. When ON,
-     * `EngineStreamingSource` constructs TWO Piper VoiceEngine
-     * instances and synthesizes sentence N and N+1 in parallel.
-     * Doubles effective producer throughput on Helio P22T-class
-     * devices that haven't yet hit realtime under Tier 1+2 alone.
+     * Tier 3 (#88) — experimental parallel-synth instance count.
+     * Range 1..[PARALLEL_SYNTH_MAX_INSTANCES]. Default 1 = serial
+     * (no extra memory, original behavior). Higher values spin up
+     * additional VoiceEngine / KokoroEngine instances; the producer
+     * dispatches sentences round-robin across all instances.
      *
-     * **Memory cost is real.** Each loaded Piper-high session is
-     * ~150 MB resident; two instances ≈ 310 MB on top of the app's
-     * baseline. On a 3 GB device this fits but trims the LMK
-     * headroom. Off by default, behind an explicit
-     * "Experimental — uses more RAM" label so casual users don't
-     * trip it without intent.
+     * Throughput scales roughly linearly with instance count up to
+     * the device's CPU core count, after which OS scheduling
+     * overhead dominates.
      *
-     * Kokoro and Azure ignore this toggle (one shared model + cloud
-     * synth respectively). Only Piper voices benefit.
+     * Memory cost scales linearly:
+     * - Piper-high: ~150 MB per instance
+     * - Kokoro Studio: ~325 MB per instance (multi-speaker model)
+     *
+     * Conservative defaults (range capped at 8) keep even the
+     * heaviest configuration (8× Kokoro = ~2.6 GB) within budget on
+     * 6 GB+ devices. On 3 GB devices users should stay at 2 or below.
+     *
+     * Azure ignores this setting — cloud synth is HTTP, no local
+     * engine instances to multiply.
+     *
+     * Migration from pre-#88-slider boolean toggle: old `true` →
+     * count 2, old `false` → count 1.
      */
-    val experimentalParallelSynth: Boolean = false,
+    val parallelSynthInstances: Int = 1,
+    /**
+     * Tier 3 (#88) companion slider — sherpa-onnx numThreads passed
+     * to each engine instance at loadModel time. 0 = "Auto" (use
+     * VoxSherpa's getOptimalThreadCount heuristic, which today
+     * returns the available core count). 1..8 = explicit override.
+     *
+     * Why surface this: Snapdragon 888 (Galaxy Z Flip3) throttles
+     * after several minutes of sustained inference; pegging all 8
+     * cores at numThreads=8 causes thermal degradation that manifests
+     * as a producer slowdown after ~5 min of playback. Lowering to
+     * numThreads=5 or 6 keeps the chip under the throttle line and
+     * sustains realtime synthesis.
+     *
+     * Total compute = parallelSynthInstances × synthThreadsPerInstance.
+     * Both sliders cap at 8; the practical ceiling is the device's
+     * core count + thermal envelope.
+     */
+    val synthThreadsPerInstance: Int = 0,
 ) {
     /** Speed value the engine should run at right now — the active
      *  voice's override if set, otherwise the global default (#195). */
@@ -1031,9 +1057,23 @@ interface SettingsRepositoryUi {
      *  clear so the toggle becomes a no-op until a voice is picked. */
     suspend fun setAzureFallbackVoiceId(voiceId: String?)
 
-    /** Tier 3 (#88) — experimental parallel synth toggle. */
-    suspend fun setExperimentalParallelSynth(enabled: Boolean)
+    /** Tier 3 (#88) — experimental parallel-synth instance count
+     *  (range 1..[PARALLEL_SYNTH_MAX_INSTANCES]). 1 = serial, higher
+     *  values fan out across N engines. */
+    suspend fun setParallelSynthInstances(count: Int)
+
+    /** Tier 3 companion (#88) — numThreads override per engine.
+     *  0 = Auto (VoxSherpa's getOptimalThreadCount heuristic).
+     *  1..[PARALLEL_SYNTH_MAX_INSTANCES] = explicit value passed to
+     *  sherpa-onnx. */
+    suspend fun setSynthThreadsPerInstance(count: Int)
 }
+
+/** Tier 3 (#88) slider bounds. Min 1 (serial), max 8 (the Snapdragon
+ *  888 / Helio P22T core count ceiling — beyond 8 the OS scheduler
+ *  dominates and instance memory cost becomes pathological). */
+const val PARALLEL_SYNTH_MIN_INSTANCES: Int = 1
+const val PARALLEL_SYNTH_MAX_INSTANCES: Int = 8
 
 /** Outcome of [`SettingsRepositoryUi.testPalaceConnection`]. */
 sealed class PalaceProbeResult {

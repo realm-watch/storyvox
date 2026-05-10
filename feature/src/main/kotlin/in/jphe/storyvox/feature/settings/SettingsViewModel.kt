@@ -256,9 +256,15 @@ class SettingsViewModel @Inject constructor(
     fun setAzureFallbackVoiceId(voiceId: String?) =
         viewModelScope.launch { repo.setAzureFallbackVoiceId(voiceId) }
 
-    /** Tier 3 (#88) — experimental parallel-synth toggle. */
-    fun setExperimentalParallelSynth(enabled: Boolean) =
-        viewModelScope.launch { repo.setExperimentalParallelSynth(enabled) }
+    /** Tier 3 (#88) — experimental parallel-synth instance count
+     *  (range 1..8). 1 = serial (default), >=2 fans out across N
+     *  engine instances. */
+    fun setParallelSynthInstances(count: Int) =
+        viewModelScope.launch { repo.setParallelSynthInstances(count) }
+
+    /** Tier 3 companion — numThreads override per engine. 0 = Auto. */
+    fun setSynthThreadsPerInstance(count: Int) =
+        viewModelScope.launch { repo.setSynthThreadsPerInstance(count) }
 
     // ── AI settings (issue #81) ────────────────────────────────────
 

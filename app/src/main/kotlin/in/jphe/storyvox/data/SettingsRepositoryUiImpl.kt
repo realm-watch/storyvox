@@ -16,6 +16,7 @@ import `in`.jphe.storyvox.data.repository.AuthRepository
 import `in`.jphe.storyvox.data.repository.playback.AzureFallbackConfig
 import `in`.jphe.storyvox.data.repository.playback.AzureFallbackState
 import `in`.jphe.storyvox.data.repository.playback.ParallelSynthConfig
+import `in`.jphe.storyvox.data.repository.playback.ParallelSynthState
 import `in`.jphe.storyvox.data.repository.playback.PlaybackBufferConfig
 import `in`.jphe.storyvox.data.repository.playback.PlaybackModeConfig
 import `in`.jphe.storyvox.data.repository.playback.VoiceTuningConfig
@@ -208,7 +209,13 @@ private object Keys {
     val AZURE_FALLBACK_VOICE_ID = stringPreferencesKey("pref_azure_fallback_voice_id")
 
     // ── Tier 3 parallel synth (issue #88) ──────────────────────────
+    /** Pre-slider Boolean key (kept for read-side migration). When the
+     *  Int key below is unset and this is true, treat as count = 2. */
     val EXPERIMENTAL_PARALLEL_SYNTH = booleanPreferencesKey("pref_experimental_parallel_synth")
+    /** Slider-era Int key — 1..8 instance count. */
+    val PARALLEL_SYNTH_INSTANCES = intPreferencesKey("pref_parallel_synth_instances")
+    /** Slider-era Int key — 0 = Auto, 1..8 = numThreads override per engine. */
+    val SYNTH_THREADS_PER_INSTANCE = intPreferencesKey("pref_synth_threads_per_instance")
 
     // ── Chat grounding (issue #212) ────────────────────────────────
     /** Defaults match pre-#212 ChatViewModel behaviour: chapter title
@@ -376,7 +383,9 @@ class SettingsRepositoryUiImpl(
             // dedicated tick flow.
             azureFallbackEnabled = prefs[Keys.AZURE_FALLBACK_ENABLED] ?: false,
             azureFallbackVoiceId = prefs[Keys.AZURE_FALLBACK_VOICE_ID],
-            experimentalParallelSynth = prefs[Keys.EXPERIMENTAL_PARALLEL_SYNTH] ?: false,
+            parallelSynthInstances = readParallelSynthInstances(prefs),
+            synthThreadsPerInstance = (prefs[Keys.SYNTH_THREADS_PER_INSTANCE] ?: 0)
+                .coerceIn(0, 8),
             ai = UiAiSettings(
                 provider = prefs[Keys.AI_PROVIDER]
                     ?.takeIf { it.isNotBlank() }
@@ -543,11 +552,33 @@ class SettingsRepositoryUiImpl(
     override suspend fun currentAzureFallback(): AzureFallbackState = state.first()
 
     // --- ParallelSynthConfig (#88, Tier 3) ---
-    override val parallelSynth: Flow<Boolean> = store.data.map { prefs ->
-        prefs[Keys.EXPERIMENTAL_PARALLEL_SYNTH] ?: false
+    /**
+     * Read the parallel-synth instance count, migrating the pre-slider
+     * Boolean key to the new Int key on the fly. The Int key wins when
+     * present; the Boolean key is the legacy fallback (true→2, false→1).
+     * Coerced to the supported [1..8] range so a corrupt persist or a
+     * future-format value doesn't blow up the engine wiring.
+     */
+    private fun readParallelSynthInstances(prefs: Preferences): Int {
+        val explicit = prefs[Keys.PARALLEL_SYNTH_INSTANCES]
+        if (explicit != null) return explicit.coerceIn(1, 8)
+        // Pre-slider migration path. Once the user touches the slider
+        // we'll persist the Int key; the boolean key stays around as
+        // a no-op (untouched on disk) until the next clear-data event.
+        val legacy = prefs[Keys.EXPERIMENTAL_PARALLEL_SYNTH] ?: false
+        return if (legacy) 2 else 1
     }
 
-    override suspend fun currentParallelSynth(): Boolean = parallelSynth.first()
+    override val parallelSynthState: Flow<ParallelSynthState> = store.data.map { prefs ->
+        ParallelSynthState(
+            instances = readParallelSynthInstances(prefs),
+            threadsPerInstance = (prefs[Keys.SYNTH_THREADS_PER_INSTANCE] ?: 0)
+                .coerceIn(0, 8),
+        )
+    }
+
+    override suspend fun currentParallelSynthState(): ParallelSynthState =
+        parallelSynthState.first()
 
     override suspend fun signIn() {
         // Just flips the persisted UI flag; the cookie capture is owned by
@@ -888,8 +919,19 @@ class SettingsRepositoryUiImpl(
         }
     }
 
-    override suspend fun setExperimentalParallelSynth(enabled: Boolean) {
-        store.edit { it[Keys.EXPERIMENTAL_PARALLEL_SYNTH] = enabled }
+    override suspend fun setParallelSynthInstances(count: Int) {
+        val coerced = count.coerceIn(1, 8)
+        store.edit {
+            it[Keys.PARALLEL_SYNTH_INSTANCES] = coerced
+            // Legacy boolean key — keep it in sync so a user who
+            // downgrades to a pre-slider build sees a sensible value.
+            // (true if count >= 2, false otherwise.)
+            it[Keys.EXPERIMENTAL_PARALLEL_SYNTH] = coerced >= 2
+        }
+    }
+
+    override suspend fun setSynthThreadsPerInstance(count: Int) {
+        store.edit { it[Keys.SYNTH_THREADS_PER_INSTANCE] = count.coerceIn(0, 8) }
     }
 
     override suspend fun testAzureConnection(): AzureProbeResult {

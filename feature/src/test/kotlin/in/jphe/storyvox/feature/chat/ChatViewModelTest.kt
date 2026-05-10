@@ -568,7 +568,8 @@ private class FakeSettingsRepo(
         override suspend fun setAzureKey(key: String?) = Unit
         override suspend fun setAzureRegion(regionId: String) = Unit
         override suspend fun clearAzureCredentials() = Unit
-        override suspend fun setExperimentalParallelSynth(enabled: Boolean) = Unit
+        override suspend fun setParallelSynthInstances(count: Int) = Unit
+        override suspend fun setSynthThreadsPerInstance(count: Int) = Unit
         override suspend fun setAzureFallbackEnabled(enabled: Boolean) = Unit
         override suspend fun setAzureFallbackVoiceId(voiceId: String?) = Unit
         override suspend fun testAzureConnection(): `in`.jphe.storyvox.feature.api.AzureProbeResult =

@@ -77,22 +77,28 @@ class EngineStreamingSource(
     private val queueCapacity: Int = 8,
     private val pronunciationDictApply: (String) -> String = { it },
     /**
-     * Tier 3 (#88) — when non-null, the producer fans out across two
-     * engines so sentence N+1 generates while N is still finishing.
-     * Each engine has its own onnxruntime session (constructed via
-     * VoxSherpa's public constructor in v2.7.8+), so calls into them
-     * run truly in parallel without serializing on the engineMutex.
+     * Tier 3 (#88) — list of secondary engine handles for parallel
+     * synth. When non-empty, the producer fans out across the
+     * primary [engine] PLUS each secondary, so [secondaryEngines.size + 1]
+     * sentences can be in flight at once. Empty list = serial path
+     * (Tier 2 single-thread URGENT_AUDIO producer).
      *
-     * Memory cost: each loaded Piper-high session is ~150 MB. On a
-     * 3 GB Helio P22T two instances fit but three would risk
-     * LMK-killing. Settings gates this behind an experimental toggle
-     * so users opt in only if they want the throughput trade.
+     * The slider in Settings → Performance & buffering → "Parallel
+     * synth" controls how many engines storyvox loads. Each engine
+     * has its own onnxruntime session (constructed via VoxSherpa's
+     * public constructor in v2.7.8+ for Piper, v2.7.9+ for Kokoro),
+     * so calls into them run truly in parallel without serializing
+     * on the engineMutex.
+     *
+     * Memory cost is per-instance: ~150 MB for Piper, ~325 MB for
+     * Kokoro. The slider tops out at 8 — beyond that, OS scheduling
+     * overhead dominates and instance memory cost becomes pathological.
      *
      * The sequencer in [startParallelProducer] keeps queue order even
      * though completions arrive out-of-order; the consumer side sees
      * the same monotonic stream of sentence indices either way.
      */
-    private val secondaryEngine: VoiceEngineHandle? = null,
+    private val secondaryEngines: List<VoiceEngineHandle> = emptyList(),
 ) : PcmSource {
 
     /** SAM-style handle so tests can fake the engine without pulling the
@@ -122,11 +128,12 @@ class EngineStreamingSource(
      * leak across pipeline rebuilds.
      */
     private val producerExecutor = run {
-        // Tier 3 (#88): if a secondary engine is wired, the producer
-        // runs two parallel workers — fixed-pool of 2 OS threads,
-        // each pinned at URGENT_AUDIO when they pick up their first
-        // task. Single-thread pool otherwise (Tier 2 shape).
-        val poolSize = if (secondaryEngine != null) 2 else 1
+        // Tier 3 (#88): N parallel workers when secondaries are wired,
+        // single thread otherwise (Tier 2 shape). Pool size = primary
+        // (1) + secondaries.size. Each worker bumps URGENT_AUDIO on
+        // its first task; the fixed-pool guarantees dedicated threads
+        // so the priority sticks.
+        val poolSize = 1 + secondaryEngines.size
         val counter = java.util.concurrent.atomic.AtomicInteger(0)
         Executors.newFixedThreadPool(poolSize) { r ->
             Thread(r, "storyvox-tts-producer-${counter.incrementAndGet()}").apply {
@@ -223,7 +230,7 @@ class EngineStreamingSource(
     }
 
     private fun startProducer(fromIndex: Int): Job =
-        if (secondaryEngine != null) startParallelProducer(fromIndex)
+        if (secondaryEngines.isNotEmpty()) startParallelProducer(fromIndex)
         else startSerialProducer(fromIndex)
 
     /**
@@ -240,7 +247,6 @@ class EngineStreamingSource(
      * of mode.
      */
     private fun startParallelProducer(fromIndex: Int): Job = scope.launch {
-        val secondary = secondaryEngine!!  // smart-cast through the dispatch above
         val jobChan = kotlinx.coroutines.channels.Channel<Int>(
             kotlinx.coroutines.channels.Channel.UNLIMITED,
         )
@@ -259,19 +265,20 @@ class EngineStreamingSource(
             }
         }
 
-        // Workers: each owns one engine. No shared engineMutex needed —
-        // two distinct engine instances have independent synchronized
-        // monitors at the JVM level (VoxSherpa v2.7.8+).
-        // Primary worker acquires engineMutex so a voice swap inside
-        // EnginePlayer.loadAndPlay can wait for the in-flight synth
-        // before destroying the model. Secondary worker owns its
-        // instance fully (constructed/destroyed by the source); no
-        // shared destroy path → no mutex needed.
-        val workerA = scope.launch {
+        // Tier 3 N-instance: 1 primary + N-1 secondaries. Primary
+        // acquires engineMutex (so EnginePlayer.loadAndPlay's voice-
+        // swap can safely destroy the model); secondaries don't —
+        // each owns its own VoxSherpa instance with an independent
+        // synchronized monitor at the JVM level (VoxSherpa v2.7.8+
+        // for VoiceEngine, v2.7.9+ for KokoroEngine).
+        val workers = mutableListOf<Job>()
+        workers += scope.launch {
             runParallelWorker(engine, jobChan, completed, signal, useEngineMutex = true)
         }
-        val workerB = scope.launch {
-            runParallelWorker(secondary, jobChan, completed, signal, useEngineMutex = false)
+        secondaryEngines.forEach { secondary ->
+            workers += scope.launch {
+                runParallelWorker(secondary, jobChan, completed, signal, useEngineMutex = false)
+            }
         }
 
         // Sequencer: drain in order. Blocks on [signal] until the
@@ -291,14 +298,13 @@ class EngineStreamingSource(
                 }
                 next++
             }
-            // Natural end — push pill once both workers are drained.
+            // Natural end — push pill once all workers are drained.
             runInterruptible { queue.put(END_PILL) }
         } catch (_: Throwable) {
             // Cancelled (close, seek, voice swap) — silent.
         } finally {
             feeder.cancel()
-            workerA.cancel()
-            workerB.cancel()
+            workers.forEach { it.cancel() }
         }
     }
 

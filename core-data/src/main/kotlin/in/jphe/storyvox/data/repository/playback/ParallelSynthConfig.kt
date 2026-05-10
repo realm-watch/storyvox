@@ -16,13 +16,22 @@ import kotlinx.coroutines.flow.Flow
  * `:app` implements this against the same DataStore.
  */
 interface ParallelSynthConfig {
-    /** Hot flow of the parallel-synth toggle. EnginePlayer collects
-     *  it once at startup and snapshots into a volatile field that's
-     *  read at pipeline-construction time. */
-    val parallelSynth: Flow<Boolean>
+    /** Hot flow of the (instances, threadsPerInstance) pair.
+     *  - instances: 1..8, default 1 (serial = single primary engine)
+     *  - threadsPerInstance: 0 (auto via getOptimalThreadCount) or 1..8
+     *
+     *  EnginePlayer collects this once at startup, then snapshots
+     *  into volatile fields at pipeline-construction time inside
+     *  loadAndPlay/startPlaybackPipeline. */
+    val parallelSynthState: Flow<ParallelSynthState>
 
-    /** Snapshot read at pipeline-construction time inside
-     *  EnginePlayer.startPlaybackPipeline; first() is fine since
-     *  pipeline construction is already a suspend boundary. */
-    suspend fun currentParallelSynth(): Boolean
+    /** Snapshot read at pipeline-construction time. */
+    suspend fun currentParallelSynthState(): ParallelSynthState
 }
+
+data class ParallelSynthState(
+    val instances: Int = 1,
+    /** numThreads override passed to sherpa-onnx at loadModel time.
+     *  0 = "Auto" (VoxSherpa's getOptimalThreadCount heuristic). */
+    val threadsPerInstance: Int = 0,
+)

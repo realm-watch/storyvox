@@ -180,13 +180,16 @@ class EnginePlayer @AssistedInject constructor(
     @Volatile
     private var cachedBufferChunks: Int = 8 // BUFFER_DEFAULT_CHUNKS — duplicated to avoid feature dep
 
-    /** Tier 3 (#88) — secondary VoiceEngine instance for parallel
-     *  synth, only constructed when the toggle is on AND the active
-     *  engine type is Piper. Owned by EnginePlayer so loadAndPlay's
-     *  voice-swap can destroy it cleanly. Null when parallel synth
-     *  isn't engaged (default state). */
+    /** Tier 3 (#88) — list of secondary VoiceEngine / KokoroEngine
+     *  instances for parallel synth. Sized at (instances-1) so the
+     *  primary singleton + N-1 secondaries = N total engines.
+     *  Owned by EnginePlayer so loadAndPlay's voice-swap can destroy
+     *  them cleanly on engine-type change. Empty list = serial mode. */
     @Volatile
-    private var secondaryPiperEngine: com.CodeBySonu.VoxSherpa.VoiceEngine? = null
+    private var secondaryPiperEngines: List<com.CodeBySonu.VoxSherpa.VoiceEngine> = emptyList()
+
+    @Volatile
+    private var secondaryKokoroEngines: List<com.CodeBySonu.VoxSherpa.KokoroEngine> = emptyList()
 
     /**
      * Issue #98 — Mode B (Catch-up Pause) live cache. Gates the consumer
@@ -684,48 +687,59 @@ class EnginePlayer @AssistedInject constructor(
             engineMutex.withLock {
                 when (active.engineType) {
                     EngineType.Piper -> {
+                        // Voice swap AWAY from Kokoro → free its
+                        // secondaries. Tier 3 (#88) honors the slider
+                        // for both engine families now; secondaries
+                        // are owned per-engine-type and torn down on
+                        // type-change.
+                        secondaryKokoroEngines.forEach {
+                            runCatching { it.destroy() }
+                        }
+                        secondaryKokoroEngines = emptyList()
+
                         val voiceDir = voiceManager.voiceDirFor(active.id)
                         val onnx = File(voiceDir, "model.onnx").absolutePath
                         val tokens = File(voiceDir, "tokens.txt").absolutePath
+                        val parallelState = parallelSynthConfig.currentParallelSynthState()
+                        val nt = parallelState.threadsPerInstance
                         val primaryResult = VoiceEngine.getInstance()
-                            .loadModel(context, onnx, tokens)
-                        // Tier 3 (#88) — when the experimental parallel-
-                        // synth toggle is on, construct + load a SECOND
-                        // VoiceEngine instance against the same model
-                        // files. Each call hits its own OrtSession, so
-                        // generateAudioPCM on the two engines runs in
-                        // parallel — doubles producer throughput on
-                        // Piper voices. Tear down any previously-
-                        // allocated secondary first (voice swap re-runs
-                        // this path); load failure on the secondary
-                        // gracefully degrades to single-instance synth
-                        // since the primary already succeeded.
-                        secondaryPiperEngine?.runCatching { destroy() }
-                        secondaryPiperEngine = null
-                        if (parallelSynthConfig.currentParallelSynth()) {
+                            .loadModel(context, onnx, tokens, nt)
+                        // Tier 3 (#88) — slider replaces the boolean
+                        // toggle. Construct (instances-1) secondaries
+                        // when instances >= 2. Each gets its own
+                        // OrtSession via VoxSherpa v2.7.8+'s public
+                        // constructor → calls run truly in parallel.
+                        // Tear down any previously-allocated set first
+                        // (voice swap re-runs this path).
+                        secondaryPiperEngines.forEach { runCatching { it.destroy() } }
+                        secondaryPiperEngines = emptyList()
+                        val secondaries = mutableListOf<com.CodeBySonu.VoxSherpa.VoiceEngine>()
+                        for (i in 1 until parallelState.instances) {
                             val secondary = com.CodeBySonu.VoxSherpa.VoiceEngine()
-                            val secondaryResult = secondary.loadModel(context, onnx, tokens)
-                            if (secondaryResult == "Success") {
-                                secondaryPiperEngine = secondary
+                            val r = secondary.loadModel(context, onnx, tokens, nt)
+                            if (r == "Success") {
+                                secondaries += secondary
                             } else {
                                 runCatching { secondary.destroy() }
                                 android.util.Log.w(
                                     "EnginePlayer",
-                                    "Tier 3 secondary load failed: " +
-                                        "$secondaryResult — falling back to single-instance.",
+                                    "Tier 3 secondary $i (Piper) load failed: " +
+                                        "$r — capping at ${secondaries.size + 1} instances.",
                                 )
+                                break
                             }
                         }
+                        secondaryPiperEngines = secondaries
                         primaryResult ?: "Error: load returned null"
                     }
                     is EngineType.Kokoro -> {
-                        // Tier 3 (#88) — voice swapping AWAY from Piper:
-                        // free the secondary instance to recover its
-                        // ~150 MB resident memory. Kokoro doesn't use
-                        // parallel synth (single shared multi-speaker
-                        // model).
-                        secondaryPiperEngine?.runCatching { destroy() }
-                        secondaryPiperEngine = null
+                        // Voice swap AWAY from Piper → free its
+                        // secondaries. Tier 3 secondaries are
+                        // engine-type-specific.
+                        secondaryPiperEngines.forEach {
+                            runCatching { it.destroy() }
+                        }
+                        secondaryPiperEngines = emptyList()
                         // All 53 Kokoro speakers share a single ~325MB fp32
                         // multi-speaker model. Switching speakers reuses the
                         // loaded engine; first load takes 30+s as sherpa-onnx
@@ -750,14 +764,54 @@ class EnginePlayer @AssistedInject constructor(
                         KokoroEngine.getInstance().setSilenceScale(
                             KOKORO_SILENCE_SCALE_BASELINE * currentPunctuationPauseMultiplier,
                         )
-                        KokoroEngine.getInstance().loadModel(context, onnx, tokens, voicesBin)
-                            ?: "Error: load returned null"
+                        val parallelState = parallelSynthConfig.currentParallelSynthState()
+                        val nt = parallelState.threadsPerInstance
+                        val primaryResult = KokoroEngine.getInstance()
+                            .loadModel(context, onnx, tokens, voicesBin, nt)
+                        // Tier 3 (#88) — Kokoro N-instance support.
+                        // Each loaded Kokoro session is ~325 MB; on
+                        // an 8 GB device 8 instances ≈ 2.6 GB which
+                        // fits but is heavy. Construct sequentially —
+                        // Kokoro's first-load takes ~30 s, so 8
+                        // instances ≈ 4 min first-launch penalty
+                        // (acceptable for an explicit opt-in;
+                        // subsequent chapters reuse loaded instances).
+                        secondaryKokoroEngines.forEach { runCatching { it.destroy() } }
+                        secondaryKokoroEngines = emptyList()
+                        val kokoroSecondaries = mutableListOf<com.CodeBySonu.VoxSherpa.KokoroEngine>()
+                        for (i in 1 until parallelState.instances) {
+                            val secondary = com.CodeBySonu.VoxSherpa.KokoroEngine()
+                            secondary.setActiveSpeakerId(
+                                (active.engineType as EngineType.Kokoro).speakerId,
+                            )
+                            secondary.setSilenceScale(
+                                KOKORO_SILENCE_SCALE_BASELINE *
+                                    currentPunctuationPauseMultiplier,
+                            )
+                            val r = secondary.loadModel(context, onnx, tokens, voicesBin, nt)
+                            if (r == "Success") {
+                                kokoroSecondaries += secondary
+                            } else {
+                                runCatching { secondary.destroy() }
+                                android.util.Log.w(
+                                    "EnginePlayer",
+                                    "Tier 3 secondary $i (Kokoro) load failed: " +
+                                        "$r — capping at ${kokoroSecondaries.size + 1} instances.",
+                                )
+                                break
+                            }
+                        }
+                        secondaryKokoroEngines = kokoroSecondaries
+                        primaryResult ?: "Error: load returned null"
                     }
                     is EngineType.Azure -> {
-                        // Tier 3 (#88) — voice swapping AWAY from Piper:
-                        // free the secondary instance to recover memory.
-                        secondaryPiperEngine?.runCatching { destroy() }
-                        secondaryPiperEngine = null
+                        // Tier 3 (#88) — voice swap AWAY from local
+                        // engines: free both Piper + Kokoro secondaries
+                        // to recover memory.
+                        secondaryPiperEngines.forEach { runCatching { it.destroy() } }
+                        secondaryPiperEngines = emptyList()
+                        secondaryKokoroEngines.forEach { runCatching { it.destroy() } }
+                        secondaryKokoroEngines = emptyList()
                         // PR-4 (#183) — cloud voice activation. Nothing
                         // to load JNI-side; the "model" is the remote
                         // synthesis endpoint. Credentials gate is the
@@ -865,25 +919,40 @@ class EnginePlayer @AssistedInject constructor(
         // pipeline rebuild (seek / chapter change / voice swap /
         // speed/pitch change), exactly like the buffer-chunks knob.
         val pronunciationDict = cachedPronunciationDict
-        // Tier 3 (#88) — wrap the secondary VoiceEngine instance (if
-        // any) in the same VoiceEngineHandle SAM the source consumes.
-        // Only Piper voices have a secondary today; Kokoro and Azure
-        // ignore the toggle (single shared model + cloud synth
-        // respectively).
-        val secondary = secondaryPiperEngine
-        val secondaryHandle: EngineStreamingSource.VoiceEngineHandle? =
-            if (engineType == EngineType.Piper && secondary != null) {
+        // Tier 3 (#88) — wrap each secondary instance in the
+        // VoiceEngineHandle SAM. Piper and Kokoro both support N-1
+        // secondaries; Azure has no local engine to multiply.
+        val secondaryHandles: List<EngineStreamingSource.VoiceEngineHandle> = when (engineType) {
+            EngineType.Piper -> secondaryPiperEngines.map { eng ->
                 object : EngineStreamingSource.VoiceEngineHandle {
                     override val sampleRate: Int =
-                        secondary.sampleRate.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
-                    override fun generateAudioPCM(text: String, speed: Float, pitch: Float): ByteArray? {
+                        eng.sampleRate.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
+                    override fun generateAudioPCM(
+                        text: String, speed: Float, pitch: Float,
+                    ): ByteArray? {
                         AndroidProcess.setThreadPriority(
                             AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO,
                         )
-                        return secondary.generateAudioPCM(text, speed, pitch)
+                        return eng.generateAudioPCM(text, speed, pitch)
                     }
                 }
-            } else null
+            }
+            is EngineType.Kokoro -> secondaryKokoroEngines.map { eng ->
+                object : EngineStreamingSource.VoiceEngineHandle {
+                    override val sampleRate: Int =
+                        eng.sampleRate.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
+                    override fun generateAudioPCM(
+                        text: String, speed: Float, pitch: Float,
+                    ): ByteArray? {
+                        AndroidProcess.setThreadPriority(
+                            AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO,
+                        )
+                        return eng.generateAudioPCM(text, speed, pitch)
+                    }
+                }
+            }
+            else -> emptyList()
+        }
         val source = EngineStreamingSource(
             sentences = sentences,
             startSentenceIndex = currentSentenceIndex,
@@ -894,7 +963,7 @@ class EnginePlayer @AssistedInject constructor(
             punctuationPauseMultiplier = currentPunctuationPauseMultiplier,
             queueCapacity = queueCapacity,
             pronunciationDictApply = pronunciationDict::apply,
-            secondaryEngine = secondaryHandle,
+            secondaryEngines = secondaryHandles,
         )
         pcmSource = source
         pipelineRunning.set(true)
