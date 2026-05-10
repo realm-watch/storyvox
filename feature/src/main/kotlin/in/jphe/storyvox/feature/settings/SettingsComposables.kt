@@ -389,6 +389,7 @@ fun AdvancedExpander(
     expanded: Boolean,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
+    title: String = "Advanced",
     content: @Composable ColumnScope.() -> Unit,
 ) {
     if (titlesPreview.size < 3) return
@@ -396,13 +397,13 @@ fun AdvancedExpander(
     val previewLine = titlesPreview.joinToString(separator = " · ")
     Column(modifier = modifier.fillMaxWidth()) {
         SettingsRow(
-            title = "Advanced (${titlesPreview.size})",
+            title = "$title (${titlesPreview.size})",
             subtitle = if (expanded) null else previewLine,
             onClick = onToggle,
             trailing = {
                 Icon(
                     imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                    contentDescription = if (expanded) "Collapse advanced" else "Expand advanced",
+                    contentDescription = if (expanded) "Collapse $title" else "Expand $title",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             },

@@ -313,7 +313,11 @@ fun SettingsScreen(
         // Smart features — Recap, character lookup, Q&A chat in Reader.
         // Configure-once-per-provider; positioned between perf (engine
         // tuning) and library (network syncing).
-        SettingsSectionHeader("AI", icon = Icons.Outlined.AutoAwesome)
+        SectionHeading(
+            label = "AI",
+            icon = Icons.Outlined.AutoAwesome,
+            descriptor = "Smart features — Recap, character lookup, chat.",
+        )
         SettingsGroupCard {
         AiSection(
             ai = s.ai,
@@ -1748,14 +1752,33 @@ private fun AiSection(
         // is always sent (no toggle); each row below adds a layer of
         // context to the chat ViewModel's system prompt. Token estimates
         // assume the rough chars / 4 ≈ tokens convention.
-        ChatGroundingSubsection(
-            grounding = ai.chatGrounding,
-            enabled = ai.sendChapterTextEnabled,
-            onSetChapterTitle = onSetChatGroundChapterTitle,
-            onSetCurrentSentence = onSetChatGroundCurrentSentence,
-            onSetEntireChapter = onSetChatGroundEntireChapter,
-            onSetEntireBookSoFar = onSetChatGroundEntireBookSoFar,
-        )
+        //
+        // Iona (settings overhaul): wrapped in the existing
+        // AdvancedExpander so the four grounding-level switches don't
+        // dominate the AI section's vertical real estate. Most users
+        // accept the default grounding and never touch these; the few
+        // who do tune privacy/cost find them under "Chat grounding".
+        var groundingOpen by remember { mutableStateOf(false) }
+        AdvancedExpander(
+            titlesPreview = listOf(
+                "Chapter title",
+                "Current sentence",
+                "Entire chapter",
+                "Entire book so far",
+            ),
+            expanded = groundingOpen,
+            onToggle = { groundingOpen = !groundingOpen },
+            title = "Chat grounding",
+        ) {
+            ChatGroundingSubsection(
+                grounding = ai.chatGrounding,
+                enabled = ai.sendChapterTextEnabled,
+                onSetChapterTitle = onSetChatGroundChapterTitle,
+                onSetCurrentSentence = onSetChatGroundCurrentSentence,
+                onSetEntireChapter = onSetChatGroundEntireChapter,
+                onSetEntireBookSoFar = onSetChatGroundEntireBookSoFar,
+            )
+        }
         BrassButton(
             label = "Forget all AI settings",
             onClick = onResetAi,
@@ -1786,12 +1809,15 @@ private fun ChatGroundingSubsection(
     onSetEntireBookSoFar: (Boolean) -> Unit,
 ) {
     val spacing = LocalSpacing.current
-    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
-        Text(
-            "Chat grounding — what context the chat AI sees",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+    // Iona (settings overhaul): inline "Chat grounding — what context
+    // …" header removed; the wrapping AdvancedExpander now provides
+    // that label, so the subsection only ships its descriptor + the
+    // four switches. Padding-left matches the SettingsRow horizontal
+    // padding so the explainer sits flush with the switch titles.
+    Column(
+        modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.xs),
+        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+    ) {
         Text(
             "The fiction title is always included. Each layer below adds " +
                 "more text to every chat turn — better answers, more tokens.",
