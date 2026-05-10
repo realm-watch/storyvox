@@ -180,6 +180,14 @@ class EnginePlayer @AssistedInject constructor(
     @Volatile
     private var cachedBufferChunks: Int = 8 // BUFFER_DEFAULT_CHUNKS — duplicated to avoid feature dep
 
+    /** Snapshot of [ParallelSynthConfig.parallelSynthState.instances]
+     *  read at sync construction sites (Tier 3 secondary handle
+     *  building inside [startPlaybackPipeline]). Same volatile-cache
+     *  pattern as [cachedBufferChunks] — the underlying flow is
+     *  suspending, the consumer is sync. Defaults to 1 (serial). */
+    @Volatile
+    private var cachedParallelSynthInstances: Int = 1
+
     /** Tier 3 (#88) — list of secondary VoiceEngine / KokoroEngine
      *  instances for parallel synth. Sized at (instances-1) so the
      *  primary singleton + N-1 secondaries = N total engines.
@@ -363,6 +371,17 @@ class EnginePlayer @AssistedInject constructor(
                 if (cachedBufferChunks == v) return@collect
                 cachedBufferChunks = v
                 if (_observableState.value.isPlaying) startPlaybackPipeline()
+            }
+        }
+        scope.launch {
+            // Keep [cachedParallelSynthInstances] in sync with the
+            // user's parallel-synth slider for the synchronous Azure
+            // lookahead path inside [startPlaybackPipeline]. Piper /
+            // Kokoro read parallelState directly from suspend
+            // contexts; Azure can't because pipeline construction is
+            // sync. Snapshot pattern matches [cachedBufferChunks].
+            parallelSynthConfig.parallelSynthState.collect { state ->
+                cachedParallelSynthInstances = state.instances.coerceIn(1, 8)
             }
         }
     }
@@ -978,8 +997,14 @@ class EnginePlayer @AssistedInject constructor(
         // speed/pitch change), exactly like the buffer-chunks knob.
         val pronunciationDict = cachedPronunciationDict
         // Tier 3 (#88) — wrap each secondary instance in the
-        // VoiceEngineHandle SAM. Piper and Kokoro both support N-1
-        // secondaries; Azure has no local engine to multiply.
+        // VoiceEngineHandle SAM. Piper and Kokoro hand out N-1 local
+        // engine instances (memory-bounded). Azure hands out N-1
+        // synthetic handles that all delegate to the same singleton
+        // [AzureVoiceEngine] — Azure parallelism is HTTPS-bounded, not
+        // memory-bounded, so the same engine instance can fan out N
+        // concurrent requests via OkHttp's connection pool. Hides
+        // per-sentence latency: while sentence N plays, sentences
+        // N+1..N+secondaries are synthesizing in parallel server-side.
         val secondaryHandles: List<EngineStreamingSource.VoiceEngineHandle> = when (engineType) {
             EngineType.Piper -> secondaryPiperEngines.map { eng ->
                 object : EngineStreamingSource.VoiceEngineHandle {
@@ -1006,6 +1031,31 @@ class EnginePlayer @AssistedInject constructor(
                             AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO,
                         )
                         return eng.generateAudioPCM(text, speed, pitch)
+                    }
+                }
+            }
+            is EngineType.Azure -> {
+                // Reuse the parallelSynthInstances knob as Azure
+                // lookahead depth — local engines and Azure both gain
+                // from the same "fan out N concurrent producers"
+                // pattern, even though their costs differ (Azure is
+                // HTTPS-bounded, not memory-bounded). A future PR
+                // could split the slider if the tradeoffs diverge
+                // visibly.
+                val lookaheadCount = (cachedParallelSynthInstances - 1).coerceAtLeast(0)
+                val voiceName = engineType.voiceName
+                List(lookaheadCount) {
+                    object : EngineStreamingSource.VoiceEngineHandle {
+                        override val sampleRate: Int =
+                            azureVoiceEngine.sampleRate.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
+                        override fun generateAudioPCM(
+                            text: String, speed: Float, pitch: Float,
+                        ): ByteArray? {
+                            AndroidProcess.setThreadPriority(
+                                AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO,
+                            )
+                            return azureVoiceEngine.synthesize(text, voiceName, speed, pitch)
+                        }
                     }
                 }
             }
