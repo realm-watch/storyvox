@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.AutoStories
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
@@ -96,6 +97,10 @@ fun SettingsScreen(
     onOpenTeamsSignIn: () -> Unit = {},
     onOpenPronunciationDict: () -> Unit,
     onOpenAiSessions: () -> Unit = {},
+    /** Vesper (v0.4.97) — opens Settings → Developer → Debug. The
+     *  default no-op is preview/test-only; production callsites wire
+     *  this through `navController.navigate(SETTINGS_DEBUG)`. */
+    onOpenDebug: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -586,7 +591,38 @@ fun SettingsScreen(
             )
         }
 
-        // ── 9. About ─────────────────────────────────────────────────
+        // ── 9. Developer ─────────────────────────────────────────────
+        // Vesper (v0.4.97) — power-user diagnostics. The overlay master
+        // switch lives here so it's discoverable in the same section
+        // tree as every other UX preference; the dedicated /debug screen
+        // is one tap away for deeper drill-down. Section sits just
+        // before About because both are "you only look here when
+        // something's wrong" surfaces, and About is the very last
+        // bookend.
+        SectionHeading(
+            label = "Developer",
+            icon = Icons.Outlined.BugReport,
+            descriptor = "Live pipeline diagnostics + bug-report export.",
+        )
+        SettingsGroupCard {
+            SettingsSwitchRow(
+                title = "Show debug overlay",
+                subtitle = if (s.showDebugOverlay) {
+                    "A compact pipeline-state card floats above the reader."
+                } else {
+                    "Off — the reader stays clean."
+                },
+                checked = s.showDebugOverlay,
+                onCheckedChange = viewModel::setShowDebugOverlay,
+            )
+            SettingsLinkRow(
+                title = "Open Debug screen",
+                subtitle = "Pipeline · engine · Azure · network · events · export.",
+                onClick = onOpenDebug,
+            )
+        }
+
+        // ── 10. About ────────────────────────────────────────────────
         // Realm-sigil "name" is deterministic adjective+noun from the
         // fantasy realm word list, keyed on the build's git hash. Same
         // hash → same name across rebuilds. The brass sigil name is

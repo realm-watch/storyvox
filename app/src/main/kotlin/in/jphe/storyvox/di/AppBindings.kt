@@ -109,6 +109,24 @@ object AppBindings {
         settings: SettingsRepositoryUi,
     ): PlaybackControllerUi = RealPlaybackControllerUi(context, controller, chapters, settings)
 
+    /**
+     * Vesper (v0.4.97) — debug snapshot binding. Sits alongside
+     * [providePlaybackControllerUi] because the debug surface shares the
+     * same controller singleton + adds Azure for the cloud-voice
+     * diagnostics row. Construction is cheap (no flow allocation until
+     * subscribed); WhileSubscribed in [RealDebugRepositoryUi] keeps the
+     * combine cold when nothing's looking.
+     */
+    @Provides @Singleton
+    fun provideDebugRepositoryUi(
+        @ApplicationContext context: Context,
+        controller: PlaybackController,
+        settings: SettingsRepositoryUi,
+        azureCreds: `in`.jphe.storyvox.source.azure.AzureCredentials,
+        azureEngine: `in`.jphe.storyvox.source.azure.AzureVoiceEngine,
+    ): `in`.jphe.storyvox.feature.api.DebugRepositoryUi =
+        RealDebugRepositoryUi(context, controller, settings, azureCreds, azureEngine)
+
     @Provides @Singleton
     fun provideVoiceProviderUi(impl: VoiceProviderUiImpl): VoiceProviderUi = impl
 
