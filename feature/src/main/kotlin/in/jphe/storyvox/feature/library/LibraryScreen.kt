@@ -18,6 +18,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -41,6 +43,7 @@ import `in`.jphe.storyvox.ui.theme.LocalSpacing
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.ui.text.style.TextAlign
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
     onOpenFiction: (String) -> Unit,
@@ -61,6 +64,19 @@ fun LibraryScreen(
     }
 
     Scaffold(
+        // Issue #255 — Library used to fade straight from the system status
+        // bar into a Resume card with no header — no 'Library' title, no
+        // identity. CenterAlignedTopAppBar gives the screen a hard
+        // identifier (matches Material 3 standard for home tabs) and a
+        // place to surface search/sort/filter actions later. For now the
+        // bar is bare title-only; the issue's deeper ask (search +
+        // sort/filter affordances) needs its own follow-up since neither
+        // exists in LibraryViewModel yet.
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text("Library", style = MaterialTheme.typography.titleMedium) },
+            )
+        },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = viewModel::showAddByUrl,
