@@ -473,10 +473,19 @@ fun SettingsScreen(
         // Sign-in surfaces for fiction sources. Renamed from "Sources" —
         // the sources themselves don't have settings worth listing here
         // anymore (the feature is sign-in / sign-out + OAuth state).
-        SettingsSectionHeader("Account", icon = Icons.Outlined.AccountCircle)
+        SectionHeading(
+            label = "Account",
+            icon = Icons.Outlined.AccountCircle,
+            descriptor = "Sign-in for fiction sources that need it.",
+        )
         SettingsGroupCard {
-            // Royal Road row — preserves the v0.4.x "Account" surface,
-            // labeled per-source so GitHub can sit beside it. Issue #91.
+            // Royal Road row — status pill on top so the user sees
+            // signed-in state without having to scan the row's trailing
+            // button. Issue #91.
+            StatusPill(
+                text = if (s.isSignedIn) "Royal Road · signed in" else "Royal Road · not signed in",
+                tone = if (s.isSignedIn) StatusTone.Connected else StatusTone.Neutral,
+            )
             if (s.isSignedIn) {
                 SettingsRow(
                     title = "Royal Road",
@@ -504,6 +513,22 @@ fun SettingsScreen(
             }
             // GitHub row (#91). Always shown — sign-in is additive
             // (lifts the anon 60 req/hr cap to 5,000 req/hr).
+            // GitHub status pill — mirrors the Royal Road one above so
+            // both sign-in surfaces read with the same affordance.
+            StatusPill(
+                text = when (val g = s.github) {
+                    UiGitHubAuthState.Anonymous -> "GitHub · not signed in"
+                    is UiGitHubAuthState.SignedIn ->
+                        g.login?.let { "GitHub · signed in as @$it" }
+                            ?: "GitHub · signed in"
+                    UiGitHubAuthState.Expired -> "GitHub · session expired"
+                },
+                tone = when (s.github) {
+                    UiGitHubAuthState.Anonymous -> StatusTone.Neutral
+                    is UiGitHubAuthState.SignedIn -> StatusTone.Connected
+                    UiGitHubAuthState.Expired -> StatusTone.Error
+                },
+            )
             GitHubSignInRow(
                 state = s.github,
                 privateReposEnabled = s.githubPrivateReposEnabled,
