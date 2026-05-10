@@ -299,13 +299,28 @@ internal class GitHubSource @Inject constructor(
         // circuits with the right `FictionResult.Failure` variant.
         val bookTomlOpt = fetchOptionalText(owner, repo, "book.toml", branch)
         bookTomlOpt.failureOrNull?.let { return it }
+        // #123 — HonKit / legacy-GitBook fallback. Only fetched when
+        // no book.toml exists; saves a wasted HTTP round-trip for the
+        // common mdbook case. book.toml wins when both are present.
+        val bookJsonOpt = if (bookTomlOpt.text.isNullOrBlank()) {
+            fetchOptionalText(owner, repo, "book.json", branch)
+        } else null
+        bookJsonOpt?.failureOrNull?.let { return it }
         val storyvoxJsonOpt = fetchOptionalText(owner, repo, "storyvox.json", branch)
         storyvoxJsonOpt.failureOrNull?.let { return it }
+        // mdbook puts SUMMARY.md under `src/`; HonKit puts it at
+        // repo root (or wherever book.json's structure.summary
+        // points). guessSrcDir reads book.toml; for HonKit we
+        // fetch "SUMMARY.md" at root.
         val srcDirGuess = guessSrcDir(bookTomlOpt.text)
-        val summaryMdOpt = fetchOptionalText(owner, repo, "$srcDirGuess/SUMMARY.md", branch)
+        val isHonKit = bookTomlOpt.text.isNullOrBlank() &&
+            !bookJsonOpt?.text.isNullOrBlank()
+        val summaryPath = if (isHonKit) "SUMMARY.md" else "$srcDirGuess/SUMMARY.md"
+        val summaryMdOpt = fetchOptionalText(owner, repo, summaryPath, branch)
         summaryMdOpt.failureOrNull?.let { return it }
 
         val bookToml = bookTomlOpt.text
+        val bookJson = bookJsonOpt?.text
         val storyvoxJson = storyvoxJsonOpt.text
         val summaryMd = summaryMdOpt.text
 
@@ -318,6 +333,7 @@ internal class GitHubSource @Inject constructor(
         val manifest = ManifestParser.parse(
             fictionId = fictionId,
             bookToml = bookToml,
+            bookJson = bookJson,
             storyvoxJson = storyvoxJson,
             summaryMd = summaryMd,
             bareRepoPaths = bareRepoPaths,
