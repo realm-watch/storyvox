@@ -1,5 +1,6 @@
 package `in`.jphe.storyvox.feature.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -324,6 +325,7 @@ fun SettingsScreen(
             // by URL.
             if (s.sourceRssEnabled) {
                 RssFeedManagementRow(viewModel = viewModel)
+                RssSuggestedFeedsRow(viewModel = viewModel)
             }
             SettingsSwitchRow(
                 title = "Local EPUB files",
@@ -2132,4 +2134,100 @@ private fun EpubFolderPickerRow(viewModel: SettingsViewModel) {
 private fun abbreviateSafUri(raw: String): String {
     val tree = raw.substringAfterLast("/tree/", missingDelimiterValue = raw)
     return runCatching { java.net.URLDecoder.decode(tree, "UTF-8") }.getOrDefault(tree)
+}
+
+/**
+ * Issue #236 follow-up — collapsible "Suggested feeds" section.
+ * Renders [SUGGESTED_FEEDS] grouped by category with one-tap Add.
+ * Stays collapsed by default to keep the picker clean for users
+ * who already have their own feeds.
+ */
+@Composable
+private fun RssSuggestedFeedsRow(viewModel: SettingsViewModel) {
+    val subs by viewModel.rssSubscriptions.collectAsStateWithLifecycle()
+    val spacing = LocalSpacing.current
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .padding(vertical = 4.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Text(
+                text = if (expanded) "▾  Suggested feeds" else "▸  Suggested feeds",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        if (!expanded) {
+            Text(
+                text = "Tap to browse curated feeds (Buddhist & dharma, more coming).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            return@Column
+        }
+
+        // Group by category, render each category as a small header
+        // followed by the suggestion rows.
+        val byCategory = SUGGESTED_FEEDS.groupBy { it.category }
+        val canonicalSubs = subs.map { it.lowercase() }.toSet()
+        byCategory.forEach { (category, suggestions) ->
+            Text(
+                text = category,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = spacing.sm, bottom = 2.dp),
+            )
+            suggestions.forEach { feed ->
+                val alreadyAdded = feed.url.lowercase() in canonicalSubs
+                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = feed.title,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Text(
+                                text = feed.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            // Show the kind hint inline so users know the
+                            // audio-podcast caveat (storyvox narrates show
+                            // notes, not the audio file itself).
+                            Text(
+                                text = when (feed.kind) {
+                                    SuggestedFeedKind.Text -> "Text articles — narrate well"
+                                    SuggestedFeedKind.AudioPodcast ->
+                                        "Audio podcast — storyvox narrates show notes only"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            )
+                        }
+                        if (alreadyAdded) {
+                            Text(
+                                text = "Added",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(start = spacing.sm, end = spacing.sm),
+                            )
+                        } else {
+                            BrassButton(
+                                label = "Add",
+                                onClick = { viewModel.addRssFeed(feed.url) },
+                                variant = BrassButtonVariant.Text,
+                                modifier = Modifier.padding(start = spacing.sm),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
