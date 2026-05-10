@@ -283,9 +283,27 @@ fun BrowseScreen(
                                 authorInitial = fiction.author.firstOrNull()?.uppercaseChar() ?: '?',
                                 modifier = Modifier.fillMaxWidth(),
                             )
-                            Text(fiction.title, style = MaterialTheme.typography.titleSmall, maxLines = 2)
+                            // Issue #272 — titles longer than 2 lines were silently
+                            // cut mid-token ("…[Vols", "…(OP", "the I"), reading as
+                            // broken data rather than UI truncation. Set
+                            // overflow = Ellipsis so the cut becomes "…" and the
+                            // user knows the text continues. Author already has
+                            // the same treatment below (maxLines = 1) but no
+                            // overflow set; same fix.
+                            Text(
+                                fiction.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                maxLines = 2,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            )
                             if (fiction.author.isNotBlank()) {
-                                Text(fiction.author, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                Text(
+                                    fiction.author,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                )
                             }
                         }
                     }
