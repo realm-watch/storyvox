@@ -55,6 +55,10 @@ object StoryvoxRoutes {
     const val SETTINGS_VOICE = "settings/voice"
     const val SETTINGS_PRONUNCIATION = "settings/pronunciation"
     const val VOICE_LIBRARY = "settings/voices"
+    /** Issue #218 — Settings → AI → Sessions: review past chats and
+     *  recap history, navigate back into the chat surface, delete
+     *  individual sessions. */
+    const val SETTINGS_AI_SESSIONS = "settings/ai/sessions"
     const val AUTH_WEBVIEW = "auth/webview"
     /** Issue #91 — GitHub Device Flow sign-in modal. */
     const val GITHUB_SIGN_IN = "auth/github/signin"
@@ -370,6 +374,21 @@ private fun StoryvoxNavHostContent(
                     },
                     onOpenTeamsSignIn = { navController.navigate(StoryvoxRoutes.TEAMS_SIGN_IN) },
                     onOpenPronunciationDict = { navController.navigate(StoryvoxRoutes.SETTINGS_PRONUNCIATION) },
+                    onOpenAiSessions = { navController.navigate(StoryvoxRoutes.SETTINGS_AI_SESSIONS) },
+                )
+            }
+            composable(
+                StoryvoxRoutes.SETTINGS_AI_SESSIONS,
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+            ) {
+                `in`.jphe.storyvox.feature.sessions.SessionsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenChat = { fictionId ->
+                        navController.navigate(StoryvoxRoutes.chat(fictionId))
+                    },
                 )
             }
             composable(

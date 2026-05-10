@@ -82,6 +82,7 @@ fun SettingsScreen(
     onOpenGitHubRevoke: () -> Unit = {},
     onOpenTeamsSignIn: () -> Unit = {},
     onOpenPronunciationDict: () -> Unit,
+    onOpenAiSessions: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -270,6 +271,14 @@ fun SettingsScreen(
             onResetAi = viewModel::resetAiSettings,
             onOpenTeamsSignIn = onOpenTeamsSignIn,
             onSignOutTeams = viewModel::signOutTeams,
+        )
+        // #218 — surface for past chats + recap history. Lives at the
+        // bottom of the AI card so the section's "Forget all AI
+        // settings" destructive action stays visually adjacent.
+        SettingsLinkRow(
+            title = "Sessions",
+            subtitle = "Review and manage past chats and chapter recaps.",
+            onClick = onOpenAiSessions,
         )
         }
 
