@@ -13,6 +13,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -532,7 +534,7 @@ private fun SheetHeader(title: String, valueLabel: String?) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun SleepTimerChips(
     activeRemainingMs: Long?,
@@ -542,8 +544,14 @@ private fun SleepTimerChips(
     val spacing = LocalSpacing.current
     val isActive = activeRemainingMs != null
 
-    Row(
+    // #249 — FlowRow instead of Row so the 6 chips wrap to a second
+    // line on phone-narrow screens (Flip3 = 1080 px) instead of
+    // squashing the rightmost chip to ~67 px wide. FlowRow preserves
+    // natural chip widths and breaks at chip boundaries; on tablets
+    // and unfolded foldables they still render in one row.
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+        verticalArrangement = Arrangement.spacedBy(spacing.xs),
         modifier = Modifier.fillMaxWidth(),
     ) {
         FilterChip(

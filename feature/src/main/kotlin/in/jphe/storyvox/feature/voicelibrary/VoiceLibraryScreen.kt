@@ -467,6 +467,17 @@ private fun VoiceRow(
                         // language code at render time (see #128) so the
                         // catalog stays render-agnostic and a flag mapping
                         // change reaches every row in one edit.
+                        //
+                        // #250 — `weight(1f, fill = false) + maxLines + ellipsis`
+                        // so long names (live Azure roster e.g.
+                        // "☁️ Ava (Dragon HD) · en-US · Dragon HD")
+                        // truncate gracefully instead of pushing the
+                        // ActiveChip into a "ACTIV/E" wrap. fill = false
+                        // means the title takes only the space it needs
+                        // when short, leaving room for the chip; with
+                        // weight(1f, fill = true) it would always be
+                        // full-width and the chip would never sit beside
+                        // a short name like "Aria".
                         Text(
                             "${flagForLanguage(voice.language)} ${voice.displayName}",
                             style = MaterialTheme.typography.titleMedium,
@@ -474,6 +485,9 @@ private fun VoiceRow(
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             } else MaterialTheme.colorScheme.onSurface,
                             fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
                         )
                         if (isActive) {
                             Spacer(modifier = Modifier.size(spacing.xs))
