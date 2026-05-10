@@ -1625,6 +1625,15 @@ class EnginePlayer @AssistedInject constructor(
         chapterRepo.queueChapterDownload(fiction, nextId, requireUnmetered = false)
         chapterRepo.observeChapter(nextId).filterNotNull().first()
         loadAndPlay(fiction, nextId, charOffset = 0)
+        // Issue #287 — persist the new chapter's id immediately so the
+        // Library "Continue listening" join sees the freshly-loaded
+        // chapter on its next emission. Without this the playback_position
+        // row stays pointed at the PREVIOUS chapter until the next save
+        // tick (e.g. user pauses, or next sentence boundary triggers a
+        // persistPosition), and the Resume card paints the new chapter's
+        // title alongside the old chapter's index/number — a confusing
+        // mismatch every auto-advance.
+        persistPosition()
         _uiEvents.tryEmit(PlaybackUiEvent.ChapterChanged(nextId))
     }
 
@@ -1641,6 +1650,8 @@ class EnginePlayer @AssistedInject constructor(
         if (chapterId != null) {
             _uiEvents.tryEmit(PlaybackUiEvent.ChapterDone(chapterId))
         }
+        // advanceChapter now persists the new chapter's id internally
+        // (issue #287 — see the comment on advanceChapter).
         advanceChapter(direction = 1)
     }
 

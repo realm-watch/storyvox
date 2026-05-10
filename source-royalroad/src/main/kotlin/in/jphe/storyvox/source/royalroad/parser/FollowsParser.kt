@@ -54,7 +54,16 @@ internal object FollowsParser {
         val fictionId = extractFictionIdFromHref(href) ?: return null
         val title = titleAnchor.text().trim().ifEmpty { return null }
 
-        val cover = row.selectFirst("figure img")?.let { absoluteCoverUrl(it.attr("src")) }
+        val cover = row.selectFirst("figure img")?.let { img ->
+            // Issue #283 — prefer the lazy-load src attributes so we get
+            // the real cover instead of the placeholder. See the kdoc
+            // on BrowseParser.absoluteCoverUrl for the full story.
+            val raw = listOf("data-src", "data-lazy-src", "src")
+                .map { img.attr(it) }
+                .firstOrNull { it.isNotBlank() && !it.startsWith("data:") }
+                ?: ""
+            absoluteCoverUrl(raw)
+        }
 
         val tags = row.select("a.fiction-tag").mapNotNull { tag ->
             tag.attr("href").substringAfter("tagsAdd=", "").substringBefore("&").trim()

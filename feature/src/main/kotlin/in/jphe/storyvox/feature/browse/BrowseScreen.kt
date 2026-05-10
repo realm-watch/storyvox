@@ -187,7 +187,7 @@ fun BrowseScreen(
 
         when {
             state.isLoading && state.items.isEmpty() -> SkeletonGrid()
-            state.tab == BrowseTab.Search && state.query.isBlank() && !state.isFilterActive -> SearchHint()
+            state.tab == BrowseTab.Search && state.query.isBlank() && !state.isFilterActive -> SearchHint(state.sourceKey)
             // First-load failure with no cached items: full-screen error.
             // Retry triggers viewModel.loadMore() which the paginator
             // resolves to the same page that failed.
@@ -283,9 +283,27 @@ fun BrowseScreen(
                                 authorInitial = fiction.author.firstOrNull()?.uppercaseChar() ?: '?',
                                 modifier = Modifier.fillMaxWidth(),
                             )
-                            Text(fiction.title, style = MaterialTheme.typography.titleSmall, maxLines = 2)
+                            // Issue #272 — titles longer than 2 lines were silently
+                            // cut mid-token ("…[Vols", "…(OP", "the I"), reading as
+                            // broken data rather than UI truncation. Set
+                            // overflow = Ellipsis so the cut becomes "…" and the
+                            // user knows the text continues. Author already has
+                            // the same treatment below (maxLines = 1) but no
+                            // overflow set; same fix.
+                            Text(
+                                fiction.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                maxLines = 2,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            )
                             if (fiction.author.isNotBlank()) {
-                                Text(fiction.author, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                Text(
+                                    fiction.author,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                )
                             }
                         }
                     }
@@ -405,7 +423,7 @@ private fun SkeletonGrid() {
 }
 
 @Composable
-private fun SearchHint() {
+private fun SearchHint(sourceKey: BrowseSourceKey) {
     val spacing = LocalSpacing.current
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
@@ -423,14 +441,29 @@ private fun SearchHint() {
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
             )
+            // Issue #271 — per-source empty-state subtitle. The old copy
+            // hard-coded "across Royal Road" even when RSS/GitHub/etc. was
+            // the selected source. Pick the right phrase from the source
+            // key — each source has its own corpus shape (RSS = "your
+            // subscribed feeds", GitHub = "indexed repositories", etc.).
             Text(
-                "Find fictions across Royal Road",
+                searchHintForSource(sourceKey),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(spacing.xxl))
         }
     }
+}
+
+/** Issue #271 — per-source subtitle for the Search empty state. */
+private fun searchHintForSource(sourceKey: BrowseSourceKey): String = when (sourceKey) {
+    BrowseSourceKey.RoyalRoad -> "Find fictions across Royal Road"
+    BrowseSourceKey.GitHub -> "Search indexed GitHub repositories"
+    BrowseSourceKey.MemPalace -> "Search your MemPalace knowledge base"
+    BrowseSourceKey.Rss -> "Search your subscribed feeds"
+    BrowseSourceKey.Epub -> "Search your local EPUB library"
+    BrowseSourceKey.Outline -> "Search your Outline notes"
 }
 
 private val BrowseTab.label: String

@@ -303,6 +303,10 @@ class RealPlaybackControllerUiTest {
         override fun observeChapter(chapterId: String): Flow<ChapterContent?> = flowOf(null)
         override fun observeDownloadState(fictionId: String): Flow<Map<String, ChapterDownloadState>> =
             flowOf(emptyMap())
+        // Issue #282 — played-chapter set query, added so the chapter-list
+        // flow can compute `isFinished` after auto-advance. No-op here.
+        override fun observePlayedChapterIds(fictionId: String): Flow<Set<String>> =
+            flowOf(emptySet())
         override suspend fun queueChapterDownload(
             fictionId: String,
             chapterId: String,
