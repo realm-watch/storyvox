@@ -543,7 +543,11 @@ fun SettingsScreen(
         // Post-spec section — the palace is a fiction source with its
         // own host/key config (substantial enough to keep separate from
         // Account, which is just sign-in flows).
-        SettingsSectionHeader("Memory Palace", icon = Icons.Outlined.AutoStories)
+        SectionHeading(
+            label = "Memory Palace",
+            icon = Icons.Outlined.AutoStories,
+            descriptor = "Browse your local mempalace as fictions (LAN only).",
+        )
         SettingsGroupCard {
             MemoryPalaceSection(
                 palace = s.palace,
@@ -561,7 +565,11 @@ fun SettingsScreen(
         // stay greyed-out until PR-4 (the engine wiring) lands; this
         // section ships first as a "preparation" release so users can
         // configure their key ahead of the engine.
-        SettingsSectionHeader("Cloud voices", icon = Icons.Outlined.Cloud)
+        SectionHeading(
+            label = "Cloud voices",
+            icon = Icons.Outlined.Cloud,
+            descriptor = "Bring your own Azure key for HD Neural and Dragon HD voices.",
+        )
         SettingsGroupCard {
             AzureSection(
                 azure = s.azure,
@@ -585,7 +593,11 @@ fun SettingsScreen(
         // hash → same name across rebuilds. The brass sigil name is
         // the visual sign-off — full-width below the version line so
         // it doesn't crowd narrow screens.
-        SettingsSectionHeader("About", icon = Icons.Outlined.Info)
+        SectionHeading(
+            label = "About",
+            icon = Icons.Outlined.Info,
+            descriptor = "Build identity for bug reports.",
+        )
         SettingsGroupCard {
             Column(
                 modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.md),
@@ -739,39 +751,27 @@ private fun MemoryPalaceSection(
     onTest: () -> Unit,
 ) {
     val spacing = LocalSpacing.current
-    // Header is now emitted by the call site (SettingsScreen). Body
-    // wrapped in a padded Column so it sits within the
-    // SettingsGroupCard's row-style padding instead of breaking out.
+    // Status pill renders FIRST inside the card — first row of the
+    // section, sized via the shared StatusPill component. Body fields
+    // sit underneath in their own padded column so the pill reads as
+    // a card-level header, not a tagged-on text node.
+    val (statusText, statusTone) = when {
+        !palace.isConfigured -> "Set host to enable" to StatusTone.Neutral
+        probe == null -> "Tap “Test connection” to verify" to StatusTone.Neutral
+        probe is PalaceProbeResult.Reachable ->
+            "Connected · daemon ${probe.daemonVersion}" to StatusTone.Connected
+        probe is PalaceProbeResult.Unreachable ->
+            "Off home network · ${probe.message}" to StatusTone.Error
+        probe is PalaceProbeResult.NotConfigured ->
+            "Set host to enable" to StatusTone.Neutral
+        else -> "" to StatusTone.Neutral
+    }
+    StatusPill(text = statusText, tone = statusTone)
+
     Column(
         modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
         verticalArrangement = Arrangement.spacedBy(spacing.sm),
     ) {
-    Text(
-        "Browse and listen to your local MemPalace as fictions. Home network only — " +
-            "the palace stays put when you're off the LAN.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-
-    // Status pill — reflects the last probe result, or guides the user
-    // when the host field is empty.
-    val (statusText, statusColor) = when {
-        !palace.isConfigured -> "Set host to enable" to MaterialTheme.colorScheme.onSurfaceVariant
-        probe == null -> "Tap “Test connection” to verify" to MaterialTheme.colorScheme.onSurfaceVariant
-        probe is PalaceProbeResult.Reachable ->
-            "Connected · daemon ${probe.daemonVersion}" to MaterialTheme.colorScheme.primary
-        probe is PalaceProbeResult.Unreachable ->
-            "Off home network · ${probe.message}" to MaterialTheme.colorScheme.error
-        probe is PalaceProbeResult.NotConfigured ->
-            "Set host to enable" to MaterialTheme.colorScheme.onSurfaceVariant
-        else -> "" to MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    Text(
-        statusText,
-        style = MaterialTheme.typography.bodySmall,
-        color = statusColor,
-    )
-
     // Host field. Local state lets the user type freely; the persisted
     // setter fires onValueChange so changes are picked up across config
     // recreations. We don't debounce — DataStore is fine with the rate.
@@ -874,6 +874,27 @@ private fun AzureSection(
     val spacing = LocalSpacing.current
     val uriHandler = LocalUriHandler.current
 
+    // Status pill renders FIRST inside the card — first row of the
+    // section, sized via the shared StatusPill component, mirroring
+    // the Memory Palace section. Body content below sits in its own
+    // padded Column so the pill reads as a card-level header.
+    val (statusText, statusTone) = when {
+        !azure.isConfigured ->
+            "No key configured" to StatusTone.Neutral
+        probe == null ->
+            "Tap “Test connection” to verify" to StatusTone.Neutral
+        probe is AzureProbeResult.Reachable ->
+            "Connected · ${probe.voiceCount} voices available" to StatusTone.Connected
+        probe is AzureProbeResult.AuthFailed ->
+            "Key rejected · re-paste from Azure portal" to StatusTone.Error
+        probe is AzureProbeResult.Unreachable ->
+            "Offline · ${probe.message}" to StatusTone.Error
+        probe is AzureProbeResult.NotConfigured ->
+            "No key configured" to StatusTone.Neutral
+        else -> "" to StatusTone.Neutral
+    }
+    StatusPill(text = statusText, tone = statusTone)
+
     Column(
         modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
         verticalArrangement = Arrangement.spacedBy(spacing.sm),
@@ -886,28 +907,6 @@ private fun AzureSection(
                 "characters; F0 free tier covers 500K chars/month).",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        // Status pill — reflects key configuration + last probe.
-        val (statusText, statusColor) = when {
-            !azure.isConfigured ->
-                "No key configured" to MaterialTheme.colorScheme.onSurfaceVariant
-            probe == null ->
-                "Tap “Test connection” to verify" to MaterialTheme.colorScheme.onSurfaceVariant
-            probe is AzureProbeResult.Reachable ->
-                "Connected · ${probe.voiceCount} voices available" to MaterialTheme.colorScheme.primary
-            probe is AzureProbeResult.AuthFailed ->
-                "Key rejected · re-paste from Azure portal" to MaterialTheme.colorScheme.error
-            probe is AzureProbeResult.Unreachable ->
-                "Offline · ${probe.message}" to MaterialTheme.colorScheme.error
-            probe is AzureProbeResult.NotConfigured ->
-                "No key configured" to MaterialTheme.colorScheme.onSurfaceVariant
-            else -> "" to MaterialTheme.colorScheme.onSurfaceVariant
-        }
-        Text(
-            statusText,
-            style = MaterialTheme.typography.bodySmall,
-            color = statusColor,
         )
 
         // Region chip strip. Mirrors the Browse source-picker chip
