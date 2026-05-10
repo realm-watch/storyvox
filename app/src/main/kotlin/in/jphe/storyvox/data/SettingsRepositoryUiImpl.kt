@@ -301,17 +301,19 @@ class SettingsRepositoryUiImpl(
                 .coerceIn(PUNCTUATION_PAUSE_MIN_MULTIPLIER, PUNCTUATION_PAUSE_MAX_MULTIPLIER),
             playbackBufferChunks = (prefs[Keys.PLAYBACK_BUFFER_CHUNKS] ?: BUFFER_DEFAULT_CHUNKS)
                 .coerceIn(BUFFER_MIN_CHUNKS, BUFFER_MAX_CHUNKS),
-            warmupWait = prefs[Keys.WARMUP_WAIT] ?: true,
-            catchupPause = prefs[Keys.CATCHUP_PAUSE] ?: true,
+            // Defaults flipped on 2026-05-09 per JP — see UiSettings kdoc.
+            warmupWait = prefs[Keys.WARMUP_WAIT] ?: false,
+            catchupPause = prefs[Keys.CATCHUP_PAUSE] ?: false,
             voiceSteady = prefs[Keys.VOICE_STEADY] ?: true,
             palace = UiPalaceConfig(host = palace.host, apiKey = palace.apiKey),
             github = githubSession.toUi(),
             githubPrivateReposEnabled = prefs[Keys.GITHUB_PRIVATE_REPOS_ENABLED] ?: false,
-            sourceRoyalRoadEnabled = prefs[Keys.SOURCE_ROYALROAD_ENABLED] ?: true,
-            sourceGitHubEnabled = prefs[Keys.SOURCE_GITHUB_ENABLED] ?: true,
-            sourceMemPalaceEnabled = prefs[Keys.SOURCE_MEMPALACE_ENABLED] ?: true,
+            // RSS-only default (2026-05-09) — see kdoc on UiSettings.
+            sourceRoyalRoadEnabled = prefs[Keys.SOURCE_ROYALROAD_ENABLED] ?: false,
+            sourceGitHubEnabled = prefs[Keys.SOURCE_GITHUB_ENABLED] ?: false,
+            sourceMemPalaceEnabled = prefs[Keys.SOURCE_MEMPALACE_ENABLED] ?: false,
             sourceRssEnabled = prefs[Keys.SOURCE_RSS_ENABLED] ?: true,
-            sourceEpubEnabled = prefs[Keys.SOURCE_EPUB_ENABLED] ?: true,
+            sourceEpubEnabled = prefs[Keys.SOURCE_EPUB_ENABLED] ?: false,
             sleepShakeToExtendEnabled = prefs[Keys.SLEEP_SHAKE_TO_EXTEND_ENABLED] ?: true,
             ai = UiAiSettings(
                 provider = prefs[Keys.AI_PROVIDER]
@@ -454,8 +456,8 @@ class SettingsRepositoryUiImpl(
 
     // --- PlaybackModeConfig (issue #98) ---
 
-    override val warmupWait: Flow<Boolean> = store.data.map { it[Keys.WARMUP_WAIT] ?: true }
-    override val catchupPause: Flow<Boolean> = store.data.map { it[Keys.CATCHUP_PAUSE] ?: true }
+    override val warmupWait: Flow<Boolean> = store.data.map { it[Keys.WARMUP_WAIT] ?: false }
+    override val catchupPause: Flow<Boolean> = store.data.map { it[Keys.CATCHUP_PAUSE] ?: false }
     override suspend fun currentWarmupWait(): Boolean = warmupWait.first()
     override suspend fun currentCatchupPause(): Boolean = catchupPause.first()
 

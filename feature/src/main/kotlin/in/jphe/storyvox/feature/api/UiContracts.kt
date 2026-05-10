@@ -573,7 +573,11 @@ data class UiSettings(
      * look "playing" the whole time. Useful for users who'd rather see motion
      * than a spinner on slower devices.
      */
-    val warmupWait: Boolean = true,
+    /** Default flipped to false on 2026-05-09 — JP's directive
+     *  "all performance & buffering toggles default off." Existing
+     *  users keep their persisted preference; only fresh installs
+     *  see the new default. */
+    val warmupWait: Boolean = false,
     /**
      * Issue #98 — Mode B. When true (default), the streaming pipeline pauses
      * AudioTrack on mid-stream underrun (PR #77's pause-buffer-resume) and
@@ -582,7 +586,9 @@ data class UiSettings(
      * hears moments of dead air instead of paused-then-resumed playback,
      * but never sees the buffering spinner.
      */
-    val catchupPause: Boolean = true,
+    /** Default flipped to false on 2026-05-09 — see [warmupWait]
+     *  kdoc; same directive. */
+    val catchupPause: Boolean = false,
     /**
      * Issue #85 — Voice-Determinism preset for the VoxSherpa engine. When
      * true (default), the engine runs with VoxSherpa's calmed VITS defaults
@@ -624,17 +630,19 @@ data class UiSettings(
      * Library and Follows aren't affected; the toggles only gate Browse
      * surface area.
      */
-    val sourceRoyalRoadEnabled: Boolean = true,
-    val sourceGitHubEnabled: Boolean = true,
-    val sourceMemPalaceEnabled: Boolean = true,
-    /** RSS / Atom backend toggle (#236). Default ON — fresh installs
-     *  see the chip in the picker; if the user hasn't subscribed to
-     *  any feeds yet the empty-state copy explains how to add one. */
+    /** Per-backend defaults flipped to RSS-only on 2026-05-09 — fresh
+     *  installs land with just the RSS chip in Browse so the
+     *  "anything that publishes a feed" surface is the introduction
+     *  to storyvox. The other backends stay one toggle away in
+     *  Settings → Library & Sync. The Royal Road / GitHub / Memory
+     *  Palace defaults flipped to false here matter only for
+     *  *first-launch* state; existing users keep their persisted
+     *  prefs untouched. */
+    val sourceRoyalRoadEnabled: Boolean = false,
+    val sourceGitHubEnabled: Boolean = false,
+    val sourceMemPalaceEnabled: Boolean = false,
     val sourceRssEnabled: Boolean = true,
-    /** Local EPUB backend toggle (#235). Default ON — fresh installs
-     *  see the chip in the picker; if the user hasn't picked a folder
-     *  yet the empty-state copy points back to Settings. */
-    val sourceEpubEnabled: Boolean = true,
+    val sourceEpubEnabled: Boolean = false,
     /** Issue #150 — when ON, a shake during the sleep timer's fade
      *  tail re-arms the timer. Default ON; users with bumpy commutes
      *  can disable to avoid accidental extensions. */

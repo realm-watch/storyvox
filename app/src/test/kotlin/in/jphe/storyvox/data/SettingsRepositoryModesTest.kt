@@ -71,13 +71,13 @@ class SettingsRepositoryModesTest {
     // ---- Mode A — Warm-up Wait ----
 
     @Test
-    fun `default warmup wait is on`() = runTest {
-        // The default-on bias preserves v0.4.30's "show spinner while
-        // engine warms up" behavior on first launch + on existing installs
-        // that have no value persisted.
-        assertEquals(true, repo.currentWarmupWait())
-        assertEquals(true, repo.settings.first().warmupWait)
-        assertEquals(true, repo.warmupWait.first())
+    fun `default warmup wait is off`() = runTest {
+        // 2026-05-09: defaults flipped per JP — all Performance &
+        // Buffering toggles default off on fresh installs. Existing
+        // installs keep their persisted preference.
+        assertEquals(false, repo.currentWarmupWait())
+        assertEquals(false, repo.settings.first().warmupWait)
+        assertEquals(false, repo.warmupWait.first())
     }
 
     @Test
@@ -99,11 +99,11 @@ class SettingsRepositoryModesTest {
     // ---- Mode B — Catch-up Pause ----
 
     @Test
-    fun `default catchup pause is on`() = runTest {
-        // Default-on preserves PR #77's pause-buffer-resume contract.
-        assertEquals(true, repo.currentCatchupPause())
-        assertEquals(true, repo.settings.first().catchupPause)
-        assertEquals(true, repo.catchupPause.first())
+    fun `default catchup pause is off`() = runTest {
+        // 2026-05-09: defaults flipped per JP — see warmupWait kdoc.
+        assertEquals(false, repo.currentCatchupPause())
+        assertEquals(false, repo.settings.first().catchupPause)
+        assertEquals(false, repo.catchupPause.first())
     }
 
     @Test
@@ -124,9 +124,16 @@ class SettingsRepositoryModesTest {
 
     @Test
     fun `Mode A and Mode B persist independently`() = runTest {
-        // Flipping Mode B must not affect Mode A and vice-versa. Catches
-        // a regression where both keys end up sharing a Preferences key
-        // (e.g. typo in Keys).
+        // Flipping one must not affect the other. Catches a regression
+        // where both keys end up sharing a Preferences key (e.g. typo).
+        // Walks through (true,true) → (false,true) → (false,false) →
+        // (true,false) so each persisted state is exercised — works
+        // regardless of which way the defaults are set.
+        repo.setWarmupWait(true)
+        repo.setCatchupPause(true)
+        assertEquals(true, repo.currentWarmupWait())
+        assertEquals(true, repo.currentCatchupPause())
+
         repo.setWarmupWait(false)
         assertEquals(false, repo.currentWarmupWait())
         assertEquals(true, repo.currentCatchupPause())

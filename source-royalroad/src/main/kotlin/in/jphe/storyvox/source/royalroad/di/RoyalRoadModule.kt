@@ -63,8 +63,15 @@ internal object RoyalRoadHttpModule {
             .build()
 
     @Provides @Singleton
-    fun provideRateLimitedClient(@RoyalRoadHttp http: OkHttpClient): RateLimitedClient =
-        RateLimitedClient(http)
+    fun provideRateLimitedClient(
+        @RoyalRoadHttp http: OkHttpClient,
+        robots: `in`.jphe.storyvox.source.royalroad.net.RobotsCache,
+    ): RateLimitedClient =
+        RateLimitedClient(http, robots)
+
+    @Provides @Singleton
+    fun provideRobotsCache(@RoyalRoadHttp http: OkHttpClient): `in`.jphe.storyvox.source.royalroad.net.RobotsCache =
+        `in`.jphe.storyvox.source.royalroad.net.RobotsCache(http)
 }
 
 @Module
