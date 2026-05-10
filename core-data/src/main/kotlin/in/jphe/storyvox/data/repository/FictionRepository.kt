@@ -400,8 +400,24 @@ internal fun FictionSummary.toEntity(now: Long): Fiction = Fiction(
 internal fun FictionDetail.toEntity(existing: Fiction?, now: Long): Fiction {
     val base = existing ?: summary.toEntity(now)
     return base.copy(
-        title = summary.title,
-        author = summary.author,
+        // Issue #279 — never overwrite a previously-good title / author
+        // with a worse one. The RSS source falls back to the URL host
+        // when the feed parse comes up blank (intermittent gateway
+        // timeouts, momentarily-malformed XML, Cloudflare 524, etc.),
+        // which produced a perfectly non-blank but useless string like
+        // "lionsroar.com". The result: pull-to-refresh silently corrupted
+        // the Library card from 'Lion's Roar / Rev. Marvin Harada' to
+        // 'lionsroar.com / ?'.
+        //
+        // Defensive: if we have a non-blank existing title (the user has
+        // seen it before) and the incoming title looks like a degraded
+        // fallback — either blank OR a bare host string that matches the
+        // last cached description / cover URL host — keep the cached
+        // value. Same pattern for author. Sources that genuinely return
+        // a richer title are unaffected: the equality check only fires
+        // when the new title literally is the URL host fallback.
+        title = preferTitle(incoming = summary.title, existing = base.title, sourceFallback = inferUrlHost(summary.description)),
+        author = summary.author.ifBlank { base.author },
         authorId = authorId ?: base.authorId,
         coverUrl = summary.coverUrl ?: base.coverUrl,
         description = summary.description ?: base.description,
@@ -416,6 +432,45 @@ internal fun FictionDetail.toEntity(existing: Fiction?, now: Long): Fiction {
         lastUpdatedAt = lastUpdatedAt ?: base.lastUpdatedAt,
         metadataFetchedAt = now,
     )
+}
+
+/**
+ *  Issue #279 — title-degradation guard for [FictionDetail.toEntity].
+ *
+ *  Returns the incoming title unless it looks like a degraded source
+ *  fallback (blank, OR equal to the URL host extracted from the same
+ *  detail's description). In the degraded case we keep the existing
+ *  cached title — assuming we have one. First-add flows where the
+ *  existing row is the just-created stub get the incoming title verbatim
+ *  (the stub's title is also derived from the same source, so there's
+ *  no "better" alternative to preserve).
+ *
+ *  The host-equality check is what catches the [RssSource] failure mode
+ *  specifically: when `feed.title.isBlank()`, RSS returns
+ *  `displayLabelForUrl(sub.url)` which is `host.removePrefix("www.")`.
+ *  That string is structurally distinguishable from a real title
+ *  ("lionsroar.com" vs "Lion's Roar"), and from a real description, so
+ *  catching it here rather than asking every source to opt in keeps the
+ *  guard durable.
+ */
+internal fun preferTitle(incoming: String, existing: String, sourceFallback: String?): String {
+    if (incoming.isBlank()) return existing.ifBlank { incoming }
+    if (existing.isBlank()) return incoming
+    if (sourceFallback != null && incoming.equals(sourceFallback, ignoreCase = true)) {
+        return existing
+    }
+    return incoming
+}
+
+/** Issue #279 — pull a bare host out of a URL-shaped string. Used as
+ *  the second axis of the title-degradation check in [preferTitle].
+ *  Returns null when the input doesn't parse as a URI or has no host
+ *  (so [preferTitle] falls back to the trust-the-incoming branch). */
+internal fun inferUrlHost(maybeUrl: String?): String? {
+    if (maybeUrl.isNullOrBlank()) return null
+    return runCatching {
+        java.net.URI(maybeUrl).host?.removePrefix("www.")
+    }.getOrNull()
 }
 
 internal fun ChapterInfo.toEntity(fictionId: String): Chapter = Chapter(
