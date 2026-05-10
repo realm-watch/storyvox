@@ -455,6 +455,11 @@ fun SettingsScreen(
                 onSetRegion = viewModel::setAzureRegion,
                 onClear = viewModel::clearAzureCredentials,
                 onTest = viewModel::testAzureConnection,
+                fallbackEnabled = s.azureFallbackEnabled,
+                fallbackVoiceId = s.azureFallbackVoiceId,
+                installedVoices = state.voices,
+                onSetFallbackEnabled = viewModel::setAzureFallbackEnabled,
+                onSetFallbackVoice = viewModel::setAzureFallbackVoiceId,
             )
         }
 
@@ -744,6 +749,11 @@ private fun AzureSection(
     onSetRegion: (String) -> Unit,
     onClear: () -> Unit,
     onTest: () -> Unit,
+    fallbackEnabled: Boolean,
+    fallbackVoiceId: String?,
+    installedVoices: List<`in`.jphe.storyvox.feature.api.UiVoice>,
+    onSetFallbackEnabled: (Boolean) -> Unit,
+    onSetFallbackVoice: (String?) -> Unit,
 ) {
     val spacing = LocalSpacing.current
     val uriHandler = LocalUriHandler.current
@@ -889,7 +899,10 @@ private fun AzureSection(
         // endpoint → paste here", which the linked page covers; we
         // don't reproduce it inline because it'd rot when Microsoft
         // reorganizes their portal navigation.
-        val helpUrl = "https://learn.microsoft.com/azure/ai-services/speech-service/get-started"
+        // Microsoft Learn's Speech Service overview — stable canonical
+        // URL for "what is this and how do I get a key." The earlier
+        // "/get-started" path 404'd after a docs reorg.
+        val helpUrl = "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/overview"
         val annotated = buildAnnotatedString {
             append("New here? ")
             withStyle(
@@ -906,6 +919,72 @@ private fun AzureSection(
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.clickable { uriHandler.openUri(helpUrl) },
         )
+
+        // ── PR-6 (#185): offline fallback ─────────────────────────
+        // Only meaningful with a key configured AND with at least
+        // one local voice installed. Hide entirely otherwise — a
+        // toggle the user can't act on is just clutter.
+        if (azure.isConfigured && installedVoices.isNotEmpty()) {
+            Divider(
+                modifier = Modifier.padding(vertical = spacing.xs),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+            )
+            Text(
+                "Offline fallback",
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Text(
+                "If Azure is unreachable mid-chapter (network out, " +
+                    "Azure servers misbehaving, or quota hit), " +
+                    "auto-swap to a local voice for the rest of the " +
+                    "chapter. The next chapter will try Azure again.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Fall back to local voice when offline",
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(
+                    checked = fallbackEnabled,
+                    onCheckedChange = onSetFallbackEnabled,
+                )
+            }
+            if (fallbackEnabled) {
+                Text(
+                    "Fallback voice — pick from your installed local voices.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                    verticalArrangement = Arrangement.spacedBy(spacing.xs),
+                ) {
+                    installedVoices.forEach { v ->
+                        FilterChip(
+                            selected = fallbackVoiceId == v.id,
+                            onClick = { onSetFallbackVoice(v.id) },
+                            label = { Text(v.label) },
+                            colors = FilterChipDefaults.filterChipColors(),
+                        )
+                    }
+                }
+                if (fallbackVoiceId == null) {
+                    Text(
+                        "No fallback voice picked yet — toggle is on but " +
+                            "won't fire until you select one above.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        }
     }
 }
 

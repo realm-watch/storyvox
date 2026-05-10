@@ -250,6 +250,12 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** PR-6 (#185) — Azure offline-fallback toggle + voice picker. */
+    fun setAzureFallbackEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setAzureFallbackEnabled(enabled) }
+    fun setAzureFallbackVoiceId(voiceId: String?) =
+        viewModelScope.launch { repo.setAzureFallbackVoiceId(voiceId) }
+
     // ── AI settings (issue #81) ────────────────────────────────────
 
     fun setAiProvider(provider: UiLlmProvider?) = viewModelScope.launch {

@@ -169,6 +169,16 @@ object AppBindings {
     fun provideVoiceTuningConfig(impl: SettingsRepositoryUiImpl): VoiceTuningConfig = impl
 
     /**
+     * PR-6 (#185) — Azure offline-fallback contract. Same
+     * SettingsRepositoryUiImpl singleton; one DataStore, four contracts
+     * now. EnginePlayer reads this to decide whether to auto-swap to a
+     * local voice on Azure synth failures.
+     */
+    @Provides @Singleton
+    fun provideAzureFallbackConfig(impl: SettingsRepositoryUiImpl):
+        `in`.jphe.storyvox.data.repository.playback.AzureFallbackConfig = impl
+
+    /**
      * Issue #135 — pronunciation dictionary contract for `core-playback`'s
      * EnginePlayer + the Settings UI. Same singleton instance as the rest;
      * one DataStore, every contract.

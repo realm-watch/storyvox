@@ -675,6 +675,23 @@ data class UiSettings(
      * flips to true.
      */
     val azure: UiAzureConfig = UiAzureConfig(),
+    /**
+     * PR-6 (#185) — Azure offline-fallback toggle. When ON and an
+     * Azure synthesis fails with a non-auth error (network out,
+     * Azure 5xx after retries, throttled-after-retries), storyvox
+     * auto-swaps to the user-chosen [azureFallbackVoiceId] for the
+     * remainder of the chapter rather than halting playback. The
+     * playback sheet emits a one-shot toast on swap. Default OFF;
+     * users with a key opt in if they want offline resilience.
+     */
+    val azureFallbackEnabled: Boolean = false,
+    /**
+     * PR-6 (#185) — voice id used when [azureFallbackEnabled] fires.
+     * Null until the user picks one in Settings → Cloud voices →
+     * "Fall back to local voice." If null while the toggle is on,
+     * fallback is a no-op (we have no voice to swap to).
+     */
+    val azureFallbackVoiceId: String? = null,
 ) {
     /** Speed value the engine should run at right now — the active
      *  voice's override if set, otherwise the global default (#195). */
@@ -989,6 +1006,12 @@ interface SettingsRepositoryUi {
      * message on failure.
      */
     suspend fun testAzureConnection(): AzureProbeResult
+
+    /** PR-6 (#185) — Azure offline-fallback toggle. */
+    suspend fun setAzureFallbackEnabled(enabled: Boolean)
+    /** PR-6 (#185) — voice id used when fallback fires. Pass null to
+     *  clear so the toggle becomes a no-op until a voice is picked. */
+    suspend fun setAzureFallbackVoiceId(voiceId: String?)
 }
 
 /** Outcome of [`SettingsRepositoryUi.testPalaceConnection`]. */

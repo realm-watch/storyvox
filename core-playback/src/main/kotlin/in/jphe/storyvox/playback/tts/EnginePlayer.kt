@@ -120,6 +120,10 @@ class EnginePlayer @AssistedInject constructor(
      *  use, with HTTPS round-trips replacing JNI calls. */
     private val azureCredentials: `in`.jphe.storyvox.source.azure.AzureCredentials,
     private val azureVoiceEngine: `in`.jphe.storyvox.source.azure.AzureVoiceEngine,
+    /** PR-6 (#185) — Azure offline-fallback. Read at error-time inside
+     *  observeAzureErrors; observed as a flow to keep the snapshot
+     *  fresh without forcing every error-path to suspend. */
+    private val azureFallbackConfig: `in`.jphe.storyvox.data.repository.playback.AzureFallbackConfig,
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
 
     @AssistedFactory
@@ -227,6 +231,19 @@ class EnginePlayer @AssistedInject constructor(
         observeVoiceTuningConfig()
         observePronunciationDict()
         observeAzureErrors()
+        observeAzureFallbackConfig()
+    }
+
+    /** PR-6 (#185) — keep [azureFallbackEnabled] / [azureFallbackVoiceId]
+     *  fresh so observeAzureErrors can read them without awaiting a
+     *  flow tick inside the error-path. */
+    private fun observeAzureFallbackConfig() {
+        scope.launch {
+            azureFallbackConfig.state.collect { s ->
+                azureFallbackEnabled = s.enabled
+                azureFallbackVoiceId = s.fallbackVoiceId
+            }
+        }
     }
 
     /**
@@ -265,8 +282,55 @@ class EnginePlayer @AssistedInject constructor(
                         )
                 }
                 _observableState.update { it.copy(error = mapped) }
+
+                // PR-6 (#185) — offline-fallback. Auth errors are NOT
+                // fall-back-able (a bad key won't recover by switching
+                // voice; the user has to re-paste). Other errors are
+                // fall-back-able if the toggle is on AND a fallback
+                // voice id is set AND we haven't already swapped this
+                // chapter. The swap goes through the standard
+                // setActive() path so the existing voice-swap pipeline
+                // rebuild handles AudioTrack sample-rate change cleanly.
+                if (err != null &&
+                    err !is `in`.jphe.storyvox.source.azure.AzureError.AuthFailed &&
+                    activeEngineType is EngineType.Azure &&
+                    azureFallbackEnabled &&
+                    azureFallbackVoiceId != null &&
+                    !azureFallbackEmittedThisChapter
+                ) {
+                    val fallbackId = azureFallbackVoiceId!!
+                    val fallbackEntry = `in`.jphe.storyvox.playback.voice.VoiceCatalog.byId(fallbackId)
+                    val label = fallbackEntry?.displayName ?: fallbackId
+                    azureFallbackEmittedThisChapter = true
+                    _uiEvents.tryEmit(PlaybackUiEvent.AzureFellBack(label))
+                    scope.launch { voiceManager.setActive(fallbackId) }
+                }
             }
         }
+    }
+
+    /** PR-6 (#185) — Azure offline-fallback config snapshot, refreshed
+     *  whenever the settings flow ticks. Read at error-time inside
+     *  [observeAzureErrors] (no flow-collect race because the snapshot
+     *  is updated on the same scope). */
+    @Volatile
+    private var azureFallbackEnabled: Boolean = false
+
+    @Volatile
+    private var azureFallbackVoiceId: String? = null
+
+    /** Per-chapter dedupe so the fallback toast doesn't fire on every
+     *  failed sentence — once the swap has happened, subsequent Azure
+     *  errors in the same chapter are silently ignored (the active
+     *  voice is no longer Azure anyway, after the swap). Reset on
+     *  chapter change. */
+    @Volatile
+    private var azureFallbackEmittedThisChapter: Boolean = false
+
+    /** Internal hook for [observeFallbackConfig] to update the snapshot. */
+    internal fun setAzureFallbackSnapshot(enabled: Boolean, voiceId: String?) {
+        azureFallbackEnabled = enabled
+        azureFallbackVoiceId = voiceId
     }
 
     private fun observeBufferConfig() {
@@ -546,6 +610,11 @@ class EnginePlayer @AssistedInject constructor(
     // ----- Storyvox-internal API -----
 
     suspend fun loadAndPlay(fictionId: String, chapterId: String, charOffset: Int) {
+        // PR-6 (#185) — fallback toast dedupe is per-chapter; reset
+        // here so the next chapter's first Azure failure can re-fire
+        // the toast. Cheap (one volatile write) so we don't gate it
+        // on whether the chapter actually changed.
+        azureFallbackEmittedThisChapter = false
         val chapter: PlaybackChapter = chapterRepo.getChapter(chapterId) ?: run {
             _observableState.update {
                 it.copy(

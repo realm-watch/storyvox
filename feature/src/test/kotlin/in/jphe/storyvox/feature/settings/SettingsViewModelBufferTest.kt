@@ -200,6 +200,8 @@ class SettingsViewModelBufferTest {
         override suspend fun setAzureKey(key: String?) = Unit
         override suspend fun setAzureRegion(regionId: String) = Unit
         override suspend fun clearAzureCredentials() = Unit
+        override suspend fun setAzureFallbackEnabled(enabled: Boolean) = Unit
+        override suspend fun setAzureFallbackVoiceId(voiceId: String?) = Unit
         override suspend fun testAzureConnection(): `in`.jphe.storyvox.feature.api.AzureProbeResult =
             `in`.jphe.storyvox.feature.api.AzureProbeResult.NotConfigured
         override suspend fun signOutTeams() = Unit

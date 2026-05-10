@@ -13,6 +13,8 @@ import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import `in`.jphe.storyvox.data.auth.SessionHydrator
 import `in`.jphe.storyvox.data.repository.AuthRepository
+import `in`.jphe.storyvox.data.repository.playback.AzureFallbackConfig
+import `in`.jphe.storyvox.data.repository.playback.AzureFallbackState
 import `in`.jphe.storyvox.data.repository.playback.PlaybackBufferConfig
 import `in`.jphe.storyvox.data.repository.playback.PlaybackModeConfig
 import `in`.jphe.storyvox.data.repository.playback.VoiceTuningConfig
@@ -200,6 +202,10 @@ private object Keys {
     // ── Sleep timer shake-to-extend (issue #150) ───────────────────
     val SLEEP_SHAKE_TO_EXTEND_ENABLED = booleanPreferencesKey("pref_sleep_shake_to_extend_enabled")
 
+    // ── Azure offline-fallback (issue #185, PR-6) ──────────────────
+    val AZURE_FALLBACK_ENABLED = booleanPreferencesKey("pref_azure_fallback_enabled")
+    val AZURE_FALLBACK_VOICE_ID = stringPreferencesKey("pref_azure_fallback_voice_id")
+
     // ── Chat grounding (issue #212) ────────────────────────────────
     /** Defaults match pre-#212 ChatViewModel behaviour: chapter title
      *  on, every more-expensive level off. */
@@ -263,6 +269,7 @@ class SettingsRepositoryUiImpl(
     PlaybackBufferConfig,
     PlaybackModeConfig,
     VoiceTuningConfig,
+    AzureFallbackConfig,
     PronunciationDictRepository,
     LlmConfigProvider,
     GitHubScopePreferences {
@@ -356,6 +363,14 @@ class SettingsRepositoryUiImpl(
                     regionDisplayName = AzureRegion.byId(regionId)?.displayName ?: regionId,
                 )
             },
+            // PR-6 (#185) — Azure offline-fallback toggle + voice id.
+            // Read from the unencrypted prefs store (no secret here —
+            // just user UX preference + a public voice id). The
+            // AzureVoiceEngine's lastError observer in EnginePlayer
+            // reads these at the moment of failure; no need for a
+            // dedicated tick flow.
+            azureFallbackEnabled = prefs[Keys.AZURE_FALLBACK_ENABLED] ?: false,
+            azureFallbackVoiceId = prefs[Keys.AZURE_FALLBACK_VOICE_ID],
             ai = UiAiSettings(
                 provider = prefs[Keys.AI_PROVIDER]
                     ?.takeIf { it.isNotBlank() }
@@ -506,6 +521,20 @@ class SettingsRepositoryUiImpl(
 
     override val voiceSteady: Flow<Boolean> = store.data.map { it[Keys.VOICE_STEADY] ?: true }
     override suspend fun currentVoiceSteady(): Boolean = voiceSteady.first()
+
+    // --- AzureFallbackConfig (#185, PR-6) ---
+    // Surfaced through the same DataStore-backed flow as the other
+    // playback config interfaces; EnginePlayer collects it in
+    // observeAzureFallbackConfig() and snapshots into a volatile pair
+    // so the synth-failure path can read without suspending.
+    override val state: Flow<AzureFallbackState> = store.data.map { prefs ->
+        AzureFallbackState(
+            enabled = prefs[Keys.AZURE_FALLBACK_ENABLED] ?: false,
+            fallbackVoiceId = prefs[Keys.AZURE_FALLBACK_VOICE_ID],
+        )
+    }
+
+    override suspend fun currentAzureFallback(): AzureFallbackState = state.first()
 
     override suspend fun signIn() {
         // Just flips the persisted UI flag; the cookie capture is owned by
@@ -833,6 +862,17 @@ class SettingsRepositoryUiImpl(
     override suspend fun clearAzureCredentials() {
         azureCreds.clear()
         azureTick.value = azureTick.value + 1
+    }
+
+    override suspend fun setAzureFallbackEnabled(enabled: Boolean) {
+        store.edit { it[Keys.AZURE_FALLBACK_ENABLED] = enabled }
+    }
+
+    override suspend fun setAzureFallbackVoiceId(voiceId: String?) {
+        store.edit {
+            if (voiceId == null) it.remove(Keys.AZURE_FALLBACK_VOICE_ID)
+            else it[Keys.AZURE_FALLBACK_VOICE_ID] = voiceId
+        }
     }
 
     override suspend fun testAzureConnection(): AzureProbeResult {

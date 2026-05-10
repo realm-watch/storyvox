@@ -89,6 +89,17 @@ sealed class PlaybackUiEvent {
     data object BookFinished : PlaybackUiEvent()
     data class ChapterChanged(val chapterId: String) : PlaybackUiEvent()
     data class EngineMissing(val installUrl: String) : PlaybackUiEvent()
+    /**
+     * PR-6 (#185) — Azure synth failed (non-auth, non-stop) with the
+     * offline-fallback toggle on; storyvox auto-swapped to the user's
+     * chosen local voice. The playback sheet renders this as a
+     * one-shot toast: "Azure offline — using [fallback voice]". Fires
+     * **once per chapter** (the consumer dedupes via "did we already
+     * emit this for sentenceIndex 0–N? → suppress"); auto-clearing on
+     * chapter change is fine because the user already learned the
+     * fallback is active.
+     */
+    data class AzureFellBack(val fallbackVoiceLabel: String) : PlaybackUiEvent()
 }
 
 fun PlaybackState.scrubProgress(): Float {
