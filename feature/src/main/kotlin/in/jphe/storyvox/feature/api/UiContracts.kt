@@ -856,8 +856,13 @@ data class UiAzureConfig(
     val isConfigured: Boolean get() = key.isNotBlank()
 }
 
-/** Default queue depth — current hardcoded `EngineStreamingSource(queueCapacity = 8)`. */
-const val BUFFER_DEFAULT_CHUNKS: Int = 8
+/** Default queue depth.
+ *
+ *  Issue #294 — bumped from 8 → 12. The original 8 was the bare minimum
+ *  from #84's exploratory probe era; ~12 hides voice startup spikes on
+ *  Flip3-class hardware without entering the amber zone (recommended
+ *  max is 64). Per Lyra's first-time-defaults audit. */
+const val BUFFER_DEFAULT_CHUNKS: Int = 12
 
 /** Lower bound — 1 in flight + 1 queued is the minimum that gives any back-pressure benefit. */
 const val BUFFER_MIN_CHUNKS: Int = 2
@@ -905,7 +910,12 @@ const val BUFFER_DANGER_MULTIPLIER: Int = 4
  */
 const val PUNCTUATION_PAUSE_MIN_MULTIPLIER: Float = 0f
 const val PUNCTUATION_PAUSE_MAX_MULTIPLIER: Float = 4f
-const val PUNCTUATION_PAUSE_DEFAULT_MULTIPLIER: Float = 1f
+/** Issue #294 — bumped from 1.0× → 0.85×. Web fiction has more dialogue
+ *  tags and short paragraphs than audiobooks; 1.00× felt stilted on a
+ *  Royal Road / RSS reading session. 0.85× still respects terminators
+ *  but lets the cadence flow with the source. Per Lyra's first-time-
+ *  defaults audit. */
+const val PUNCTUATION_PAUSE_DEFAULT_MULTIPLIER: Float = 0.85f
 
 /** Legacy enum stop multipliers — used by the migration shim and tick labels. */
 const val PUNCTUATION_PAUSE_OFF_MULTIPLIER: Float = 0f

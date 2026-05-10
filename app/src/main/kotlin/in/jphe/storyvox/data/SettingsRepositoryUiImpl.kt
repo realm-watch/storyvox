@@ -73,7 +73,12 @@ import kotlinx.coroutines.flow.map
 
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(
     name = "storyvox_settings",
-    produceMigrations = { _ -> listOf(PunctuationPauseEnumToMultiplierMigration) },
+    produceMigrations = { _ ->
+        listOf(
+            PunctuationPauseEnumToMultiplierMigration,
+            FirstTimeDefaultVoiceMigration,
+        )
+    },
 )
 
 /**
@@ -111,6 +116,40 @@ internal val PunctuationPauseEnumToMultiplierMigration: DataMigration<Preference
             }
             mutable[newKey] = mapped
             mutable.remove(oldKey)
+            return mutable.toPreferences()
+        }
+
+        override suspend fun cleanUp() = Unit
+    }
+
+/**
+ * Issue #294 — seed `pref_default_voice_id` to `piper_cori_en_GB_high`
+ * on a fresh install. The VoicePickerGate's ordering already shows
+ * Cori first (see VoiceCatalog.featuredIds[0]), but the "no voice
+ * activated yet" state would otherwise leave defaultVoiceId null until
+ * the user explicitly picks one — that pushes the first-run friction
+ * onto a picker tap.
+ *
+ * Runs once per process at first DataStore read. Idempotent —
+ * `shouldMigrate` returns false the moment the key is present, so a
+ * user who picks a different voice on first launch (or who upgraded
+ * from a build that already has a stored voice) gets their choice
+ * preserved verbatim.
+ *
+ * Cori High is a 114 MB download. The VoicePickerGate's three featured
+ * tiles still offer Lessac High and Aoede Kokoro as alternatives, so a
+ * connection-sensitive user can swap before the install completes.
+ */
+internal val FirstTimeDefaultVoiceMigration: DataMigration<Preferences> =
+    object : DataMigration<Preferences> {
+        private val voiceKey = stringPreferencesKey("pref_default_voice_id")
+
+        override suspend fun shouldMigrate(currentData: Preferences): Boolean =
+            currentData[voiceKey] == null
+
+        override suspend fun migrate(currentData: Preferences): Preferences {
+            val mutable = currentData.toMutablePreferences()
+            mutable[voiceKey] = "piper_cori_en_GB_high"
             return mutable.toPreferences()
         }
 
@@ -363,7 +402,11 @@ class SettingsRepositoryUiImpl(
         UiSettings(
             ttsEngine = "VoxSherpa",
             defaultVoiceId = prefs[Keys.DEFAULT_VOICE_ID],
-            defaultSpeed = prefs[Keys.DEFAULT_SPEED] ?: 1.0f,
+            // Issue #294 — web-fiction listeners consistently prefer 1.10×;
+            // 1.00× is audiobook tempo, too slow for serial fiction.
+            // Existing users keep their stored value via the prefs lookup;
+            // only the fallback for a fresh install changed.
+            defaultSpeed = prefs[Keys.DEFAULT_SPEED] ?: 1.1f,
             defaultPitch = prefs[Keys.DEFAULT_PITCH] ?: 1.0f,
             voiceSpeedOverrides = decodeVoiceFloatMap(prefs[Keys.VOICE_SPEED_OVERRIDES]),
             voicePitchOverrides = decodeVoiceFloatMap(prefs[Keys.VOICE_PITCH_OVERRIDES]),
@@ -385,8 +428,18 @@ class SettingsRepositoryUiImpl(
             palace = UiPalaceConfig(host = palace.host, apiKey = palace.apiKey),
             github = githubSession.toUi(),
             githubPrivateReposEnabled = prefs[Keys.GITHUB_PRIVATE_REPOS_ENABLED] ?: false,
-            // RSS-only default (2026-05-09) — see kdoc on UiSettings.
-            sourceRoyalRoadEnabled = prefs[Keys.SOURCE_ROYALROAD_ENABLED] ?: false,
+            // Issue #294 — Royal Road is the de-facto primary source
+            // storyvox was built around; defaulting OFF meant a new user
+            // opened Browse and saw the empty-picker state. Flip to ON
+            // for fresh installs alongside RSS. Existing users keep their
+            // stored toggle via the prefs lookup; only the fallback
+            // changed.
+            //
+            // The playstore build flavor (#240, not yet landed) is
+            // expected to override this to FALSE at the BuildConfig level
+            // to satisfy the Play Store's anti-scraping posture. Until
+            // that lands, this default is ON for all builds.
+            sourceRoyalRoadEnabled = prefs[Keys.SOURCE_ROYALROAD_ENABLED] ?: true,
             sourceGitHubEnabled = prefs[Keys.SOURCE_GITHUB_ENABLED] ?: false,
             sourceMemPalaceEnabled = prefs[Keys.SOURCE_MEMPALACE_ENABLED] ?: false,
             sourceRssEnabled = prefs[Keys.SOURCE_RSS_ENABLED] ?: true,
@@ -426,8 +479,14 @@ class SettingsRepositoryUiImpl(
                 claudeKeyConfigured = llmCreds.hasClaudeKey,
                 openAiModel = prefs[Keys.AI_OPENAI_MODEL] ?: "gpt-4o-mini",
                 openAiKeyConfigured = llmCreds.hasOpenAiKey,
-                ollamaBaseUrl = prefs[Keys.AI_OLLAMA_BASE_URL] ?: "http://10.0.0.1:11434",
-                ollamaModel = prefs[Keys.AI_OLLAMA_MODEL] ?: "llama3.3",
+                // Issue #294 — JP's LAN address shouldn't be baked into
+                // every fresh install. Default empty; the UI surfaces a
+                // placeholder.
+                ollamaBaseUrl = prefs[Keys.AI_OLLAMA_BASE_URL] ?: "",
+                // Issue #294 — llama3.2:3b actually fits on phone-class
+                // hardware; 3.3 (70B) doesn't run locally for most users
+                // even when they have ollama on a LAN host.
+                ollamaModel = prefs[Keys.AI_OLLAMA_MODEL] ?: "llama3.2:3b",
                 vertexModel = prefs[Keys.AI_VERTEX_MODEL] ?: "gemini-2.5-flash",
                 vertexKeyConfigured = llmCreds.hasVertexKey,
                 foundryEndpoint = prefs[Keys.AI_FOUNDRY_ENDPOINT] ?: "",
@@ -442,10 +501,19 @@ class SettingsRepositoryUiImpl(
                 teamsScopes = (teamsSession as? TeamsSession.SignedIn)?.scopes
                     ?: llmCreds.teamsScopes().orEmpty(),
                 privacyAcknowledged = prefs[Keys.AI_PRIVACY_ACK] ?: false,
-                sendChapterTextEnabled = prefs[Keys.AI_SEND_CHAPTER_TEXT] ?: true,
+                // Issue #294 — privacy-first: chapter text is the user's
+                // content, and AI grounding is opt-in by default. Recap
+                // and chat fall back to title + current-sentence
+                // grounding (still useful) until the user opts in. This
+                // is a behavioural change worth flagging in release
+                // notes.
+                sendChapterTextEnabled = prefs[Keys.AI_SEND_CHAPTER_TEXT] ?: false,
                 chatGrounding = UiChatGrounding(
                     includeChapterTitle = prefs[Keys.AI_CHAT_GROUND_CHAPTER_TITLE] ?: true,
-                    includeCurrentSentence = prefs[Keys.AI_CHAT_GROUND_CURRENT_SENTENCE] ?: false,
+                    // Issue #294 — current-sentence grounding is ~50
+                    // tokens; tiny cost for outsized context gain. Ship
+                    // ON by default so first-launch chats are useful.
+                    includeCurrentSentence = prefs[Keys.AI_CHAT_GROUND_CURRENT_SENTENCE] ?: true,
                     includeEntireChapter = prefs[Keys.AI_CHAT_GROUND_ENTIRE_CHAPTER] ?: false,
                     includeEntireBookSoFar = prefs[Keys.AI_CHAT_GROUND_ENTIRE_BOOK] ?: false,
                 ),
@@ -1094,8 +1162,11 @@ class SettingsRepositoryUiImpl(
                 ?.let { runCatching { ProviderId.valueOf(it) }.getOrNull() },
             claudeModel = prefs[Keys.AI_CLAUDE_MODEL] ?: "claude-haiku-4.5",
             openAiModel = prefs[Keys.AI_OPENAI_MODEL] ?: "gpt-4o-mini",
-            ollamaBaseUrl = prefs[Keys.AI_OLLAMA_BASE_URL] ?: "http://10.0.0.1:11434",
-            ollamaModel = prefs[Keys.AI_OLLAMA_MODEL] ?: "llama3.3",
+            // Issue #294 — mirror the UiSettings fallbacks at the
+            // LlmConfig export site so both surfaces report the same
+            // first-time defaults.
+            ollamaBaseUrl = prefs[Keys.AI_OLLAMA_BASE_URL] ?: "",
+            ollamaModel = prefs[Keys.AI_OLLAMA_MODEL] ?: "llama3.2:3b",
             vertexModel = prefs[Keys.AI_VERTEX_MODEL] ?: "gemini-2.5-flash",
             foundryEndpoint = prefs[Keys.AI_FOUNDRY_ENDPOINT] ?: "",
             foundryDeployment = prefs[Keys.AI_FOUNDRY_DEPLOYMENT] ?: "",
@@ -1103,7 +1174,7 @@ class SettingsRepositoryUiImpl(
             bedrockRegion = prefs[Keys.AI_BEDROCK_REGION] ?: "us-east-1",
             bedrockModel = prefs[Keys.AI_BEDROCK_MODEL] ?: "claude-haiku-4.5",
             privacyAcknowledged = prefs[Keys.AI_PRIVACY_ACK] ?: false,
-            sendChapterTextEnabled = prefs[Keys.AI_SEND_CHAPTER_TEXT] ?: true,
+            sendChapterTextEnabled = prefs[Keys.AI_SEND_CHAPTER_TEXT] ?: false,
         )
     }
 
