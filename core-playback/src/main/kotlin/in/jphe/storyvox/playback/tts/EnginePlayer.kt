@@ -1109,6 +1109,7 @@ class EnginePlayer @AssistedInject constructor(
                     // way; the cached read is just for symmetry with the
                     // pause branch.
                     if (cachedCatchupPause &&
+                        !source.isStreaming &&
                         paused &&
                         source.bufferHeadroomMs.value >= BUFFER_RESUME_THRESHOLD_MS) {
                         runCatching { track.play() }
@@ -1176,6 +1177,7 @@ class EnginePlayer @AssistedInject constructor(
                     // listener may hear dead air, but never sees the
                     // "Buffering…" UI. EngineStreamingSource is untouched.
                     if (cachedCatchupPause &&
+                        !source.isStreaming &&
                         !paused &&
                         source.bufferHeadroomMs.value < BUFFER_UNDERRUN_THRESHOLD_MS) {
                         runCatching { track.pause() }

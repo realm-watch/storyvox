@@ -135,6 +135,15 @@ class EngineStreamingSource(
 
     override val sampleRate: Int = engine.sampleRate
 
+    /** True when this source will use the streaming producer path —
+     *  emit many small chunks per sentence as TLS records arrive.
+     *  EnginePlayer's consumer reads this to bypass the catchup-pause
+     *  thresholds (which are sized for full-sentence Piper/Kokoro
+     *  chunks; small streamed chunks would yo-yo the threshold and
+     *  starve the producer via queue back-pressure). */
+    override val isStreaming: Boolean =
+        engine is StreamingVoiceEngineHandle && secondaryEngines.isEmpty()
+
     /**
      * PR-7-bonus / Tier 2 (#87) — dedicated single-thread executor for
      * the producer. Pre-Tier-2 the producer ran on `Dispatchers.IO`,
