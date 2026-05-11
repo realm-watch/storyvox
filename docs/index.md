@@ -117,13 +117,16 @@ description: Offline neural TTS, optional Azure HD cloud voices. Six sources —
 <section class="recent">
   <h2>What just shipped</h2>
   <p>
-    <strong>v0.4.83</strong> — Tier 3 multi-engine parallel synthesis with twin
-    Engines/Threads sliders in Settings → Performance, smart-resume CTA so the Library
-    button respects your last paused/playing intent, and a Tier 3 voice-swap engine-leak fix.
-    <a href="https://github.com/jphein/storyvox/releases/tag/v0.4.83">Full release notes →</a>
+    <strong>v0.5.00</strong> — Library Nocturne UX milestone. Full brass-on-warm-dark
+    polish pass across player, library, settings, and browse: TopAppBar nav across
+    detail screens, single back-nav pattern, chapter rows tappable with played
+    indicators, infinite-scroll Browse across every tab, brass spinners and progress
+    bars everywhere, deliberate first-time defaults, and a confetti milestone dialog.
+    <a href="https://github.com/jphein/storyvox/releases/tag/v0.5.00">Full release notes →</a>
   </p>
   <p>
-    <strong>v0.4 highlights since v0.4.55:</strong> Azure Cognitive Services HD voices as
+    <strong>Earlier in v0.4:</strong> Tier 3 multi-engine parallel synthesis with twin
+    Engines/Threads sliders (v0.4.78); smart-resume CTA (v0.4.83); Azure Cognitive Services HD voices as
     an optional remote TTS backend (BYOK, with offline fallback, error retries, full roster
     and cache eviction priority — <a href="https://github.com/jphein/storyvox/issues/182">#182</a>–<a href="https://github.com/jphein/storyvox/issues/186">#186</a>);
     EPUB import (<a href="https://github.com/jphein/storyvox/issues/235">#235</a>) via the

@@ -1,0 +1,16 @@
+/* dark.realm.watch — schema-agnostic dark/light selector preset.
+   Pairs <html data-theme="..."> with prefers-color-scheme.
+   Three states: data-theme="light"  -> explicit light
+                 data-theme="dark"   -> explicit dark
+                 (attribute absent)  -> follow system */
+
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"]  { color-scheme: dark; }
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) { color-scheme: light; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { color-scheme: dark; }
+}

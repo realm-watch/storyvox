@@ -1,0 +1,196 @@
+name: Release docs sync
+
+# Fires on every tag push (vX.Y.Z) and regenerates everything that should
+# follow the release version: realm-sigil version.json + meta tag, README
+# headline callout, docs/index.md "What just shipped" headline, wiki Home
+# current-version line, and the repo About homepage URL. Commits the result
+# back to main with [skip ci] so we don't re-trigger the Android build.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to sync (e.g. v0.5.00). Blank = latest tag.'
+        required: false
+
+concurrency:
+  group: release-docs-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout main (full history for commit-back)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve tag to sync
+        id: tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"
+          elif [ "$EVENT_NAME" = "push" ]; then
+            TAG="$REF_NAME"
+          else
+            TAG=$(git tag --sort=-version:refname | head -1)
+          fi
+          # Sanity-check: only allow plausible semver-ish tags
+          case "$TAG" in
+            v[0-9]*.[0-9]*.[0-9]*) : ;;
+            *) echo "Refusing to sync for non-version tag: $TAG"; exit 1 ;;
+          esac
+          echo "tag=$TAG"          >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}"  >> "$GITHUB_OUTPUT"
+          echo "Syncing docs for tag: $TAG"
+
+      - name: Verify tag points at main HEAD before binding sigil
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          # realm-sigil's build.sh reads HASH from `git rev-parse HEAD`.
+          # We've checked out main; if the tag doesn't point at main's tip
+          # (e.g. someone pushed to main between tag creation and this run),
+          # the sigil hash would bind to the wrong commit. Refuse to proceed.
+          TAG_SHA=$(git rev-parse --verify "refs/tags/$TAG")
+          MAIN_SHA=$(git rev-parse --verify HEAD)
+          if [ "$TAG_SHA" != "$MAIN_SHA" ]; then
+            echo "::error::Tag $TAG ($TAG_SHA) does not point at main HEAD ($MAIN_SHA)."
+            echo "::error::Refusing to sync — the realm-sigil hash would bind to the wrong commit."
+            echo "::error::Fast-forward main to the tag (or re-tag main's current tip) and retry."
+            exit 1
+          fi
+          echo "Tag and main agree on $TAG_SHA — proceeding."
+
+      - name: Clone realm-sigil
+        run: git clone --depth=1 https://github.com/jphein/sigil.realm.watch "$RUNNER_TEMP/realm-sigil"
+
+      - name: Regenerate docs/version.json + meta tag
+        working-directory: docs
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          "$RUNNER_TEMP/realm-sigil/static/build.sh" \
+            --name storyvox \
+            --description "Neural-voice audiobook player for any text you have — offline TTS, optional Azure HD cloud voices, Library Nocturne aesthetic" \
+            --realm fantasy \
+            --repo "https://github.com/$REPO" \
+            --dir . \
+            --html _layouts/default.html
+
+      - name: Bump README headline callout
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          python3 - <<'PY'
+          import os, re, pathlib
+          tag = os.environ['TAG']
+          p = pathlib.Path('README.md')
+          s = p.read_text()
+          s2, n = re.subn(r'^> \*\*v\d+\.\d+\.\d+\*\* —',
+                          f'> **{tag}** —', s, count=1, flags=re.M)
+          if n:
+              p.write_text(s2)
+              print(f'README.md: bumped headline to {tag}')
+          else:
+              print('README.md: no headline pattern matched; skipping')
+          PY
+
+      - name: Bump docs/index.md "What just shipped" callout + release link
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          python3 - <<'PY'
+          import os, re, pathlib
+          tag = os.environ['TAG']
+          p = pathlib.Path('docs/index.md')
+          s = p.read_text()
+          # First <strong>vX.Y.Z</strong> = "What just shipped" headline
+          s2, n1 = re.subn(r'<strong>v\d+\.\d+\.\d+</strong>',
+                            f'<strong>{tag}</strong>', s, count=1)
+          # First release-notes link nearest to that headline
+          s2, n2 = re.subn(r'releases/tag/v\d+\.\d+\.\d+',
+                            f'releases/tag/{tag}', s2, count=1)
+          if n1 or n2:
+              p.write_text(s2)
+              print(f'docs/index.md: headline={n1} link={n2} -> {tag}')
+          else:
+              print('docs/index.md: no patterns matched; skipping')
+          PY
+
+      - name: Update repo About homepage
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          NAME: ${{ github.event.repository.name }}
+        continue-on-error: true
+        run: |
+          gh repo edit "$REPO" --homepage "https://$OWNER.github.io/$NAME"
+
+      - name: Update wiki Home current-version line
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          REPO: ${{ github.repository }}
+        continue-on-error: true
+        run: |
+          WIKI_DIR="$RUNNER_TEMP/wiki"
+          if ! git clone "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.wiki.git" "$WIKI_DIR" 2>/dev/null; then
+            echo "Wiki not initialized or no access; skipping wiki update."
+            exit 0
+          fi
+          cd "$WIKI_DIR"
+          [ -f Home.md ] || { echo "No Home.md; skipping."; exit 0; }
+          python3 - <<'PY'
+          import os, re, pathlib
+          tag = os.environ['TAG']
+          p = pathlib.Path('Home.md')
+          s = p.read_text()
+          marker = re.compile(r'^_Current version: v\d+\.\d+\.\d+_\s*$', re.M)
+          line = f'_Current version: {tag}_'
+          if marker.search(s):
+              s2 = marker.sub(line, s)
+          else:
+              # Insert after first H1 if present
+              s2 = re.sub(r'(\A#[^\n]+\n)', lambda m: m.group(1) + '\n' + line + '\n', s, count=1)
+          if s2 != s:
+              p.write_text(s2)
+              print(f'Home.md: set version to {tag}')
+          else:
+              print('Home.md: already current')
+          PY
+          if ! git diff --quiet; then
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git config user.name  "github-actions[bot]"
+            git add Home.md
+            git commit -m "docs(wiki): bump current version to ${TAG}"
+            git push
+          fi
+
+      - name: Commit docs back to main
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name  "github-actions[bot]"
+          git add README.md docs/index.md docs/version.json docs/_layouts/default.html
+          if git diff --staged --quiet; then
+            echo "No docs changes to commit."
+            exit 0
+          fi
+          git commit -m "chore(release): docs sync for ${TAG} [skip ci]"
+          git push origin main
