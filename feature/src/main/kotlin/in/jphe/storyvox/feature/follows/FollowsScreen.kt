@@ -53,6 +53,23 @@ fun FollowsScreen(
     val spacing = LocalSpacing.current
     val multiColumn = isAtLeastTablet()
 
+    // #328 — single deduped list shared by both the grid (multiColumn)
+    // and the linear LazyColumn branches below. Computed once per
+    // state.follows change via remember instead of per-recomposition.
+    // Logs when Royal Road sign-in cache hydration accidentally
+    // double-emits so the underlying race can be traced.
+    val dedupedFollows = androidx.compose.runtime.remember(state.follows) {
+        val out = state.follows.distinctBy { it.fiction.id }
+        val dropped = state.follows.size - out.size
+        if (dropped > 0) {
+            android.util.Log.w(
+                "storyvox",
+                "FollowsScreen: dropped $dropped duplicate follow id(s) (size ${state.follows.size} -> ${out.size}) — see #328",
+            )
+        }
+        out
+    }
+
     androidx.compose.runtime.LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             if (event is FollowsUiEvent.OpenFiction) onOpenFiction(event.fictionId)
@@ -96,11 +113,7 @@ fun FollowsScreen(
                         horizontalArrangement = Arrangement.spacedBy(spacing.sm),
                         verticalArrangement = Arrangement.spacedBy(spacing.sm),
                     ) {
-                        // #328 — see LibraryScreen.kt. Royal Road follows
-                        // can occasionally double-emit during sign-in cache
-                        // hydration; defensive distinctBy keeps Compose's
-                        // unique-key contract honored regardless.
-                        gridItems(state.follows.distinctBy { it.fiction.id }, key = { it.fiction.id }) { follow ->
+                        gridItems(dedupedFollows, key = { it.fiction.id }) { follow ->
                             FollowCard(follow = follow, onClick = { viewModel.open(follow.fiction.id) })
                         }
                     }
@@ -110,7 +123,7 @@ fun FollowsScreen(
                         contentPadding = PaddingValues(spacing.md),
                         verticalArrangement = Arrangement.spacedBy(spacing.sm),
                     ) {
-                        items(state.follows.distinctBy { it.fiction.id }, key = { it.fiction.id }) { follow ->
+                        items(dedupedFollows, key = { it.fiction.id }) { follow ->
                             FollowCard(follow = follow, onClick = { viewModel.open(follow.fiction.id) })
                         }
                     }

@@ -74,6 +74,22 @@ fun BrowseScreen(
     val spacing = LocalSpacing.current
     var showFilterSheet by remember { mutableStateOf(false) }
 
+    // #328 — see LibraryScreen.kt; hoist distinctBy out of the grid
+    // builder so allocations happen once per state.items change instead
+    // of every recomposition, and log when duplicates appear so the
+    // upstream RR / GitHub paginator that emitted them can be traced.
+    val dedupedItems = remember(state.items) {
+        val out = state.items.distinctBy { it.id }
+        val dropped = state.items.size - out.size
+        if (dropped > 0) {
+            android.util.Log.w(
+                "storyvox",
+                "BrowseScreen: dropped $dropped duplicate fiction id(s) (size ${state.items.size} -> ${out.size}) — see #328",
+            )
+        }
+        out
+    }
+
     Column(modifier = Modifier.fillMaxSize().padding(top = spacing.md)) {
         // Top-level source picker. Switches the multibinding lookup in
         // FictionRepository between Royal Road and GitHub. Tabs and the
@@ -269,11 +285,7 @@ fun BrowseScreen(
                             )
                         }
                     }
-                    // #328 — see LibraryScreen.kt; same defensive distinctBy
-                    // guard so duplicate fiction ids (Royal Road occasionally
-                    // returns the same fiction twice on filter edge cases)
-                    // can't crash the grid via Compose's unique-key contract.
-                    itemsIndexed(state.items.distinctBy { it.id }, key = { _, item -> item.id }) { index, fiction ->
+                    itemsIndexed(dedupedItems, key = { _, item -> item.id }) { index, fiction ->
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
