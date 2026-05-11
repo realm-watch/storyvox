@@ -20,8 +20,21 @@
   --radius-md: 10px;
 }
 
+/* Light palette — applied explicitly via [data-theme="light"] or via system pref
+ * when no explicit theme is set. dark.realm.watch toggles data-theme on <html>. */
+:root[data-theme="light"] {
+  --warm-bg: #f5ecd8;
+  --warm-bg-elev: #fff8e8;
+  --warm-bg-card: #fffaef;
+  --warm-fg: #2a2015;
+  --warm-fg-muted: #6d5d44;
+  --warm-rule: #d9c89e;
+  --brass-300: #8a5f17;
+  --brass-400: #6f4a10;
+  --brass-500: #b8862a;
+}
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme="dark"]) {
     --warm-bg: #f5ecd8;
     --warm-bg-elev: #fff8e8;
     --warm-bg-card: #fffaef;
@@ -50,9 +63,11 @@ body {
 
 a { color: var(--brass-300); text-decoration: none; }
 a:hover { color: var(--brass-400); text-decoration: underline; }
+:root[data-theme="light"] a { color: var(--brass-400); }
+:root[data-theme="light"] a:hover { color: var(--brass-500); }
 @media (prefers-color-scheme: light) {
-  a { color: var(--brass-400); }
-  a:hover { color: var(--brass-500); }
+  :root:not([data-theme="dark"]) a { color: var(--brass-400); }
+  :root:not([data-theme="dark"]) a:hover { color: var(--brass-500); }
 }
 
 code {
@@ -385,6 +400,48 @@ li { margin: 0.25em 0; }
 /* Section spacing on the landing page */
 section { margin-bottom: 2.5em; }
 section:first-of-type { margin-top: 0; }
+
+/* Theme toggle button — brass coin in the nav */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1em;
+  height: 2.1em;
+  padding: 0;
+  border: 1px solid var(--brass-600);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--brass-300);
+  font-size: 1.05em;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.theme-toggle:hover {
+  border-color: var(--brass-400);
+  color: var(--brass-400);
+  background: var(--warm-bg-card);
+}
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--brass-400);
+  outline-offset: 2px;
+}
+.theme-toggle .theme-toggle-icon {
+  display: inline-block;
+  transform: translateY(-1px);
+}
+
+/* Realm sigil mark — bottom-of-footer watermark from version.json meta tag */
+.sigil-mark {
+  margin-top: 0.4em !important;
+  font-size: 0.78em;
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+}
+.sigil-mark a { color: inherit; border-bottom: 1px dotted currentColor; }
+.sigil-mark a:hover { color: var(--brass-300); text-decoration: none; }
+.sigil-mark em { font-style: normal; color: var(--brass-300); }
 
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {

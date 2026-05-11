@@ -7,10 +7,14 @@
   <meta name="description" content="{{ page.description | default: site.description }}" />
   {%- seo title=false -%}
   <link rel="icon" href="{{ '/assets/favicon.svg' | relative_url }}" type="image/svg+xml" />
+  {%- comment -%} dark.realm.watch Tier 2 — inlined locally (dark.realm.watch not yet on DNS) {%- endcomment -%}
+  <script>(()=>{try{var s=localStorage.getItem('drw-theme');if(s==='dark'||s==='light')document.documentElement.setAttribute('data-theme',s)}catch(_){}})()</script>
+  <link rel="stylesheet" href="{{ '/assets/dark/dark.css' | relative_url }}" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600;700&display=swap" />
   <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}" />
+  <meta name="realm-version" content='{"name": "storyvox", "description": "Neural-voice audiobook player for any text you have \u2014 offline TTS, optional Azure HD cloud voices, Library Nocturne aesthetic", "version": "Noble Grimoire \u00b7 63f5826", "hash": "63f5826", "branch": "docs/sigil-and-dark-realm", "dirty": false, "built": "2026-05-11T01:46:47Z", "realm": "fantasy", "repo": "https://github.com/jphein/storyvox", "commit_url": "https://github.com/jphein/storyvox/commit/63f5826"}'>
 </head>
 <body>
   <header class="site-header">
@@ -25,6 +29,9 @@
       <a href="{{ '/screenshots/' | relative_url }}">Screenshots</a>
       <a href="https://github.com/jphein/storyvox/wiki">Wiki</a>
       <a href="https://github.com/jphein/storyvox" class="nav-cta">GitHub</a>
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Cycle theme: system, dark, light" title="Cycle theme">
+        <span class="theme-toggle-icon" aria-hidden="true">◐</span>
+      </button>
     </nav>
   </header>
   <main class="site-main">
@@ -38,6 +45,48 @@
       <a href="https://github.com/jphein/storyvox/blob/main/LICENSE">GPL-3.0</a>
     </p>
     <p class="muted">© {{ 'now' | date: '%Y' }} JP Hein. Built with Claude Code.</p>
+    <p class="sigil-mark muted" aria-label="Realm sigil version">
+      <span aria-hidden="true">✦</span> <span class="sigil-version">sigil bound</span>
+    </p>
   </footer>
+  <script src="{{ '/assets/dark/dark.js' | relative_url }}"></script>
+  <script>
+    (() => {
+      const btn = document.getElementById('theme-toggle');
+      if (!btn || !window.Dark) return;
+      const icons = { system: '◐', dark: '☾', light: '☀' };
+      const sync = () => {
+        const cur = Dark.current();
+        btn.querySelector('.theme-toggle-icon').textContent = icons[cur] || '◐';
+        btn.setAttribute('data-state', cur);
+      };
+      btn.addEventListener('click', () => Dark.cycle());
+      document.addEventListener('dark:change', sync);
+      sync();
+    })();
+    (() => {
+      const meta = document.querySelector('meta[name="realm-version"]');
+      const mark = document.querySelector('.sigil-version');
+      if (!meta || !mark) return;
+      try {
+        const d = JSON.parse(meta.content);
+        const realm = d.realm || 'fantasy';
+        const ver = d.version || 'sigil bound';
+        mark.textContent = '';
+        if (d.commit_url) {
+          const a = document.createElement('a');
+          a.href = d.commit_url;
+          a.textContent = ver;
+          mark.appendChild(a);
+        } else {
+          mark.appendChild(document.createTextNode(ver));
+        }
+        mark.appendChild(document.createTextNode(' · realm '));
+        const em = document.createElement('em');
+        em.textContent = realm;
+        mark.appendChild(em);
+      } catch (_) { /* leave fallback text */ }
+    })();
+  </script>
 </body>
 </html>
