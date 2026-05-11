@@ -61,6 +61,7 @@ import `in`.jphe.storyvox.ui.component.friendlyErrorMessage
 import `in`.jphe.storyvox.ui.component.ErrorPlacement
 import `in`.jphe.storyvox.ui.component.FictionCardSkeleton
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
+import `in`.jphe.storyvox.ui.component.fictionMonogram
 import `in`.jphe.storyvox.ui.component.MagicSpinner
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
@@ -280,7 +281,7 @@ fun BrowseScreen(
                             FictionCoverThumb(
                                 coverUrl = fiction.coverUrl,
                                 title = fiction.title,
-                                authorInitial = fiction.author.firstOrNull()?.uppercaseChar() ?: '?',
+                                monogram = fictionMonogram(fiction.author, fiction.title),
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             // Issue #272 — titles longer than 2 lines were silently

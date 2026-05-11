@@ -73,6 +73,7 @@ import `in`.jphe.storyvox.ui.component.BrassProgressTrack
 import `in`.jphe.storyvox.ui.component.ErrorBlock
 import `in`.jphe.storyvox.ui.component.ErrorPlacement
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
+import `in`.jphe.storyvox.ui.component.fictionMonogram
 import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
 import `in`.jphe.storyvox.ui.component.MagicSpinner
 import `in`.jphe.storyvox.ui.theme.LocalMotion
@@ -209,7 +210,7 @@ fun AudiobookView(
                     FictionCoverThumb(
                         coverUrl = state.coverUrl,
                         title = state.fictionTitle,
-                        authorInitial = state.fictionTitle.firstOrNull()?.uppercaseChar() ?: '?',
+                        monogram = fictionMonogram(author = "", title = state.fictionTitle),
                         modifier = Modifier.size(width = 220.dp, height = 330.dp),
                     )
                     // Subtle brass sigil ring orbiting the cover while the

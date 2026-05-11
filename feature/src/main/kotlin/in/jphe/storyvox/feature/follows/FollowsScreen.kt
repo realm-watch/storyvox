@@ -33,6 +33,7 @@ import `in`.jphe.storyvox.feature.api.UiFollow
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
+import `in`.jphe.storyvox.ui.component.fictionMonogram
 import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
 import `in`.jphe.storyvox.ui.component.SkeletonBlock
 import `in`.jphe.storyvox.ui.layout.isAtLeastTablet
@@ -254,7 +255,7 @@ private fun FollowCard(follow: UiFollow, onClick: () -> Unit) {
             FictionCoverThumb(
                 coverUrl = follow.fiction.coverUrl,
                 title = follow.fiction.title,
-                authorInitial = follow.fiction.author.firstOrNull()?.uppercaseChar() ?: '?',
+                monogram = fictionMonogram(follow.fiction.author, follow.fiction.title),
                 modifier = Modifier.size(width = 56.dp, height = 84.dp),
             )
             Column(modifier = Modifier.weight(1f)) {

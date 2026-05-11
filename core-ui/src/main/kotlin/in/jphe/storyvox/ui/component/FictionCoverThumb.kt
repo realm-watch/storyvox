@@ -18,13 +18,18 @@ import coil.compose.SubcomposeAsyncImage
 
 /**
  * Async cover image with a brass-tinted placeholder.
- * Placeholder shows the author's first initial in brass on warm dark.
+ *
+ * Placeholder shows a single-character monogram in brass on the warm-dark
+ * (or parchment-cream in light mode) card. Callers compute the monogram
+ * via [fictionMonogram] which prefers author → title → brass star, so RSS
+ * feeds and other coverless-and-authorless fictions still render an
+ * intentional Library Nocturne mark rather than a `?` (#322).
  */
 @Composable
 fun FictionCoverThumb(
     coverUrl: String?,
     title: String,
-    authorInitial: Char,
+    monogram: String,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
 ) {
@@ -48,7 +53,7 @@ fun FictionCoverThumb(
             loading = {
                 Box(modifier = Modifier.fillMaxSize().background(placeholderBrush), contentAlignment = Alignment.Center) {
                     Text(
-                        text = authorInitial.toString(),
+                        text = monogram,
                         style = MaterialTheme.typography.displayMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -57,7 +62,7 @@ fun FictionCoverThumb(
             error = {
                 Box(modifier = Modifier.fillMaxSize().background(placeholderBrush), contentAlignment = Alignment.Center) {
                     Text(
-                        text = authorInitial.toString(),
+                        text = monogram,
                         style = MaterialTheme.typography.displayMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )
