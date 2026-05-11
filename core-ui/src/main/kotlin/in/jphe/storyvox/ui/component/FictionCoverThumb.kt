@@ -14,18 +14,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
-import kotlin.math.cos
 import kotlin.math.min
-import kotlin.math.sin
 
 /**
  * Async cover image with a brass-tinted sigil placeholder.
@@ -139,25 +134,6 @@ private fun MonogramSigilTile(monogram: String) {
     }
 }
 
-/**
- * Draw an equilateral triangle inscribed in [radius] around [center],
- * rotated by [degreesOffset]. Stroke only. Mirrors the same helper used
- * by [MagicSkeletonTile] so both visuals trace the same star geometry.
- */
-private fun DrawScope.drawTriangle(
-    center: Offset,
-    radius: Float,
-    degreesOffset: Float,
-    color: Color,
-    strokeWidth: Float,
-) {
-    val path = Path()
-    for (i in 0..2) {
-        val angle = Math.toRadians(degreesOffset.toDouble() + i * 120.0 - 90.0)
-        val x = center.x + radius * cos(angle).toFloat()
-        val y = center.y + radius * sin(angle).toFloat()
-        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-    }
-    path.close()
-    drawPath(path = path, color = color, style = Stroke(width = strokeWidth))
-}
+// drawTriangle is shared with MagicSkeletonTile via the internal helper
+// in SkeletonShimmer.kt — same star geometry, same StrokeCap.Round, no
+// duplicated drift between the loading and static placeholders.

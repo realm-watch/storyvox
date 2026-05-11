@@ -191,9 +191,11 @@ fun MagicSkeletonTile(
 
 /**
  * Helper: draws an equilateral triangle inscribed in [radius] around [center],
- * rotated by [degreesOffset]. Stroke only, brass-tinted.
+ * rotated by [degreesOffset]. Stroke only, brass-tinted. Internal so the
+ * static [MonogramSigilTile] placeholder (FictionCoverThumb.kt) draws the
+ * same geometry as the loading [MagicSkeletonTile] without forking helpers.
  */
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawTriangle(
+internal fun androidx.compose.ui.graphics.drawscope.DrawScope.drawTriangle(
     center: Offset,
     radius: Float,
     degreesOffset: Float,
