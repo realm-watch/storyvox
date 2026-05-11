@@ -37,6 +37,7 @@ import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.BrassProgressBar
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
+import `in`.jphe.storyvox.ui.component.fictionMonogram
 import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
 import `in`.jphe.storyvox.ui.component.cascadeReveal
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
@@ -114,7 +115,7 @@ fun LibraryScreen(
                             FictionCoverThumb(
                                 coverUrl = fiction.coverUrl,
                                 title = fiction.title,
-                                authorInitial = fiction.author.firstOrNull()?.uppercaseChar() ?: '?',
+                                monogram = fictionMonogram(fiction.author, fiction.title),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable { viewModel.openFiction(fiction.id) },
@@ -167,7 +168,7 @@ private fun ResumeCard(entry: ContinueListeningEntry, onResume: () -> Unit) {
             FictionCoverThumb(
                 coverUrl = entry.fiction.coverUrl,
                 title = entry.fiction.title,
-                authorInitial = entry.fiction.author.firstOrNull()?.uppercaseChar() ?: '?',
+                monogram = fictionMonogram(entry.fiction.author, entry.fiction.title),
                 modifier = Modifier.size(width = 68.dp, height = 100.dp),
             )
             Column(modifier = Modifier.weight(1f)) {

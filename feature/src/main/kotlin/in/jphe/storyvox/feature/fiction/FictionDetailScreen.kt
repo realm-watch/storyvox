@@ -47,6 +47,7 @@ import `in`.jphe.storyvox.ui.component.ErrorBlock
 import `in`.jphe.storyvox.ui.component.ErrorPlacement
 import `in`.jphe.storyvox.ui.component.friendlyErrorMessage
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
+import `in`.jphe.storyvox.ui.component.fictionMonogram
 import `in`.jphe.storyvox.ui.component.FictionDetailSkeleton
 import `in`.jphe.storyvox.ui.layout.isAtLeastTablet
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
@@ -271,7 +272,7 @@ private fun Hero(fiction: UiFiction) {
         FictionCoverThumb(
             coverUrl = fiction.coverUrl,
             title = fiction.title,
-            authorInitial = fiction.author.firstOrNull()?.uppercaseChar() ?: '?',
+            monogram = fictionMonogram(fiction.author, fiction.title),
             modifier = Modifier.size(width = 120.dp, height = 180.dp),
         )
         Column(
