@@ -243,11 +243,24 @@ fun AudiobookView(
                 )
             } else {
                 Box(contentAlignment = Alignment.Center) {
+                    // Cover tap toggles play/pause — same convention as
+                    // Spotify, Apple Music, Pocket Casts, etc. The big play
+                    // button below remains the explicit affordance; the
+                    // cover is the *convenient* one, since it's the largest
+                    // surface on the player and one-handed users naturally
+                    // thumb-tap it (#269). Long-press is left unbound so
+                    // we don't accidentally fight system-level a11y gestures.
                     FictionCoverThumb(
                         coverUrl = state.coverUrl,
                         title = state.fictionTitle,
                         monogram = fictionMonogram(author = "", title = state.fictionTitle),
-                        modifier = Modifier.size(width = 220.dp, height = 330.dp),
+                        modifier = Modifier
+                            .size(width = 220.dp, height = 330.dp)
+                            .clickable(
+                                role = androidx.compose.ui.semantics.Role.Button,
+                                onClickLabel = if (state.isPlaying) "Pause" else "Play",
+                                onClick = onPlayPause,
+                            ),
                     )
                     // Subtle brass sigil ring orbiting the cover while the
                     // engine is producing the first sentence's audio. Fades
