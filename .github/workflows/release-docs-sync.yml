@@ -57,6 +57,24 @@ jobs:
           echo "version=${TAG#v}"  >> "$GITHUB_OUTPUT"
           echo "Syncing docs for tag: $TAG"
 
+      - name: Verify tag points at main HEAD before binding sigil
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          # realm-sigil's build.sh reads HASH from `git rev-parse HEAD`.
+          # We've checked out main; if the tag doesn't point at main's tip
+          # (e.g. someone pushed to main between tag creation and this run),
+          # the sigil hash would bind to the wrong commit. Refuse to proceed.
+          TAG_SHA=$(git rev-parse --verify "refs/tags/$TAG")
+          MAIN_SHA=$(git rev-parse --verify HEAD)
+          if [ "$TAG_SHA" != "$MAIN_SHA" ]; then
+            echo "::error::Tag $TAG ($TAG_SHA) does not point at main HEAD ($MAIN_SHA)."
+            echo "::error::Refusing to sync — the realm-sigil hash would bind to the wrong commit."
+            echo "::error::Fast-forward main to the tag (or re-tag main's current tip) and retry."
+            exit 1
+          fi
+          echo "Tag and main agree on $TAG_SHA — proceeding."
+
       - name: Clone realm-sigil
         run: git clone --depth=1 https://github.com/jphein/sigil.realm.watch "$RUNNER_TEMP/realm-sigil"
 
