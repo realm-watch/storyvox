@@ -22,8 +22,12 @@ import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -288,11 +292,20 @@ fun SettingsSliderBlock(
 // region SettingsSegmentedBlock
 
 /**
- * Three-stop selector built from a row of [BrassButton]s. The selected
- * option uses [BrassButtonVariant.Primary]; others use
- * [BrassButtonVariant.Secondary]. Same idiom as the existing Punctuation /
- * Theme rows, formalized into one composable.
+ * Three-stop selector built on Material 3's `SingleChoiceSegmentedButtonRow`
+ * with the same brass-tinted active treatment as [BrowseSourcePicker].
+ *
+ * Earlier revisions used a row of [BrassButton]s where the selected stop
+ * was `Primary` (filled brass) and the unselected were `Secondary`
+ * (outlined brass). On the warm-dark substrate that read inverted: the
+ * filled brass appeared muted/olive while the outlined brass strokes
+ * popped, so the selected pill looked *less* prominent than the
+ * unselected ones (#274). The segmented-row variant uses
+ * `primaryContainer` / `onPrimaryContainer` for the active fill, which
+ * sits brighter than the surface and surrounds the label with a clear
+ * brass "well" — the selected stop reads as selected at a glance.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsSegmentedBlock(
     title: String,
@@ -317,17 +330,22 @@ fun SettingsSegmentedBlock(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-        ) {
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
             options.forEachIndexed { index, label ->
-                val variant = if (index == selectedIndex) {
-                    BrassButtonVariant.Primary
-                } else {
-                    BrassButtonVariant.Secondary
+                SegmentedButton(
+                    selected = index == selectedIndex,
+                    onClick = { onSelected(index) },
+                    shape = SegmentedButtonDefaults.itemShape(
+                        index = index,
+                        count = options.size,
+                    ),
+                    colors = SegmentedButtonDefaults.colors(
+                        activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ),
+                ) {
+                    Text(label, style = MaterialTheme.typography.labelLarge)
                 }
-                BrassButton(label = label, onClick = { onSelected(index) }, variant = variant)
             }
         }
     }
