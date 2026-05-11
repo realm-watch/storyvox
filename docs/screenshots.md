@@ -33,8 +33,13 @@ Captured on a Galaxy Tab A7 Lite (800×1340 px) running storyvox in both Library
 </figure>
 
 <figure>
-  <img src="{{ '/screenshots/06b-filter-github.png' | relative_url }}" alt="GitHub filter sheet — minimum stars slider, ISO language code, last-pushed dropdown, sort order, Reset and Apply buttons." />
-  <figcaption>The GitHub filter sheet — minimum stars, language code, last-pushed window, sort order. (Light only for now; dark variant pending the next GitHub-source-enabled capture pass.)</figcaption>
+  <dark-image
+    src-dark="{{ '/screenshots/06b-filter-github-dark.png' | relative_url }}"
+    src-light="{{ '/screenshots/06b-filter-github.png' | relative_url }}"
+    alt="GitHub filter sheet — minimum stars slider, ISO language code, last-pushed dropdown, topic tags, repository state, sort order, Reset and Apply buttons.">
+    <img src="{{ '/screenshots/06b-filter-github-dark.png' | relative_url }}" alt="GitHub filter sheet — minimum stars slider, ISO language code, last-pushed dropdown, topic tags, repository state, sort order, Reset and Apply buttons." />
+  </dark-image>
+  <figcaption>The GitHub filter sheet — minimum stars, language code, last-pushed window, topic tags, repository state (Any / Active only / Archived only), sort order.</figcaption>
 </figure>
 
 ## Fiction detail
