@@ -518,13 +518,19 @@ private fun PlayerOptionsSheet(
             .padding(horizontal = spacing.lg, vertical = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
+        // #260 — Settings → Voice & Playback's Speed/Pitch sliders
+        // are continuous (no `steps`) so they render as solid brass
+        // bars; this sheet used to pass `steps = 49 / 79`, which
+        // painted dotted tracks. Two surfaces, same parameter, two
+        // identities. JP prefers the solid look here too — the brass
+        // identity carries via the ▲ tick anchor at the natural value
+        // (added by #273) rather than via tick dots on the rail.
         SheetHeader("Speed", "${"%.2f".format(state.speed)}×")
         Slider(
             value = state.speed,
             onValueChange = onSetSpeed,
             onValueChangeFinished = { onPersistSpeed(state.speed) },
             valueRange = 0.5f..3.0f,
-            steps = 49, // 0.05× per step
             // TalkBack #160 — without these, the slider announces a raw
             // float ("1.25") instead of a meaningful value ("Speech speed,
             // 1.25 times").
@@ -544,7 +550,6 @@ private fun PlayerOptionsSheet(
             // narrator-baritone headroom. Hard floor at 0.6 — below ~0.7
             // Sonic introduces audible artifacts on Piper-medium voices.
             valueRange = 0.6f..1.4f,
-            steps = 79, // 0.01 per step
             // TalkBack #160 — neutral pitch is 1.0 (no shift); semantics
             // calls that out so users know what the number references.
             modifier = Modifier.semantics {
