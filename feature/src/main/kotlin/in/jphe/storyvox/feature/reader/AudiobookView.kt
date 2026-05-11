@@ -521,10 +521,18 @@ private fun PlayerOptionsSheet(
         // #260 — Settings → Voice & Playback's Speed/Pitch sliders
         // are continuous (no `steps`) so they render as solid brass
         // bars; this sheet used to pass `steps = 49 / 79`, which
-        // painted dotted tracks. Two surfaces, same parameter, two
-        // identities. JP prefers the solid look here too — the brass
-        // identity carries via the ▲ tick anchor at the natural value
-        // (added by #273) rather than via tick dots on the rail.
+        // painted dotted tracks. Same parameter rendered two ways.
+        // Solid is the chosen identity; the brass thumb + active
+        // track already carry the realm aesthetic without the dots.
+        //
+        // Trade-off: dropping `steps` means `onValueChange` fires
+        // per drag-pixel instead of per step-boundary, so more
+        // setSpeed / setPitch calls reach the engine during a drag.
+        // Sonic.setRate and KokoroEngine.setPitch are both designed
+        // for continuous live-tuning (cheap per-call), so the extra
+        // churn shouldn't surface. If it ever does, the right
+        // mitigation is a ViewModel-side debounce, not re-introducing
+        // a tick grid the user can't perceive.
         SheetHeader("Speed", "${"%.2f".format(state.speed)}×")
         Slider(
             value = state.speed,
