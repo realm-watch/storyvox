@@ -51,6 +51,12 @@ jobs:
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
       - name: Upload debug APK
+        # Only upload on tag builds — the artifact is consumed by the
+        # release-attach job downstream, which itself only runs on
+        # tag refs. PR / main pushes don't need the upload; gating
+        # here keeps GitHub Actions artifact storage spend bounded
+        # to roughly (releases × APK size) instead of every CI run.
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: storyvox-debug.apk
