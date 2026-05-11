@@ -23,7 +23,10 @@ description: Offline neural TTS, optional Azure HD cloud voices. Six sources —
     </p>
   </div>
   <div class="hero-art">
-    <img src="screenshots/03-reader.png" alt="storyvox reader playing The Archmage Coefficient with the spoken sentence highlighted in brass." />
+    <dark-image
+      src-dark="screenshots/03-reader.png"
+      src-light="screenshots/03-reader-light.png"
+      alt="storyvox reader playing The Archmage Coefficient with the spoken sentence highlighted in brass."></dark-image>
   </div>
 </section>
 
@@ -96,19 +99,19 @@ description: Offline neural TTS, optional Azure HD cloud voices. Six sources —
   <p class="muted">Galaxy Tab A7 Lite, 800×1340 px. <a href="screenshots/">Full gallery →</a></p>
   <div class="screens-grid">
     <figure>
-      <img src="screenshots/01-browse.png" alt="Browse tab" />
+      <dark-image src-dark="screenshots/01-browse.png" src-light="screenshots/01-browse-light.png" alt="Browse tab"></dark-image>
       <figcaption>Browse</figcaption>
     </figure>
     <figure>
-      <img src="screenshots/02-detail.png" alt="Fiction detail" />
+      <dark-image src-dark="screenshots/02-detail.png" src-light="screenshots/02-detail-light.png" alt="Fiction detail"></dark-image>
       <figcaption>Fiction detail</figcaption>
     </figure>
     <figure>
-      <img src="screenshots/04-library.png" alt="Library tab" />
+      <dark-image src-dark="screenshots/04-library.png" src-light="screenshots/04-library-light.png" alt="Library tab"></dark-image>
       <figcaption>Library</figcaption>
     </figure>
     <figure>
-      <img src="screenshots/05-settings.png" alt="Settings" />
+      <dark-image src-dark="screenshots/05-settings.png" src-light="screenshots/05-settings-light.png" alt="Settings"></dark-image>
       <figcaption>Settings</figcaption>
     </figure>
   </div>

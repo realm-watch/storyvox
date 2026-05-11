@@ -9,7 +9,11 @@
 Stream chapters from [Royal Road](https://royalroad.com), [GitHub](https://github.com/), an [Outline](https://www.getoutline.com) wiki, an RSS / Atom feed, a [Memory Palace](https://github.com/jphein/mempalace) you host yourself, or a folder of EPUB files on your device — read aloud by an offline neural TTS engine. A hybrid reader/audiobook view highlights the spoken sentence in brass as you listen. Built for Android phones, tablets, and Wear OS.
 
 <p align="center">
-  <img src="docs/screenshots/03-reader.png" width="320" alt="storyvox reader playing The Archmage Coefficient" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/03-reader.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/03-reader-light.png">
+    <img src="docs/screenshots/03-reader.png" width="320" alt="storyvox reader playing The Archmage Coefficient" />
+  </picture>
 </p>
 
 > **v0.5.00** — six fiction sources (Royal Road, GitHub, RSS, EPUB, Outline, Memory Palace), Azure HD voices as an optional cloud TTS backend (BYOK), Tier 3 multi-engine parallel synthesis (1–8 engines × N threads each), smart-resume CTA, AI chat per fiction across seven LLM providers, GitHub OAuth, Settings redesign (8 sections), shake-to-extend sleep timer. GPL-3.0 (downstream of the engine, not a posture choice — see [License](#license)).
@@ -41,18 +45,18 @@ Stream chapters from [Royal Road](https://royalroad.com), [GitHub](https://githu
 
 <table>
 <tr>
-<td align="center"><b>Browse</b><br/><img src="docs/screenshots/01-browse.png" width="220" /></td>
-<td align="center"><b>Fiction detail</b><br/><img src="docs/screenshots/02-detail.png" width="220" /></td>
-<td align="center"><b>Reader / audiobook</b><br/><img src="docs/screenshots/03-reader.png" width="220" /></td>
+<td align="center"><b>Browse</b><br/><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/01-browse.png"><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/01-browse-light.png"><img src="docs/screenshots/01-browse.png" width="220" alt="Browse" /></picture></td>
+<td align="center"><b>Fiction detail</b><br/><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/02-detail.png"><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/02-detail-light.png"><img src="docs/screenshots/02-detail.png" width="220" alt="Fiction detail" /></picture></td>
+<td align="center"><b>Reader / audiobook</b><br/><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/03-reader.png"><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/03-reader-light.png"><img src="docs/screenshots/03-reader.png" width="220" alt="Reader / audiobook" /></picture></td>
 </tr>
 <tr>
-<td align="center"><b>Library</b><br/><img src="docs/screenshots/04-library.png" width="220" /></td>
-<td align="center"><b>Follows</b><br/><img src="docs/screenshots/07-follows.png" width="220" /></td>
-<td align="center"><b>Settings</b><br/><img src="docs/screenshots/05-settings.png" width="220" /></td>
+<td align="center"><b>Library</b><br/><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/04-library.png"><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/04-library-light.png"><img src="docs/screenshots/04-library.png" width="220" alt="Library" /></picture></td>
+<td align="center"><b>Follows</b><br/><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/07-follows.png"><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/07-follows-light.png"><img src="docs/screenshots/07-follows.png" width="220" alt="Follows" /></picture></td>
+<td align="center"><b>Settings</b><br/><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/05-settings.png"><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/05-settings-light.png"><img src="docs/screenshots/05-settings.png" width="220" alt="Settings" /></picture></td>
 </tr>
 <tr>
-<td align="center"><b>Royal Road filters</b><br/><img src="docs/screenshots/06-filter.png" width="220" /></td>
-<td align="center"><b>GitHub filters</b><br/><img src="docs/screenshots/06b-filter-github.png" width="220" /></td>
+<td align="center"><b>Royal Road filters</b><br/><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/06-filter-dark.png"><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/06-filter.png"><img src="docs/screenshots/06-filter-dark.png" width="220" alt="Royal Road filters" /></picture></td>
+<td align="center"><b>GitHub filters</b><br/><img src="docs/screenshots/06b-filter-github.png" width="220" alt="GitHub filters" /></td>
 <td></td>
 </tr>
 </table>
