@@ -55,6 +55,25 @@ fun LibraryScreen(
     val addByUrlState by viewModel.addByUrlState.collectAsStateWithLifecycle()
     val spacing = LocalSpacing.current
 
+    // #328 — dedupe defensively before the LazyVerticalGrid sees the list.
+    // Compose enforces unique item keys; duplicates throw and crash the
+    // activity. Hoisted out of the grid builder via remember so the
+    // distinctBy pass runs once per state.fictions change instead of on
+    // every recomposition. Logs at warn level when duplicates are dropped
+    // so the underlying source can be traced — silent-by-default would
+    // hide the upstream bug we're guarding around.
+    val dedupedFictions = androidx.compose.runtime.remember(state.fictions) {
+        val out = state.fictions.distinctBy { it.id }
+        val dropped = state.fictions.size - out.size
+        if (dropped > 0) {
+            android.util.Log.w(
+                "storyvox",
+                "LibraryScreen: dropped $dropped duplicate fiction id(s) (size ${state.fictions.size} -> ${out.size}) — see #328",
+            )
+        }
+        out
+    }
+
     androidx.compose.runtime.LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
@@ -103,7 +122,7 @@ fun LibraryScreen(
                             ResumeCard(resume, onResume = viewModel::resume)
                         }
                     }
-                    itemsIndexed(state.fictions, key = { _, item -> item.id }) { index, fiction ->
+                    itemsIndexed(dedupedFictions, key = { _, item -> item.id }) { index, fiction ->
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
