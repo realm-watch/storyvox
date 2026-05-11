@@ -154,28 +154,40 @@ fun BrowseScreen(
                 }
             }
             // Filter sheet is per-source: RR has its `/fictions/search`
-            // form, GitHub has the `/search/repositories` qualifier set.
-            // Both surface through the same FilterButton; the badge
-            // count and the sheet that opens both branch on sourceKey.
-            FilterButton(
-                activeCount = when (state.sourceKey) {
-                    BrowseSourceKey.RoyalRoad -> state.filter.activeCount()
-                    BrowseSourceKey.GitHub -> state.githubFilter.activeCount()
-                    // #191 — single dimension (wing) so badge counts at
-                    // most 1.
-                    BrowseSourceKey.MemPalace -> if (state.palaceFilter.wing != null) 1 else 0
-                    // #236 — RSS has no filter sheet (subscription list
-                    // is the entire surface); count is always zero.
-                    BrowseSourceKey.Rss -> 0
-                    // #235 — EPUB also has no filter sheet (folder
-                    // picker is in Settings).
-                    BrowseSourceKey.Epub -> 0
-                    // #245 — Outline has no filter sheet (host + API
-                    // key are in Settings).
-                    BrowseSourceKey.Outline -> 0
-                },
-                onClick = { showFilterSheet = true },
-            )
+            // form, GitHub has the `/search/repositories` qualifier set,
+            // MemPalace has a wing chooser. RSS / EPUB / Outline have
+            // no filter sheet (configuration lives in Settings) — hide
+            // the button entirely for those sources, since the click
+            // handler is a documented no-op (`showFilterSheet = false`
+            // at the bottom of the file) and presenting a tappable icon
+            // that does nothing reads as a bug to users (phone audit
+            // pass 2).
+            val filterableSource = when (state.sourceKey) {
+                BrowseSourceKey.RoyalRoad,
+                BrowseSourceKey.GitHub,
+                BrowseSourceKey.MemPalace -> true
+                BrowseSourceKey.Rss,
+                BrowseSourceKey.Epub,
+                BrowseSourceKey.Outline -> false
+            }
+            if (filterableSource) {
+                FilterButton(
+                    activeCount = when (state.sourceKey) {
+                        BrowseSourceKey.RoyalRoad -> state.filter.activeCount()
+                        BrowseSourceKey.GitHub -> state.githubFilter.activeCount()
+                        // #191 — single dimension (wing) so badge counts at
+                        // most 1.
+                        BrowseSourceKey.MemPalace -> if (state.palaceFilter.wing != null) 1 else 0
+                        // Gated by `filterableSource` above; the
+                        // non-filterable branches are unreachable here
+                        // but Kotlin still wants exhaustive coverage.
+                        BrowseSourceKey.Rss,
+                        BrowseSourceKey.Epub,
+                        BrowseSourceKey.Outline -> 0
+                    },
+                    onClick = { showFilterSheet = true },
+                )
+            }
         }
 
         // Active wing hint — surface the selected wing prominently
