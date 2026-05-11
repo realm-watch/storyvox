@@ -8,13 +8,13 @@
 **A neural-voice audiobook player for any text you have.**
 Stream chapters from [Royal Road](https://royalroad.com), [GitHub](https://github.com/), an [Outline](https://www.getoutline.com) wiki, an RSS / Atom feed, a [Memory Palace](https://github.com/jphein/mempalace) you host yourself, or a folder of EPUB files on your device — read aloud by an offline neural TTS engine. A hybrid reader/audiobook view highlights the spoken sentence in brass as you listen. Built for Android phones, tablets, and Wear OS.
 
-<p align="center">
+<div align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/03-reader.png">
     <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/03-reader-light.png">
     <img src="docs/screenshots/03-reader.png" width="320" alt="storyvox reader playing The Archmage Coefficient" />
   </picture>
-</p>
+</div>
 
 > **v0.5.00** — six fiction sources (Royal Road, GitHub, RSS, EPUB, Outline, Memory Palace), Azure HD voices as an optional cloud TTS backend (BYOK), Tier 3 multi-engine parallel synthesis (1–8 engines × N threads each), smart-resume CTA, AI chat per fiction across seven LLM providers, GitHub OAuth, Settings redesign (8 sections), shake-to-extend sleep timer. GPL-3.0 (downstream of the engine, not a posture choice — see [License](#license)).
 

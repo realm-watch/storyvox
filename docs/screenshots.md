@@ -14,7 +14,9 @@ Captured on a Galaxy Tab A7 Lite (800×1340 px) running storyvox in both Library
   <dark-image
     src-dark="{{ '/screenshots/01-browse.png' | relative_url }}"
     src-light="{{ '/screenshots/01-browse-light.png' | relative_url }}"
-    alt="Browse tab — Royal Road and GitHub fiction sources side by side, infinite scroll grid."></dark-image>
+    alt="Browse tab — Royal Road and GitHub fiction sources side by side, infinite scroll grid.">
+    <img src="{{ '/screenshots/01-browse.png' | relative_url }}" alt="Browse tab — Royal Road and GitHub fiction sources side by side, infinite scroll grid." />
+  </dark-image>
   <figcaption>Browse — Royal Road infinite-scroll grid with cover art and pinned source picker.</figcaption>
 </figure>
 
@@ -24,7 +26,9 @@ Captured on a Galaxy Tab A7 Lite (800×1340 px) running storyvox in both Library
   <dark-image
     src-dark="{{ '/screenshots/06-filter-dark.png' | relative_url }}"
     src-light="{{ '/screenshots/06-filter.png' | relative_url }}"
-    alt="Royal Road filter sheet — sort, status, type, tags include / exclude, length and rating sliders, content-warning pills, Reset and Apply buttons."></dark-image>
+    alt="Royal Road filter sheet — sort, status, type, tags include / exclude, length and rating sliders, content-warning pills, Reset and Apply buttons.">
+    <img src="{{ '/screenshots/06-filter-dark.png' | relative_url }}" alt="Royal Road filter sheet — sort, status, type, tags include / exclude, length and rating sliders, content-warning pills, Reset and Apply buttons." />
+  </dark-image>
   <figcaption>The full Royal Road filter set — sort, status, type, tags include / exclude, length, rating, plus content-warning pills (Profanity, Sexual, Violence, Sensitive, AI-assisted, AI-generated).</figcaption>
 </figure>
 
@@ -39,7 +43,9 @@ Captured on a Galaxy Tab A7 Lite (800×1340 px) running storyvox in both Library
   <dark-image
     src-dark="{{ '/screenshots/02-detail.png' | relative_url }}"
     src-light="{{ '/screenshots/02-detail-light.png' | relative_url }}"
-    alt="Fiction detail — cover, synopsis, tags, chapter list with read state."></dark-image>
+    alt="Fiction detail — cover, synopsis, tags, chapter list with read state.">
+    <img src="{{ '/screenshots/02-detail.png' | relative_url }}" alt="Fiction detail — cover, synopsis, tags, chapter list with read state." />
+  </dark-image>
   <figcaption>Fiction detail — synopsis, tags, chapter list, follow / unfollow, jump to first unread.</figcaption>
 </figure>
 
@@ -49,7 +55,9 @@ Captured on a Galaxy Tab A7 Lite (800×1340 px) running storyvox in both Library
   <dark-image
     src-dark="{{ '/screenshots/03-reader.png' | relative_url }}"
     src-light="{{ '/screenshots/03-reader-light.png' | relative_url }}"
-    alt="Reader playing The Archmage Coefficient with the spoken sentence highlighted in brass."></dark-image>
+    alt="Reader playing The Archmage Coefficient with the spoken sentence highlighted in brass.">
+    <img src="{{ '/screenshots/03-reader.png' | relative_url }}" alt="Reader playing The Archmage Coefficient with the spoken sentence highlighted in brass." />
+  </dark-image>
   <figcaption>Reader — the spoken sentence glides in brass as TTS plays. Swipe left for the audiobook view (cover, scrubber, transport controls).</figcaption>
 </figure>
 
@@ -59,7 +67,9 @@ Captured on a Galaxy Tab A7 Lite (800×1340 px) running storyvox in both Library
   <dark-image
     src-dark="{{ '/screenshots/04-library.png' | relative_url }}"
     src-light="{{ '/screenshots/04-library-light.png' | relative_url }}"
-    alt="Library tab — currently-listening fictions with cover, progress, last-read sentence, resume button."></dark-image>
+    alt="Library tab — currently-listening fictions with cover, progress, last-read sentence, resume button.">
+    <img src="{{ '/screenshots/04-library.png' | relative_url }}" alt="Library tab — currently-listening fictions with cover, progress, last-read sentence, resume button." />
+  </dark-image>
   <figcaption>Library — currently-listening fictions with cover, progress, last-read sentence, resume button.</figcaption>
 </figure>
 
@@ -69,7 +79,9 @@ Captured on a Galaxy Tab A7 Lite (800×1340 px) running storyvox in both Library
   <dark-image
     src-dark="{{ '/screenshots/05-settings.png' | relative_url }}"
     src-light="{{ '/screenshots/05-settings-light.png' | relative_url }}"
-    alt="Settings — voice library, speed, pitch, punctuation cadence, theme picker."></dark-image>
+    alt="Settings — voice library, speed, pitch, punctuation cadence, theme picker.">
+    <img src="{{ '/screenshots/05-settings.png' | relative_url }}" alt="Settings — voice library, speed, pitch, punctuation cadence, theme picker." />
+  </dark-image>
   <figcaption>Settings — Voice &amp; Playback section: voice library, speed, pitch, punctuation cadence, pronunciation overrides, theme picker. (Dark capture pre-dates the v0.5.00 Settings IA redesign; light captures the current eight-section layout.)</figcaption>
 </figure>
 
@@ -84,6 +96,8 @@ Captured on a Galaxy Tab A7 Lite (800×1340 px) running storyvox in both Library
   <dark-image
     src-dark="{{ '/screenshots/07-follows.png' | relative_url }}"
     src-light="{{ '/screenshots/07-follows-light.png' | relative_url }}"
-    alt="Follows tab — Royal Road sign-in empty state in light, populated list in dark."></dark-image>
+    alt="Follows tab — Royal Road sign-in empty state in light, populated list in dark.">
+    <img src="{{ '/screenshots/07-follows.png' | relative_url }}" alt="Follows tab — Royal Road sign-in empty state in light, populated list in dark." />
+  </dark-image>
   <figcaption>Follows — Royal Road sign-in surface. Dark capture shows the populated list once signed in; light shows the empty / sign-in prompt.</figcaption>
 </figure>
