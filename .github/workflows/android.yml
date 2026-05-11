@@ -34,13 +34,22 @@ jobs:
         with:
           accept-android-sdk-licenses: true
 
-      - name: Cache Gradle
+      - name: Cache Gradle (deps only)
+        # Cache only resolved dependency files, not the whole ~/.gradle
+        # tree. The full tree includes transformed AARs / R8 mapping /
+        # build outputs and balloons to ~3 GB per build — fast to
+        # rebuild but expensive to store on the 2 GB free-tier quota.
+        # Dependency files alone are ~300-500 MB and what actually
+        # earns its keep across runs. Key is stable across day-to-day
+        # commits (only changes when Gradle wrapper or version catalog
+        # moves), so we get a single shared cache instead of one per
+        # gradle-file edit.
         uses: actions/cache@v4
         with:
           path: |
-            ~/.gradle/caches
+            ~/.gradle/caches/modules-2
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
 
