@@ -12,8 +12,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -170,40 +168,47 @@ fun AudiobookView(
             // Issue #254 — the loading state used to show a bare row with
             // only an overflow button up top, so the user had no idea
             // *what* was loading (no title, no chapter, no escape). A
-            // CenterAlignedTopAppBar with a two-line title pins identity
-            // through every state — loading, warming up, buffering,
-            // playing, paused. Title comes from the queued PlaybackItem,
-            // available before chapter text loads.
-            CenterAlignedTopAppBar(
-                title = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            // two-line title bar pins identity through every state —
+            // loading, warming up, buffering, playing, paused. Title
+            // comes from the queued PlaybackItem, available before
+            // chapter text loads. A custom Box (not CenterAlignedTopAppBar)
+            // so the bar grows with fontScale instead of clipping the
+            // second line at the M3 bar's fixed container height.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = spacing.xs),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 56.dp), // leave room for the trailing IconButton on either side so centering stays true
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = state.fictionTitle.ifBlank { "Loading…" },
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                    if (state.chapterTitle.isNotBlank()) {
                         Text(
-                            text = state.fictionTitle.ifBlank { "Loading…" },
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.primary,
+                            text = state.chapterTitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         )
-                        if (state.chapterTitle.isNotBlank()) {
-                            Text(
-                                text = state.chapterTitle,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            )
-                        }
                     }
-                },
-                actions = {
-                    IconButton(onClick = { showSheet = true }) {
-                        Icon(Icons.Outlined.MoreVert, contentDescription = "Player options")
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color.Transparent,
-                ),
-            )
+                }
+                IconButton(
+                    onClick = { showSheet = true },
+                    modifier = Modifier.align(Alignment.CenterEnd),
+                ) {
+                    Icon(Icons.Outlined.MoreVert, contentDescription = "Player options")
+                }
+            }
             // While the chapter body + voice model are still loading we don't
             // have a cover URL or chapter title yet — show the brass arcane
             // sigil placeholder instead of a "?" thumb. As soon as state
