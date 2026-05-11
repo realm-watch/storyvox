@@ -155,38 +155,68 @@ fun SettingsScreen(
             // user's perspective; the persistence is per-voice
             // silently. Switching voices brings their stored values
             // back automatically.
+            // Speed range 0.5..4.0 puts the natural 1× thumb at ~14 %
+            // from the left, which made the Pitch slider (0.6..1.4,
+            // 1× at 50 %) look "set higher" even when both read 1.00×.
+            // A single brass tick label anchors the natural value
+            // explicitly so the visual offset reads as designed instead
+            // of as a glitch (#273). Same pattern as
+            // PunctuationPauseTickLabels — tap snaps the slider to 1×.
+            //
+            // Range constants are declared once and reused by both the
+            // Slider's `valueRange` and the tick's fraction calc so the
+            // tick can't drift if a range is ever rebalanced.
+            val speedMin = 0.5f
+            val speedMax = 4.0f
+            val naturalValue = 1.0f
+            val speedNaturalFraction = (naturalValue - speedMin) / (speedMax - speedMin)
             SettingsSliderBlock(
                 title = "Speed",
                 valueLabel = "${"%.2f".format(s.effectiveSpeed)}×",
                 slider = {
-                    Slider(
-                        value = s.effectiveSpeed,
-                        onValueChange = viewModel::setSpeed,
-                        // Widened past Thalia's P1 #5 (commute listeners
-                        // benefit from 3-4× on familiar narrators).
-                        valueRange = 0.5f..4.0f,
-                        modifier = Modifier.semantics {
-                            contentDescription = "Default speech speed"
-                            stateDescription = "%.2f times".format(s.effectiveSpeed)
-                        },
-                    )
+                    Column {
+                        Slider(
+                            value = s.effectiveSpeed,
+                            onValueChange = viewModel::setSpeed,
+                            // Widened past Thalia's P1 #5 (commute listeners
+                            // benefit from 3-4× on familiar narrators).
+                            valueRange = speedMin..speedMax,
+                            modifier = Modifier.semantics {
+                                contentDescription = "Default speech speed"
+                                stateDescription = "%.2f times".format(s.effectiveSpeed)
+                            },
+                        )
+                        SliderTickLabels(
+                            ticks = listOf("▲ 1×" to speedNaturalFraction),
+                            onTickTap = { viewModel.setSpeed(naturalValue) },
+                        )
+                    }
                 },
             )
+            val pitchMin = 0.6f
+            val pitchMax = 1.4f
+            val pitchNaturalFraction = (naturalValue - pitchMin) / (pitchMax - pitchMin)
             SettingsSliderBlock(
                 title = "Pitch",
                 valueLabel = "${"%.2f".format(s.effectivePitch)}×",
                 slider = {
-                    Slider(
-                        value = s.effectivePitch,
-                        onValueChange = viewModel::setPitch,
-                        // Narration-friendly band — matches AudiobookView. Hard
-                        // floor at 0.6: Sonic introduces artifacts below ~0.7.
-                        valueRange = 0.6f..1.4f,
-                        modifier = Modifier.semantics {
-                            contentDescription = "Default pitch"
-                            stateDescription = "%.2f, neutral at one".format(s.effectivePitch)
-                        },
-                    )
+                    Column {
+                        Slider(
+                            value = s.effectivePitch,
+                            onValueChange = viewModel::setPitch,
+                            // Narration-friendly band — matches AudiobookView. Hard
+                            // floor at 0.6: Sonic introduces artifacts below ~0.7.
+                            valueRange = pitchMin..pitchMax,
+                            modifier = Modifier.semantics {
+                                contentDescription = "Default pitch"
+                                stateDescription = "%.2f, neutral at one".format(s.effectivePitch)
+                            },
+                        )
+                        SliderTickLabels(
+                            ticks = listOf("▲ 1×" to pitchNaturalFraction),
+                            onTickTap = { viewModel.setPitch(naturalValue) },
+                        )
+                    }
                 },
             )
             // Punctuation cadence — #109 continuous slider (was 3-stop
