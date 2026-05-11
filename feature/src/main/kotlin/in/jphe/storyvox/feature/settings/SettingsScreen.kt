@@ -162,50 +162,59 @@ fun SettingsScreen(
             // explicitly so the visual offset reads as designed instead
             // of as a glitch (#273). Same pattern as
             // PunctuationPauseTickLabels — tap snaps the slider to 1×.
+            //
+            // Range constants are declared once and reused by both the
+            // Slider's `valueRange` and the tick's fraction calc so the
+            // tick can't drift if a range is ever rebalanced.
+            val speedMin = 0.5f
+            val speedMax = 4.0f
+            val naturalValue = 1.0f
+            val speedNaturalFraction = (naturalValue - speedMin) / (speedMax - speedMin)
             SettingsSliderBlock(
                 title = "Speed",
                 valueLabel = "${"%.2f".format(s.effectiveSpeed)}×",
                 slider = {
-                    androidx.compose.foundation.layout.Column {
+                    Column {
                         Slider(
                             value = s.effectiveSpeed,
                             onValueChange = viewModel::setSpeed,
                             // Widened past Thalia's P1 #5 (commute listeners
                             // benefit from 3-4× on familiar narrators).
-                            valueRange = 0.5f..4.0f,
+                            valueRange = speedMin..speedMax,
                             modifier = Modifier.semantics {
                                 contentDescription = "Default speech speed"
                                 stateDescription = "%.2f times".format(s.effectiveSpeed)
                             },
                         )
                         SliderTickLabels(
-                            // 1× position = (1.0 − 0.5) / (4.0 − 0.5) ≈ 0.143
-                            ticks = listOf("▲ 1×" to ((1.0f - 0.5f) / (4.0f - 0.5f))),
-                            onTickTap = { viewModel.setSpeed(1.0f) },
+                            ticks = listOf("▲ 1×" to speedNaturalFraction),
+                            onTickTap = { viewModel.setSpeed(naturalValue) },
                         )
                     }
                 },
             )
+            val pitchMin = 0.6f
+            val pitchMax = 1.4f
+            val pitchNaturalFraction = (naturalValue - pitchMin) / (pitchMax - pitchMin)
             SettingsSliderBlock(
                 title = "Pitch",
                 valueLabel = "${"%.2f".format(s.effectivePitch)}×",
                 slider = {
-                    androidx.compose.foundation.layout.Column {
+                    Column {
                         Slider(
                             value = s.effectivePitch,
                             onValueChange = viewModel::setPitch,
                             // Narration-friendly band — matches AudiobookView. Hard
                             // floor at 0.6: Sonic introduces artifacts below ~0.7.
-                            valueRange = 0.6f..1.4f,
+                            valueRange = pitchMin..pitchMax,
                             modifier = Modifier.semantics {
                                 contentDescription = "Default pitch"
                                 stateDescription = "%.2f, neutral at one".format(s.effectivePitch)
                             },
                         )
                         SliderTickLabels(
-                            // 1× position = (1.0 − 0.6) / (1.4 − 0.6) = 0.5 (centered)
-                            ticks = listOf("▲ 1×" to 0.5f),
-                            onTickTap = { viewModel.setPitch(1.0f) },
+                            ticks = listOf("▲ 1×" to pitchNaturalFraction),
+                            onTickTap = { viewModel.setPitch(naturalValue) },
                         )
                     }
                 },
