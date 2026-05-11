@@ -96,7 +96,11 @@ fun FollowsScreen(
                         horizontalArrangement = Arrangement.spacedBy(spacing.sm),
                         verticalArrangement = Arrangement.spacedBy(spacing.sm),
                     ) {
-                        gridItems(state.follows, key = { it.fiction.id }) { follow ->
+                        // #328 — see LibraryScreen.kt. Royal Road follows
+                        // can occasionally double-emit during sign-in cache
+                        // hydration; defensive distinctBy keeps Compose's
+                        // unique-key contract honored regardless.
+                        gridItems(state.follows.distinctBy { it.fiction.id }, key = { it.fiction.id }) { follow ->
                             FollowCard(follow = follow, onClick = { viewModel.open(follow.fiction.id) })
                         }
                     }
@@ -106,7 +110,7 @@ fun FollowsScreen(
                         contentPadding = PaddingValues(spacing.md),
                         verticalArrangement = Arrangement.spacedBy(spacing.sm),
                     ) {
-                        items(state.follows, key = { it.fiction.id }) { follow ->
+                        items(state.follows.distinctBy { it.fiction.id }, key = { it.fiction.id }) { follow ->
                             FollowCard(follow = follow, onClick = { viewModel.open(follow.fiction.id) })
                         }
                     }

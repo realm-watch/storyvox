@@ -103,7 +103,14 @@ fun LibraryScreen(
                             ResumeCard(resume, onResume = viewModel::resume)
                         }
                     }
-                    itemsIndexed(state.fictions, key = { _, item -> item.id }) { index, fiction ->
+                    // #328 — dedupe defensively. LazyVerticalGrid keys must
+                    // be unique or Compose throws IllegalArgumentException
+                    // and crashes the activity. If anything upstream lets a
+                    // duplicate fiction id reach the UI (RSS re-import,
+                    // sync race, hash collision), this guard keeps the grid
+                    // healthy. Order is preserved (distinctBy retains the
+                    // first occurrence) so the user-visible list is stable.
+                    itemsIndexed(state.fictions.distinctBy { it.id }, key = { _, item -> item.id }) { index, fiction ->
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()

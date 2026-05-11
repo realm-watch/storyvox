@@ -269,7 +269,11 @@ fun BrowseScreen(
                             )
                         }
                     }
-                    itemsIndexed(state.items, key = { _, item -> item.id }) { index, fiction ->
+                    // #328 — see LibraryScreen.kt; same defensive distinctBy
+                    // guard so duplicate fiction ids (Royal Road occasionally
+                    // returns the same fiction twice on filter edge cases)
+                    // can't crash the grid via Compose's unique-key contract.
+                    itemsIndexed(state.items.distinctBy { it.id }, key = { _, item -> item.id }) { index, fiction ->
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
