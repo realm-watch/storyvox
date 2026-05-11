@@ -155,6 +155,14 @@ fun SettingsScreen(
             // user's perspective; the persistence is per-voice
             // silently. Switching voices brings their stored values
             // back automatically.
+            // #260 — visual parity with the Player options sheet. The
+            // sheet's Slider passes `steps = N` which paints a dotted
+            // track (M3's stepped-slider tick pattern); the Settings
+            // version used to omit `steps` and rendered as a plain
+            // solid bar, so the same parameter looked different in
+            // two places. Adding the same step granularity here lines
+            // the two surfaces up. Step counts are sized to ~0.05×
+            // for Speed and ~0.01× for Pitch, matching AudiobookView.
             SettingsSliderBlock(
                 title = "Speed",
                 valueLabel = "${"%.2f".format(s.effectiveSpeed)}×",
@@ -165,6 +173,10 @@ fun SettingsScreen(
                         // Widened past Thalia's P1 #5 (commute listeners
                         // benefit from 3-4× on familiar narrators).
                         valueRange = 0.5f..4.0f,
+                        // 70 stops over [0.5..4.0] = 0.05× per step; same
+                        // perceptual granularity as the Player options sheet
+                        // (49 stops over its narrower 0.5..3.0 range).
+                        steps = 68,
                         modifier = Modifier.semantics {
                             contentDescription = "Default speech speed"
                             stateDescription = "%.2f times".format(s.effectiveSpeed)
@@ -182,6 +194,9 @@ fun SettingsScreen(
                         // Narration-friendly band — matches AudiobookView. Hard
                         // floor at 0.6: Sonic introduces artifacts below ~0.7.
                         valueRange = 0.6f..1.4f,
+                        // Matches the Player options sheet's `steps = 79`
+                        // exactly (same 0.6..1.4 range, ~0.01 per step).
+                        steps = 79,
                         modifier = Modifier.semantics {
                             contentDescription = "Default pitch"
                             stateDescription = "%.2f, neutral at one".format(s.effectivePitch)
