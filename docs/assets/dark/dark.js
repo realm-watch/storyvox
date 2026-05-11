@@ -26,8 +26,10 @@
   function effective() {
     var p = readPref();
     if (p !== 'system') return p;
-    if (!mediaQuery) mediaQuery = matchMedia('(prefers-color-scheme: dark)');
-    return mediaQuery.matches ? 'dark' : 'light';
+    if (!mediaQuery && typeof window.matchMedia === 'function') {
+      mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    }
+    return mediaQuery && mediaQuery.matches ? 'dark' : 'light';
   }
 
   function apply() {
@@ -62,11 +64,19 @@
   }
 
   function init() {
-    if (!mediaQuery) mediaQuery = matchMedia('(prefers-color-scheme: dark)');
-    if (mediaQuery.addEventListener) {
-      mediaQuery.addEventListener('change', function () {
+    if (!mediaQuery && typeof window.matchMedia === 'function') {
+      mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    }
+    if (mediaQuery) {
+      var onChange = function () {
         if (readPref() === 'system') apply();
-      });
+      };
+      if (mediaQuery.addEventListener) {
+        mediaQuery.addEventListener('change', onChange);
+      } else if (mediaQuery.addListener) {
+        // Legacy MediaQueryList API (Safari < 14, older Chromium forks).
+        mediaQuery.addListener(onChange);
+      }
     }
     apply();
   }
