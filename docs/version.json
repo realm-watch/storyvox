@@ -1,12 +1,12 @@
 {
   "name": "storyvox",
   "description": "Neural-voice audiobook player for any text you have \u2014 offline TTS, optional Azure HD cloud voices, Library Nocturne aesthetic",
-  "version": "Celestial Nexus \u00b7 5c4ea94",
-  "hash": "5c4ea94",
+  "version": "Primal Keystone \u00b7 c83c2f4",
+  "hash": "c83c2f4",
   "branch": "main",
   "dirty": false,
-  "built": "2026-05-11T21:55:17Z",
+  "built": "2026-05-11T23:08:00Z",
   "realm": "fantasy",
   "repo": "https://github.com/jphein/storyvox",
-  "commit_url": "https://github.com/jphein/storyvox/commit/5c4ea94"
+  "commit_url": "https://github.com/jphein/storyvox/commit/c83c2f4"
 }
