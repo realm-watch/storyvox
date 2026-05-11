@@ -124,20 +124,20 @@ fun LibraryScreen(
                         // #265 — the Resume card used to sit one
                         // `verticalArrangement.spacedBy(md)` gap above the
                         // grid's first row, reading as another grid item
-                        // rather than a hero zone. A small spacer-row +
-                        // brass "Your library" caption gives the resume
-                        // its own band and labels the grid as a separate
-                        // section.
+                        // rather than a hero zone. The brass "Your library"
+                        // caption now labels the grid as a separate section.
+                        // Spacer + caption live in one full-span item so we
+                        // only pay one inter-row gap from the grid's
+                        // vertical arrangement (two items would double it).
                         item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                            Spacer(modifier = Modifier.height(spacing.xs))
-                        }
-                        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                            Text(
-                                text = "Your library",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(top = spacing.xs, bottom = spacing.xxs),
-                            )
+                            Column(modifier = Modifier.padding(top = spacing.xs)) {
+                                Text(
+                                    text = "Your library",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(bottom = spacing.xxs),
+                                )
+                            }
                         }
                     }
                     itemsIndexed(dedupedFictions, key = { _, item -> item.id }) { index, fiction ->
