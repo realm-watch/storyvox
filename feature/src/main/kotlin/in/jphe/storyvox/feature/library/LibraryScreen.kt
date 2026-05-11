@@ -121,6 +121,24 @@ fun LibraryScreen(
                         item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                             ResumeCard(resume, onResume = viewModel::resume)
                         }
+                        // #265 — the Resume card used to sit one
+                        // `verticalArrangement.spacedBy(md)` gap above the
+                        // grid's first row, reading as another grid item
+                        // rather than a hero zone. A small spacer-row +
+                        // brass "Your library" caption gives the resume
+                        // its own band and labels the grid as a separate
+                        // section.
+                        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                            Spacer(modifier = Modifier.height(spacing.xs))
+                        }
+                        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                            Text(
+                                text = "Your library",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = spacing.xs, bottom = spacing.xxs),
+                            )
+                        }
                     }
                     itemsIndexed(dedupedFictions, key = { _, item -> item.id }) { index, fiction ->
                         Column(
@@ -193,8 +211,17 @@ private fun ResumeCard(entry: ContinueListeningEntry, onResume: () -> Unit) {
             Column(modifier = Modifier.weight(1f)) {
                 Text("Resume", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 Text(entry.fiction.title, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                // #265 — when chapter.title is blank (RSS feeds where only
+                // the index was parsed, first-cold-launch state), the old
+                // format produced "Ch. 0 · " with a dangling separator
+                // that read as missing data. Drop the separator entirely
+                // in that case so the line ends cleanly with "Ch. 0".
                 Text(
-                    "Ch. ${entry.chapter.index} · ${entry.chapter.title}",
+                    text = if (entry.chapter.title.isNotBlank()) {
+                        "Ch. ${entry.chapter.index} · ${entry.chapter.title}"
+                    } else {
+                        "Ch. ${entry.chapter.index}"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
