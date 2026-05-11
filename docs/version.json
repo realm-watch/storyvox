@@ -1,12 +1,12 @@
 {
   "name": "storyvox",
   "description": "Neural-voice audiobook player for any text you have \u2014 offline TTS, optional Azure HD cloud voices, Library Nocturne aesthetic",
-  "version": "Noble Grimoire \u00b7 63f5826",
-  "hash": "63f5826",
-  "branch": "docs/sigil-and-dark-realm",
+  "version": "Celestial Nexus \u00b7 5c4ea94",
+  "hash": "5c4ea94",
+  "branch": "main",
   "dirty": false,
-  "built": "2026-05-11T01:46:47Z",
+  "built": "2026-05-11T21:55:17Z",
   "realm": "fantasy",
   "repo": "https://github.com/jphein/storyvox",
-  "commit_url": "https://github.com/jphein/storyvox/commit/63f5826"
+  "commit_url": "https://github.com/jphein/storyvox/commit/5c4ea94"
 }
