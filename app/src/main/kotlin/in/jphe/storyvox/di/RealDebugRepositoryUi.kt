@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.SystemClock
+import `in`.jphe.storyvox.data.repository.ChapterRepository
 import `in`.jphe.storyvox.feature.api.DebugAudio
 import `in`.jphe.storyvox.feature.api.DebugAzure
 import `in`.jphe.storyvox.feature.api.DebugBuildInfo
@@ -37,7 +38,9 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * Production [DebugRepositoryUi]. Joins live state from
@@ -68,6 +71,7 @@ internal class RealDebugRepositoryUi(
     private val settings: SettingsRepositoryUi,
     private val azureCreds: AzureCredentials,
     private val azureEngine: AzureVoiceEngine,
+    private val chapterRepo: ChapterRepository,
 ) : DebugRepositoryUi {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -95,6 +99,15 @@ internal class RealDebugRepositoryUi(
     /** Last error tag, for error-change event emission. */
     @Volatile private var lastErrorTag: String? = null
 
+    /**
+     * Issue #293 — cached storage snapshot. Polled every 10s by a
+     * background coroutine while the class scope is alive; buildSnapshot
+     * reads `.value` synchronously so the 1Hz combine never blocks on a
+     * Room query or filesystem walk. Initial value is "—" (zeroes) until
+     * the first poll completes a few ms after construction.
+     */
+    private val storageSnapshot = MutableStateFlow(DebugStorage())
+
     init {
         // Drive the event ring from the playback controller's state +
         // event stream. The state stream gives us the implicit events
@@ -120,6 +133,50 @@ internal class RealDebugRepositoryUi(
                     }
                 }
         }
+        // Issue #293 — storage diagnostic poll. Refreshes the cached
+        // DebugStorage snapshot every STORAGE_POLL_INTERVAL_MS so the
+        // 1Hz combine reads a fresh-enough number without paying the
+        // Room query + filesystem walk on every tick. Storage usage
+        // changes on download/delete events, neither of which are
+        // sub-second; 10s is generous.
+        scope.launch {
+            while (true) {
+                storageSnapshot.value = readStorageSnapshot()
+                delay(STORAGE_POLL_INTERVAL_MS)
+            }
+        }
+    }
+
+    /**
+     * Issue #293 — compute the storage diagnostic in one read pass.
+     * Cheap Room aggregate + a single-level filesystem walk of
+     * `filesDir/voices/`. Each installed voice is a small directory
+     * (3-200 MB onnx + json + assets); summing top-level dir sizes is
+     * orders of magnitude faster than a deep recursive walk and
+     * accurate enough for the debug row's purposes.
+     */
+    private suspend fun readStorageSnapshot(): DebugStorage {
+        val cache = runCatching { chapterRepo.cachedBodyUsage() }.getOrNull()
+        val voiceBytes = runCatching { voiceModelBytes() }.getOrNull() ?: 0L
+        return DebugStorage(
+            cachedChapters = cache?.count ?: 0,
+            cachedChapterBytes = cache?.bytesEstimate ?: 0L,
+            voiceModelBytes = voiceBytes,
+        )
+    }
+
+    /**
+     * Sum of bytes under `filesDir/voices/`. Each voice lives in its
+     * own subdirectory; we sum each voice dir recursively (only one
+     * level deep in practice, but `walkBottomUp` is robust to nested
+     * shared assets like the kokoro `_kokoro_shared/voices.bin` layout).
+     */
+    private fun voiceModelBytes(): Long {
+        val root = File(context.filesDir, "voices")
+        if (!root.isDirectory) return 0L
+        return root.walkBottomUp()
+            .filter { it.isFile }
+            .sumOf { it.length() }
     }
 
     private fun onStateChange(s: PlaybackState) {
@@ -261,11 +318,7 @@ internal class RealDebugRepositoryUi(
                 },
                 lastFetchError = null,
             ),
-            storage = DebugStorage(
-                cachedChapters = 0,
-                cachedChapterBytes = 0L,
-                voiceModelBytes = 0L,
-            ),
+            storage = storageSnapshot.value,
             build = DebugBuildInfo(
                 versionName = ui.sigil.versionName,
                 hash = ui.sigil.hash,
@@ -348,5 +401,11 @@ internal class RealDebugRepositoryUi(
         /** 1 Hz — matches Vesper's mission brief: "Numeric values update at
          *  1Hz (not 60Hz — that's wasteful)". */
         const val REFRESH_INTERVAL_MS = 1_000L
+
+        /** Issue #293 — storage diagnostic poll cadence. Storage usage
+         *  only changes on download/delete events (neither sub-second);
+         *  10s is generous and keeps the room query + filesystem walk
+         *  off the 1Hz snapshot path. */
+        const val STORAGE_POLL_INTERVAL_MS = 10_000L
     }
 }

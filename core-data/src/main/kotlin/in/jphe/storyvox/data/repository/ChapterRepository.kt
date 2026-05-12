@@ -71,7 +71,24 @@ interface ChapterRepository {
 
     /** ID of the previous chapter in reading order, or null at the start. */
     suspend fun getPreviousChapterId(currentChapterId: String): String?
+
+    /**
+     * Issue #293 — debug-surface storage diagnostic. Returns count of
+     * chapters with a cached body + estimated byte usage. Single
+     * SQL aggregate; safe to call on a poll cadence (~10s on the debug
+     * screen). Bytes are an upper-bound estimate (char count × 2);
+     * exact UTF-8 byte cost would require LENGTH(CAST(plainBody AS BLOB))
+     * which is more expensive on a large table for no practical gain
+     * on the storage diagnostic.
+     */
+    suspend fun cachedBodyUsage(): CachedBodyUsage
 }
+
+/** Issue #293 — paired count/bytes return for [ChapterRepository.cachedBodyUsage]. */
+data class CachedBodyUsage(
+    val count: Int,
+    val bytesEstimate: Long,
+)
 
 @Singleton
 class ChapterRepositoryImpl @Inject constructor(
@@ -151,4 +168,9 @@ class ChapterRepositoryImpl @Inject constructor(
 
     override suspend fun getPreviousChapterId(currentChapterId: String): String? =
         dao.previousChapterId(currentChapterId)
+
+    override suspend fun cachedBodyUsage(): CachedBodyUsage {
+        val row = dao.cacheUsage()
+        return CachedBodyUsage(count = row.count, bytesEstimate = row.bytes)
+    }
 }

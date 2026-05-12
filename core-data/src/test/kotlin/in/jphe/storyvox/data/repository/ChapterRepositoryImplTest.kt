@@ -159,6 +159,14 @@ class ChapterRepositoryImplTest {
             publishRow(id)
         }
 
+        override suspend fun cacheUsage(): `in`.jphe.storyvox.data.db.dao.ChapterCacheUsageRow {
+            val cached = rows.values.filter { !it.plainBody.isNullOrEmpty() }
+            return `in`.jphe.storyvox.data.db.dao.ChapterCacheUsageRow(
+                count = cached.size,
+                bytes = cached.sumOf { (it.plainBody?.length ?: 0).toLong() * 2 },
+            )
+        }
+
         override suspend fun trimDownloadedBodies(fictionId: String, keepLast: Int) {
             callLog += "trimDownloadedBodies($fictionId, $keepLast)"
             val ids = rows.values

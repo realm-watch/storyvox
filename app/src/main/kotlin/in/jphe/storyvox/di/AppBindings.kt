@@ -125,8 +125,16 @@ object AppBindings {
         settings: SettingsRepositoryUi,
         azureCreds: `in`.jphe.storyvox.source.azure.AzureCredentials,
         azureEngine: `in`.jphe.storyvox.source.azure.AzureVoiceEngine,
+        chapterRepo: `in`.jphe.storyvox.data.repository.ChapterRepository,
     ): `in`.jphe.storyvox.feature.api.DebugRepositoryUi =
-        RealDebugRepositoryUi(context, controller, settings, azureCreds, azureEngine)
+        RealDebugRepositoryUi(
+            context = context,
+            controller = controller,
+            settings = settings,
+            azureCreds = azureCreds,
+            azureEngine = azureEngine,
+            chapterRepo = chapterRepo,
+        )
 
     @Provides @Singleton
     fun provideVoiceProviderUi(impl: VoiceProviderUiImpl): VoiceProviderUi = impl

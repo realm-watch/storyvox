@@ -189,12 +189,44 @@ interface ChapterDao {
         """,
     )
     suspend fun trimDownloadedBodies(fictionId: String, keepLast: Int)
+
+    /**
+     * Issue #293 — debug-surface storage diagnostic. Single round-trip
+     * returns both the count of cached chapters AND the rough byte usage
+     * of their text bodies. SQLite's `LENGTH()` on a TEXT column returns
+     * the **character** count, not the on-disk UTF-8 byte count; we
+     * multiply by 2 as a conservative upper-bound for mixed ASCII +
+     * occasional smart-punctuation prose (most of which is single-byte).
+     *
+     * Polled by RealDebugRepositoryUi on the debug screen's storage
+     * row; non-load-bearing for playback, so an imprecise estimate is
+     * fine. The COALESCE guards an empty cache returning NULL from SUM.
+     */
+    @Query(
+        """
+        SELECT
+          COUNT(*) AS count,
+          COALESCE(SUM(LENGTH(plainBody) * 2), 0) AS bytes
+          FROM chapter
+         WHERE plainBody IS NOT NULL AND plainBody <> ''
+        """,
+    )
+    suspend fun cacheUsage(): ChapterCacheUsageRow
 }
 
 /** Light projection used by [ChapterDao.observeDownloadStates]. */
 data class ChapterDownloadStateRow(
     val id: String,
     val downloadState: ChapterDownloadState,
+)
+
+/** Issue #293 — combined count + estimated byte usage of cached chapter
+ *  bodies. Both columns come from a single SQL aggregate so the DAO
+ *  read is one round-trip; the storage debug row updates on a 10s
+ *  poll, so cost is negligible. */
+data class ChapterCacheUsageRow(
+    val count: Int,
+    val bytes: Long,
 )
 
 /**
