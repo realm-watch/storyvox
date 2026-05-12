@@ -79,6 +79,21 @@ class PalaceDaemonApiTest {
         assertEquals("http://palace.local:8085", url)
     }
 
+    @Test fun `normalizes mixed-case scheme`() {
+        // Copilot caught: original implementation had case-insensitive
+        // startsWith but case-sensitive removePrefix, so `Https://host`
+        // would slip through un-stripped. Verify the regex-based strip
+        // handles mixed case AND emits a lowercase scheme.
+        assertEquals(
+            "https://palace.jphe.in",
+            api().baseUrlOrNull(cfg("HTTPS://palace.jphe.in")),
+        )
+        assertEquals(
+            "http://palace.local:8085",
+            api().baseUrlOrNull(cfg("HtTp://palace.local:8085")),
+        )
+    }
+
     @Test fun `unwraps MCP text envelope`() {
         val envelope = """
             {"jsonrpc":"2.0","id":1,"result":{"content":[
