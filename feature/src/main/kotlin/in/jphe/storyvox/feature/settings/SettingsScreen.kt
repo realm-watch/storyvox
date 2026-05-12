@@ -2086,9 +2086,18 @@ private fun ClaudeProviderRows(
     val spacing = LocalSpacing.current
     var keyDraft by remember { mutableStateOf("") }
     var showKey by remember { mutableStateOf(false) }
+    // #338 — tri-state local override. EncryptedSharedPreferences changes
+    // don't tick the settings StateFlow that ai.*KeyConfigured is derived
+    // from, so both Save (→ "set") and Clear (→ "not set") would otherwise
+    // lag by ~30s until something else triggered a recomposition. A
+    // nullable override takes precedence over the (possibly stale) snapshot
+    // value — Save sets it to true, Clear sets it to false, leaving null
+    // when nothing has happened yet means we trust the snapshot.
+    var keyConfiguredOverride by remember { mutableStateOf<Boolean?>(null) }
+    val keyConfigured = keyConfiguredOverride ?: ai.claudeKeyConfigured
     Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
         Text(
-            if (ai.claudeKeyConfigured) "Claude API key — set"
+            if (keyConfigured) "Claude API key — set"
             else "Claude API key — not set",
             style = MaterialTheme.typography.bodyMedium,
         )
@@ -2114,14 +2123,18 @@ private fun ClaudeProviderRows(
                         onSetClaudeKey(keyDraft)
                         keyDraft = ""
                         showKey = false
+                        keyConfiguredOverride = true
                     }
                 },
                 variant = BrassButtonVariant.Primary,
             )
-            if (ai.claudeKeyConfigured) {
+            if (keyConfigured) {
                 BrassButton(
                     label = "Clear",
-                    onClick = { onSetClaudeKey(null) },
+                    onClick = {
+                        onSetClaudeKey(null)
+                        keyConfiguredOverride = false
+                    },
                     variant = BrassButtonVariant.Text,
                 )
             }
@@ -2159,9 +2172,13 @@ private fun OpenAiProviderRows(
     val spacing = LocalSpacing.current
     var keyDraft by remember { mutableStateOf("") }
     var showKey by remember { mutableStateOf(false) }
+    // #338 — see ClaudeProviderRows for the rationale.
+    var keyConfiguredOverride by remember { mutableStateOf<Boolean?>(null) }
+    val keyConfigured = keyConfiguredOverride ?: ai.openAiKeyConfigured
     Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
         Text(
-            if (ai.openAiKeyConfigured) "OpenAI API key — set" else "OpenAI API key — not set",
+            if (keyConfigured) "OpenAI API key — set"
+            else "OpenAI API key — not set",
             style = MaterialTheme.typography.bodyMedium,
         )
         OutlinedTextField(
@@ -2186,14 +2203,18 @@ private fun OpenAiProviderRows(
                         onSetOpenAiKey(keyDraft)
                         keyDraft = ""
                         showKey = false
+                        keyConfiguredOverride = true
                     }
                 },
                 variant = BrassButtonVariant.Primary,
             )
-            if (ai.openAiKeyConfigured) {
+            if (keyConfigured) {
                 BrassButton(
                     label = "Clear",
-                    onClick = { onSetOpenAiKey(null) },
+                    onClick = {
+                        onSetOpenAiKey(null)
+                        keyConfiguredOverride = false
+                    },
                     variant = BrassButtonVariant.Text,
                 )
             }
@@ -2268,9 +2289,12 @@ private fun VertexProviderRows(
     val spacing = LocalSpacing.current
     var keyDraft by remember { mutableStateOf("") }
     var showKey by remember { mutableStateOf(false) }
+    // #338 — see ClaudeProviderRows for the rationale.
+    var keyConfiguredOverride by remember { mutableStateOf<Boolean?>(null) }
+    val keyConfigured = keyConfiguredOverride ?: ai.vertexKeyConfigured
     Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
         Text(
-            if (ai.vertexKeyConfigured) "Vertex API key — set"
+            if (keyConfigured) "Vertex API key — set"
             else "Vertex API key — not set",
             style = MaterialTheme.typography.bodyMedium,
         )
@@ -2296,14 +2320,18 @@ private fun VertexProviderRows(
                         onSetVertexKey(keyDraft)
                         keyDraft = ""
                         showKey = false
+                        keyConfiguredOverride = true
                     }
                 },
                 variant = BrassButtonVariant.Primary,
             )
-            if (ai.vertexKeyConfigured) {
+            if (keyConfigured) {
                 BrassButton(
                     label = "Clear",
-                    onClick = { onSetVertexKey(null) },
+                    onClick = {
+                        onSetVertexKey(null)
+                        keyConfiguredOverride = false
+                    },
                     variant = BrassButtonVariant.Text,
                 )
             }
@@ -2345,6 +2373,12 @@ private fun AzureFoundryProviderRows(
     var showKey by remember { mutableStateOf(false) }
     var endpointDraft by remember(ai.foundryEndpoint) { mutableStateOf(ai.foundryEndpoint) }
     var deploymentDraft by remember(ai.foundryDeployment) { mutableStateOf(ai.foundryDeployment) }
+    // #338 — see ClaudeProviderRows. Foundry's Save persists endpoint
+    // + deployment to DataStore (which the settings flow does observe,
+    // so those labels update fine) plus the API key to EncryptedSharedPrefs
+    // (which doesn't). Only the API-key label needs the local override.
+    var keyConfiguredOverride by remember { mutableStateOf<Boolean?>(null) }
+    val keyConfigured = keyConfiguredOverride ?: ai.foundryKeyConfigured
 
     Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
         // ── Mode toggle ────────────────────────────────────────────
@@ -2395,7 +2429,7 @@ private fun AzureFoundryProviderRows(
 
         // ── API key (encrypted) ───────────────────────────────────
         Text(
-            if (ai.foundryKeyConfigured) "Foundry API key — set"
+            if (keyConfigured) "Foundry API key — set"
             else "Foundry API key — not set",
             style = MaterialTheme.typography.bodyMedium,
         )
@@ -2456,14 +2490,18 @@ private fun AzureFoundryProviderRows(
                         onSetFoundryKey(keyDraft)
                         keyDraft = ""
                         showKey = false
+                        keyConfiguredOverride = true
                     }
                 },
                 variant = BrassButtonVariant.Primary,
             )
-            if (ai.foundryKeyConfigured) {
+            if (keyConfigured) {
                 BrassButton(
                     label = "Clear key",
-                    onClick = { onSetFoundryKey(null) },
+                    onClick = {
+                        onSetFoundryKey(null)
+                        keyConfiguredOverride = false
+                    },
                     variant = BrassButtonVariant.Text,
                 )
             }
@@ -2485,10 +2523,17 @@ private fun BedrockProviderRows(
     var secretDraft by remember { mutableStateOf("") }
     var showAccess by remember { mutableStateOf(false) }
     var showSecret by remember { mutableStateOf(false) }
+    // #338 — see ClaudeProviderRows. Bedrock has two independent
+    // per-field Saves so it needs two tri-state overrides (true on
+    // Save, false on Clear, null when nothing has happened yet).
+    var accessConfiguredOverride by remember { mutableStateOf<Boolean?>(null) }
+    var secretConfiguredOverride by remember { mutableStateOf<Boolean?>(null) }
+    val accessConfigured = accessConfiguredOverride ?: ai.bedrockAccessKeyConfigured
+    val secretConfigured = secretConfiguredOverride ?: ai.bedrockSecretKeyConfigured
     Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
         // ── Access key ────────────────────────────────────────────
         Text(
-            if (ai.bedrockAccessKeyConfigured) "AWS access key id — set"
+            if (accessConfigured) "AWS access key id — set"
             else "AWS access key id — not set",
             style = MaterialTheme.typography.bodyMedium,
         )
@@ -2515,21 +2560,25 @@ private fun BedrockProviderRows(
                         onSetAccessKey(accessDraft)
                         accessDraft = ""
                         showAccess = false
+                        accessConfiguredOverride = true
                     }
                 },
                 variant = BrassButtonVariant.Primary,
             )
-            if (ai.bedrockAccessKeyConfigured) {
+            if (accessConfigured) {
                 BrassButton(
                     label = "Clear",
-                    onClick = { onSetAccessKey(null) },
+                    onClick = {
+                        onSetAccessKey(null)
+                        accessConfiguredOverride = false
+                    },
                     variant = BrassButtonVariant.Text,
                 )
             }
         }
         // ── Secret key ────────────────────────────────────────────
         Text(
-            if (ai.bedrockSecretKeyConfigured) "AWS secret access key — set"
+            if (secretConfigured) "AWS secret access key — set"
             else "AWS secret access key — not set",
             style = MaterialTheme.typography.bodyMedium,
         )
@@ -2556,14 +2605,18 @@ private fun BedrockProviderRows(
                         onSetSecretKey(secretDraft)
                         secretDraft = ""
                         showSecret = false
+                        secretConfiguredOverride = true
                     }
                 },
                 variant = BrassButtonVariant.Primary,
             )
-            if (ai.bedrockSecretKeyConfigured) {
+            if (secretConfigured) {
                 BrassButton(
                     label = "Clear",
-                    onClick = { onSetSecretKey(null) },
+                    onClick = {
+                        onSetSecretKey(null)
+                        secretConfiguredOverride = false
+                    },
                     variant = BrassButtonVariant.Text,
                 )
             }
