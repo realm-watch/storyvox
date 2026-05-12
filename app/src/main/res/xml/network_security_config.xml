@@ -14,6 +14,18 @@
   short and prefer fixing the upstream to TLS over expanding the
   allowlist.
 
+  Known trade-off: the Memory Palace API key (if the user sets one)
+  rides on this cleartext channel. A DNS hijack of palace.jphe.in
+  could redirect the request to an attacker who'd then receive the
+  X-API-Key header. The acceptable-risk argument is that this domain
+  is JP's personal reverse proxy under his own DNS authority — a
+  single-deployment hardcode — and a future PR should put TLS on
+  the proxy so this entry can be removed entirely. Tracking issue:
+  surface a dev-build variant that allows cleartext to RFC1918 if a
+  bare-LAN-IP palace use case ever materializes (network-security-config
+  is build-time/resource-bound, so it'd be a separate `debug` resource
+  file, not a runtime toggle).
+
   Scope note: Android's network-security-config matches on hostnames,
   not raw IPs. RFC1918 (`10.x`, `192.168.x`), `.local`, and loopback
   are NOT auto-exempted by the OS — they're cleartext-blocked too
@@ -21,9 +33,8 @@
   `PalaceDaemonApi` enforces "LAN-only by hostname/IP shape" at the
   app layer; this XML enforces the OS-layer cleartext gate
   independently. Users pointing storyvox at a bare LAN IP for a
-  palace daemon will hit the same block — handle that in a follow-up
-  if it surfaces (likely option: add an "Allow cleartext to LAN" dev
-  toggle that swaps in a permissive config at runtime).
+  palace daemon will hit the same block — handled per the trade-off
+  note above.
 -->
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
