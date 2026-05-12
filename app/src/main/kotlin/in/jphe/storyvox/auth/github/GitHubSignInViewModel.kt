@@ -103,7 +103,7 @@ class GitHubSignInViewModel @Inject constructor(
                 }
                 is DeviceCodeResult.NetworkError -> {
                     _state.value = SignInState.Failure(
-                        message = "Network error — ${result.cause.message ?: "request failed"}",
+                        message = friendlyNetworkError(result.cause),
                         retryable = true,
                     )
                 }
@@ -188,7 +188,7 @@ class GitHubSignInViewModel @Inject constructor(
                         consecutiveNetworkErrors++
                         if (consecutiveNetworkErrors >= 2) {
                             _state.value = SignInState.Failure(
-                                message = "Network error — ${r.cause.message ?: "polling failed"}",
+                                message = friendlyNetworkError(r.cause),
                                 retryable = true,
                             )
                             return@launch
@@ -243,6 +243,36 @@ class GitHubSignInViewModel @Inject constructor(
             "Sign-in failed: the OAuth app's client_id is wrong. " +
                 "(Has JP wired the real client_id yet? See GitHubAuthConfig.)"
         else -> "Sign-in failed: ${error.code}${error.description?.let { " — $it" } ?: ""}"
+    }
+
+    /**
+     * Map raw OkHttp network exceptions to a friendlier user-facing message.
+     * The default OkHttp message ("Unable to resolve host 'github.com': No
+     * address associated with hostname") is technically accurate but reads
+     * as jargon — it doesn't tell the user what to actually try. See #341.
+     */
+    private fun friendlyNetworkError(cause: Throwable): String {
+        val raw = cause.message.orEmpty()
+        return when {
+            // DNS failure — most often airplane mode, captive-portal WiFi
+            // before the user signed into it, or a DNS provider being down.
+            cause is java.net.UnknownHostException ||
+                raw.contains("Unable to resolve host", ignoreCase = true) ->
+                "Couldn't reach github.com — check your network connection " +
+                    "(Wi-Fi signed in? VPN? airplane mode?) and try again."
+            // TLS handshake / certificate failures — usually MITM proxy or
+            // a corporate captive portal injecting itself into the TLS path.
+            cause is javax.net.ssl.SSLException ||
+                raw.contains("SSL", ignoreCase = true) ||
+                raw.contains("trust anchor", ignoreCase = true) ->
+                "TLS handshake failed — the network may be intercepting " +
+                    "HTTPS traffic (captive portal, corporate proxy). Try a " +
+                    "different network."
+            cause is java.net.SocketTimeoutException ||
+                raw.contains("timeout", ignoreCase = true) ->
+                "Network timed out reaching github.com. Try again, or switch networks."
+            else -> "Network error — ${raw.ifBlank { "request failed" }}"
+        }
     }
 
     override fun onCleared() {
