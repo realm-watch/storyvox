@@ -319,5 +319,7 @@ class RealPlaybackControllerUiTest {
         override suspend fun getChapter(id: String): PlaybackChapter? = null
         override suspend fun getNextChapterId(currentChapterId: String): String? = null
         override suspend fun getPreviousChapterId(currentChapterId: String): String? = null
+        override suspend fun cachedBodyUsage() =
+            `in`.jphe.storyvox.data.repository.CachedBodyUsage(count = 0, bytesEstimate = 0L)
     }
 }

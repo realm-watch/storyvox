@@ -258,6 +258,8 @@ class FictionRepositoryImplTest {
         override suspend fun unreadChapters(limit: Int): List<UnreadChapterRow> = emptyList()
         override suspend fun setRead(id: String, read: Boolean, now: Long) {}
         override suspend fun trimDownloadedBodies(fictionId: String, keepLast: Int) {}
+        override suspend fun cacheUsage(): `in`.jphe.storyvox.data.db.dao.ChapterCacheUsageRow =
+            `in`.jphe.storyvox.data.db.dao.ChapterCacheUsageRow(count = 0, bytes = 0L)
         override suspend fun setDownloadState(
             id: String,
             state: ChapterDownloadState,
