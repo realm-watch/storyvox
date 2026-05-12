@@ -1,8 +1,13 @@
 package `in`.jphe.storyvox.di
 
 import android.content.Context
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import `in`.jphe.storyvox.data.repository.ChapterRepository
 import `in`.jphe.storyvox.feature.api.DebugAudio
@@ -108,6 +113,38 @@ internal class RealDebugRepositoryUi(
      */
     private val storageSnapshot = MutableStateFlow(DebugStorage())
 
+    /**
+     * Issue #292 — currently-routed output device label. Recomputed on
+     * every AudioDeviceCallback fire (BT pair/unpair, headphone plug,
+     * etc.). buildSnapshot reads `.value` so the 1Hz combine never
+     * touches AudioManager.
+     *
+     * minSdk 26 doesn't expose a clean `getActiveOutputDevice()` API
+     * (that's API 31+) so we enumerate `GET_DEVICES_OUTPUTS` and pick
+     * the highest-priority connected device per [deviceLabelFor]. This
+     * matches what Android's MediaRouter would normally select.
+     */
+    private val outputDeviceLabel = MutableStateFlow("")
+
+    private val audioManager: AudioManager? =
+        context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+
+    /**
+     * Audio routing callback. Registered eagerly in `init` so the
+     * label is up-to-date by the time the debug screen reads it.
+     * Unregistration happens implicitly when the singleton dies
+     * (process exit) — DI scope is SingletonComponent, so this
+     * lives the lifetime of the app.
+     */
+    private val audioDeviceCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
+            refreshOutputDevice()
+        }
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+            refreshOutputDevice()
+        }
+    }
+
     init {
         // Drive the event ring from the playback controller's state +
         // event stream. The state stream gives us the implicit events
@@ -145,6 +182,76 @@ internal class RealDebugRepositoryUi(
                 delay(STORAGE_POLL_INTERVAL_MS)
             }
         }
+        // Issue #292 — audio output device tracking. Register the
+        // callback on the main looper (AudioManager's contract) and
+        // seed the initial value synchronously so the first snapshot
+        // tick doesn't show an empty string.
+        audioManager?.let { am ->
+            am.registerAudioDeviceCallback(audioDeviceCallback, Handler(Looper.getMainLooper()))
+            refreshOutputDevice()
+        }
+    }
+
+    /**
+     * Re-pick the current output device label from the system's
+     * enumeration. Called on every routing callback + once at init.
+     * The label format is "Speaker", "Wired headphones", "BT —
+     * Pixel Buds Pro", etc. — see [deviceLabelFor] for the mapping.
+     */
+    private fun refreshOutputDevice() {
+        val am = audioManager ?: return
+        val devices = runCatching { am.getDevices(AudioManager.GET_DEVICES_OUTPUTS) }
+            .getOrNull() ?: return
+        outputDeviceLabel.value = pickActiveOutputLabel(devices)
+    }
+
+    /**
+     * Pick the highest-priority connected output device. Mirrors what
+     * Android's MediaRouter would route to in the absence of an
+     * explicit user override: BT > USB > wired > built-in speaker >
+     * built-in earpiece > anything else.
+     */
+    private fun pickActiveOutputLabel(devices: Array<AudioDeviceInfo>): String {
+        val byPriority = devices.minByOrNull { devicePriority(it.type) }
+            ?: return ""
+        return deviceLabelFor(byPriority)
+    }
+
+    /** Lower number = preferred. Matches MediaRouter's typical route
+     *  selection logic on stock Android. Values are dense enough that
+     *  any future device type added to AudioDeviceInfo falls back to a
+     *  high (low-priority) number via the `else` branch. */
+    private fun devicePriority(type: Int): Int = when (type) {
+        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> 1
+        AudioDeviceInfo.TYPE_USB_DEVICE,
+        AudioDeviceInfo.TYPE_USB_HEADSET,
+        AudioDeviceInfo.TYPE_USB_ACCESSORY -> 2
+        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+        AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> 3
+        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> 4
+        AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> 5
+        else -> 100
+    }
+
+    /** Human-readable label. Falls through to the AudioDeviceInfo's
+     *  productName (which Android fills with the device's friendly name
+     *  for BT/USB peripherals) and finally to a generic type label. */
+    private fun deviceLabelFor(d: AudioDeviceInfo): String = when (d.type) {
+        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO ->
+            "BT — ${d.productName?.toString()?.takeIf { it.isNotBlank() } ?: "device"}"
+        AudioDeviceInfo.TYPE_USB_DEVICE,
+        AudioDeviceInfo.TYPE_USB_HEADSET,
+        AudioDeviceInfo.TYPE_USB_ACCESSORY ->
+            "USB — ${d.productName?.toString()?.takeIf { it.isNotBlank() } ?: "device"}"
+        AudioDeviceInfo.TYPE_WIRED_HEADSET -> "Wired headset"
+        AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> "Wired headphones"
+        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "Speaker"
+        AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "Earpiece"
+        AudioDeviceInfo.TYPE_HDMI -> "HDMI"
+        AudioDeviceInfo.TYPE_LINE_ANALOG -> "Line out"
+        else -> d.productName?.toString()?.takeIf { it.isNotBlank() } ?: "Unknown"
     }
 
     /**
@@ -301,7 +408,7 @@ internal class RealDebugRepositoryUi(
                 audioBufferMs = 0L, // see follow-up issue
                 reorderBufferOccupancy = 0,
                 sampleRate = 0,
-                outputDevice = "",
+                outputDevice = outputDeviceLabel.value,
             ),
             azure = DebugAzure(
                 isConfigured = azureCreds.isConfigured,
