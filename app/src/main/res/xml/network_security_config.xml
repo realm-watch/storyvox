@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network Security Config — Android 9+ (targetSdk >= 28) cleartext block.
+
+  By default we trust TLS for every host. The narrow allowlist below
+  carves out exactly one cleartext-permitted domain: `palace.jphe.in`,
+  JP's reverse proxy onto the home Memory Palace daemon (LAN HTTP only,
+  no TLS today). PalaceDaemonApi.baseUrlOrNull() hardcodes http:// for
+  the palace URL; without this allowlist Android 9+ blocks the request
+  before OkHttp ever sees it, surfacing as "Off home network" in the
+  Settings probe even on a working LAN connection.
+
+  Adding hosts here is a deliberate trust decision — keep the list
+  short and prefer fixing the upstream to TLS over expanding the
+  allowlist. RFC1918 / .local / loopback never reach this config
+  because the OS exempts them.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">palace.jphe.in</domain>
+    </domain-config>
+</network-security-config>
