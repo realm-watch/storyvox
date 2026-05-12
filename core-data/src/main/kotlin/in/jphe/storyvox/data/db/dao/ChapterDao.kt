@@ -2,6 +2,7 @@ package `in`.jphe.storyvox.data.db.dao
 
 import androidx.room.Dao
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Upsert
 import `in`.jphe.storyvox.data.db.entity.Chapter
 import `in`.jphe.storyvox.data.db.entity.ChapterDownloadState
@@ -130,6 +131,52 @@ interface ChapterDao {
 
     @Upsert
     suspend fun upsertAll(chapters: List<Chapter>)
+
+    /**
+     * Issue #349 (RSS reorder crash) — bump every chapter row for
+     * [fictionId] currently in the "live" index range into a reserved
+     * parking range above [PARK_OFFSET]. Used right before an upsertAll
+     * batch so the incoming positive-indexed rows can land without
+     * tripping the (fictionId, index) UNIQUE constraint mid-batch.
+     *
+     * The `index >= 0 AND index < PARK_OFFSET` guard means previously-
+     * parked rows from older refreshes stay where they are — no runaway
+     * offset accumulation across many refreshes. Rows whose PK comes
+     * back in the new feed get UPSERTed back to a positive index by
+     * the followup [upsertAll]; rows that have dropped off the feed
+     * stay parked, preserving their bodies/download state for later
+     * playback even though they no longer show in the current feed
+     * snapshot.
+     */
+    @Query(
+        """
+        UPDATE chapter
+           SET `index` = `index` + 100000
+         WHERE fictionId = :fictionId
+           AND `index` >= 0
+           AND `index` < 100000
+        """,
+    )
+    suspend fun parkChapterIndexesFor(fictionId: String)
+
+    /**
+     * Atomic two-phase chapter sync: park existing rows above the
+     * live range, then upsert the fresh batch at positive indexes
+     * 0..N. Wrapping in @Transaction is what makes this work —
+     * Room defers invalidation-tracker emissions until commit, so
+     * observers never see the "all parked, nothing visible" mid-state.
+     *
+     * Use this instead of [upsertAll] from any sync path where the
+     * incoming chapter list may reorder existing rows (RSS feeds,
+     * any future "feed-window" backend). The Royal Road append-only
+     * case works fine with either path; the cost is one extra UPDATE
+     * per fiction-refresh.
+     */
+    @Transaction
+    suspend fun upsertChaptersForFiction(fictionId: String, chapters: List<Chapter>) {
+        parkChapterIndexesFor(fictionId)
+        upsertAll(chapters)
+    }
 
     @Query(
         """

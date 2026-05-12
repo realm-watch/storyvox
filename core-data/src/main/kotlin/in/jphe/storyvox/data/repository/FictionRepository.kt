@@ -363,7 +363,15 @@ class FictionRepositoryImpl @Inject constructor(
                 firstReadAt = previous.firstReadAt,
             )
         }
-        chapterDao.upsertAll(merged)
+        // Issue #349 — RSS feeds (and any future window-style backend)
+        // reorder rows across refreshes. Plain upsertAll trips the
+        // (fictionId, index) UNIQUE constraint mid-batch because Room's
+        // @Upsert is per-row and the constraint check is immediate.
+        // upsertChaptersForFiction parks existing rows above the live
+        // range first, then upserts atomically inside a transaction.
+        // Costs one extra UPDATE per refresh; Royal Road's append-only
+        // case is unaffected by the parking pass.
+        chapterDao.upsertChaptersForFiction(detail.summary.id, merged)
     }
 }
 

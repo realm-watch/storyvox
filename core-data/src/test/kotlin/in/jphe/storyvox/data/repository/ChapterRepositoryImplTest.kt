@@ -167,6 +167,20 @@ class ChapterRepositoryImplTest {
             )
         }
 
+        // Issue #349 — fake the index parking so the FakeChapterDao
+        // models the real two-phase upsert path. Live-range rows
+        // (0..99_999) shift to +100_000; already-parked rows stay.
+        override suspend fun parkChapterIndexesFor(fictionId: String) {
+            callLog += "parkChapterIndexesFor($fictionId)"
+            val parked = rows.values
+                .filter { it.fictionId == fictionId && it.index in 0..99_999 }
+                .map { it.copy(index = it.index + 100_000) }
+            parked.forEach { c ->
+                rows[c.id] = c
+                publishRow(c.id)
+            }
+        }
+
         override suspend fun trimDownloadedBodies(fictionId: String, keepLast: Int) {
             callLog += "trimDownloadedBodies($fictionId, $keepLast)"
             val ids = rows.values

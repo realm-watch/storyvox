@@ -260,6 +260,13 @@ class FictionRepositoryImplTest {
         override suspend fun trimDownloadedBodies(fictionId: String, keepLast: Int) {}
         override suspend fun cacheUsage(): `in`.jphe.storyvox.data.db.dao.ChapterCacheUsageRow =
             `in`.jphe.storyvox.data.db.dao.ChapterCacheUsageRow(count = 0, bytes = 0L)
+        // Issue #349 — record the call so refreshDetail tests can
+        // verify the parking pass ran before the upsert batch. Real
+        // SQL-constraint modeling lives in ChapterRepositoryImplTest's
+        // FakeChapterDao; here we just need a call-log breadcrumb.
+        override suspend fun parkChapterIndexesFor(fictionId: String) {
+            callLog += "parkChapterIndexesFor($fictionId)"
+        }
         override suspend fun setDownloadState(
             id: String,
             state: ChapterDownloadState,
@@ -539,6 +546,33 @@ class FictionRepositoryImplTest {
         assertEquals("first-read timestamp preserved", 5678L, merged.firstReadAt)
         // Title from the fresh detail page wins (mutable upstream metadata).
         assertEquals("chapter 0", merged.title)
+    }
+
+    @Test fun `refreshDetail parks existing chapter indexes before upsert (issue #349)`() = runTest {
+        // Issue #349 regression — RSS feeds reorder. Without the parking
+        // pass, the fresh upsert would trip the (fictionId, index)
+        // UNIQUE constraint when a *different* chapter PK shows up at
+        // an existing chapter's index. We can't test the real SQL
+        // constraint with the fake DAO, but we CAN verify the
+        // ChapterRepository hits the parking path (parkChapterIndexesFor
+        // → upsertAll) instead of a bare upsertAll. The constraint
+        // crash is then handled by Room atomically inside the
+        // @Transaction wrapper.
+        val src = FakeSource(SourceIds.ROYAL_ROAD).apply {
+            detailResult = FictionResult.Success(detail("99", chapterCount = 1))
+        }
+        val (r, _, chapterDao) = repo(sources = mapOf(SourceIds.ROYAL_ROAD to src))
+        chapterDao.rows["99-c0"] = Chapter(
+            id = "99-c0", fictionId = "99", sourceChapterId = "src-0",
+            index = 0, title = "existing", downloadState = ChapterDownloadState.NOT_DOWNLOADED,
+        )
+
+        r.refreshDetail("99")
+
+        assertTrue(
+            "parkChapterIndexesFor must run before the upsert batch",
+            chapterDao.callLog.any { it == "parkChapterIndexesFor(99)" },
+        )
     }
 
     // -- refreshRemoteFollows ---------------------------------------------------
