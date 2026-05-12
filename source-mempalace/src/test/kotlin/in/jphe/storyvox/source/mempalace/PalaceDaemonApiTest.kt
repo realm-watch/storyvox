@@ -58,8 +58,24 @@ class PalaceDaemonApiTest {
         assertNull(api().baseUrlOrNull(cfg("palace.local/api")))
     }
 
-    @Test fun `strips user-typed scheme and forces http`() {
-        val url = api().baseUrlOrNull(cfg("https://palace.local:8085"))
+    @Test fun `honors user-typed https scheme`() {
+        // #342 — TLS-fronted palace proxies (Caddy in front of the daemon)
+        // need the caller to opt into HTTPS by typing the scheme. Previously
+        // we stripped + forced http://, which made the request hit Caddy
+        // on :80 and bounce with a 308 redirect storyvox couldn't follow.
+        val url = api().baseUrlOrNull(cfg("https://palace.jphe.in"))
+        assertEquals("https://palace.jphe.in", url)
+    }
+
+    @Test fun `accepts user-typed http scheme`() {
+        val url = api().baseUrlOrNull(cfg("http://palace.local:8085"))
+        assertEquals("http://palace.local:8085", url)
+    }
+
+    @Test fun `defaults to http when no scheme typed`() {
+        // Bare hosts default to http:// — backwards-compatible with the
+        // pre-#342 behavior for users on LAN daemons without TLS.
+        val url = api().baseUrlOrNull(cfg("palace.local:8085"))
         assertEquals("http://palace.local:8085", url)
     }
 

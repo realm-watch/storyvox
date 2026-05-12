@@ -207,16 +207,26 @@ open class PalaceDaemonApi @Inject constructor(
     internal fun baseUrlOrNull(cfg: PalaceConfigState): String? {
         val raw = cfg.host.trim().removeSuffix("/")
         if (raw.isEmpty()) return null
-        // Strip user-typed scheme so we always force http:// (LAN palace
-        // daemon, no TLS today). Accepts bare host[:port] or full URL.
+        // Honor user-typed scheme if present (https://palace.jphe.in for
+        // TLS-fronted setups), otherwise default to http:// for bare LAN
+        // daemons that don't have TLS yet. Previously we stripped + forced
+        // http:// unconditionally, which made TLS-fronted proxies hit a
+        // 308 redirect storyvox couldn't follow. See #342.
+        val scheme = when {
+            raw.startsWith("https://", ignoreCase = true) -> "https://"
+            raw.startsWith("http://", ignoreCase = true) -> "http://"
+            else -> "http://"
+        }
         val withoutScheme = raw
-            .removePrefix("http://")
             .removePrefix("https://")
+            .removePrefix("http://")
+            .removePrefix("HTTPS://")
+            .removePrefix("HTTP://")
         if (withoutScheme.isEmpty()) return null
         // Reject paths in the host field — we own the path entirely.
         if ('/' in withoutScheme) return null
 
-        val candidate = "http://$withoutScheme"
+        val candidate = "$scheme$withoutScheme"
         val uri = try {
             URI(candidate)
         } catch (_: IllegalArgumentException) {
