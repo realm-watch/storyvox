@@ -184,7 +184,24 @@ class DefaultPlaybackController @Inject constructor(
     override fun previousSentence() { player?.seekSentence(direction = -1) }
 
     override suspend fun nextChapter() { player?.advanceChapter(direction = 1) }
-    override suspend fun previousChapter() { player?.advanceChapter(direction = -1) }
+    override suspend fun previousChapter() {
+        // #285 — standard media-player UX. Pressing Previous past a few
+        // seconds into the current chapter rewinds to its start; only
+        // pressing Previous *while near the start* goes to the previous
+        // chapter. Without this, a stray tap during chapter 2 silently
+        // dumps the user back to chapter 1, with no confirm, no
+        // animation, and lost reading position. Apple Music, Spotify,
+        // Pocket Casts, and every major player work this way — users
+        // expect it.
+        val s = state.value
+        val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * s.speed
+        val rewindThresholdChars = (charsPerSec * REWIND_TO_START_THRESHOLD_SEC).toInt()
+        if (s.charOffset > rewindThresholdChars) {
+            player?.seekToCharOffset(0)
+        } else {
+            player?.advanceChapter(direction = -1)
+        }
+    }
     override suspend fun jumpToChapter(chapterId: String) {
         val fictionId = state.value.currentFictionId ?: return
         play(fictionId, chapterId, charOffset = 0)
@@ -232,5 +249,15 @@ class DefaultPlaybackController @Inject constructor(
 
     internal fun emitEvent(event: PlaybackUiEvent) {
         _events.tryEmit(event)
+    }
+
+    companion object {
+        /** Issue #285 — seconds-from-start threshold for the SkipPrevious
+         *  rewind-to-start UX. Past this point in a chapter, tapping
+         *  SkipPrevious seeks to char 0 of the current chapter; under it
+         *  goes to the previous chapter. 3 seconds is the de-facto
+         *  standard across Apple Music, Spotify, Pocket Casts, and the
+         *  Android MediaSession default behavior. */
+        internal const val REWIND_TO_START_THRESHOLD_SEC = 3f
     }
 }
