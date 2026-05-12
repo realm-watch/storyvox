@@ -1,12 +1,12 @@
 {
   "name": "storyvox",
   "description": "Neural-voice audiobook player for any text you have \u2014 offline TTS, optional Azure HD cloud voices, Library Nocturne aesthetic",
-  "version": "Radiant Echo \u00b7 113b3e1",
-  "hash": "113b3e1",
+  "version": "Jade Warden \u00b7 b085094",
+  "hash": "b085094",
   "branch": "main",
   "dirty": false,
-  "built": "2026-05-12T00:49:52Z",
+  "built": "2026-05-12T01:45:29Z",
   "realm": "fantasy",
   "repo": "https://github.com/jphein/storyvox",
-  "commit_url": "https://github.com/jphein/storyvox/commit/113b3e1"
+  "commit_url": "https://github.com/jphein/storyvox/commit/b085094"
 }
