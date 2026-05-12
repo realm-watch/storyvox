@@ -12,8 +12,18 @@
 
   Adding hosts here is a deliberate trust decision — keep the list
   short and prefer fixing the upstream to TLS over expanding the
-  allowlist. RFC1918 / .local / loopback never reach this config
-  because the OS exempts them.
+  allowlist.
+
+  Scope note: Android's network-security-config matches on hostnames,
+  not raw IPs. RFC1918 (`10.x`, `192.168.x`), `.local`, and loopback
+  are NOT auto-exempted by the OS — they're cleartext-blocked too
+  unless allowlisted. The Kotlin-side `isLanLikeAuthority` check in
+  `PalaceDaemonApi` enforces "LAN-only by hostname/IP shape" at the
+  app layer; this XML enforces the OS-layer cleartext gate
+  independently. Users pointing storyvox at a bare LAN IP for a
+  palace daemon will hit the same block — handle that in a follow-up
+  if it surfaces (likely option: add an "Allow cleartext to LAN" dev
+  toggle that swaps in a permissive config at runtime).
 -->
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
