@@ -854,7 +854,12 @@ private fun MemoryPalaceSection(
         probe is PalaceProbeResult.Reachable ->
             "Connected · daemon ${probe.daemonVersion}" to StatusTone.Connected
         probe is PalaceProbeResult.Unreachable ->
-            "Off home network · ${probe.message}" to StatusTone.Error
+            // "Off home network" mis-blamed the symptom on connectivity even
+            // when the device was clearly on the LAN (e.g. cleartext-blocked,
+            // daemon refused, parse error). Prefix now describes the symptom
+            // honestly; the message body carries the actual cause from the
+            // PalaceDaemonResult mapping in SettingsRepositoryUiImpl.
+            "Couldn't reach palace · ${probe.message}" to StatusTone.Error
         probe is PalaceProbeResult.NotConfigured ->
             "Set host to enable" to StatusTone.Neutral
         else -> "" to StatusTone.Neutral
