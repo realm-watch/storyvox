@@ -207,16 +207,28 @@ open class PalaceDaemonApi @Inject constructor(
     internal fun baseUrlOrNull(cfg: PalaceConfigState): String? {
         val raw = cfg.host.trim().removeSuffix("/")
         if (raw.isEmpty()) return null
-        // Strip user-typed scheme so we always force http:// (LAN palace
-        // daemon, no TLS today). Accepts bare host[:port] or full URL.
-        val withoutScheme = raw
-            .removePrefix("http://")
-            .removePrefix("https://")
+        // Honor user-typed scheme if present (https://palace.jphe.in for
+        // TLS-fronted setups), otherwise default to http:// for bare LAN
+        // daemons that don't have TLS yet. Previously we stripped + forced
+        // http:// unconditionally, which made TLS-fronted proxies hit a
+        // 308 redirect storyvox couldn't follow. See #342.
+        //
+        // Single case-insensitive regex strip handles mixed-case typos like
+        // `Https://host` — Copilot caught this on the first pass where the
+        // case-insensitive startsWith and case-sensitive removePrefix were
+        // out of sync, leaving `Https://host` un-stripped.
+        val schemeMatch = SCHEME_PREFIX.find(raw)
+        val scheme = schemeMatch?.value?.lowercase() ?: "http://"
+        val withoutScheme = if (schemeMatch != null) {
+            raw.substring(schemeMatch.range.last + 1)
+        } else {
+            raw
+        }
         if (withoutScheme.isEmpty()) return null
         // Reject paths in the host field — we own the path entirely.
         if ('/' in withoutScheme) return null
 
-        val candidate = "http://$withoutScheme"
+        val candidate = "$scheme$withoutScheme"
         val uri = try {
             URI(candidate)
         } catch (_: IllegalArgumentException) {
@@ -281,6 +293,10 @@ open class PalaceDaemonApi @Inject constructor(
             isLenient = true
         }
         private val JSON_MEDIA_TYPE = "application/json".toMediaType()
+        /** Case-insensitive match for `http://` or `https://` at start of
+         *  string. Single regex avoids the case-mismatch bug between a
+         *  case-insensitive startsWith and case-sensitive removePrefix. */
+        private val SCHEME_PREFIX = Regex("^https?://", RegexOption.IGNORE_CASE)
     }
 }
 
