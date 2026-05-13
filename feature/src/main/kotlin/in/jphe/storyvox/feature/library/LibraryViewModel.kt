@@ -7,6 +7,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import `in`.jphe.storyvox.data.db.entity.Shelf
 import `in`.jphe.storyvox.data.repository.ContinueListeningEntry
 import `in`.jphe.storyvox.data.repository.FictionRepository
+import `in`.jphe.storyvox.data.repository.HistoryEntry
+import `in`.jphe.storyvox.data.repository.HistoryRepository
 import `in`.jphe.storyvox.data.repository.PlaybackPositionRepository
 import `in`.jphe.storyvox.data.repository.ShelfRepository
 import `in`.jphe.storyvox.data.repository.playback.PlaybackResumePolicyConfig
@@ -28,9 +30,30 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
+ * Issue #158 — top-level sub-tabs inside the Library screen. Order matters:
+ * the enum's `ordinal` drives [SecondaryTabRow]'s `selectedTabIndex`.
+ *
+ *  - [All] mirrors the pre-#158 Library grid (Resume card + alphabetical
+ *    library grid) — the user's full collection. Chip row from #116 is
+ *    visible here to let the user drill into Read/Wishlist shelves
+ *    without leaving the tab.
+ *  - [Reading] uses the #116 [Shelf.Reading] filter under the hood; on
+ *    select we coerce [ShelfFilter] to `OneShelf(Reading)` so the grid
+ *    swaps without the chip row needing to show.
+ *  - [History] is the chronological chapter-open feed.
+ */
+enum class LibraryTab(val label: String) {
+    All("All"),
+    Reading("Reading"),
+    History("History"),
+}
+
+/**
  * Issue #116 — which row of the chip-filter strip is selected. `All` is
  * the default (current behaviour pre-shelves); the three [Shelf] options
- * filter the grid to fictions that sit on that shelf.
+ * filter the grid to fictions that sit on that shelf. Coexists with
+ * [LibraryTab]: [LibraryTab.Reading] coerces this to `OneShelf(Reading)`
+ * internally so the same filtering machinery serves both surfaces.
  */
 @Immutable
 sealed interface ShelfFilter {
@@ -43,7 +66,11 @@ data class LibraryUiState(
     /** Topmost continue-listening entry — null until the user has played anything. */
     val resume: ContinueListeningEntry? = null,
     val fictions: List<FictionSummary> = emptyList(),
-    /** Currently-active chip — drives both the grid filter and which empty state shows. */
+    /** Issue #158 — chronological history feed, most-recent-open first. */
+    val history: List<HistoryEntry> = emptyList(),
+    /** Selected sub-tab (#158). */
+    val tab: LibraryTab = LibraryTab.All,
+    /** Active chip filter (#116) — only meaningful while tab == All. */
     val filter: ShelfFilter = ShelfFilter.All,
     val isLoading: Boolean = true,
 )
@@ -87,6 +114,8 @@ class LibraryViewModel @Inject constructor(
     fictionRepo: FictionRepository,
     positionRepo: PlaybackPositionRepository,
     private val shelfRepo: ShelfRepository,
+    /** Issue #158 — reading history backing the new "History" sub-tab. */
+    historyRepo: HistoryRepository,
     private val uiRepo: FictionRepositoryUi,
     private val playback: PlaybackControllerUi,
     /** #90 — read the user's last play/pause intent to decide whether
@@ -101,6 +130,13 @@ class LibraryViewModel @Inject constructor(
     val addByUrlState: StateFlow<AddByUrlSheetState> = _addByUrlState.asStateFlow()
 
     private val _filter = MutableStateFlow<ShelfFilter>(ShelfFilter.All)
+
+    /**
+     * Selected sub-tab. Hoisted out of the combined `uiState` flow so a
+     * tab-switch doesn't have to wait for the library/resume/history
+     * flows to all emit — pressing the tab feels instant.
+     */
+    private val _tab = MutableStateFlow(LibraryTab.All)
 
     private val _manageShelves = MutableStateFlow<ManageShelvesSheetState>(ManageShelvesSheetState.Hidden)
     val manageShelvesState: StateFlow<ManageShelvesSheetState> = _manageShelves.asStateFlow()
@@ -121,24 +157,57 @@ class LibraryViewModel @Inject constructor(
     val uiState: StateFlow<LibraryUiState> = combine(
         fictionsFlow,
         positionRepo.observeMostRecentContinueListening(),
+        historyRepo.observeAll(),
+        _tab,
         _filter,
-    ) { library, resume, filter ->
+    ) { library, resume, history, tab, filter ->
         LibraryUiState(
             resume = resume,
             fictions = library,
+            history = history,
+            tab = tab,
             filter = filter,
             isLoading = false,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryUiState())
 
-    // ─── chips ────────────────────────────────────────────────────────────
+    // ─── sub-tabs (#158) ──────────────────────────────────────────────────
 
-    /** Top-of-screen chip row taps. */
+    /**
+     * Tab.Reading coerces the chip filter so the same shelf-scoped flow
+     * machinery serves both surfaces. Tab.All restores filter to All so
+     * leaving Reading doesn't strand the user on a hidden filter.
+     */
+    fun selectTab(tab: LibraryTab) {
+        _tab.value = tab
+        when (tab) {
+            LibraryTab.Reading -> _filter.value = ShelfFilter.OneShelf(Shelf.Reading)
+            LibraryTab.All -> _filter.value = ShelfFilter.All
+            LibraryTab.History -> { /* history feed renders from state.history */ }
+        }
+    }
+
+    /**
+     * Issue #158 — History row tap. Navigates to the reader at that
+     * (fictionId, chapterId). We deliberately *don't* call
+     * `playback.startListening` here: the user might be browsing history
+     * to find context, not to start playing right now. Reader opens the
+     * chapter view; if they want audio they tap play from there.
+     */
+    fun openHistoryEntry(entry: HistoryEntry) {
+        viewModelScope.launch {
+            _events.send(LibraryUiEvent.OpenReader(entry.fictionId, entry.chapterId))
+        }
+    }
+
+    // ─── chips (#116) ─────────────────────────────────────────────────────
+
+    /** Top-of-screen chip row taps (only visible on Tab.All). */
     fun selectFilter(filter: ShelfFilter) {
         _filter.value = filter
     }
 
-    // ─── manage-shelves bottom sheet ──────────────────────────────────────
+    // ─── manage-shelves bottom sheet (#116) ───────────────────────────────
 
     /** Long-press on a library card → open the manage-shelves sheet. */
     fun openManageShelves(fiction: FictionSummary) {
@@ -160,11 +229,6 @@ class LibraryViewModel @Inject constructor(
     fun toggleShelf(fictionId: String, shelf: Shelf) {
         viewModelScope.launch {
             shelfRepo.toggle(fictionId, shelf)
-            // Refresh the sheet's local cache of memberships so the toggle
-            // visibly settles. Re-reading from the DB after the write is
-            // the cheapest correctness — observeShelvesForFiction would
-            // also work but pulls the sheet into a flow lifecycle we don't
-            // need (it dismisses cleanly without lingering state).
             val sheet = _manageShelves.value
             if (sheet is ManageShelvesSheetState.Open && sheet.fictionId == fictionId) {
                 _manageShelves.value = sheet.copy(
@@ -191,9 +255,6 @@ class LibraryViewModel @Inject constructor(
             // common "phone died, want to keep listening" case
             // auto-resumes as before.
             val autoPlay = resumePolicy.currentLastWasPlaying()
-            // Cold-start: the controller may have nothing loaded (fresh app launch),
-            // in which case `play()` is a no-op. `startListening` queues the chapter
-            // download and kicks the TTS engine, which is what we actually want.
             playback.startListening(
                 entry.fiction.id,
                 entry.chapter.id,
