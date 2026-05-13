@@ -84,4 +84,41 @@ val MIGRATION_3_4: Migration = object : Migration(3, 4) {
     }
 }
 
-val ALL_MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+/**
+ * v5 — issue #116: predefined library shelves (Reading / Read /
+ * Wishlist) with many-to-many membership. New junction table only; no
+ * existing data touched, no backfill needed (existing library rows
+ * simply have zero shelf memberships until the user pins them).
+ *
+ * `shelf` is TEXT to match the enum-name-as-string pattern from
+ * [MIGRATION_2_3] — adding a fourth shelf value in v2 requires no
+ * further migration. Index name matches Room's default
+ * `index_<table>_<col>` convention so the schema diff stays clean.
+ */
+val MIGRATION_4_5: Migration = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `fiction_shelf` (
+                `fictionId` TEXT NOT NULL,
+                `shelf` TEXT NOT NULL,
+                `addedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`fictionId`, `shelf`),
+                FOREIGN KEY(`fictionId`) REFERENCES `fiction`(`id`)
+                  ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_fiction_shelf_shelf` " +
+                "ON `fiction_shelf` (`shelf`)",
+        )
+    }
+}
+
+val ALL_MIGRATIONS: Array<Migration> = arrayOf(
+    MIGRATION_1_2,
+    MIGRATION_2_3,
+    MIGRATION_3_4,
+    MIGRATION_4_5,
+)
