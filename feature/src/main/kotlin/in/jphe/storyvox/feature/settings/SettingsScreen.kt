@@ -459,18 +459,14 @@ fun SettingsScreen(
             )
             SettingsSwitchRow(
                 title = "RSS / Atom feeds",
-                subtitle = "Subscribe to feeds and read new entries as chapters.",
+                subtitle = "Subscribe to feeds and read new entries as chapters. Manage your subscriptions in Browse → RSS.",
                 checked = s.sourceRssEnabled,
                 onCheckedChange = viewModel::setSourceRssEnabled,
             )
-            // Feed-list management surface — only meaningful when RSS
-            // is enabled. Tapping opens an inline editor that lists
-            // current subscriptions and lets the user add a new feed
-            // by URL.
-            if (s.sourceRssEnabled) {
-                RssFeedManagementRow(viewModel = viewModel)
-                RssSuggestedFeedsRow(viewModel = viewModel)
-            }
+            // Issue #247 — feed add/remove/suggested moved to a FAB-
+            // launched sheet on Browse → RSS. Only the source on/off
+            // toggle stays here; that's a "source enable" call, not
+            // "feed management".
             SettingsSwitchRow(
                 title = "Local EPUB files",
                 subtitle = "Read .epub files from a folder you pick.",
@@ -2766,78 +2762,6 @@ private fun AnthropicTeamsProviderRows(
 }
 
 
-/**
- * Issue #236 — inline feed-list management for the RSS backend.
- * Lists current subscriptions and offers an add-by-URL field.
- * Removal is a small "x" button per row; add is the right-side
- * BrassButton on the input field.
- */
-@Composable
-private fun RssFeedManagementRow(viewModel: SettingsViewModel) {
-    val subs by viewModel.rssSubscriptions.collectAsStateWithLifecycle()
-    var draftUrl by remember { mutableStateOf("") }
-    val spacing = LocalSpacing.current
-
-    Column(modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm)) {
-        Text(
-            "Subscribed feeds",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = spacing.xs),
-        )
-        if (subs.isEmpty()) {
-            Text(
-                "No feeds yet. Paste an RSS or Atom feed URL below.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = spacing.sm),
-            )
-        } else {
-            subs.forEach { url ->
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = url,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                    )
-                    androidx.compose.material3.TextButton(onClick = {
-                        viewModel.removeRssFeedByUrl(url)
-                    }) { Text("Remove") }
-                }
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = spacing.sm),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-        ) {
-            androidx.compose.material3.OutlinedTextField(
-                value = draftUrl,
-                onValueChange = { draftUrl = it },
-                label = { Text("Feed URL") },
-                placeholder = { Text("https://example.com/feed.xml") },
-                singleLine = true,
-                modifier = Modifier.weight(1f),
-            )
-            BrassButton(
-                label = "Add",
-                onClick = {
-                    val trimmed = draftUrl.trim()
-                    if (trimmed.isNotEmpty()) {
-                        viewModel.addRssFeed(trimmed)
-                        draftUrl = ""
-                    }
-                },
-                variant = BrassButtonVariant.Primary,
-                modifier = Modifier.padding(start = spacing.sm),
-            )
-        }
-    }
-}
 
 /**
  * Issue #235 — folder-picker row for the EPUB backend. SAF tree
@@ -2911,105 +2835,6 @@ private fun abbreviateSafUri(raw: String): String {
     return runCatching { java.net.URLDecoder.decode(tree, "UTF-8") }.getOrDefault(tree)
 }
 
-/**
- * Issue #236 follow-up — collapsible "Suggested feeds" section.
- * Renders [SUGGESTED_FEEDS] grouped by category with one-tap Add.
- * Stays collapsed by default to keep the picker clean for users
- * who already have their own feeds.
- */
-@Composable
-private fun RssSuggestedFeedsRow(viewModel: SettingsViewModel) {
-    val subs by viewModel.rssSubscriptions.collectAsStateWithLifecycle()
-    val spacing = LocalSpacing.current
-    var expanded by remember { mutableStateOf(false) }
-
-    Column(modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { expanded = !expanded }
-                .padding(vertical = 4.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-        ) {
-            Text(
-                text = if (expanded) "▾  Suggested feeds" else "▸  Suggested feeds",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.weight(1f),
-            )
-        }
-        if (!expanded) {
-            Text(
-                text = "Tap to browse curated feeds (Buddhist & dharma, more coming).",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            return@Column
-        }
-
-        // Group by category, render each category as a small header
-        // followed by the suggestion rows. List is fetched from
-        // jphein/storyvox-feeds at runtime (#246) — falls back to
-        // BAKED_IN_SUGGESTED_FEEDS while the fetch is in flight.
-        val suggested by viewModel.suggestedRssFeeds.collectAsStateWithLifecycle()
-        val byCategory = suggested.groupBy { it.category }
-        val canonicalSubs = subs.map { it.lowercase() }.toSet()
-        byCategory.forEach { (category, suggestions) ->
-            Text(
-                text = category,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = spacing.sm, bottom = 2.dp),
-            )
-            suggestions.forEach { feed ->
-                val alreadyAdded = feed.url.lowercase() in canonicalSubs
-                Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = feed.title,
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                            Text(
-                                text = feed.description,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            // Show the kind hint inline so users know the
-                            // audio-podcast caveat (storyvox narrates show
-                            // notes, not the audio file itself).
-                            Text(
-                                text = when (feed.kind) {
-                                    `in`.jphe.storyvox.feature.api.SuggestedFeedKind.Text ->
-                                        "Text articles — narrate well"
-                                    `in`.jphe.storyvox.feature.api.SuggestedFeedKind.AudioPodcast ->
-                                        "Audio podcast — storyvox narrates show notes only"
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            )
-                        }
-                        if (alreadyAdded) {
-                            Text(
-                                text = "Added",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(start = spacing.sm, end = spacing.sm),
-                            )
-                        } else {
-                            BrassButton(
-                                label = "Add",
-                                onClick = { viewModel.addRssFeed(feed.url) },
-                                variant = BrassButtonVariant.Text,
-                                modifier = Modifier.padding(start = spacing.sm),
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 /**
  * Issue #245 — host + API-key entry for the Outline self-hosted-wiki

@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.FilterAlt
@@ -26,6 +27,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -80,6 +82,9 @@ fun BrowseScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val spacing = LocalSpacing.current
     var showFilterSheet by remember { mutableStateOf(false) }
+    /** Issue #247 — RSS feed management moved out of Settings into a
+     *  FAB-launched sheet visible only when sourceKey=Rss. */
+    var showRssManageSheet by remember { mutableStateOf(false) }
 
     // #328 — see LibraryScreen.kt; hoist distinctBy out of the grid
     // builder so allocations happen once per state.items change instead
@@ -97,6 +102,7 @@ fun BrowseScreen(
         out
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize().padding(top = spacing.md)) {
         // Top-level source picker. Switches the multibinding lookup in
         // FictionRepository between Royal Road and GitHub. Tabs and the
@@ -379,6 +385,31 @@ fun BrowseScreen(
                 }
             }
         }
+    }
+
+    // Issue #247 — FAB for RSS feed management. Only visible on the
+    // RSS source; other backends manage subscriptions elsewhere
+    // (Settings folder picker for EPUB, host config for Outline,
+    // sign-in for RR/GitHub).
+    if (state.sourceKey == BrowseSourceKey.Rss) {
+        FloatingActionButton(
+            onClick = { showRssManageSheet = true },
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(spacing.lg),
+        ) {
+            Icon(Icons.Filled.Add, contentDescription = "Add RSS feed")
+        }
+    }
+    }  // Box
+
+    if (showRssManageSheet) {
+        BrowseRssManageSheet(
+            viewModel = viewModel,
+            onDismiss = { showRssManageSheet = false },
+        )
     }
 
     if (showFilterSheet) {
