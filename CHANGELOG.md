@@ -9,6 +9,15 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.16] — 2026-05-13
+
+### Changed
+- **RSS feed management moves to a Browse FAB** (#367, closes #247) —
+  add / list / remove / suggested-feeds all live on a `+ Add feed`
+  FAB-launched sheet from Browse → RSS now. The Settings page keeps
+  only the on/off toggle (its subtitle points users at the new home).
+  Same underlying repository API; only the home screen changed.
+
 ## [0.5.15] — 2026-05-13
 
 ### Added
