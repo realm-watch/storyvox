@@ -25,10 +25,13 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -37,7 +40,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -97,28 +102,89 @@ fun VoiceLibraryScreen(
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        val favorites = state.favorites
-        val installedByEngine = state.installedByEngine
-        val availableByEngine = state.availableByEngine
-        val installedTotal = installedByEngine.values.sumOf { tiers -> tiers.values.sumOf { it.size } }
-        val availableTotal = availableByEngine.values.sumOf { tiers -> tiers.values.sumOf { it.size } }
-        val availableHasKokoro = availableByEngine.containsKey(VoiceEngine.Kokoro)
-        val isEmpty = favorites.isEmpty() &&
+        // Issue #264 — substring search across all three buckets
+        // (favorites / installed / available). Matches displayName,
+        // language, and the engine label so users can find a voice by
+        // any of "Aoede", "english", "piper", or "azure". The search
+        // box is fixed above the LazyColumn rather than as a sticky
+        // item, so it's always reachable without scrolling 1000+ rows.
+        // Filter is applied locally via remember — VM stays simple,
+        // costs ~O(n) per query change.
+        var query by remember { mutableStateOf("") }
+        val filteredFavorites = remember(state.favorites, query) {
+            state.favorites.filterByQuery(query)
+        }
+        val filteredInstalled = remember(state.installedByEngine, query) {
+            state.installedByEngine.filterByQuery(query)
+        }
+        val filteredAvailable = remember(state.availableByEngine, query) {
+            state.availableByEngine.filterByQuery(query)
+        }
+        val installedTotal = filteredInstalled.values.sumOf { tiers -> tiers.values.sumOf { it.size } }
+        val availableTotal = filteredAvailable.values.sumOf { tiers -> tiers.values.sumOf { it.size } }
+        val availableHasKokoro = filteredAvailable.containsKey(VoiceEngine.Kokoro)
+        val unfilteredIsEmpty = state.favorites.isEmpty() &&
+            state.installedByEngine.values.sumOf { tiers -> tiers.values.sumOf { it.size } } == 0 &&
+            state.availableByEngine.values.sumOf { tiers -> tiers.values.sumOf { it.size } } == 0
+        val filteredIsEmpty = filteredFavorites.isEmpty() &&
             installedTotal == 0 && availableTotal == 0
 
-        if (isEmpty) {
+        if (unfilteredIsEmpty) {
             EmptyState(modifier = Modifier.padding(padding).fillMaxSize().padding(spacing.md))
             return@Scaffold
         }
 
-        LazyColumn(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .padding(horizontal = spacing.md),
-            verticalArrangement = Arrangement.spacedBy(spacing.xs),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = spacing.md),
-        ) {
+        Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+            // Always-visible search bar. Brass outline + neutral text
+            // matches the OutlinedTextField look already in Settings →
+            // Pronunciation, so it reads as part of the same family.
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = { Text("Search voices") },
+                singleLine = true,
+                leadingIcon = {
+                    Icon(Icons.Outlined.Search, contentDescription = null)
+                },
+                trailingIcon = if (query.isNotEmpty()) {
+                    {
+                        IconButton(onClick = { query = "" }) {
+                            Icon(Icons.Outlined.Close, contentDescription = "Clear search")
+                        }
+                    }
+                } else null,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.md, vertical = spacing.xs),
+            )
+
+            if (filteredIsEmpty) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(spacing.md),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "No voices match \"${query.trim()}\".",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                return@Column
+            }
+
+            val favorites = filteredFavorites
+            val installedByEngine = filteredInstalled
+            val availableByEngine = filteredAvailable
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = spacing.md),
+                verticalArrangement = Arrangement.spacedBy(spacing.xs),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = spacing.md),
+            ) {
             // STARRED — surfaces the user's pinned voices above
             // everything else. Hidden entirely when empty so the screen
             // doesn't render a "no starred voices" stub for first-time users.
@@ -251,6 +317,7 @@ fun VoiceLibraryScreen(
                     }
                 }
             }
+        }
         }
     }
 
@@ -751,4 +818,45 @@ internal fun voiceSubtitle(voice: UiVoiceInfo): String {
     }
     val parts = listOfNotNull(engineLabel, tierLabel, genderLabel)
     return parts.joinToString(separator = "  ·  ")
+}
+
+// ─── Issue #264 search helpers ─────────────────────────────────────
+//
+// Filter a flat voice list by case-insensitive substring across the
+// user-visible fields: displayName, language (locale tag), and the
+// engine type's coreId ("piper", "kokoro", "azure"). A blank query is
+// a no-op pass-through to avoid pointless work in the common case.
+
+private fun List<UiVoiceInfo>.filterByQuery(query: String): List<UiVoiceInfo> {
+    val q = query.trim()
+    if (q.isEmpty()) return this
+    return filter { v -> v.matchesQuery(q) }
+}
+
+/** Same shape as the flat version, but walks the engine × tier nested
+ *  map and drops empty buckets so section headers and tier subheaders
+ *  don't render with zero rows underneath them. The outer iteration
+ *  order is preserved (Studio → Low within Kokoro etc.) since we use
+ *  [Map.mapValues]. */
+private fun Map<VoiceEngine, Map<QualityLevel, List<UiVoiceInfo>>>.filterByQuery(
+    query: String,
+): Map<VoiceEngine, Map<QualityLevel, List<UiVoiceInfo>>> {
+    val q = query.trim()
+    if (q.isEmpty()) return this
+    return mapValues { (_, tiers) ->
+        tiers.mapValues { (_, voices) -> voices.filter { it.matchesQuery(q) } }
+            .filterValues { it.isNotEmpty() }
+    }.filterValues { it.isNotEmpty() }
+}
+
+private fun UiVoiceInfo.matchesQuery(query: String): Boolean {
+    val needle = query.lowercase()
+    if (displayName.contains(needle, ignoreCase = true)) return true
+    if (language.contains(needle, ignoreCase = true)) return true
+    val engineLabel = when (engineType) {
+        is EngineType.Piper -> "piper"
+        is EngineType.Kokoro -> "kokoro"
+        is EngineType.Azure -> "azure"
+    }
+    return engineLabel.contains(needle, ignoreCase = true)
 }
