@@ -352,6 +352,10 @@ private fun StoryvoxNavHostContent(
             ) {
                 BrowseScreen(
                     onOpenFiction = { id -> navController.navigate(StoryvoxRoutes.fictionDetail(id)) },
+                    // #241 — RR Browse listings are gated on sign-in; the CTA in
+                    // the empty state routes through the same WebView that
+                    // Settings → Royal Road and Follows → Sign-In use.
+                    onOpenRoyalRoadSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
                 )
             }
 

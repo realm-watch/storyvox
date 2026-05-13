@@ -55,6 +55,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import `in`.jphe.storyvox.feature.api.BrowseFilter
+import `in`.jphe.storyvox.ui.component.BrassButton
+import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.cascadeReveal
 import `in`.jphe.storyvox.ui.component.ErrorBlock
 import `in`.jphe.storyvox.ui.component.friendlyErrorMessage
@@ -62,12 +64,17 @@ import `in`.jphe.storyvox.ui.component.ErrorPlacement
 import `in`.jphe.storyvox.ui.component.FictionCardSkeleton
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
 import `in`.jphe.storyvox.ui.component.fictionMonogram
+import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
 import `in`.jphe.storyvox.ui.component.MagicSpinner
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
 @Composable
 fun BrowseScreen(
     onOpenFiction: (String) -> Unit,
+    /** Issue #241 — navigates to the Royal Road sign-in WebView. Surfaced
+     *  on the listing tabs (Popular / NewReleases / BestRated) when the
+     *  user is not signed in to RR; Search keeps working anonymously. */
+    onOpenRoyalRoadSignIn: () -> Unit,
     viewModel: BrowseViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -215,6 +222,14 @@ fun BrowseScreen(
         }
 
         when {
+            // Issue #241 — RR listings are gated on sign-in. CTA sits ahead
+            // of the SkeletonGrid branch so the user never sees a loading
+            // shimmer for a request the resolver wasn't going to fire.
+            // Search stays open (the resolver in BrowseViewModel exempts
+            // it), so the CTA is suppressed when the user is on Search.
+            state.sourceKey == BrowseSourceKey.RoyalRoad &&
+                !state.royalRoadSignedIn &&
+                state.tab != BrowseTab.Search -> RoyalRoadSignedOutCta(onOpenRoyalRoadSignIn)
             state.isLoading && state.items.isEmpty() -> SkeletonGrid()
             state.tab == BrowseTab.Search && state.query.isBlank() && !state.isFilterActive -> SearchHint(state.sourceKey)
             // First-load failure with no cached items: full-screen error.
@@ -573,6 +588,56 @@ private fun ActiveWingChip(
         },
         modifier = modifier,
     )
+}
+
+/**
+ * Issue #241 — empty state shown on the Royal Road listing tabs
+ * (Popular / NewReleases / BestRated / filter-active) when the user
+ * is not signed in. Mirrors FollowsScreen's `SignedOutEmpty` rhythm
+ * (sigil tile + titleMedium primary headline + bodyMedium body +
+ * brass primary CTA) so the two surfaces read as part of the same
+ * family — the same brass voice asking the user to authorize before
+ * we hit RR's listing endpoints on their behalf.
+ *
+ * The Search tab is intentionally suppressed in BrowseScreen's
+ * `when` branch — search and Add-by-URL keep working anonymously per
+ * the #241 spec, since they target specific URLs the user already
+ * knows (not anonymous discovery of the catalog).
+ */
+@Composable
+private fun RoyalRoadSignedOutCta(onOpenSignIn: () -> Unit) {
+    val spacing = LocalSpacing.current
+    Column(
+        modifier = Modifier.fillMaxSize().padding(spacing.lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        MagicSkeletonTile(
+            modifier = Modifier.size(width = 160.dp, height = 220.dp),
+            shape = MaterialTheme.shapes.medium,
+            glyphSize = 80.dp,
+        )
+        Spacer(Modifier.height(spacing.lg))
+        Text(
+            "Sign in to browse Royal Road",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(spacing.xs))
+        Text(
+            "Storyvox uses your Royal Road session to fetch listings on your behalf — a logged-in reader, not an anonymous one. Search and paste-URL still work without signing in.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(spacing.lg))
+        BrassButton(
+            label = "Sign in to Royal Road",
+            onClick = onOpenSignIn,
+            variant = BrassButtonVariant.Primary,
+        )
+    }
 }
 
 /** Number of independent filter knobs the user has actively set. */

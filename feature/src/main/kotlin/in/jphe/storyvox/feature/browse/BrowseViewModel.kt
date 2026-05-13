@@ -169,6 +169,14 @@ data class BrowseUiState(
      *  qualifiers are only meaningful for callers with private-repo
      *  access. */
     val hasGitHubRepoScope: Boolean = false,
+    /** Issue #241 — Royal Road sign-in state. Drives the soft-gate on
+     *  RR listing tabs (Popular / NewReleases / BestRated / filter-
+     *  active): when false, those tabs render a sign-in CTA empty
+     *  state rather than firing an anonymous request that returns the
+     *  same content but carries the "bot" framing. Search and
+     *  Add-by-URL keep working anonymously — they target specific
+     *  URLs the user already knows. */
+    val royalRoadSignedIn: Boolean = false,
     /** Sources the user has enabled in Settings (#221). Drives the
      *  BrowseSourcePicker membership — disabled sources are hidden from
      *  the chip strip. Default to all three so a fresh-install user sees
@@ -207,6 +215,11 @@ private data class ControlsView(
      *  in [BrowseUiState]. */
     val githubSignedIn: Boolean,
     val hasGitHubRepoScope: Boolean,
+    /** Issue #241 — sourced from `SettingsRepositoryUi.settings.isSignedIn`
+     *  (Royal Road cookie state). Drives the soft-gate on RR listing
+     *  tabs in [resolveSource] and the sign-in CTA empty state in
+     *  BrowseScreen. */
+    val royalRoadSignedIn: Boolean,
     /** Backends the user has not toggled off in Settings (#221).
      *  Drives [BrowseSourcePicker] membership and an auto-snap when the
      *  currently-selected source disappears. */
@@ -256,6 +269,16 @@ class BrowseViewModel @Inject constructor(
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
+    /** Issue #241 — Royal Road sign-in projection. Single boolean
+     *  derived from `UiSettings.isSignedIn` (the RR cookie state).
+     *  Drives the soft-gate on listing tabs in [resolveSource] and the
+     *  empty-state CTA in BrowseScreen. StateFlow so [selectSource]'s
+     *  init-block auto-snap can read `.value` synchronously. */
+    private val royalRoadSignedIn: StateFlow<Boolean> = settings.settings
+        .map { it.isSignedIn }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     /** True when the user is signed in to GitHub with the `repo` scope
      *  granted. The scopes string is space-separated per RFC 6749; the
      *  Settings impl persists exactly what GitHub returned. Drives the
@@ -270,6 +293,20 @@ class BrowseViewModel @Inject constructor(
                     auth.scopes.split(' ').any { it == "repo" }
             }
             .distinctUntilChanged()
+
+    /** Bundled auth signals — flows into the controls combine as one arg
+     *  to stay within the 5-arg overload after #241 added a third boolean.
+     *  Recomposes on any field change; downstream code reads what it needs. */
+    private data class AuthSnapshot(
+        val githubSignedIn: Boolean,
+        val hasGitHubRepoScope: Boolean,
+        val royalRoadSignedIn: Boolean,
+    )
+
+    private val authSnapshot: kotlinx.coroutines.flow.Flow<AuthSnapshot> =
+        combine(githubSignedIn, hasGitHubRepoScope, royalRoadSignedIn) { gh, repo, rr ->
+            AuthSnapshot(gh, repo, rr)
+        }.distinctUntilChanged()
 
     /** Per-backend on/off projection (#221). The Settings screen exposes
      *  three switches; this collapses them to a [Set] of enabled keys so
@@ -307,7 +344,7 @@ class BrowseViewModel @Inject constructor(
         ) { sourceKey, tab, q, filter, ghFilter ->
             ResolveTuple(sourceKey, tab, q, filter, ghFilter)
         }
-        combine(baseTuple, _palaceFilter, githubSignedIn) { tup, palaceFilter, signedIn ->
+        combine(baseTuple, _palaceFilter, githubSignedIn, royalRoadSignedIn) { tup, palaceFilter, ghSignedIn, rrSignedIn ->
             resolveSource(
                 sourceKey = tup.sourceKey,
                 tab = tup.tab,
@@ -315,7 +352,8 @@ class BrowseViewModel @Inject constructor(
                 filter = tup.filter,
                 githubFilter = tup.ghFilter,
                 palaceFilter = palaceFilter,
-                githubSignedIn = signedIn,
+                githubSignedIn = ghSignedIn,
+                royalRoadSignedIn = rrSignedIn,
             )?.let { source -> source to tup.sourceKey.sourceId }
         }
             .distinctUntilChanged()
@@ -372,17 +410,18 @@ class BrowseViewModel @Inject constructor(
         ) { sourceKey, tab, q, filter, ghFilter ->
             ResolveTuple(sourceKey, tab, q, filter, ghFilter)
         }
-        // 5-arg combine — at the overload ceiling. If a 6th controls
-        // flow ever needs to land, lift one of these into a side
-        // StateFlow consumed inside the lambda rather than reaching for
-        // the variadic overload.
+        // 4-arg combine — under the ceiling thanks to [authSnapshot]
+        // bundling the three auth-related booleans (github sign-in,
+        // github repo-scope, royal-road sign-in #241). If a 6th
+        // independent controls flow ever needs to land, lift one of
+        // these into a side StateFlow consumed inside the lambda
+        // rather than reaching for the variadic overload.
         combine(
             baseTuple,
             _palaceFilter,
-            githubSignedIn,
-            hasGitHubRepoScope,
+            authSnapshot,
             enabledSources,
-        ) { tup, palaceFilter, signedIn, repoScope, enabled ->
+        ) { tup, palaceFilter, auth, enabled ->
             ControlsView(
                 sourceKey = tup.sourceKey,
                 tab = tup.tab,
@@ -390,8 +429,9 @@ class BrowseViewModel @Inject constructor(
                 filter = tup.filter,
                 githubFilter = tup.ghFilter,
                 palaceFilter = palaceFilter,
-                githubSignedIn = signedIn,
-                hasGitHubRepoScope = repoScope,
+                githubSignedIn = auth.githubSignedIn,
+                hasGitHubRepoScope = auth.hasGitHubRepoScope,
+                royalRoadSignedIn = auth.royalRoadSignedIn,
                 enabledSources = enabled,
             )
         }
@@ -419,6 +459,7 @@ class BrowseViewModel @Inject constructor(
                     palaceWings = wings,
                     githubSignedIn = c.githubSignedIn,
                     hasGitHubRepoScope = c.hasGitHubRepoScope,
+                    royalRoadSignedIn = c.royalRoadSignedIn,
                     enabledSources = c.enabledSources,
                 )
             }
@@ -454,6 +495,7 @@ class BrowseViewModel @Inject constructor(
                     palaceWings = wings,
                     githubSignedIn = c.githubSignedIn,
                     hasGitHubRepoScope = c.hasGitHubRepoScope,
+                    royalRoadSignedIn = c.royalRoadSignedIn,
                     enabledSources = c.enabledSources,
                 )
             }
@@ -569,6 +611,7 @@ private fun resolveSource(
     githubFilter: GitHubSearchFilter,
     palaceFilter: MemPalaceFilter,
     githubSignedIn: Boolean,
+    royalRoadSignedIn: Boolean,
 ): BrowseSource? = when (sourceKey) {
     // GitHub: filter takes priority over tab. When filter is active OR
     // user is on Search with a typed query, route to FilteredGitHub so
@@ -596,14 +639,22 @@ private fun resolveSource(
         tab == BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
         else -> null
     }
+    // Issue #241 — soft-gate on RR sign-in. Listing tabs
+    // (Popular / NewReleases / BestRated / any filter-active tab)
+    // return null when the user is not signed in to RR; the screen
+    // renders a sign-in CTA empty state instead of firing an
+    // anonymous request. Search and Add-by-URL stay open: they
+    // target specific URLs the user already knows, which is
+    // structurally distinct from anonymous browsing.
     BrowseSourceKey.RoyalRoad -> when {
+        tab == BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
+        !royalRoadSignedIn -> null
         filter.isActive() -> BrowseSource.Filtered(
             if (tab == BrowseTab.Search && q.isNotBlank()) filter.copy(term = q) else filter,
         )
         tab == BrowseTab.Popular -> BrowseSource.Popular
         tab == BrowseTab.NewReleases -> BrowseSource.NewReleases
         tab == BrowseTab.BestRated -> BrowseSource.BestRated
-        tab == BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
         else -> null
     }
     // MemPalace: when a wing is selected, route through ByGenre so the
