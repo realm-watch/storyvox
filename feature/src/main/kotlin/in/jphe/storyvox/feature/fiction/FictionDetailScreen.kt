@@ -1,5 +1,8 @@
 package `in`.jphe.storyvox.feature.fiction
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,28 +20,39 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import `in`.jphe.storyvox.feature.api.UiChapter
 import `in`.jphe.storyvox.feature.api.UiFiction
+import `in`.jphe.storyvox.source.epub.writer.EpubExportResult
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.ChapterCard
@@ -67,10 +81,49 @@ fun FictionDetailScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val spacing = LocalSpacing.current
     val twoColumn = isAtLeastTablet()
+    val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    androidx.compose.runtime.LaunchedEffect(viewModel) {
+    // Issue #117 — Export-result handling. When the use case finishes,
+    // we surface the share / save sheet here. The pending result is
+    // held in screen state so the share sheet can re-render on config
+    // change without re-firing the export.
+    var pendingExport by remember { mutableStateOf<EpubExportResult?>(null) }
+
+    // SAF "Save…" picker. Wired up as a launcher up-front so the user
+    // can also kick it off from the sheet without us having to remember
+    // whether we already initialized it. The contract delivers the
+    // user-chosen target URI; we copy the cache file into it.
+    val saveAsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/epub+zip"),
+    ) { destination ->
+        val source = pendingExport
+        if (destination != null && source != null) {
+            // Best-effort copy from cache → SAF target. Failures get a
+            // snackbar; the cache file is left in place so the share
+            // path is still usable as a fallback.
+            try {
+                context.contentResolver.openOutputStream(destination)?.use { out ->
+                    source.file.inputStream().use { it.copyTo(out) }
+                }
+            } catch (t: Throwable) {
+                // Show a snackbar via the surrounding scope. We can't
+                // suspend inside this lambda, so launch into a SideEffect.
+                pendingExport = source.copy(
+                    warnings = source.warnings + "Save failed: ${t.message ?: t.javaClass.simpleName}",
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
-            if (event is FictionDetailUiEvent.OpenReader) onOpenReader(event.fictionId, event.chapterId)
+            when (event) {
+                is FictionDetailUiEvent.OpenReader -> onOpenReader(event.fictionId, event.chapterId)
+                is FictionDetailUiEvent.EpubExported -> pendingExport = event.result
+                is FictionDetailUiEvent.EpubExportFailed ->
+                    snackbarHostState.showSnackbar(event.message)
+            }
         }
     }
 
@@ -123,6 +176,11 @@ fun FictionDetailScreen(
     // 'context + content' not 'duplicate'.
     Scaffold(
         topBar = {
+            // Issue #117 — overflow menu now houses the EPUB export entry.
+            // Held local-to-the-bar so the menu state doesn't survive
+            // configuration change (parent screen state is what actually
+            // matters; menu open/closed is ephemeral UI affordance).
+            var menuOpen by remember { mutableStateOf(false) }
             TopAppBar(
                 title = {
                     Text(
@@ -140,8 +198,50 @@ fun FictionDetailScreen(
                         )
                     }
                 },
+                actions = {
+                    // Gate behind a non-null fiction — there's nothing to
+                    // export until the detail row exists. The skeleton
+                    // / first-load error states render no overflow.
+                    if (fiction != null) {
+                        if (state.isExportingEpub) {
+                            // Inline progress chip replaces the More icon
+                            // while the export runs — gives the user a
+                            // visible "your tap took effect" indicator on
+                            // long exports. The menu is unreachable during
+                            // export by design; no need to re-open it.
+                            Row(
+                                modifier = Modifier.padding(end = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                                Text("Building .epub…", style = MaterialTheme.typography.labelSmall)
+                            }
+                        } else {
+                            IconButton(onClick = { menuOpen = true }) {
+                                Icon(Icons.Filled.MoreVert, contentDescription = "More")
+                            }
+                            DropdownMenu(
+                                expanded = menuOpen,
+                                onDismissRequest = { menuOpen = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Export as EPUB…") },
+                                    onClick = {
+                                        menuOpen = false
+                                        viewModel.exportToEpub(context)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                },
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { scaffoldPadding ->
     Box(modifier = Modifier.fillMaxSize().padding(scaffoldPadding)) {
         if (fiction == null && state.error != null) {
@@ -259,6 +359,129 @@ fun FictionDetailScreen(
             )
         }
     }
+    }
+
+    // Issue #117 — Share / Save-as bottom sheet. Renders only after the
+    // export use case completes and posts an EpubExported event. JP's
+    // decision: ACTION_SEND is the primary path (user picks the destination
+    // app: Drive / email / file manager / etc); ACTION_CREATE_DOCUMENT is
+    // the secondary "Save…" path for users who want explicit filesystem
+    // placement. Both routes go through the same FileProvider-backed Uri.
+    pendingExport?.let { exported ->
+        ExportSheet(
+            export = exported,
+            onShare = {
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/epub+zip"
+                    putExtra(Intent.EXTRA_STREAM, exported.uri)
+                    putExtra(Intent.EXTRA_TITLE, exported.suggestedFileName)
+                    // Grant the chosen target read access to our FileProvider
+                    // URI. Without this flag, every recipient app gets a
+                    // SecurityException on the first read.
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(
+                    Intent.createChooser(send, "Share .epub").also {
+                        // Chooser itself runs in a new task when launched
+                        // from a non-activity Context; the LocalContext
+                        // here is the activity, but flagging it cheap
+                        // and avoids a crash if the surrounding host
+                        // ever switches.
+                        it.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    },
+                )
+                pendingExport = null
+            },
+            onSaveAs = {
+                // Pre-fill the SAF picker with the suggested name —
+                // ActivityResultContracts.CreateDocument takes the
+                // input directly (it's the proposed file name).
+                saveAsLauncher.launch(exported.suggestedFileName)
+                pendingExport = null
+            },
+            onDismiss = { pendingExport = null },
+        )
+    }
+}
+
+/**
+ * Issue #117 — modal bottom sheet that surfaces after the EPUB export
+ * completes. Offers Share (primary, fires ACTION_SEND chooser) and
+ * Save… (secondary, fires SAF CREATE_DOCUMENT). Both routes use the
+ * same FileProvider-backed Uri held on [EpubExportResult].
+ *
+ * Warnings (cover failed to fetch, N chapters not downloaded) render
+ * inline above the action buttons so the user knows what they're
+ * actually shipping out.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExportSheet(
+    export: EpubExportResult,
+    onShare: () -> Unit,
+    onSaveAs: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    val sheetState = rememberModalBottomSheetState()
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = spacing.lg, vertical = spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Text(
+                text = "Your .epub is ready",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = export.suggestedFileName,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            // Surface any non-fatal issues — cover download failures,
+            // chapters not downloaded — so the user knows the export
+            // isn't lossless on the cases where it isn't.
+            if (export.warnings.isNotEmpty()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(spacing.xxs),
+                ) {
+                    export.warnings.forEach { w ->
+                        Text(
+                            text = "• $w",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(spacing.xs))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            ) {
+                BrassButton(
+                    label = "Save…",
+                    onClick = onSaveAs,
+                    variant = BrassButtonVariant.Secondary,
+                    modifier = Modifier.weight(1f),
+                )
+                BrassButton(
+                    label = "Share",
+                    onClick = onShare,
+                    variant = BrassButtonVariant.Primary,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
     }
 }
 

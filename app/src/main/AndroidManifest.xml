@@ -57,6 +57,28 @@
                 tools:node="remove" />
         </provider>
 
+        <!--
+            Issue #117 — FileProvider for EPUB exports. Grants ACTION_SEND
+            recipients (and SAF ACTION_CREATE_DOCUMENT target apps) read
+            access to files we write under cacheDir/exports/. The authority
+            string is referenced from ExportFictionToEpubUseCase via
+            "${context.packageName}.fileprovider" — keep in sync.
+
+            grantUriPermissions=true is required for ACTION_SEND to flag
+            FLAG_GRANT_READ_URI_PERMISSION on every chooser target. The
+            cache-path entry in xml/file_paths.xml scopes the share down to
+            the exports/ subdir; we don't expose the entire cacheDir.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
     </application>
 
 </manifest>

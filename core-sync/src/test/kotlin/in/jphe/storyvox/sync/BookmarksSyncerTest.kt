@@ -150,6 +150,7 @@ class BookmarksSyncerTest {
         override suspend fun getBookmark(id: String): Int? = bookmarks[id]
 
         // ---- everything below is "not used by BookmarksSyncer" ----
+        override suspend fun allChapters(fictionId: String): List<Chapter> = emptyList()
         override fun observeChapterInfosByFiction(fictionId: String): Flow<List<ChapterInfoRow>> = flowOf(emptyList())
         override fun observe(id: String): Flow<Chapter?> = flowOf(null)
         override suspend fun get(id: String): Chapter? = null

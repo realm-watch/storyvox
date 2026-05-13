@@ -235,6 +235,12 @@ class FictionRepositoryImplTest {
             return rows[id]
         }
 
+        // Issue #117 — EPUB export uses this; FictionRepository tests don't
+        // exercise it directly, but the FakeChapterDao must still satisfy
+        // the interface.
+        override suspend fun allChapters(fictionId: String): List<Chapter> =
+            rows.values.filter { it.fictionId == fictionId }.sortedBy { it.index }
+
         override fun observeDownloadStates(fictionId: String): Flow<List<ChapterDownloadStateRow>> =
             MutableStateFlow(emptyList())
 
