@@ -23,6 +23,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import `in`.jphe.storyvox.data.repository.ChapterRepository
+import `in`.jphe.storyvox.data.repository.HistoryRepository
 import `in`.jphe.storyvox.data.repository.PlaybackPositionRepository
 import `in`.jphe.storyvox.data.repository.playback.NOISE_SCALE_EXPRESSIVE
 import `in`.jphe.storyvox.data.repository.playback.NOISE_SCALE_STEADY
@@ -107,6 +108,13 @@ class EnginePlayer @AssistedInject constructor(
     private val chunker: SentenceChunker,
     private val chapterRepo: ChapterRepository,
     private val positionRepo: PlaybackPositionRepository,
+    /**
+     * Issue #158 — reading-history breadcrumb. Written on every
+     * chapter-load inside [loadAndPlay] and stamped `completed = true`
+     * inside [handleChapterDone]. Forever retention; powers the
+     * Library "History" sub-tab.
+     */
+    private val historyRepo: HistoryRepository,
     private val sleepTimer: SleepTimer,
     private val voiceManager: VoiceManager,
     private val volumeRamp: TtsVolumeRamp,
@@ -732,6 +740,16 @@ class EnginePlayer @AssistedInject constructor(
                 error = null,
             )
         }
+        // Issue #158 — stamp the History breadcrumb right after the state
+        // flips to a new currentChapterId. We log the open BEFORE the
+        // pipeline starts because the row should land even if the user
+        // taps a chapter and immediately backs out before audio starts
+        // — that still counts as "opened" in the History tab's sense.
+        // Upsert semantics mean re-opens move the row to the top
+        // without creating dupes. No try/catch: a Room write failure
+        // here would already crash the player on the next position-save,
+        // and history is non-load-bearing for playback.
+        historyRepo.logOpen(fictionId, chapterId)
         invalidateState()
 
         // #89 — stop the OLD pipeline FIRST, before we destroy any of
@@ -1665,8 +1683,20 @@ class EnginePlayer @AssistedInject constructor(
 
     private suspend fun handleChapterDone() {
         val chapterId = _observableState.value.currentChapterId
+        val fictionId = _observableState.value.currentFictionId
         persistPosition()
         if (chapterId != null) chapterRepo.markChapterPlayed(chapterId)
+        // Issue #158 — piggyback the History `completed` flag on the
+        // existing end-of-chapter event. Mirrors `markChapterPlayed`
+        // above; both fire on the same trigger (chapter naturally
+        // ended, not user-skipped via Next). `fractionRead = 1f`
+        // because we reached end-of-chapter — the only call-site that
+        // passes a partial fraction would be a future "user skipped
+        // 90% of the way through" path, which isn't in scope for this
+        // issue.
+        if (fictionId != null && chapterId != null) {
+            historyRepo.markCompleted(fictionId, chapterId, fraction = 1f)
+        }
         // Calliope (v0.5.00) — distinguish "chapter naturally finished" from
         // "user tapped Next chapter". Emit BEFORE advanceChapter so the
         // confetti overlay's observer sees ChapterDone first; the
