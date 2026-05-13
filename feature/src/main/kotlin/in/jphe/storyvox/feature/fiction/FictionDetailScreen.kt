@@ -76,6 +76,11 @@ fun FictionDetailScreen(
      *  preview/test use working but should never be the production
      *  callsite. */
     onBack: () -> Unit = {},
+    /** Issue #211 — routes the Royal Road sign-in flow when the user
+     *  taps Follow on RR without an active session. Same destination
+     *  as Settings → Royal Road and the Browse anonymous-CTA from
+     *  #241. */
+    onOpenRoyalRoadSignIn: () -> Unit = {},
     viewModel: FictionDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -122,6 +127,9 @@ fun FictionDetailScreen(
                 is FictionDetailUiEvent.OpenReader -> onOpenReader(event.fictionId, event.chapterId)
                 is FictionDetailUiEvent.EpubExported -> pendingExport = event.result
                 is FictionDetailUiEvent.EpubExportFailed ->
+                    snackbarHostState.showSnackbar(event.message)
+                FictionDetailUiEvent.OpenRoyalRoadSignIn -> onOpenRoyalRoadSignIn()
+                is FictionDetailUiEvent.FollowFailed ->
                     snackbarHostState.showSnackbar(event.message)
             }
         }
@@ -303,6 +311,8 @@ fun FictionDetailScreen(
 
             BottomBar(
                 isInLibrary = state.isInLibrary,
+                followOnSource = fiction.takeIf { it.sourceId == "royalroad" }
+                    ?.let { FollowOnSourceUiState(isFollowed = it.isFollowedRemote) },
                 onFollow = {
                     // Issue #169 — gate the destructive path behind a
                     // confirm dialog; the additive path stays single-tap.
@@ -312,6 +322,7 @@ fun FictionDetailScreen(
                         viewModel.toggleFollow(true)
                     }
                 },
+                onFollowOnSource = viewModel::toggleFollowOnSource,
                 onListen = { state.chapters.firstOrNull()?.id?.let(viewModel::listen) },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
@@ -345,6 +356,8 @@ fun FictionDetailScreen(
 
             BottomBar(
                 isInLibrary = state.isInLibrary,
+                followOnSource = fiction.takeIf { it.sourceId == "royalroad" }
+                    ?.let { FollowOnSourceUiState(isFollowed = it.isFollowedRemote) },
                 onFollow = {
                     // Issue #169 — gate the destructive path behind a
                     // confirm dialog; the additive path stays single-tap.
@@ -354,6 +367,7 @@ fun FictionDetailScreen(
                         viewModel.toggleFollow(true)
                     }
                 },
+                onFollowOnSource = viewModel::toggleFollowOnSource,
                 onListen = { state.chapters.firstOrNull()?.id?.let(viewModel::listen) },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
@@ -542,7 +556,14 @@ private fun Synopsis(text: String) {
 @Composable
 private fun BottomBar(
     isInLibrary: Boolean,
+    /** Issue #211 — non-null only for Royal Road fictions. When set,
+     *  surfaces an inline "Follow" / "Following" toggle next to the
+     *  library button so users can push a follow to RR without
+     *  leaving the page. The label reads `Following` when storyvox
+     *  has observed the user already follows on RR. */
+    followOnSource: FollowOnSourceUiState? = null,
     onFollow: () -> Unit,
+    onFollowOnSource: () -> Unit = {},
     onListen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -563,6 +584,14 @@ private fun BottomBar(
                 variant = BrassButtonVariant.Secondary,
                 modifier = Modifier.weight(1f),
             )
+            if (followOnSource != null) {
+                BrassButton(
+                    label = if (followOnSource.isFollowed) "Following" else "Follow",
+                    onClick = onFollowOnSource,
+                    variant = BrassButtonVariant.Secondary,
+                    modifier = Modifier.weight(1f),
+                )
+            }
             BrassButton(
                 label = "Listen",
                 onClick = onListen,
@@ -572,6 +601,14 @@ private fun BottomBar(
         }
     }
 }
+
+/** Issue #211 — payload for the source-side follow chip. Held as a
+ *  small struct rather than separate booleans so the BottomBar
+ *  composable's signature stays compact; the screen passes null when
+ *  the fiction isn't from a follow-aware source. */
+private data class FollowOnSourceUiState(
+    val isFollowed: Boolean,
+)
 
 private fun UiChapter.toCardState(currentId: String?) = ChapterCardState(
     number = number,

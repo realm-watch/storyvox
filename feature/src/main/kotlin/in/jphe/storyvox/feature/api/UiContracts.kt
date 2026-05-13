@@ -21,6 +21,17 @@ data class UiFiction(
     val chapterCount: Int,
     val isOngoing: Boolean,
     val synopsis: String,
+    /** Issue #211 — the FictionSource this fiction came from. Drives
+     *  the "Follow on Royal Road" affordance on FictionDetail; non-RR
+     *  sources don't have a source-side follow concept. Defaulted to
+     *  empty so existing construction sites stay compatible. */
+    val sourceId: String = "",
+    /** Issue #211 — true when storyvox has pushed a follow to the
+     *  source's account (via [FictionRepositoryUi.setFollowedRemote])
+     *  OR when the periodic /my/follows pull observed the user
+     *  follows this fiction on RR. Drives the Follow-button label
+     *  (Follow / Following). */
+    val isFollowedRemote: Boolean = false,
 )
 
 data class UiChapter(
@@ -63,6 +74,17 @@ enum class SuggestedFeedKind {
     AudioPodcast,
 }
 
+/** Outcome of a source-side follow toggle (#211). */
+sealed class SetFollowedRemoteResult {
+    /** Push succeeded; storyvox's local copy already updated. */
+    data object Success : SetFollowedRemoteResult()
+    /** Source rejected without a session — caller should route the
+     *  user to sign-in (Royal Road today). */
+    data object AuthRequired : SetFollowedRemoteResult()
+    /** Anything else — `message` is user-facing copy. */
+    data class Error(val message: String) : SetFollowedRemoteResult()
+}
+
 /** Outcome of pasting a URL into the add-fiction sheet. */
 sealed class UiAddByUrlResult {
     /** Resolved + persisted; UI navigates to the detail screen. */
@@ -99,6 +121,15 @@ interface FictionRepositoryUi {
     suspend fun chapterTextById(chapterId: String): String?
     suspend fun setDownloadMode(fictionId: String, mode: DownloadMode)
     suspend fun follow(fictionId: String, follow: Boolean)
+    /**
+     * Issue #211 — push a follow/unfollow to the *source* (Royal Road's
+     * account, not storyvox's local library). The source layer
+     * handles auth: returns silently on AuthRequired so callers can
+     * pre-check sign-in and route to the appropriate screen instead
+     * of swallowing the no-op. Distinct from [follow], which is local
+     * library Add/Remove.
+     */
+    suspend fun setFollowedRemote(fictionId: String, followed: Boolean): SetFollowedRemoteResult
     suspend fun markAllCaughtUp()
     /**
      * Best-effort refresh of the user's source-side follows list. No-op if

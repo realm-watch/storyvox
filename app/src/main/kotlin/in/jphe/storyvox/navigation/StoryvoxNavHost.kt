@@ -352,9 +352,9 @@ private fun StoryvoxNavHostContent(
             ) {
                 BrowseScreen(
                     onOpenFiction = { id -> navController.navigate(StoryvoxRoutes.fictionDetail(id)) },
-                    // #241 — RR Browse listings are gated on sign-in; the CTA in
-                    // the empty state routes through the same WebView that
-                    // Settings → Royal Road and Follows → Sign-In use.
+                    // #241 / #211 — RR sign-in CTA shared between Browse
+                    // (anonymous-listing CTA) and FictionDetail (Follow
+                    // button) and Settings → Royal Road.
                     onOpenRoyalRoadSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
                 )
             }
@@ -370,6 +370,9 @@ private fun StoryvoxNavHostContent(
                 FictionDetailScreen(
                     onOpenReader = { f, c -> navController.navigate(StoryvoxRoutes.reader(f, c)) },
                     onBack = { navController.popBackStack() },
+                    // #211 — Follow on Royal Road button routes to the
+                    // shared sign-in WebView when the user is anonymous.
+                    onOpenRoyalRoadSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
                 )
             }
 

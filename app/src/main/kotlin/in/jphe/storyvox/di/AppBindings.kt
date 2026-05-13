@@ -350,6 +350,19 @@ private class RealFictionRepositoryUi(
         if (follow) repo.addToLibrary(fictionId, mode = null) else repo.removeFromLibrary(fictionId)
     }
 
+    override suspend fun setFollowedRemote(
+        fictionId: String,
+        followed: Boolean,
+    ): `in`.jphe.storyvox.feature.api.SetFollowedRemoteResult =
+        when (val r = repo.setFollowedRemote(fictionId, followed)) {
+            is FictionResult.Success ->
+                `in`.jphe.storyvox.feature.api.SetFollowedRemoteResult.Success
+            is FictionResult.AuthRequired ->
+                `in`.jphe.storyvox.feature.api.SetFollowedRemoteResult.AuthRequired
+            is FictionResult.Failure ->
+                `in`.jphe.storyvox.feature.api.SetFollowedRemoteResult.Error(r.message)
+        }
+
     override suspend fun markAllCaughtUp() {
         // No-op for v1 — chapter-level "read" tracking lands when the reader is wired.
     }

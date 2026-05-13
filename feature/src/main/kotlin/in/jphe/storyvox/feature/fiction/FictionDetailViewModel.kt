@@ -9,6 +9,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import `in`.jphe.storyvox.feature.api.DownloadMode
 import `in`.jphe.storyvox.feature.api.FictionRepositoryUi
 import `in`.jphe.storyvox.feature.api.PlaybackControllerUi
+import `in`.jphe.storyvox.feature.api.SetFollowedRemoteResult
+import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.UiChapter
 import `in`.jphe.storyvox.feature.api.UiFiction
 import `in`.jphe.storyvox.source.epub.writer.EpubExportResult
@@ -18,6 +20,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -54,6 +58,14 @@ sealed interface FictionDetailUiEvent {
     /** Issue #117 — surfaces non-fatal export failures (no network for
      *  the cover, disk write error, etc) so the screen can toast. */
     data class EpubExportFailed(val message: String) : FictionDetailUiEvent
+    /** Issue #211 — RR follow tapped while anonymous. Screen routes
+     *  the user to the Royal Road sign-in WebView (same destination
+     *  Settings → Royal Road and the #241 Browse CTA use). */
+    data object OpenRoyalRoadSignIn : FictionDetailUiEvent
+    /** Issue #211 — RR returned a non-auth error on the follow POST
+     *  (network, CSRF token miss, 500). Surfaced as a toast so the
+     *  user knows the tap didn't take. */
+    data class FollowFailed(val message: String) : FictionDetailUiEvent
 }
 
 @HiltViewModel
@@ -61,8 +73,18 @@ class FictionDetailViewModel @Inject constructor(
     private val repo: FictionRepositoryUi,
     private val playback: PlaybackControllerUi,
     private val exportEpub: ExportFictionToEpubUseCase,
+    settings: SettingsRepositoryUi,
     savedState: SavedStateHandle,
 ) : ViewModel() {
+
+    /** Issue #211 — Royal Road sign-in projection. Read at button-tap
+     *  time to decide whether to call the source push or route the
+     *  user to AUTH_WEBVIEW. StateFlow (not cold Flow) so the
+     *  imperative .value read in [toggleFollowOnSource] is correct. */
+    private val royalRoadSignedIn: StateFlow<Boolean> = settings.settings
+        .map { it.isSignedIn }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private val fictionId: String = checkNotNull(savedState["fictionId"]) {
         "FictionDetailScreen requires a `fictionId` nav arg"
@@ -98,6 +120,43 @@ class FictionDetailViewModel @Inject constructor(
 
     fun toggleFollow(follow: Boolean) {
         viewModelScope.launch { repo.follow(fictionId, follow) }
+    }
+
+    /**
+     * Issue #211 — push a follow/unfollow to Royal Road's account
+     * (distinct from [toggleFollow], which is local library Add/Remove).
+     *
+     * Pre-checks sign-in: if the user isn't signed in we route them to
+     * the Royal Road sign-in WebView via [FictionDetailUiEvent.OpenRoyalRoadSignIn]
+     * rather than calling the source and silently no-op-ing. After a
+     * successful sign-in the user lands back here and taps again.
+     *
+     * Errors that aren't AuthRequired surface as toast events so the
+     * tap isn't a black hole; the button's optimistic UI flips when
+     * the source confirms via the underlying Fiction.followedRemotely
+     * flow.
+     */
+    fun toggleFollowOnSource() {
+        val current = uiState.value.fiction ?: return
+        if (!royalRoadSignedIn.value) {
+            viewModelScope.launch { _events.send(FictionDetailUiEvent.OpenRoyalRoadSignIn) }
+            return
+        }
+        val newValue = !current.isFollowedRemote
+        viewModelScope.launch {
+            when (val r = repo.setFollowedRemote(fictionId, newValue)) {
+                SetFollowedRemoteResult.Success -> { /* UI flips via the flow */ }
+                SetFollowedRemoteResult.AuthRequired -> {
+                    // Belt-and-braces: pre-check said signed in but the
+                    // session may have expired between then and the
+                    // POST. Route to sign-in to refresh.
+                    _events.send(FictionDetailUiEvent.OpenRoyalRoadSignIn)
+                }
+                is SetFollowedRemoteResult.Error -> {
+                    _events.send(FictionDetailUiEvent.FollowFailed(r.message))
+                }
+            }
+        }
     }
 
     fun setMode(mode: DownloadMode) {

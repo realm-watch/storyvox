@@ -388,6 +388,7 @@ internal fun Fiction.toSummary(): FictionSummary = FictionSummary(
     status = status,
     chapterCount = chapterCount,
     rating = rating,
+    followedRemotely = followedRemotely,
 )
 
 internal fun FictionSummary.toEntity(now: Long): Fiction = Fiction(
