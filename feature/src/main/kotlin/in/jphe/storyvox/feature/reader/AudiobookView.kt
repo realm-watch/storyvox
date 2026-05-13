@@ -38,6 +38,7 @@ import androidx.compose.material.icons.outlined.BookmarkAdd
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -114,6 +115,10 @@ fun AudiobookView(
      *  fictionId on the playback state, so callees can rely on it
      *  being a fully-routed navigation. */
     onOpenChat: () -> Unit = {},
+    /** Open the Settings screen. Surfaced as a leading gear icon in the
+     *  top bar so playback's per-screen Settings affordance matches the
+     *  other home screens (Library/Browse/Follows/Voices). */
+    onOpenSettings: () -> Unit = {},
     /** Issue #278 — loading-phase from the ReaderViewModel. Drives the
      *  soft "Still working…" hint at 10s and the hard timeout/retry
      *  error block at 30s. Defaults to NotLoading so previews / tests
@@ -187,6 +192,12 @@ fun AudiobookView(
                     .fillMaxWidth()
                     .padding(vertical = spacing.xs),
             ) {
+                IconButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.align(Alignment.CenterStart),
+                ) {
+                    Icon(Icons.Outlined.Settings, contentDescription = "Settings")
+                }
                 Column(
                     modifier = Modifier
                         .align(Alignment.Center)

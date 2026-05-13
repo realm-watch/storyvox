@@ -20,12 +20,14 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SecondaryTabRow
@@ -58,6 +60,7 @@ import androidx.compose.ui.text.style.TextAlign
 fun LibraryScreen(
     onOpenFiction: (String) -> Unit,
     onOpenReader: (String, String) -> Unit,
+    onOpenSettings: () -> Unit = {},
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -105,6 +108,11 @@ fun LibraryScreen(
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("Library", style = MaterialTheme.typography.titleMedium) },
+                actions = {
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Outlined.Settings, contentDescription = "Settings")
+                    }
+                },
             )
         },
         floatingActionButton = {

@@ -14,9 +14,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -47,6 +51,7 @@ import androidx.compose.foundation.lazy.grid.items as gridItems
 fun FollowsScreen(
     onOpenFiction: (String) -> Unit,
     onOpenSignIn: () -> Unit,
+    onOpenSettings: () -> Unit = {},
     viewModel: FollowsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -87,6 +92,9 @@ fun FollowsScreen(
                             onClick = viewModel::markAllCaughtUp,
                             variant = BrassButtonVariant.Text,
                         )
+                    }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Outlined.Settings, contentDescription = "Settings")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

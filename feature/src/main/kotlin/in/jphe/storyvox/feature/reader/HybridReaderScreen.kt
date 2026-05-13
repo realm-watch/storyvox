@@ -46,6 +46,12 @@ fun HybridReaderScreen(
      * naturally swaps the prompt for the player view in place.
      */
     onBrowse: () -> Unit = {},
+    /** Open the Settings screen. Surfaced as a leading gear in the
+     *  AudiobookView top bar — matches the per-screen Settings
+     *  affordance on Library/Browse/Follows/Voices. Default no-op for
+     *  previews/tests; production callsites pass a real
+     *  `navController.navigate(SETTINGS)`. */
+    onOpenSettings: () -> Unit = {},
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -169,6 +175,7 @@ fun HybridReaderScreen(
                 onOpenChat = {
                     playbackState.fictionId?.let { onOpenChat(it, null) }
                 },
+                onOpenSettings = onOpenSettings,
                 // Issue #278 — surface loading-phase + retry path. The
                 // view decides what to render based on phase (regular /
                 // slow-hint at 10s / full error block at 30s).
