@@ -27,7 +27,7 @@ import `in`.jphe.storyvox.data.db.entity.PlaybackPosition
         LlmSession::class,
         LlmStoredMessage::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)

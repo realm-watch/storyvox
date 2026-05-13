@@ -238,6 +238,19 @@ interface ChapterDao {
     suspend fun trimDownloadedBodies(fictionId: String, keepLast: Int)
 
     /**
+     * Issue #121 — set or clear the per-chapter bookmark. Passing null
+     * for [charOffset] is the "clear bookmark" path; an Int value sets
+     * the bookmark at that offset into the chapter's plainBody. One
+     * bookmark per chapter per the planning-session decision.
+     */
+    @Query("UPDATE chapter SET bookmarkCharOffset = :charOffset WHERE id = :id")
+    suspend fun setBookmark(id: String, charOffset: Int?)
+
+    /** Issue #121 — read the persisted bookmark offset, or null. */
+    @Query("SELECT bookmarkCharOffset FROM chapter WHERE id = :id")
+    suspend fun getBookmark(id: String): Int?
+
+    /**
      * Issue #293 — debug-surface storage diagnostic. Single round-trip
      * returns both the count of cached chapters AND the rough byte usage
      * of their text bodies. SQLite's `LENGTH()` on a TEXT column returns

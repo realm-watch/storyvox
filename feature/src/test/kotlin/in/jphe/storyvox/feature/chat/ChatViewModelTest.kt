@@ -488,6 +488,9 @@ private class FakePlayback(initial: UiPlaybackState) : PlaybackControllerUi {
     override fun cancelSleepTimer() = Unit
     override suspend fun speakText(text: String) = Unit
     override fun stopSpeaking() = Unit
+    override fun bookmarkHere() = Unit
+    override fun clearBookmark() = Unit
+    override fun jumpToBookmark() = Unit
 }
 
 /** Minimal settings stub — only the [settings] flow is read by

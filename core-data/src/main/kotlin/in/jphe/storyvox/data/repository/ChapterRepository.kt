@@ -82,6 +82,17 @@ interface ChapterRepository {
      * on the storage diagnostic.
      */
     suspend fun cachedBodyUsage(): CachedBodyUsage
+
+    /**
+     * Issue #121 — set or clear the per-chapter bookmark. Passing null
+     * clears. The bookmark is a char-offset into the chapter's plainBody,
+     * mirroring how the player addresses positions throughout the
+     * pipeline (no time-based offset that would shift with speed).
+     */
+    suspend fun setChapterBookmark(chapterId: String, charOffset: Int?)
+
+    /** Issue #121 — read the persisted bookmark for a chapter, or null. */
+    suspend fun chapterBookmark(chapterId: String): Int?
 }
 
 /** Issue #293 — paired count/bytes return for [ChapterRepository.cachedBodyUsage]. */
@@ -173,4 +184,11 @@ class ChapterRepositoryImpl @Inject constructor(
         val row = dao.cacheUsage()
         return CachedBodyUsage(count = row.count, bytesEstimate = row.bytes)
     }
+
+    override suspend fun setChapterBookmark(chapterId: String, charOffset: Int?) {
+        dao.setBookmark(chapterId, charOffset)
+    }
+
+    override suspend fun chapterBookmark(chapterId: String): Int? =
+        dao.getBookmark(chapterId)
 }

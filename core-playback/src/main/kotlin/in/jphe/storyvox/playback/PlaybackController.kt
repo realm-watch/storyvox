@@ -72,6 +72,28 @@ interface PlaybackController {
      * player is bound. Read by the Debug overlay at 1Hz.
      */
     fun bufferTelemetry(): BufferTelemetry
+
+    /**
+     * Issue #121 — bookmark the current playback position into the
+     * currently-loaded chapter. No-op when no chapter is loaded. The
+     * bookmark is persisted to the chapter row so it survives app
+     * restarts and the playhead moving past it.
+     */
+    suspend fun bookmarkHere()
+
+    /**
+     * Issue #121 — clear the currently-loaded chapter's bookmark, if
+     * any. No-op when no chapter is loaded or no bookmark exists.
+     */
+    suspend fun clearBookmark()
+
+    /**
+     * Issue #121 — seek to the currently-loaded chapter's bookmark. No-op
+     * when no chapter is loaded or no bookmark exists. Returns true if
+     * the seek fired, false otherwise — callers can use this to surface
+     * "no bookmark to jump to" feedback.
+     */
+    suspend fun jumpToBookmark(): Boolean
 }
 
 /**
@@ -93,6 +115,10 @@ class DefaultPlaybackController @Inject constructor(
     /** #90 — write the user's last play/pause intent so the
      *  Library Resume CTA can decide whether to auto-start. */
     private val resumePolicy: `in`.jphe.storyvox.data.repository.playback.PlaybackResumePolicyConfig,
+    /** #121 — per-chapter bookmark read/write. Controller persists +
+     *  jumps to bookmark positions; the player layer needs no
+     *  awareness of bookmarks (they're a chapter-metadata concern). */
+    private val chapterRepo: `in`.jphe.storyvox.data.repository.ChapterRepository,
 ) : PlaybackController {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -256,6 +282,24 @@ class DefaultPlaybackController @Inject constructor(
 
     override fun bufferTelemetry(): BufferTelemetry =
         player?.bufferTelemetry() ?: BufferTelemetry()
+
+    override suspend fun bookmarkHere() {
+        val chapterId = state.value.currentChapterId ?: return
+        val offset = state.value.charOffset
+        chapterRepo.setChapterBookmark(chapterId, offset)
+    }
+
+    override suspend fun clearBookmark() {
+        val chapterId = state.value.currentChapterId ?: return
+        chapterRepo.setChapterBookmark(chapterId, null)
+    }
+
+    override suspend fun jumpToBookmark(): Boolean {
+        val chapterId = state.value.currentChapterId ?: return false
+        val offset = chapterRepo.chapterBookmark(chapterId) ?: return false
+        player?.seekToCharOffset(offset)
+        return true
+    }
 
     internal fun emitEvent(event: PlaybackUiEvent) {
         _events.tryEmit(event)

@@ -737,6 +737,22 @@ internal class RealPlaybackControllerUi(
         controller.stopSpeaking()
     }
 
+    // Issue #121 — bookmark fan-out. controller methods are suspend
+    // because they touch ChapterRepository, but the UI contract is
+    // fire-and-forget per the rest of this interface; we launch on the
+    // shared scope and let the controller handle ordering.
+    override fun bookmarkHere() {
+        scope.launch { controller.bookmarkHere() }
+    }
+
+    override fun clearBookmark() {
+        scope.launch { controller.clearBookmark() }
+    }
+
+    override fun jumpToBookmark() {
+        scope.launch { controller.jumpToBookmark() }
+    }
+
     override fun startListening(
         fictionId: String,
         chapterId: String,
