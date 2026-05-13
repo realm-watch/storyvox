@@ -173,6 +173,9 @@ class SettingsViewModel @Inject constructor(
     /** Issue #381 — Archive of Our Own backend on/off. */
     fun setSourceAo3Enabled(enabled: Boolean) =
         viewModelScope.launch { repo.setSourceAo3Enabled(enabled) }
+    /** Issue #375 — Standard Ebooks backend on/off. */
+    fun setSourceStandardEbooksEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setSourceStandardEbooksEnabled(enabled) }
     fun setOutlineHost(host: String) = viewModelScope.launch { repo.setOutlineHost(host) }
     fun setOutlineApiKey(apiKey: String) = viewModelScope.launch { repo.setOutlineApiKey(apiKey) }
     fun clearOutlineConfig() = viewModelScope.launch { repo.clearOutlineConfig() }

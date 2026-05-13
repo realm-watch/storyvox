@@ -205,6 +205,7 @@ fun BrowseScreen(
                 // the non-filterable branch like the other catalog-
                 // driven sources.
                 BrowseSourceKey.Ao3 -> false
+                BrowseSourceKey.StandardEbooks -> false
             }
             if (filterableSource) {
                 FilterButton(
@@ -222,6 +223,7 @@ fun BrowseScreen(
                         BrowseSourceKey.Outline,
                         BrowseSourceKey.Gutenberg,
                         BrowseSourceKey.Ao3 -> 0
+                        BrowseSourceKey.StandardEbooks -> 0
                     },
                     onClick = { showFilterSheet = true },
                 )
@@ -489,6 +491,9 @@ fun BrowseScreen(
             // #381 — AO3 has no filter sheet; the curated fandom
             // list rides on the genre row.
             BrowseSourceKey.Ao3 -> { showFilterSheet = false }
+            // #375 — Standard Ebooks mirrors Gutenberg's surface: no
+            // filter sheet in v1, free-form Search covers discovery.
+            BrowseSourceKey.StandardEbooks -> { showFilterSheet = false }
         }
     }
 }
@@ -577,6 +582,7 @@ private fun searchHintForSource(sourceKey: BrowseSourceKey): String = when (sour
     // unless a future iteration re-adds the tab, but Kotlin still
     // wants exhaustive coverage. Keep the copy ready for that day.
     BrowseSourceKey.Ao3 -> "Search AO3 by tag, fandom, or character"
+    BrowseSourceKey.StandardEbooks -> "Search Standard Ebooks' hand-curated public-domain classics"
 }
 
 private val BrowseTab.label: String

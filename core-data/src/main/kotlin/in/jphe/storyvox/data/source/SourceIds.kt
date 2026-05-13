@@ -49,4 +49,12 @@ object SourceIds {
      *  AO3 content can be Explicit-rated; opt-in from
      *  Settings → Library & Sync. */
     const val AO3: String = "ao3"
+    /** Standard Ebooks (#375) — ~900 hand-curated, typographically
+     *  polished public-domain classics from Project Gutenberg.
+     *  Differentiates over plain PG via editorial polish (cover art,
+     *  consistent typography, proofreading); same legal posture
+     *  (every release dedicated to the public domain under CC0 1.0).
+     *  Tap-to-add downloads the compatible EPUB to local cache and
+     *  reuses the `:source-epub` parser for chapter rendering. */
+    const val STANDARD_EBOOKS: String = "standardebooks"
 }
