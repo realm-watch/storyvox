@@ -9,6 +9,30 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.19] — 2026-05-13
+
+### Added
+- **Three new fiction backends** landed in parallel:
+  - **Archive of Our Own** (#385, closes #381) — fanfiction via per-tag
+    Atom feeds + official EPUB downloads. Zero scraping. Six curated
+    fandoms in v1 (Marvel/HP/SW/Original Work/Sherlock/Good Omens).
+    Defaults OFF (Explicit-rated possibility).
+  - **Standard Ebooks** (#386, closes #375) — curated typographically
+    polished public-domain classics. Catalog via SE's public HTML
+    listing (schema.org RDFa structured data), content via per-work
+    EPUB. Pairs with Gutenberg as the "polished classics" companion.
+  - **Wikipedia** (#387, closes #377) — first non-fiction long-form
+    backend. Each article = one fiction, each top-level section = one
+    chapter. Search via opensearch, Popular = Today's Featured Article
+    + mostread cluster. Per-language host configurable in Settings.
+
+### Changed
+- **Sonic pitch-interpolation quality toggle** (#372, closes #193) —
+  new Settings → Voice & Playback switch *"High-quality pitch
+  interpolation"*, defaults ON. Cross-repo with VoxSherpa-TTS v2.7.13
+  which parameterized `Sonic.setQuality` via static fields on both
+  VoiceEngine and KokoroEngine.
+
 ## [0.5.18] — 2026-05-13
 
 ### Fixed
