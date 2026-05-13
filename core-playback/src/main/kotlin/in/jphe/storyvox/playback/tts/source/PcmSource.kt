@@ -81,6 +81,20 @@ sealed interface PcmSource {
      * preserves the buffered behavior for Piper / Kokoro / cache.
      */
     val isStreaming: Boolean get() = false
+
+    /**
+     * Issue #290 — current count of chunks waiting in the producer-side
+     * queue. Streaming sources back-fill this from their bounded queue;
+     * cache sources have no queue and report 0. Read by the Debug
+     * overlay's Audio section. Default 0 keeps the seam non-breaking
+     * for sources that have no queue concept.
+     */
+    fun producerQueueDepth(): Int = 0
+
+    /** Companion: configured queue capacity (the bound). Streaming
+     *  sources report their `queueCapacity`; cache sources report 0
+     *  (no queue). The overlay renders `depth/capacity`. */
+    fun producerQueueCapacity(): Int = 0
 }
 
 /**

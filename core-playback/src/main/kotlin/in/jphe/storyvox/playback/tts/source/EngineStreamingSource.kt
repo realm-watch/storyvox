@@ -199,6 +199,15 @@ class EngineStreamingSource(
      */
     val bufferHeadroomMs: StateFlow<Long> = _bufferHeadroomMs.asStateFlow()
 
+    /**
+     * Issue #290 — PcmSource interface overrides. Surfaces queue depth +
+     * configured capacity to the Debug overlay's Audio section. O(1)
+     * on LinkedBlockingQueue (delegates to ConcurrentLinkedQueue's
+     * size counter); safe to call from any thread.
+     */
+    override fun producerQueueDepth(): Int = queue.size
+    override fun producerQueueCapacity(): Int = queueCapacity
+
     /** ms of audio represented by [bytes] of PCM at this source's sample rate.
      *  16-bit signed mono → 2 bytes per sample, 1 channel. */
     private fun pcmDurationMs(bytes: Int): Long =
