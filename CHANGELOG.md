@@ -9,6 +9,35 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.18] — 2026-05-13
+
+### Fixed
+- **Gutenberg Browse tap no longer crashes** (#371) —
+  `GutendexApi.{request, downloadEpub}` now wrap their OkHttp
+  `execute()` calls in `withContext(Dispatchers.IO)`. `suspend`
+  alone doesn't move work off the main thread; the previous
+  implementation tripped StrictMode's `NetworkOnMainThreadException`
+  on the first DNS lookup. Pattern now matches `:source-outline` /
+  `:source-rss`.
+- **Pick-a-voice picker** (#369) — surfaces three Piper quality
+  tiers of Lessac (en_US) plus two of Cori (en_GB), not a mixed
+  Cori/Lessac/Aoede grab-bag. Removes Aoede's misleading "1 MB"
+  size (Kokoro `sizeBytes = 0` is correct — shared model — but
+  rounded nonsensically). Strips stale ⭐ from Lessac/Ryan/Amy
+  `displayName` so favorites can own the glyph unambiguously.
+
+### Changed
+- **Voices is now a first-class bottom-nav slot** (#370, closes
+  #264 nav part) — replaces Settings in the bottom bar (last
+  position, `RecordVoiceOver` icon). Settings moves to a gear
+  IconButton in every main screen's top bar (Library, Browse,
+  Follows, Playing, Voices). Voice-picking is a high-frequency
+  activity for an audio-first app, not a set-once preference.
+- First-launch default voice changes from `piper_cori_en_GB_high`
+  (114 MB) to `piper_lessac_en_US_low` (63 MB) — the smallest of
+  the new starter triplet. Users who want richer audio pick
+  Medium or High in the picker before the gate dismisses.
+
 ## [0.5.17] — 2026-05-13
 
 ### Added
