@@ -27,6 +27,11 @@ jobs:
     # actions/cache steps from git history.
     runs-on: [self-hosted, linux, android]
     timeout-minutes: 45
+    permissions:
+      # write required by softprops/action-gh-release on tag builds.
+      # PR / main pushes don't reach that step, but the permission is
+      # declared at job scope to keep `if:` step gating simple.
+      contents: write
     env:
       JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
       ANDROID_HOME: /home/jp/Android/Sdk
@@ -41,43 +46,27 @@ jobs:
       - name: Assemble debug APK
         run: PATH="$JAVA_HOME/bin:$PATH" ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Upload debug APK
-        # Only upload on tag builds — the artifact is consumed by the
-        # release-attach job downstream, which itself only runs on
-        # tag refs. PR / main pushes don't need the upload; gating
-        # here keeps GitHub Actions artifact storage spend bounded
-        # to roughly (releases × APK size) instead of every CI run.
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
-        with:
-          name: storyvox-debug.apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 30
-
-  release:
-    name: Attach APK to release
-    needs: build-debug
-    if: startsWith(github.ref, 'refs/tags/v')
-    # Same self-hosted runner as build-debug — keeps the artifact
-    # download local (no cross-region transfer) and stays in budget.
-    runs-on: [self-hosted, linux, android]
-    permissions:
-      contents: write
-    steps:
-      - name: Download debug APK
-        uses: actions/download-artifact@v4
-        with:
-          name: storyvox-debug.apk
-          path: artifacts
-
       - name: Rename APK with tag
+        # Only runs on tag builds — for PR / main pushes we just
+        # verify the build compiles and stop. The renamed file is
+        # uploaded directly to the GitHub release in the next step
+        # (no actions/upload-artifact hop, see the comment below).
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           TAG: ${{ github.ref_name }}
-        run: |
-          mv artifacts/app-debug.apk "artifacts/storyvox-${TAG}.apk"
+        run: cp app/build/outputs/apk/debug/app-debug.apk "app/build/outputs/apk/debug/storyvox-${TAG}.apk"
 
       - name: Create GitHub release
+        # Used to be a separate `release:` job that pulled the APK
+        # via actions/download-artifact. Collapsed into the build
+        # job 2026-05-12 because the GitHub Actions artifact-storage
+        # quota also hit zero (separate from the minutes cap) — so
+        # upload-artifact + download-artifact would fail. GitHub
+        # *releases* use a different storage quota that isn't capped,
+        # so attaching directly via softprops/action-gh-release stays
+        # within budget. Since both halves now share a self-hosted
+        # runner, the APK is just on disk; no transfer needed.
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
@@ -87,4 +76,4 @@ jobs:
             Debug APK build for `${{ github.ref_name }}`.
 
             > Unsigned debug build. Sideload at your own risk; signed release builds will arrive in a future version.
-          files: artifacts/storyvox-${{ github.ref_name }}.apk
+          files: app/build/outputs/apk/debug/storyvox-${{ github.ref_name }}.apk
