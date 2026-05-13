@@ -102,7 +102,7 @@ object StoryvoxRoutes {
         else "$base?prefill=${Uri.encode(prefill)}"
     }
 
-    private val HOME_ROUTES = setOf(PLAYING, LIBRARY, FOLLOWS, BROWSE, SETTINGS)
+    private val HOME_ROUTES = setOf(PLAYING, LIBRARY, FOLLOWS, BROWSE, VOICE_LIBRARY)
     fun isHome(route: String?) = route in HOME_ROUTES
 
     /** Issue #267 — Reader / Audiobook routes ARE the player surface, just
@@ -183,7 +183,7 @@ private fun StoryvoxNavHostContent(
                         currentRoute == StoryvoxRoutes.PLAYING -> HomeTab.Playing
                         currentRoute == StoryvoxRoutes.FOLLOWS -> HomeTab.Follows
                         currentRoute == StoryvoxRoutes.BROWSE -> HomeTab.Browse
-                        currentRoute == StoryvoxRoutes.SETTINGS -> HomeTab.Settings
+                        currentRoute == StoryvoxRoutes.VOICE_LIBRARY -> HomeTab.Voices
                         // Issue #267 — the Reader / Audiobook drill-downs ARE
                         // the player surface, so light the Playing tab while
                         // we're on them. Without this branch they'd fall
@@ -198,7 +198,7 @@ private fun StoryvoxNavHostContent(
                             HomeTab.Library -> StoryvoxRoutes.LIBRARY
                             HomeTab.Follows -> StoryvoxRoutes.FOLLOWS
                             HomeTab.Browse -> StoryvoxRoutes.BROWSE
-                            HomeTab.Settings -> StoryvoxRoutes.SETTINGS
+                            HomeTab.Voices -> StoryvoxRoutes.VOICE_LIBRARY
                         }
                         if (target != currentRoute) {
                             // Pop everything above the start destination so
@@ -302,6 +302,7 @@ private fun StoryvoxNavHostContent(
                 HybridReaderScreen(
                     onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
                     onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
+                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
                     onOpenChat = { fId, prefill -> navController.navigate(StoryvoxRoutes.chat(fId, prefill)) },
                     // ResumeEmptyPrompt's "Browse the realms" CTA — only
                     // matters when the user has no continue-listening
@@ -329,6 +330,7 @@ private fun StoryvoxNavHostContent(
                 LibraryScreen(
                     onOpenFiction = { id -> navController.navigate(StoryvoxRoutes.fictionDetail(id)) },
                     onOpenReader = { f, c -> navController.navigate(StoryvoxRoutes.reader(f, c)) },
+                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
                 )
             }
             composable(
@@ -341,6 +343,7 @@ private fun StoryvoxNavHostContent(
                 FollowsScreen(
                     onOpenFiction = { id -> navController.navigate(StoryvoxRoutes.fictionDetail(id)) },
                     onOpenSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
+                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
                 )
             }
             composable(
@@ -356,6 +359,7 @@ private fun StoryvoxNavHostContent(
                     // (anonymous-listing CTA) and FictionDetail (Follow
                     // button) and Settings → Royal Road.
                     onOpenRoyalRoadSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
+                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
                 )
             }
 
@@ -390,6 +394,7 @@ private fun StoryvoxNavHostContent(
                 HybridReaderScreen(
                     onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
                     onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
+                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
                     onOpenChat = { fId, prefill -> navController.navigate(StoryvoxRoutes.chat(fId, prefill)) },
                 )
             }
@@ -408,6 +413,7 @@ private fun StoryvoxNavHostContent(
                 HybridReaderScreen(
                     onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
                     onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
+                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
                     onOpenChat = { fId, prefill -> navController.navigate(StoryvoxRoutes.chat(fId, prefill)) },
                 )
             }
@@ -508,13 +514,13 @@ private fun StoryvoxNavHostContent(
             }
             composable(
                 StoryvoxRoutes.VOICE_LIBRARY,
-                enterTransition = pushEnter,
-                exitTransition = pushExit,
-                popEnterTransition = popEnter,
-                popExitTransition = popExit,
+                enterTransition = homeEnter,
+                exitTransition = homeExit,
+                popEnterTransition = homeEnter,
+                popExitTransition = homeExit,
             ) {
                 VoiceLibraryScreen(
-                    onBack = { navController.popBackStack() },
+                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
                 )
             }
             composable(

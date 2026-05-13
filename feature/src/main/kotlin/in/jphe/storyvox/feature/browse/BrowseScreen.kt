@@ -23,16 +23,19 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.FilterAlt
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -70,6 +73,7 @@ import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
 import `in`.jphe.storyvox.ui.component.MagicSpinner
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BrowseScreen(
     onOpenFiction: (String) -> Unit,
@@ -77,6 +81,7 @@ fun BrowseScreen(
      *  on the listing tabs (Popular / NewReleases / BestRated) when the
      *  user is not signed in to RR; Search keeps working anonymously. */
     onOpenRoyalRoadSignIn: () -> Unit,
+    onOpenSettings: () -> Unit = {},
     viewModel: BrowseViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -102,7 +107,19 @@ fun BrowseScreen(
         out
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text("Browse", style = MaterialTheme.typography.titleMedium) },
+                actions = {
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Outlined.Settings, contentDescription = "Settings")
+                    }
+                },
+            )
+        },
+    ) { scaffoldPadding ->
+    Box(modifier = Modifier.fillMaxSize().padding(scaffoldPadding)) {
     Column(modifier = Modifier.fillMaxSize().padding(top = spacing.md)) {
         // Top-level source picker. Switches the multibinding lookup in
         // FictionRepository between Royal Road and GitHub. Tabs and the
@@ -404,6 +421,7 @@ fun BrowseScreen(
         }
     }
     }  // Box
+    }  // Scaffold
 
     if (showRssManageSheet) {
         BrowseRssManageSheet(
