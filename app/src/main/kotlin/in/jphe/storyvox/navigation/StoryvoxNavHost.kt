@@ -303,6 +303,20 @@ private fun StoryvoxNavHostContent(
                     onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
                     onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
                     onOpenChat = { fId, prefill -> navController.navigate(StoryvoxRoutes.chat(fId, prefill)) },
+                    // ResumeEmptyPrompt's "Browse the realms" CTA — only
+                    // matters when the user has no continue-listening
+                    // entry at all (first launch / wiped data). The
+                    // populated ResumePrompt doesn't navigate; tapping
+                    // Resume reloads the chapter in place.
+                    onBrowse = {
+                        navController.navigate(StoryvoxRoutes.BROWSE) {
+                            // Same pop-and-singleTop discipline as the
+                            // bottom-tab handler so the Browse-tab back
+                            // stack doesn't accumulate.
+                            popUpTo(StoryvoxRoutes.PLAYING)
+                            launchSingleTop = true
+                        }
+                    },
                 )
             }
             composable(

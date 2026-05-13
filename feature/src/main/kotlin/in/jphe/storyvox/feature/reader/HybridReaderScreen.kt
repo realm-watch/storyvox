@@ -2,15 +2,12 @@ package `in`.jphe.storyvox.feature.reader
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -40,11 +37,21 @@ fun HybridReaderScreen(
      *  a non-null prefill of the form `Who is X?`. Pass `null` for
      *  prefill from non-lookup entry points. */
     onOpenChat: (fictionId: String, prefill: String?) -> Unit = { _, _ -> },
+    /**
+     * Route the empty-empty Resume prompt's "Browse the realms" CTA to
+     * the Browse tab. Default no-op for previews/tests; production
+     * callsites pass a real `navController.navigate(BROWSE)`. The
+     * populated Resume prompt's two buttons don't need any nav — they
+     * load the chapter into the playback controller, and the state flow
+     * naturally swaps the prompt for the player view in place.
+     */
+    onBrowse: () -> Unit = {},
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val recapState by viewModel.recap.collectAsStateWithLifecycle()
     val recapPlayback by viewModel.recapPlayback.collectAsStateWithLifecycle()
+    val resumeEntry by viewModel.resumeEntry.collectAsStateWithLifecycle()
     val playback = state.playback
 
     // Calliope (v0.5.00) — first-natural-chapter-completion confetti.
@@ -69,11 +76,71 @@ fun HybridReaderScreen(
     val debugVm: DebugViewModel = hiltViewModel()
     val debugEnabled by debugVm.overlayEnabled.collectAsStateWithLifecycle()
 
-    if (playback == null) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No chapter loaded.", style = MaterialTheme.typography.bodyMedium)
+    // Playing-tab "no chapter loaded" path — replace the bare
+    // "No chapter loaded." stub with the magical Resume prompt. Two
+    // sub-cases:
+    //  - we have a most-recent continue-listening entry → ResumePrompt
+    //    (cover + sigil ring + brass-shimmer Resume CTA + "From the
+    //    start"). Tapping Resume loads via the playback controller; the
+    //    state flow flips `playback` non-null and the prompt naturally
+    //    dissolves into the player view — no nav transition.
+    //  - no entry at all (first launch, wiped data) → ResumeEmptyPrompt
+    //    with a "Browse the realms" CTA into the Browse tab.
+    //
+    // We also short-circuit through the same prompt when the loader hit
+    // [LoadingPhase.TimedOut] AND we have a resume entry — same user
+    // outcome (give them a clean way back into their book) without the
+    // generic error-block surface. The retry path inside AudiobookView
+    // still fires for the case where there's no resume entry to fall
+    // back on.
+    val timedOut = state.loadingPhase == LoadingPhase.TimedOut
+    // Show the Resume prompt whenever we don't have a real chapter to
+    // render — three cases:
+    //  (a) playback is null (cold-start, app-killed)
+    //  (b) playback exists but its fictionId/chapterId are still null
+    //      (controller initialized but no chapter queued yet)
+    //  (c) the loading timer hit TimedOut AND we have a resume entry to
+    //      fall back on (otherwise AudiobookView's friendlier
+    //      Retry/Pick-voice error block handles the dead-end case).
+    //
+    // We compute the cases below in two steps so Kotlin's smart-cast
+    // on `playback != null` stays usable for the rest of the screen.
+    val showPromptForNullPlayback = playback == null
+    val showPromptForBlankIds = playback != null &&
+        playback.fictionId == null &&
+        playback.chapterId == null
+    val showPromptForTimedOutWithEntry =
+        playback != null && timedOut && resumeEntry != null
+    if (showPromptForNullPlayback || showPromptForBlankIds ||
+        showPromptForTimedOutWithEntry
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            val entry = resumeEntry
+            if (entry != null) {
+                ResumePrompt(
+                    entry = entry,
+                    onResume = { viewModel.resume(fromStart = false) },
+                    onFromStart = { viewModel.resume(fromStart = true) },
+                )
+            } else {
+                ResumeEmptyPrompt(onBrowse = onBrowse)
+            }
+            // Debug overlay still mounts on top so the inspector can see
+            // the loading-phase state machine even before a chapter is
+            // loaded. Same gating as below.
+            if (debugEnabled) {
+                DebugOverlay(viewModel = debugVm)
+            }
         }
         return
+    }
+    // Past here, `playback` is guaranteed non-null — the compound
+    // predicate above covered the null case. The local `playback` val
+    // doesn't smart-cast through that, so explicitly bind a non-null
+    // alias here. `playbackState` for clarity at call sites (the
+    // existing AudiobookView arg is called `state`).
+    val playbackState = requireNotNull(playback) {
+        "playback should be non-null past the resume-prompt branch"
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -82,7 +149,7 @@ fun HybridReaderScreen(
         onViewChange = viewModel::setActivePane,
         audiobookContent = {
             AudiobookView(
-                state = playback,
+                state = playbackState,
                 onPlayPause = viewModel::playPause,
                 onSeekTo = viewModel::seekTo,
                 onSkipForward = viewModel::skipForward,
@@ -100,7 +167,7 @@ fun HybridReaderScreen(
                 onCancelSleepTimer = viewModel::cancelSleepTimer,
                 onRequestRecap = viewModel::requestRecap,
                 onOpenChat = {
-                    playback.fictionId?.let { onOpenChat(it, null) }
+                    playbackState.fictionId?.let { onOpenChat(it, null) }
                 },
                 // Issue #278 — surface loading-phase + retry path. The
                 // view decides what to render based on phase (regular /
@@ -116,7 +183,7 @@ fun HybridReaderScreen(
         },
         readerContent = {
             ReaderTextView(
-                state = playback,
+                state = playbackState,
                 chapterText = state.chapterText,
                 onPlayPause = viewModel::playPause,
                 onSeekToChar = viewModel::seekToChar,
@@ -125,7 +192,7 @@ fun HybridReaderScreen(
                     // prebuilt "Who is X?" question as a chat prefill.
                     // The chat surface auto-fills the input — the user
                     // can edit before sending or send as-is.
-                    playback.fictionId?.let { onOpenChat(it, question) }
+                    playbackState.fictionId?.let { onOpenChat(it, question) }
                 },
             )
         },
