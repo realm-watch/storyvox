@@ -189,7 +189,7 @@ fun FictionDetailScreen(
                     modifier = Modifier.weight(0.58f).fillMaxSize(),
                     contentPadding = PaddingValues(top = spacing.md, bottom = 96.dp),
                 ) {
-                    items(state.chapters) { ch ->
+                    items(state.chapters, key = { it.id }) { ch ->
                         ChapterCard(
                             state = ch.toCardState(currentId = null),
                             onClick = { viewModel.listen(ch.id) },
@@ -232,7 +232,7 @@ fun FictionDetailScreen(
                 }
                 item { Hero(fiction) }
                 item { Synopsis(fiction.synopsis) }
-                items(state.chapters) { ch ->
+                items(state.chapters, key = { it.id }) { ch ->
                     ChapterCard(
                         state = ch.toCardState(currentId = null),
                         onClick = { viewModel.listen(ch.id) },
