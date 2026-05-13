@@ -199,7 +199,12 @@ fun BrowseScreen(
                 BrowseSourceKey.Rss,
                 BrowseSourceKey.Epub,
                 BrowseSourceKey.Outline,
-                BrowseSourceKey.Gutenberg -> false
+                BrowseSourceKey.Gutenberg,
+                // AO3 (#381) — no filter sheet in v1; the fandom row
+                // belongs to the source's genre picker. Falls into
+                // the non-filterable branch like the other catalog-
+                // driven sources.
+                BrowseSourceKey.Ao3 -> false
             }
             if (filterableSource) {
                 FilterButton(
@@ -215,7 +220,8 @@ fun BrowseScreen(
                         BrowseSourceKey.Rss,
                         BrowseSourceKey.Epub,
                         BrowseSourceKey.Outline,
-                        BrowseSourceKey.Gutenberg -> 0
+                        BrowseSourceKey.Gutenberg,
+                        BrowseSourceKey.Ao3 -> 0
                     },
                     onClick = { showFilterSheet = true },
                 )
@@ -480,6 +486,9 @@ fun BrowseScreen(
             // #237 — Gutenberg has no filter sheet; topic-search via
             // the Search tab covers the discovery cases.
             BrowseSourceKey.Gutenberg -> { showFilterSheet = false }
+            // #381 — AO3 has no filter sheet; the curated fandom
+            // list rides on the genre row.
+            BrowseSourceKey.Ao3 -> { showFilterSheet = false }
         }
     }
 }
@@ -563,6 +572,11 @@ private fun searchHintForSource(sourceKey: BrowseSourceKey): String = when (sour
     BrowseSourceKey.Epub -> "Search your local EPUB library"
     BrowseSourceKey.Outline -> "Search your Outline notes"
     BrowseSourceKey.Gutenberg -> "Search Project Gutenberg's 70,000+ public-domain books"
+    // #381 — AO3 has no Search tab in v1 (the AO3 search endpoint is
+    // HTML-only and we don't scrape). This hint is unreachable
+    // unless a future iteration re-adds the tab, but Kotlin still
+    // wants exhaustive coverage. Keep the copy ready for that day.
+    BrowseSourceKey.Ao3 -> "Search AO3 by tag, fandom, or character"
 }
 
 private val BrowseTab.label: String

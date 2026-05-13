@@ -249,6 +249,7 @@ private object Keys {
     /** Issue #237 — Project Gutenberg backend on/off. Default true
      *  for fresh installs; an explicit prefs entry overrides. */
     val SOURCE_GUTENBERG_ENABLED = booleanPreferencesKey("pref_source_gutenberg_enabled")
+    val SOURCE_AO3_ENABLED = booleanPreferencesKey("pref_source_ao3_enabled")
 
     // ── Sleep timer shake-to-extend (issue #150) ───────────────────
     val SLEEP_SHAKE_TO_EXTEND_ENABLED = booleanPreferencesKey("pref_sleep_shake_to_extend_enabled")
@@ -455,6 +456,9 @@ class SettingsRepositoryUiImpl(
             sourceEpubEnabled = prefs[Keys.SOURCE_EPUB_ENABLED] ?: false,
             sourceOutlineEnabled = prefs[Keys.SOURCE_OUTLINE_ENABLED] ?: false,
             sourceGutenbergEnabled = prefs[Keys.SOURCE_GUTENBERG_ENABLED] ?: true,
+            // #381 — AO3 defaults OFF on fresh installs (Explicit-
+            // content gate; opt-in from Settings → Library & Sync).
+            sourceAo3Enabled = prefs[Keys.SOURCE_AO3_ENABLED] ?: false,
             sleepShakeToExtendEnabled = prefs[Keys.SLEEP_SHAKE_TO_EXTEND_ENABLED] ?: true,
             showDebugOverlay = prefs[Keys.SHOW_DEBUG_OVERLAY] ?: false,
             azure = run {
@@ -999,6 +1003,9 @@ class SettingsRepositoryUiImpl(
     }
     override suspend fun setSourceGutenbergEnabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_GUTENBERG_ENABLED] = enabled }
+    }
+    override suspend fun setSourceAo3Enabled(enabled: Boolean) {
+        store.edit { it[Keys.SOURCE_AO3_ENABLED] = enabled }
     }
     override val outlineHost: kotlinx.coroutines.flow.Flow<String> =
         outlineConfig.state.map { it.host }

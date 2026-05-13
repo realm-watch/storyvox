@@ -41,4 +41,12 @@ object SourceIds {
      *  storyvox source roster — PG actively encourages programmatic
      *  access (see their robot policy). */
     const val GUTENBERG: String = "gutenberg"
+    /** Archive of Our Own (#381) — 14M+ fanfiction works via AO3's
+     *  per-tag Atom feeds (catalog) + per-work EPUB downloads
+     *  (content). Same architecture as [GUTENBERG] — discovery via a
+     *  documented non-HTML surface, content via the official EPUB
+     *  endpoint, no scraping. Default OFF on fresh installs because
+     *  AO3 content can be Explicit-rated; opt-in from
+     *  Settings → Library & Sync. */
+    const val AO3: String = "ao3"
 }

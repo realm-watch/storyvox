@@ -157,6 +157,7 @@ dependencies {
     implementation(project(":source-epub-writer"))
     implementation(project(":source-outline"))
     implementation(project(":source-gutenberg"))
+    implementation(project(":source-ao3"))
     implementation(project(":source-azure"))
     implementation(project(":core-sync"))
     implementation(project(":feature"))
