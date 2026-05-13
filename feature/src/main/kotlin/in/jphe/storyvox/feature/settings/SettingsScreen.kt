@@ -513,6 +513,11 @@ fun SettingsScreen(
                 subtitle = "Fanfiction via per-tag feeds and official EPUB downloads. May include Explicit-rated works.",
                 checked = s.sourceAo3Enabled,
                 onCheckedChange = viewModel::setSourceAo3Enabled,
+            SettingsSwitchRow(
+                title = "Standard Ebooks",
+                subtitle = "Curated, typographically polished public-domain classics. Tap one to import its EPUB.",
+                checked = s.sourceStandardEbooksEnabled,
+                onCheckedChange = viewModel::setSourceStandardEbooksEnabled,
             )
         }
 

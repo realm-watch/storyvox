@@ -1,0 +1,43 @@
+plugins {
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
+}
+
+android {
+    namespace = "in.jphe.storyvox.source.standardebooks"
+    compileSdk = 35
+
+    defaultConfig {
+        minSdk = 26
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
+
+dependencies {
+    implementation(project(":core-data"))
+    // Issue #375 — Standard Ebooks titles render their chapters from the
+    // downloaded EPUB. Reuse the parser already on `:source-epub` (added
+    // for #235 and reused for #237/Gutenberg) instead of re-implementing
+    // spine + manifest walking. Same pattern as `:source-gutenberg`.
+    implementation(project(":source-epub"))
+
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
+
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+}

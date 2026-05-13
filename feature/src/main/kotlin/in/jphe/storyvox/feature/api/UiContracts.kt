@@ -765,6 +765,12 @@ data class UiSettings(
      *  `:source-epub`); discovery is via per-tag Atom feeds rather
      *  than a unified JSON catalog. */
     val sourceAo3Enabled: Boolean = false,
+    /** Standard Ebooks backend (#375). Default OFF for fresh installs
+     *  — opt-in surface, mirroring Outline/Epub/Gutenberg defaults
+     *  policy for the curated picker. Same legal posture as Gutenberg
+     *  (CC0 throughout), so users who want polished classics can flip
+     *  this on in Settings → Library & Sync alongside Gutenberg. */
+    val sourceStandardEbooksEnabled: Boolean = false,
     /** Issue #150 — when ON, a shake during the sleep timer's fade
      *  tail re-arms the timer. Default ON; users with bumpy commutes
      *  can disable to avoid accidental extensions. */
@@ -1153,6 +1159,8 @@ interface SettingsRepositoryUi {
 
     /** Issue #381 — Archive of Our Own backend on/off. */
     suspend fun setSourceAo3Enabled(enabled: Boolean)
+    /** Issue #375 — Standard Ebooks backend on/off. */
+    suspend fun setSourceStandardEbooksEnabled(enabled: Boolean)
 
     /** Issue #236 — manage subscribed feed URLs. */
     suspend fun addRssFeed(url: String)

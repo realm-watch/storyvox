@@ -72,6 +72,12 @@ enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
      *  fundamentally per-tag rather than per-catalog, so the
      *  genre picker drives a curated fandom list. */
     Ao3(SourceIds.AO3, "AO3"),
+    /** Standard Ebooks (#375) — ~900 hand-curated, typographically
+     *  polished public-domain classics. Browse hits the public HTML
+     *  catalog at `/ebooks?view=list`; tap-to-add downloads the
+     *  recommended-compatible EPUB once and renders chapters through
+     *  the `:source-epub` parser. Same CC0 legal posture as Gutenberg. */
+    StandardEbooks(SourceIds.STANDARD_EBOOKS, "Standard Ebooks"),
 }
 
 /** Tabs that are meaningful for [source]. GitHub registry doesn't
@@ -151,6 +157,16 @@ fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseT
     BrowseSourceKey.Ao3 -> listOf(
         BrowseTab.Popular,
         BrowseTab.NewReleases,
+    // Standard Ebooks (#375): Popular sorts by SE's "popularity"
+    // (most → least); NewReleases sorts by SE's "default" (release
+    // date desc — i.e. newest produced first). Search hits the same
+    // listing endpoint with `?query=`. BestRated has no analogue
+    // (SE doesn't rank by reading-quality). Same tab shape as
+    // Gutenberg — both are catalog-plus-EPUB-download backends.
+    BrowseSourceKey.StandardEbooks -> listOf(
+        BrowseTab.Popular,
+        BrowseTab.NewReleases,
+        BrowseTab.Search,
     )
 }
 
@@ -357,6 +373,7 @@ class BrowseViewModel @Inject constructor(
                     if (s.sourceOutlineEnabled) add(BrowseSourceKey.Outline)
                     if (s.sourceGutenbergEnabled) add(BrowseSourceKey.Gutenberg)
                     if (s.sourceAo3Enabled) add(BrowseSourceKey.Ao3)
+                    if (s.sourceStandardEbooksEnabled) add(BrowseSourceKey.StandardEbooks)
                 }
             }
             .distinctUntilChanged()
@@ -601,6 +618,12 @@ class BrowseViewModel @Inject constructor(
                 // overlay). Clear sibling filters so a future
                 // switch back to RR/GH doesn't pick up leftover
                 // state.
+            BrowseSourceKey.StandardEbooks -> {
+                // SE has no per-source filter in v1 — same shape as PG:
+                // tab-driven Popular/NewReleases + free-form Search.
+                // (Subject-by-genre exists upstream and could land later
+                // as a filter sheet; v1 keeps the surface symmetrical
+                // with Gutenberg.)
                 _filter.value = BrowseFilter()
                 _githubFilter.value = GitHubSearchFilter()
                 _palaceFilter.value = MemPalaceFilter()
@@ -795,6 +818,14 @@ private fun resolveSource(
     BrowseSourceKey.Ao3 -> when (tab) {
         BrowseTab.Popular -> BrowseSource.Popular
         BrowseTab.NewReleases -> BrowseSource.NewReleases
+    // Standard Ebooks (#375): Popular hits SE `?sort=popularity`;
+    // NewReleases hits `?sort=default` (release date desc); Search
+    // hits `?query=<term>`. No filter surface in v1 — same shape as
+    // Gutenberg, which the SE source structurally mirrors.
+    BrowseSourceKey.StandardEbooks -> when (tab) {
+        BrowseTab.Popular -> BrowseSource.Popular
+        BrowseTab.NewReleases -> BrowseSource.NewReleases
+        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
         else -> null
     }
 }
