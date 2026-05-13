@@ -441,6 +441,26 @@ interface PlaybackControllerUi {
 
     /** Issue #189 — cancel an in-flight recap-aloud utterance. Idempotent. */
     fun stopSpeaking()
+
+    /**
+     * Issue #121 — bookmark the current playback position. No-op when
+     * no chapter is loaded; otherwise persists the current char offset
+     * as that chapter's single bookmark, replacing any previous bookmark.
+     */
+    fun bookmarkHere()
+
+    /** Issue #121 — clear the currently-loaded chapter's bookmark. No-op
+     *  when nothing's loaded or no bookmark exists. */
+    fun clearBookmark()
+
+    /**
+     * Issue #121 — seek to the currently-loaded chapter's bookmark
+     * position, if any. Backed by a callback rather than a Flow because
+     * "is there a bookmark?" is a one-shot question the menu asks when
+     * it opens; observing every change would force the player options
+     * sheet to re-collect on every chapter change.
+     */
+    fun jumpToBookmark()
 }
 
 data class UiVoice(

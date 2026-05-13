@@ -167,6 +167,19 @@ class ChapterRepositoryImplTest {
             )
         }
 
+        // Issue #121 — bookmark read/write. Reflect the underlying rows
+        // so getBookmark stays consistent after setBookmark; matches the
+        // SQL update + select pair on the real DAO.
+        override suspend fun setBookmark(id: String, charOffset: Int?) {
+            callLog += "setBookmark($id, $charOffset)"
+            val r = rows[id] ?: return
+            rows[id] = r.copy(bookmarkCharOffset = charOffset)
+            publishRow(id)
+        }
+
+        override suspend fun getBookmark(id: String): Int? =
+            rows[id]?.bookmarkCharOffset
+
         // Issue #349 — fake the index parking so the FakeChapterDao
         // models the real two-phase upsert path. Live-range rows
         // (0..99_999) shift to +100_000; already-parked rows stay.

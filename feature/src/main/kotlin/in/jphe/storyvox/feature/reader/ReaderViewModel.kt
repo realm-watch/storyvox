@@ -291,6 +291,13 @@ class ReaderViewModel @Inject constructor(
     fun startSleepTimer(mode: UiSleepTimerMode) = playback.startSleepTimer(mode)
     fun cancelSleepTimer() = playback.cancelSleepTimer()
 
+    // Issue #121 — in-chapter bookmark fan-out. ReaderViewModel stays
+    // the single seam ChapterView talks to; controller delegate handles
+    // the suspend-vs-fire-and-forget seam internally.
+    fun bookmarkHere() = playback.bookmarkHere()
+    fun clearBookmark() = playback.clearBookmark()
+    fun jumpToBookmark() = playback.jumpToBookmark()
+
     // ── Chapter Recap (issue #81) ──────────────────────────────────
 
     /** Open the modal and stream a recap for the current chapter.

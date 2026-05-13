@@ -107,6 +107,11 @@ fun HybridReaderScreen(
                 // slow-hint at 10s / full error block at 30s).
                 loadingPhase = state.loadingPhase,
                 onRetryLoading = viewModel::retryLoading,
+                // Issue #121 — bookmark drop / jump. The controller side
+                // resolves "current chapter" + char-offset from the
+                // playback state, so the UI just forwards the verbs.
+                onBookmarkHere = viewModel::bookmarkHere,
+                onJumpToBookmark = viewModel::jumpToBookmark,
             )
         },
         readerContent = {

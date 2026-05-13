@@ -267,6 +267,10 @@ class FictionRepositoryImplTest {
         override suspend fun parkChapterIndexesFor(fictionId: String) {
             callLog += "parkChapterIndexesFor($fictionId)"
         }
+        // Issue #121 — bookmark stubs; fiction repo tests don't drive
+        // the bookmark path, so a no-op + null read are sufficient.
+        override suspend fun setBookmark(id: String, charOffset: Int?) = Unit
+        override suspend fun getBookmark(id: String): Int? = null
         override suspend fun setDownloadState(
             id: String,
             state: ChapterDownloadState,

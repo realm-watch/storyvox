@@ -33,6 +33,8 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Bedtime
+import androidx.compose.material.icons.outlined.Bookmark
+import androidx.compose.material.icons.outlined.BookmarkAdd
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.RecordVoiceOver
@@ -123,6 +125,12 @@ fun AudiobookView(
      *  error block. Goes to the voice library; the controller will pick
      *  the new voice up next time play() is invoked. */
     onCancelLoading: () -> Unit = {},
+    /** Issue #121 — drop a bookmark at the current playhead in the active
+     *  chapter. One bookmark per chapter; setting again overwrites. */
+    onBookmarkHere: () -> Unit = {},
+    /** Issue #121 — seek to the active chapter's bookmark, if any. No-op
+     *  when the chapter has none. */
+    onJumpToBookmark: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val spacing = LocalSpacing.current
@@ -427,6 +435,16 @@ fun AudiobookView(
                         showSheet = false
                         onOpenChat()
                     },
+                    onBookmarkHere = {
+                        coroutineScope.launch { sheetState.hide() }
+                        showSheet = false
+                        onBookmarkHere()
+                    },
+                    onJumpToBookmark = {
+                        coroutineScope.launch { sheetState.hide() }
+                        showSheet = false
+                        onJumpToBookmark()
+                    },
                 )
             }
         }
@@ -509,6 +527,10 @@ private fun PlayerOptionsSheet(
     onNextSentence: () -> Unit = {},
     onRequestRecap: () -> Unit = {},
     onOpenChat: () -> Unit = {},
+    /** Issue #121 — bookmark the current playback position. */
+    onBookmarkHere: () -> Unit = {},
+    /** Issue #121 — seek to the chapter's bookmark, if any. */
+    onJumpToBookmark: () -> Unit = {},
 ) {
     val spacing = LocalSpacing.current
     Column(
@@ -599,6 +621,56 @@ private fun PlayerOptionsSheet(
             onStart = onStartSleepTimer,
             onCancel = onCancelSleepTimer,
         )
+
+        // Issue #121 — in-chapter bookmark. Two rows: "Bookmark here"
+        // drops a marker at the current playback position; "Jump to
+        // bookmark" seeks to it. Both fire-and-forget; the controller
+        // no-ops gracefully when nothing is loaded / no bookmark exists.
+        SheetHeader("Bookmark", null)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onBookmarkHere)
+                .padding(vertical = spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Icon(
+                Icons.Outlined.BookmarkAdd,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Bookmark here", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "Drop a marker at the current position",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onJumpToBookmark)
+                .padding(vertical = spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Icon(
+                Icons.Outlined.Bookmark,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Jump to bookmark", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "Resume from the marker you set",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
 
         SheetHeader("Voice", null)
         // Issue #284 + #277 — the whole row must be clickable, not just

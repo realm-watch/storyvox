@@ -198,6 +198,9 @@ class RealPlaybackControllerUiTest {
         override suspend fun speakText(text: String) = Unit
         override fun stopSpeaking() = Unit
         override fun bufferTelemetry() = `in`.jphe.storyvox.playback.BufferTelemetry()
+        override suspend fun bookmarkHere() = Unit
+        override suspend fun clearBookmark() = Unit
+        override suspend fun jumpToBookmark(): Boolean = false
     }
 
     /**
@@ -322,5 +325,7 @@ class RealPlaybackControllerUiTest {
         override suspend fun getPreviousChapterId(currentChapterId: String): String? = null
         override suspend fun cachedBodyUsage() =
             `in`.jphe.storyvox.data.repository.CachedBodyUsage(count = 0, bytesEstimate = 0L)
+        override suspend fun setChapterBookmark(chapterId: String, charOffset: Int?) = Unit
+        override suspend fun chapterBookmark(chapterId: String): Int? = null
     }
 }

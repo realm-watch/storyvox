@@ -46,6 +46,16 @@ data class Chapter(
     val notesAuthorPosition: NotePosition? = null,
     val userMarkedRead: Boolean = false,
     val firstReadAt: Long? = null,
+    /**
+     * Issue #121 — in-chapter bookmark position.
+     *
+     * One bookmark per chapter (per the planning-session decision). Null
+     * = no bookmark. Otherwise the char offset into [plainBody] where
+     * the user said "remember this." Persisted independently of
+     * [PlaybackPosition] so a bookmark survives the user listening past
+     * it — the playhead moves forward, the bookmark stays put.
+     */
+    val bookmarkCharOffset: Int? = null,
 )
 
 enum class ChapterDownloadState {
