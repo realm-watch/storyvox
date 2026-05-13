@@ -40,6 +40,20 @@ interface ChapterDao {
     @Query("SELECT * FROM chapter WHERE id = :id")
     suspend fun get(id: String): Chapter?
 
+    /**
+     * Issue #117 — full row dump including htmlBody/plainBody/notes, used
+     * by the EPUB export use case to assemble a complete book file in one
+     * pass. Distinct from [observeChapterInfosByFiction] (which projects
+     * only the slim columns for the TOC) and from [get] (single row).
+     *
+     * Called from a coroutine on Dispatchers.IO; the full result fits in
+     * memory because the *active* fiction is what's being exported and
+     * the largest cases we've seen (~5000 chapters × ~10KB plainBody)
+     * land around 50 MB — within budget on every device we target.
+     */
+    @Query("SELECT * FROM chapter WHERE fictionId = :fictionId ORDER BY `index` ASC")
+    suspend fun allChapters(fictionId: String): List<Chapter>
+
     @Query("SELECT id, downloadState FROM chapter WHERE fictionId = :fictionId")
     fun observeDownloadStates(fictionId: String): Flow<List<ChapterDownloadStateRow>>
 

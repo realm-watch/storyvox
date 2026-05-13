@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Issue #117 — paths exposed through the FileProvider declared in
+    AndroidManifest.xml. Only the EPUB export directory is granted; we
+    do not want to leak the rest of cacheDir to share-sheet recipients.
+
+    `cache-path` resolves to `context.cacheDir` so `name="exports"
+    path="exports/"` maps content URIs to the exports/ subdirectory
+    we create from ExportFictionToEpubUseCase.
+-->
+<paths>
+    <cache-path name="exports" path="exports/" />
+</paths>

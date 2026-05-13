@@ -73,6 +73,13 @@ class ChapterRepositoryImplTest {
             callLog += "get($id)"; return rows[id]
         }
 
+        // Issue #117 — EPUB export reads every chapter row (with bodies) for
+        // a fiction in one shot. The fake mirrors that by returning whatever
+        // is currently in [rows] for the fictionId, sorted by index — the
+        // production query does the same ordering at the SQL layer.
+        override suspend fun allChapters(fictionId: String): List<Chapter> =
+            rows.values.filter { it.fictionId == fictionId }.sortedBy { it.index }
+
         override fun observeDownloadStates(fictionId: String): Flow<List<ChapterDownloadStateRow>> =
             stateFeeds.getOrPut(fictionId) { MutableStateFlow(stateRows(fictionId)) }
 
