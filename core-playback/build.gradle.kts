@@ -75,7 +75,13 @@ dependencies {
     // single-module path `com.github.jphein:VoxSherpa-TTS:vX.Y.Z` (it
     // collapses multi-module configs to one root coordinate). The actual
     // AAR file at this URL is engine-lib's release artifact.
-    implementation("com.github.jphein:VoxSherpa-TTS:v2.7.11")
+    // v2.7.13 (storyvox #193) parameterizes Sonic.setQuality via
+    // VoiceEngine.sonicQuality / KokoroEngine.sonicQuality static
+    // fields (default 1 — high quality). Storyvox exposes a
+    // Settings toggle that writes both fields via
+    // [VoiceEngineQualityBridge]. Pre-rendered PCM (post-#97) means
+    // the ~20% CPU hit lands once per chapter, not per playback.
+    implementation("com.github.jphein:VoxSherpa-TTS:v2.7.13")
     implementation("com.github.k2-fsa:sherpa-onnx:1.12.26")
 
     // Media3 — session, player base classes

@@ -107,6 +107,10 @@ class SettingsViewModel @Inject constructor(
      *  range; the slider in the screen passes a raw Float. */
     fun setPunctuationPauseMultiplier(multiplier: Float) =
         viewModelScope.launch { repo.setPunctuationPauseMultiplier(multiplier) }
+
+    /** Issue #193 — high-quality Sonic pitch interpolation toggle. */
+    fun setPitchInterpolationHighQuality(enabled: Boolean) =
+        viewModelScope.launch { repo.setPitchInterpolationHighQuality(enabled) }
     fun setPlaybackBufferChunks(n: Int) = viewModelScope.launch { repo.setPlaybackBufferChunks(n) }
     /** Issue #98 — Mode A toggle. */
     fun setWarmupWait(enabled: Boolean) = viewModelScope.launch { repo.setWarmupWait(enabled) }

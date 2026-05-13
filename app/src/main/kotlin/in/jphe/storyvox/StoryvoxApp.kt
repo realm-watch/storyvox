@@ -9,11 +9,14 @@ import `in`.jphe.storyvox.BuildConfig
 import `in`.jphe.storyvox.data.auth.SessionHydrator
 import `in`.jphe.storyvox.data.repository.AuthRepository
 import `in`.jphe.storyvox.data.work.WorkScheduler
+import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
+import `in`.jphe.storyvox.playback.VoiceEngineQualityBridge
 import `in`.jphe.storyvox.sync.coordinator.SyncCoordinator
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @HiltAndroidApp
@@ -24,6 +27,7 @@ class StoryvoxApp : Application(), Configuration.Provider {
     @Inject lateinit var authRepository: AuthRepository
     @Inject lateinit var sessionHydrator: SessionHydrator
     @Inject lateinit var syncCoordinator: SyncCoordinator
+    @Inject lateinit var settingsRepo: SettingsRepositoryUi
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -35,10 +39,25 @@ class StoryvoxApp : Application(), Configuration.Provider {
         super.onCreate()
         workScheduler.ensurePeriodicWorkScheduled()
         rehydrateRoyalRoadCookies()
+        applyPitchQualityFromSettings()
         // InstantDB sync — if a refresh token is stored, validate it and
         // pull every per-domain syncer. No-op when no one is signed in.
         // Fire-and-forget: the coordinator launches its own coroutines.
         syncCoordinator.initialize()
+    }
+
+    /**
+     * Issue #193 — seed the VoxSherpa engine static `sonicQuality`
+     * fields from the user's persisted Settings toggle. The field
+     * default in VoxSherpa-TTS v2.7.13 is 1 (high quality), but a
+     * user who flipped to OFF in a prior session needs that pref
+     * re-applied on cold start, before the first chapter renders.
+     */
+    private fun applyPitchQualityFromSettings() {
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            val highQuality = settingsRepo.settings.first().pitchInterpolationHighQuality
+            VoiceEngineQualityBridge.applyPitchQuality(highQuality)
+        }
     }
 
     /**

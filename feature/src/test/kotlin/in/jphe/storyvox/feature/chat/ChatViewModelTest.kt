@@ -525,6 +525,7 @@ private class FakeSettingsRepo(
     override suspend fun setDownloadOnWifiOnly(enabled: Boolean) = Unit
     override suspend fun setPollIntervalHours(hours: Int) = Unit
     override suspend fun setPunctuationPauseMultiplier(multiplier: Float) = Unit
+        override suspend fun setPitchInterpolationHighQuality(enabled: Boolean) = Unit
     override suspend fun setPlaybackBufferChunks(chunks: Int) = Unit
     override suspend fun setWarmupWait(enabled: Boolean) = Unit
     override suspend fun setCatchupPause(enabled: Boolean) = Unit

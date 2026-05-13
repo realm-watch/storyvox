@@ -179,6 +179,10 @@ private object Keys {
      *  maps existing installs forward. Default = 1× preserves the
      *  audiobook-tuned baseline on fresh installs. */
     val PUNCTUATION_PAUSE_MULTIPLIER = floatPreferencesKey("pref_punctuation_pause_multiplier_v2")
+    /** Issue #193 — Sonic pitch-interpolation quality toggle. true = quality=1,
+     *  false = quality=0 (Sonic's upstream default). Defaults to true on
+     *  fresh installs. */
+    val PITCH_INTERP_HIGH_QUALITY = booleanPreferencesKey("pref_pitch_interp_high_quality")
     /** Pre-synth queue depth (sentence-chunks). Issue #84 — the slider is an
      *  exploratory probe for where Android's LMK kills the app on slow
      *  devices, so the persisted value is intentionally NOT clamped at a
@@ -419,6 +423,7 @@ class SettingsRepositoryUiImpl(
             downloadOnWifiOnly = prefs[Keys.DOWNLOAD_WIFI_ONLY] ?: true,
             pollIntervalHours = prefs[Keys.POLL_INTERVAL_HOURS] ?: 6,
             isSignedIn = prefs[Keys.SIGNED_IN] ?: false,
+            pitchInterpolationHighQuality = prefs[Keys.PITCH_INTERP_HIGH_QUALITY] ?: true,
             punctuationPauseMultiplier = (prefs[Keys.PUNCTUATION_PAUSE_MULTIPLIER]
                 ?: PUNCTUATION_PAUSE_DEFAULT_MULTIPLIER)
                 .coerceIn(PUNCTUATION_PAUSE_MIN_MULTIPLIER, PUNCTUATION_PAUSE_MAX_MULTIPLIER),
@@ -601,6 +606,16 @@ class SettingsRepositoryUiImpl(
             it[Keys.PUNCTUATION_PAUSE_MULTIPLIER] = multiplier
                 .coerceIn(PUNCTUATION_PAUSE_MIN_MULTIPLIER, PUNCTUATION_PAUSE_MAX_MULTIPLIER)
         }
+    }
+
+    override suspend fun setPitchInterpolationHighQuality(enabled: Boolean) {
+        store.edit { it[Keys.PITCH_INTERP_HIGH_QUALITY] = enabled }
+        // Push to both engine fields immediately so the next
+        // chapter pre-render uses the new setting without waiting
+        // for a process restart. Sonic instances are created fresh
+        // inside each generateAudioPCM call, so the volatile read
+        // there picks up the new value.
+        `in`.jphe.storyvox.playback.VoiceEngineQualityBridge.applyPitchQuality(enabled)
     }
 
     override suspend fun setPlaybackBufferChunks(chunks: Int) {

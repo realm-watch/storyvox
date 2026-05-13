@@ -141,6 +141,7 @@ class SettingsViewModelPunctuationPauseTest {
             punctuationPauseMultiplierWrites += multiplier
             state.value = state.value.copy(punctuationPauseMultiplier = multiplier)
         }
+        override suspend fun setPitchInterpolationHighQuality(enabled: Boolean) = Unit
         override suspend fun setPlaybackBufferChunks(chunks: Int) {
             state.value = state.value.copy(playbackBufferChunks = chunks)
         }
