@@ -1,9 +1,15 @@
 package `in`.jphe.storyvox.source.azure
 
+import android.os.SystemClock
 import `in`.jphe.storyvox.data.source.AzureVoiceDescriptor
 import `in`.jphe.storyvox.source.azure.di.AzureHttp
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onStart
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -86,6 +92,31 @@ open class AzureSpeechClient @Inject constructor(
     @AzureHttp private val http: OkHttpClient,
     private val credentials: AzureCredentials,
 ) {
+
+    /**
+     * Issue #291 — wall-clock round-trip latency for the most recent
+     * synthesize() (buffered or streaming). null until the first call
+     * returns. Resets on every call entry — observers see the
+     * `pendingRequests > 0` flag alongside to distinguish "in flight"
+     * from "this is the value for the call that just completed".
+     *
+     * Read by RealDebugRepositoryUi for the Debug overlay's Azure
+     * latency row. Off the hot path; updating a StateFlow is a single
+     * volatile write.
+     */
+    private val _lastSynthLatencyMs = MutableStateFlow<Long?>(null)
+    open val lastSynthLatencyMs: StateFlow<Long?> = _lastSynthLatencyMs.asStateFlow()
+
+    /**
+     * Issue #291 — count of in-flight synthesize() calls. Buffered
+     * synthesize() is normally single-flight per chapter; the
+     * streaming variant can briefly overlap with a follow-up sentence
+     * while the audio pipeline drains the previous one. Useful for
+     * spotting "Azure is stuck and we keep firing new requests".
+     */
+    private val _pendingRequests = MutableStateFlow(0)
+    open val pendingRequests: StateFlow<Int> = _pendingRequests.asStateFlow()
+
     /** Open for tests — MockWebServer overrides this to point at a
      *  local URL. Production callers leave it at the default. */
     protected open fun endpointUrlFor(regionId: String): String =
@@ -160,8 +191,22 @@ open class AzureSpeechClient @Inject constructor(
      * @throws AzureError.ServerError  on 5xx
      * @throws AzureError.NetworkError on TCP / TLS / DNS failure
      */
-    open fun synthesize(ssml: String): ByteArray = withRetry {
-        synthesizeOnce(ssml)
+    open fun synthesize(ssml: String): ByteArray {
+        // Issue #291 — instrument the buffered synthesis path so the
+        // Debug overlay can show last-latency + pendingRequests. The
+        // wall-clock measurement spans the retry budget (any 429 /
+        // server-error backoff is counted) — what the user actually
+        // waited for an audible result. try/finally guarantees the
+        // counter and latency get updated even when AzureError types
+        // propagate up.
+        val start = SystemClock.elapsedRealtime()
+        _pendingRequests.value = _pendingRequests.value + 1
+        try {
+            return withRetry { synthesizeOnce(ssml) }
+        } finally {
+            _lastSynthLatencyMs.value = SystemClock.elapsedRealtime() - start
+            _pendingRequests.value = (_pendingRequests.value - 1).coerceAtLeast(0)
+        }
     }
 
     /**
@@ -186,6 +231,15 @@ open class AzureSpeechClient @Inject constructor(
      * sentence and moving on.
      */
     open fun synthesizeStreaming(ssml: String): Flow<ByteArray> = flow {
+        // Issue #291 — instrument the streaming synth path. The
+        // measurement here is "time from request start to flow
+        // completion (or cancellation)" — what callers experienced
+        // end-to-end, not just first-byte. onStart/onCompletion
+        // would also work but inline lets us read `start` in the
+        // failure path that re-throws after recording latency.
+        val streamStart = SystemClock.elapsedRealtime()
+        _pendingRequests.value = _pendingRequests.value + 1
+        try {
         val key = credentials.key()
             ?: throw AzureError.AuthFailed("No Azure subscription key configured")
         val regionId = credentials.regionId()
@@ -250,6 +304,10 @@ open class AzureSpeechClient @Inject constructor(
                         "Unexpected HTTP ${resp.code} from Azure",
                     )
             }
+        }
+        } finally {
+            _lastSynthLatencyMs.value = SystemClock.elapsedRealtime() - streamStart
+            _pendingRequests.value = (_pendingRequests.value - 1).coerceAtLeast(0)
         }
     }
 
