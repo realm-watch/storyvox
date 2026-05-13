@@ -271,6 +271,7 @@ class FictionRepositoryImplTest {
         // the bookmark path, so a no-op + null read are sufficient.
         override suspend fun setBookmark(id: String, charOffset: Int?) = Unit
         override suspend fun getBookmark(id: String): Int? = null
+        override suspend fun allBookmarks(): List<`in`.jphe.storyvox.data.db.dao.BookmarkRow> = emptyList()
         override suspend fun setDownloadState(
             id: String,
             state: ChapterDownloadState,

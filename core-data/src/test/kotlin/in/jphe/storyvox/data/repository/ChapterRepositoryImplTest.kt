@@ -180,6 +180,16 @@ class ChapterRepositoryImplTest {
         override suspend fun getBookmark(id: String): Int? =
             rows[id]?.bookmarkCharOffset
 
+        override suspend fun allBookmarks(): List<`in`.jphe.storyvox.data.db.dao.BookmarkRow> =
+            rows.values
+                .filter { it.bookmarkCharOffset != null }
+                .map {
+                    `in`.jphe.storyvox.data.db.dao.BookmarkRow(
+                        chapterId = it.id,
+                        charOffset = it.bookmarkCharOffset!!,
+                    )
+                }
+
         // Issue #349 — fake the index parking so the FakeChapterDao
         // models the real two-phase upsert path. Live-range rows
         // (0..99_999) shift to +100_000; already-parked rows stay.
