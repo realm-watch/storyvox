@@ -173,6 +173,12 @@ object AppBindings {
     @Provides @Singleton
     fun provideOutlineConfig(impl: `in`.jphe.storyvox.data.OutlineConfigImpl): `in`.jphe.storyvox.source.outline.config.OutlineConfig = impl
 
+    /** Bridges source-wikipedia WikipediaConfig (#377) to the app-side
+     *  DataStore impl. Wikipedia is read-only/public — no API key
+     *  leg, just the language-code preference. */
+    @Provides @Singleton
+    fun provideWikipediaConfig(impl: `in`.jphe.storyvox.data.WikipediaConfigImpl): `in`.jphe.storyvox.source.wikipedia.config.WikipediaConfig = impl
+
     /**
      * Same singleton instance as [provideSettingsRepositoryUi], exposed under
      * the [PlaybackBufferConfig] contract so `core-playback`'s [EnginePlayer]

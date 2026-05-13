@@ -291,6 +291,8 @@ class RealPlaybackControllerUiTest {
         override suspend fun setSourceGutenbergEnabled(enabled: Boolean) = Unit
         override suspend fun setSourceAo3Enabled(enabled: Boolean) = Unit
         override suspend fun setSourceStandardEbooksEnabled(enabled: Boolean) = Unit
+        override suspend fun setSourceWikipediaEnabled(enabled: Boolean) = Unit
+        override suspend fun setWikipediaLanguageCode(code: String) = Unit
         override val suggestedRssFeeds: kotlinx.coroutines.flow.Flow<List<`in`.jphe.storyvox.feature.api.SuggestedFeed>> = kotlinx.coroutines.flow.flowOf(emptyList())
         override suspend fun setSleepShakeToExtendEnabled(enabled: Boolean) = Unit
         override suspend fun setAzureKey(key: String?) = Unit

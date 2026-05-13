@@ -771,6 +771,18 @@ data class UiSettings(
      *  (CC0 throughout), so users who want polished classics can flip
      *  this on in Settings → Library & Sync alongside Gutenberg. */
     val sourceStandardEbooksEnabled: Boolean = false,
+    /** Wikipedia non-fiction backend (#377). Default off for fresh
+     *  installs — the first non-fiction-shaped source is a deliberate
+     *  opt-in so users discover it from Settings rather than getting
+     *  a Browse picker pre-populated with a non-fiction surface they
+     *  didn't ask for. Per the RSS-only first-launch story carried
+     *  forward from the 2026-05-09 default flip. */
+    val sourceWikipediaEnabled: Boolean = false,
+    /** Wikipedia language code (#377) — `en`, `de`, `ja`, `simple`, etc.
+     *  Selects which Wikipedia host the source talks to:
+     *  `<lang>.wikipedia.org`. Default `en`. Empty falls back to the
+     *  default so a malformed prefs value doesn't brick the source. */
+    val wikipediaLanguageCode: String = "en",
     /** Issue #150 — when ON, a shake during the sleep timer's fade
      *  tail re-arms the timer. Default ON; users with bumpy commutes
      *  can disable to avoid accidental extensions. */
@@ -1161,6 +1173,12 @@ interface SettingsRepositoryUi {
     suspend fun setSourceAo3Enabled(enabled: Boolean)
     /** Issue #375 — Standard Ebooks backend on/off. */
     suspend fun setSourceStandardEbooksEnabled(enabled: Boolean)
+    /** Issue #377 — Wikipedia backend on/off + per-language host. */
+    suspend fun setSourceWikipediaEnabled(enabled: Boolean)
+    /** Issue #377 — set the Wikipedia language code (`en`, `de`,
+     *  `ja`, `simple`, ...). Trimmed + lowercased before persistence;
+     *  empty falls back to the default. */
+    suspend fun setWikipediaLanguageCode(code: String)
 
     /** Issue #236 — manage subscribed feed URLs. */
     suspend fun addRssFeed(url: String)

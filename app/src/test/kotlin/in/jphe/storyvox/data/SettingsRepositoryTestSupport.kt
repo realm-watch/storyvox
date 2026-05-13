@@ -144,6 +144,20 @@ internal fun makeFakeOutlineConfig(
     return OutlineConfigImpl(outlineStore, FakeSecrets())
 }
 
+/** Real [WikipediaConfigImpl] over a temp DataStore (#377). Settings
+ *  tests don't exercise Wikipedia state — the signature requires
+ *  the dep, this satisfies it. */
+internal fun makeFakeWikipediaConfig(
+    dir: File,
+    scope: CoroutineScope,
+): WikipediaConfigImpl {
+    val wikipediaStore = PreferenceDataStoreFactory.create(
+        scope = scope,
+        produceFile = { File(dir, "storyvox_wikipedia.preferences_pb") },
+    )
+    return WikipediaConfigImpl(wikipediaStore)
+}
+
 /**
  * Real [PalaceDaemonApi] over an OkHttpClient + a fake config that emits
  * an empty [PalaceConfigState]. No HTTP is exercised by the settings

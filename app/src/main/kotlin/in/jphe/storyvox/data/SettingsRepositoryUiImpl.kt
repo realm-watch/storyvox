@@ -253,6 +253,9 @@ private object Keys {
     /** Issue #375 — Standard Ebooks backend on/off. Default false for
      *  fresh installs; opt-in surface like Outline/Epub. */
     val SOURCE_STANDARD_EBOOKS_ENABLED = booleanPreferencesKey("pref_source_standard_ebooks_enabled")
+    /** Issue #377 — Wikipedia backend on/off. Default false for fresh
+     *  installs; first non-fiction-shaped source is opt-in. */
+    val SOURCE_WIKIPEDIA_ENABLED = booleanPreferencesKey("pref_source_wikipedia_enabled")
 
     // ── Sleep timer shake-to-extend (issue #150) ───────────────────
     val SLEEP_SHAKE_TO_EXTEND_ENABLED = booleanPreferencesKey("pref_sleep_shake_to_extend_enabled")
@@ -352,6 +355,7 @@ class SettingsRepositoryUiImpl(
     private val rssConfig: RssConfigImpl,
     private val epubConfig: EpubConfigImpl,
     private val outlineConfig: OutlineConfigImpl,
+    private val wikipediaConfig: WikipediaConfigImpl,
     private val suggestedFeedsRegistry: SuggestedFeedsRegistry,
     private val azureCreds: AzureCredentials,
     private val azureClient: AzureSpeechClient,
@@ -383,6 +387,7 @@ class SettingsRepositoryUiImpl(
         rssConfig: RssConfigImpl,
         epubConfig: EpubConfigImpl,
         outlineConfig: OutlineConfigImpl,
+        wikipediaConfig: WikipediaConfigImpl,
         suggestedFeedsRegistry: SuggestedFeedsRegistry,
         azureCreds: AzureCredentials,
         azureClient: AzureSpeechClient,
@@ -390,7 +395,7 @@ class SettingsRepositoryUiImpl(
     ) : this(
         context.settingsDataStore, auth, hydrator,
         palaceConfig, palaceApi, llmCreds, githubAuth, teamsAuth, rssConfig, epubConfig,
-        outlineConfig, suggestedFeedsRegistry, azureCreds, azureClient, azureRoster,
+        outlineConfig, wikipediaConfig, suggestedFeedsRegistry, azureCreds, azureClient, azureRoster,
     )
 
     /**
@@ -404,13 +409,20 @@ class SettingsRepositoryUiImpl(
      */
     private val azureTick = kotlinx.coroutines.flow.MutableStateFlow(0L)
 
+    /** Issue #377 — Wikipedia config flow pairs cleanly with the
+     *  palace state because both are non-prefs sources that the
+     *  outer combine needs. Folding them into one paired flow keeps
+     *  the outer combine at the typed 5-arg overload. */
+    private val palaceWithWikipedia: Flow<Pair<`in`.jphe.storyvox.source.mempalace.config.PalaceConfigState, `in`.jphe.storyvox.source.wikipedia.config.WikipediaConfigState>> =
+        combine(palaceConfig.state, wikipediaConfig.state) { palace, wiki -> palace to wiki }
+
     override val settings: Flow<UiSettings> = combine(
         store.data,
-        palaceConfig.state,
+        palaceWithWikipedia,
         githubAuth.sessionState,
         teamsAuth.sessionState,
         azureTick,
-    ) { prefs, palace, githubSession, teamsSession, _ ->
+    ) { prefs, (palace, wikipedia), githubSession, teamsSession, _ ->
         UiSettings(
             ttsEngine = "VoxSherpa",
             defaultVoiceId = prefs[Keys.DEFAULT_VOICE_ID],
@@ -463,6 +475,8 @@ class SettingsRepositoryUiImpl(
             // content gate; opt-in from Settings → Library & Sync).
             sourceAo3Enabled = prefs[Keys.SOURCE_AO3_ENABLED] ?: false,
             sourceStandardEbooksEnabled = prefs[Keys.SOURCE_STANDARD_EBOOKS_ENABLED] ?: false,
+            sourceWikipediaEnabled = prefs[Keys.SOURCE_WIKIPEDIA_ENABLED] ?: false,
+            wikipediaLanguageCode = wikipedia.languageCode,
             sleepShakeToExtendEnabled = prefs[Keys.SLEEP_SHAKE_TO_EXTEND_ENABLED] ?: true,
             showDebugOverlay = prefs[Keys.SHOW_DEBUG_OVERLAY] ?: false,
             azure = run {
@@ -1010,6 +1024,7 @@ class SettingsRepositoryUiImpl(
     }
     override suspend fun setSourceAo3Enabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_AO3_ENABLED] = enabled }
+    }
     override suspend fun setSourceStandardEbooksEnabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_STANDARD_EBOOKS_ENABLED] = enabled }
     }
@@ -1018,6 +1033,12 @@ class SettingsRepositoryUiImpl(
     override suspend fun setOutlineHost(host: String) = outlineConfig.setHost(host)
     override suspend fun setOutlineApiKey(apiKey: String) = outlineConfig.setApiKey(apiKey)
     override suspend fun clearOutlineConfig() = outlineConfig.clear()
+
+    override suspend fun setSourceWikipediaEnabled(enabled: Boolean) {
+        store.edit { it[Keys.SOURCE_WIKIPEDIA_ENABLED] = enabled }
+    }
+    override suspend fun setWikipediaLanguageCode(code: String) =
+        wikipediaConfig.setLanguageCode(code)
 
     /** #246 — bridge to SuggestedFeedsRegistry. The fallback list
      *  passed in is the baked-in seed; the registry emits it
