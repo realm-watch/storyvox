@@ -445,6 +445,11 @@ private class FakeFictionRepo(
     override suspend fun chapterTextById(chapterId: String): String? = null
     override suspend fun setDownloadMode(fictionId: String, mode: DownloadMode) = Unit
     override suspend fun follow(fictionId: String, follow: Boolean) = Unit
+    override suspend fun setFollowedRemote(
+        fictionId: String,
+        followed: Boolean,
+    ): `in`.jphe.storyvox.feature.api.SetFollowedRemoteResult =
+        `in`.jphe.storyvox.feature.api.SetFollowedRemoteResult.Success
     override suspend fun markAllCaughtUp() = Unit
     override suspend fun refreshFollows() = Unit
     override suspend fun addByUrl(url: String): UiAddByUrlResult = UiAddByUrlResult.UnrecognizedUrl

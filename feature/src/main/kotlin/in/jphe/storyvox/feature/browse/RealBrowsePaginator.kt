@@ -84,4 +84,6 @@ fun toUiFiction(s: FictionSummary): UiFiction = UiFiction(
     chapterCount = s.chapterCount ?: 0,
     isOngoing = s.status == FictionStatus.ONGOING,
     synopsis = s.description.orEmpty(),
+    sourceId = s.sourceId,
+    isFollowedRemote = s.followedRemotely,
 )

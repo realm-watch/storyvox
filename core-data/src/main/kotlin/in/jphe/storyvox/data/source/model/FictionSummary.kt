@@ -17,4 +17,10 @@ data class FictionSummary(
     val status: FictionStatus = FictionStatus.ONGOING,
     val chapterCount: Int? = null,
     val rating: Float? = null,
+    /** Issue #211 — true when storyvox has pushed a follow to the
+     *  source's account (e.g. Royal Road's `/fictions/setbookmark`)
+     *  or the periodic pull observed the user follows this fiction.
+     *  Defaults to false; only meaningful for sources with an
+     *  account-side follow concept (RR today). */
+    val followedRemotely: Boolean = false,
 )
