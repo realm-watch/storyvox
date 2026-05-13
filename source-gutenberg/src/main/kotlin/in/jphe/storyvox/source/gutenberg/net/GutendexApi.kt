@@ -1,6 +1,8 @@
 package `in`.jphe.storyvox.source.gutenberg.net
 
 import `in`.jphe.storyvox.data.source.model.FictionResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
@@ -75,12 +77,20 @@ internal class GutendexApi @Inject constructor(
     private suspend fun getSingle(path: String): FictionResult<GutendexBook> =
         request(path) { body -> json.decodeFromString<GutendexBook>(body) }
 
-    private inline fun <T> request(
+    /**
+     * Sync OkHttp `execute()` is wrapped in `withContext(Dispatchers.IO)`
+     * because `suspend` alone doesn't move the call off the main thread —
+     * it just makes the call pause-able. Without this hop, every Gutendex
+     * fetch from the UI thread crashes with `NetworkOnMainThreadException`
+     * (StrictMode catches the DNS lookup). Pattern mirrors `:source-outline`
+     * and the rest of storyvox's network sources.
+     */
+    private suspend fun <T> request(
         path: String,
         parse: (String) -> T,
-    ): FictionResult<T> {
+    ): FictionResult<T> = withContext(Dispatchers.IO) {
         val url = BASE_URL + path
-        return try {
+        try {
             val req = Request.Builder()
                 .url(url)
                 .header("Accept", "application/json")
@@ -96,7 +106,7 @@ internal class GutendexApi @Inject constructor(
                     )
                     else -> {
                         val text = resp.body?.string()
-                            ?: return FictionResult.NetworkError("empty body", IOException("empty body"))
+                            ?: return@withContext FictionResult.NetworkError("empty body", IOException("empty body"))
                         FictionResult.Success(parse(text))
                     }
                 }
@@ -114,8 +124,8 @@ internal class GutendexApi @Inject constructor(
      * Returns the raw bytes for [in.jphe.storyvox.source.epub.parse.EpubParser]
      * to consume.
      */
-    suspend fun downloadEpub(url: String): FictionResult<ByteArray> {
-        return try {
+    suspend fun downloadEpub(url: String): FictionResult<ByteArray> = withContext(Dispatchers.IO) {
+        try {
             val req = Request.Builder()
                 .url(url)
                 .header("User-Agent", USER_AGENT)
@@ -131,7 +141,7 @@ internal class GutendexApi @Inject constructor(
                     )
                     else -> {
                         val bytes = resp.body?.bytes()
-                            ?: return FictionResult.NetworkError(
+                            ?: return@withContext FictionResult.NetworkError(
                                 "empty EPUB body",
                                 IOException("empty body"),
                             )
