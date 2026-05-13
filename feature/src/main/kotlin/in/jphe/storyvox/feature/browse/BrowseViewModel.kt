@@ -61,6 +61,11 @@ enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
     /** Outline (#245) — self-hosted wiki. Collections = fictions,
      *  documents = chapters. Pure user-content backend. */
     Outline(SourceIds.OUTLINE, "Wiki"),
+    /** Project Gutenberg (#237) — 70,000+ public-domain titles via
+     *  the Gutendex JSON catalog. Tap-to-add downloads each book's
+     *  EPUB once and renders it through the `:source-epub` parser.
+     *  Most-legally-clean source in the roster. */
+    Gutenberg(SourceIds.GUTENBERG, "Gutenberg"),
 }
 
 /** Tabs that are meaningful for [source]. GitHub registry doesn't
@@ -119,6 +124,15 @@ fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseT
     )
     BrowseSourceKey.Outline -> listOf(
         BrowseTab.Popular,
+        BrowseTab.Search,
+    )
+    // Gutenberg (#237): Popular sorts by Gutendex download_count;
+    // NewReleases sorts by highest book-id (PG ingests roughly
+    // chronologically). BestRated has no analogue. Search hits
+    // Gutendex's title+author full-text matcher.
+    BrowseSourceKey.Gutenberg -> listOf(
+        BrowseTab.Popular,
+        BrowseTab.NewReleases,
         BrowseTab.Search,
     )
 }
@@ -324,6 +338,7 @@ class BrowseViewModel @Inject constructor(
                     if (s.sourceRssEnabled) add(BrowseSourceKey.Rss)
                     if (s.sourceEpubEnabled) add(BrowseSourceKey.Epub)
                     if (s.sourceOutlineEnabled) add(BrowseSourceKey.Outline)
+                    if (s.sourceGutenbergEnabled) add(BrowseSourceKey.Gutenberg)
                 }
             }
             .distinctUntilChanged()
@@ -552,6 +567,15 @@ class BrowseViewModel @Inject constructor(
                 _githubFilter.value = GitHubSearchFilter()
                 _palaceFilter.value = MemPalaceFilter()
             }
+            BrowseSourceKey.Gutenberg -> {
+                // PG has no per-source filter in v1 — its catalog
+                // is queried directly via Search/Popular/NewReleases.
+                // Clear sibling filters so a future switch back to RR/GH
+                // doesn't pick up leftover state.
+                _filter.value = BrowseFilter()
+                _githubFilter.value = GitHubSearchFilter()
+                _palaceFilter.value = MemPalaceFilter()
+            }
         }
     }
 
@@ -690,6 +714,18 @@ private fun resolveSource(
     BrowseSourceKey.Outline -> when {
         tab == BrowseTab.Search -> if (q.isBlank()) BrowseSource.Popular else BrowseSource.Search(q)
         tab == BrowseTab.Popular -> BrowseSource.Popular
+        else -> null
+    }
+    // Project Gutenberg (#237): Popular hits Gutendex `?sort=popular`;
+    // NewReleases hits `?sort=descending` (highest id = newest);
+    // Search hits `?search=<term>`. No filter surface in v1 — the
+    // catalog's free-form subject strings don't map cleanly to a
+    // filter sheet; topic search via the Search tab covers the
+    // discovery cases.
+    BrowseSourceKey.Gutenberg -> when (tab) {
+        BrowseTab.Popular -> BrowseSource.Popular
+        BrowseTab.NewReleases -> BrowseSource.NewReleases
+        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
         else -> null
     }
 }

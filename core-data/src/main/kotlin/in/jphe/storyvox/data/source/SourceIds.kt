@@ -34,4 +34,11 @@ object SourceIds {
      *  API token; collections become fictions, documents become
      *  chapters. Zero third-party ToS surface. */
     const val OUTLINE: String = "outline"
+    /** Project Gutenberg (#237) — 70,000+ public-domain books via the
+     *  Gutendex JSON catalog wrapper. Tap-to-add downloads the title's
+     *  EPUB to local cache; chapter rendering reuses the EPUB parser
+     *  from `:source-epub`. Most-legally-clean content backend in the
+     *  storyvox source roster — PG actively encourages programmatic
+     *  access (see their robot policy). */
+    const val GUTENBERG: String = "gutenberg"
 }
