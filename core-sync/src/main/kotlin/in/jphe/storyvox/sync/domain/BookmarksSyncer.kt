@@ -1,5 +1,7 @@
 package `in`.jphe.storyvox.sync.domain
 
+import android.content.SharedPreferences
+import androidx.core.content.edit
 import `in`.jphe.storyvox.data.db.dao.ChapterDao
 import `in`.jphe.storyvox.sync.client.InstantBackend
 import `in`.jphe.storyvox.sync.client.SignedInUser
@@ -28,6 +30,7 @@ import kotlinx.serialization.json.Json
 class BookmarksSyncer @Inject constructor(
     private val chapterDao: ChapterDao,
     private val backend: InstantBackend,
+    private val prefs: SharedPreferences,
 ) : Syncer {
 
     override val name: String get() = DOMAIN
@@ -101,16 +104,26 @@ class BookmarksSyncer @Inject constructor(
         else SyncOutcome.Transient("remote push: ${push.exceptionOrNull()?.message}")
     }
 
-    // The "last sync stamp" lives in a tiny memory cell — the cost of
-    // missing it on cold start is one extra LWW round, which is fine.
-    @Volatile private var lastSyncStamp: Long = 0L
-    private fun readLastSyncStamp(): Long = lastSyncStamp
-    private fun writeLastSyncStamp(at: Long) { lastSyncStamp = at }
+    // Issue #360 finding 2 (argus): `lastSyncStamp` used to be a
+    // `@Volatile private var = 0L` — process-local, reset on every
+    // cold start. The merge rule at the top of `reconcile` reads
+    // `remotePayload.updatedAt > readLastSyncStamp()`, so after a
+    // restart any non-empty remote was strictly newer than 0L and won
+    // blanket — clobbering local bookmarks the user had added between
+    // the previous push and the kill.
+    //
+    // Now persisted to the `instantdb.*` SharedPreferences namespace
+    // (same bag InstantSession + SecretsSyncer use), so the merge rule
+    // is correct across process restarts and across the
+    // post-sign-in `pull → push` sequence on the same cold start.
+    private fun readLastSyncStamp(): Long = prefs.getLong(LAST_SYNC_KEY, 0L)
+    private fun writeLastSyncStamp(at: Long) { prefs.edit { putLong(LAST_SYNC_KEY, at) } }
 
     private fun rowId(user: SignedInUser) = "$DOMAIN:${user.userId}"
 
     companion object {
         const val DOMAIN: String = "bookmarks"
         private const val ENTITY = "blobs"
+        private const val LAST_SYNC_KEY = "instantdb.bookmarks_synced_at"
     }
 }
