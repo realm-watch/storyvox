@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -101,10 +102,19 @@ fun BottomTabBar(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                // Pad above the Android system navigation gesture/bar so
-                // the tab row doesn't get covered by Samsung's three-button
-                // nav (or the gesture pill). M3's NavigationBar does this
-                // automatically; the custom layout has to opt in.
+                // Pad above the visible nav bar (3-button nav) or
+                // gesture pill (~20px). The deeper OS gesture-exclusion
+                // zone (`mandatorySystemGestures`, ~64px on this
+                // device) is handled per-cell via
+                // `Modifier.systemGestureExclusion()` below — that
+                // tells the OS "I own taps in this rect, don't claim
+                // them as swipe-up gestures." Without that, the bottom
+                // ~44px of each tab fell inside the gesture zone and
+                // taps got swallowed by the OS, especially when
+                // attention drifted (e.g. while audio was playing).
+                // We use the exclusion-rect API instead of padding-by-
+                // the-larger-inset because that approach leaves an
+                // ugly dead strip below the cells.
                 .windowInsetsPadding(WindowInsets.navigationBars)
                 .height(BAR_HEIGHT),
         ) {
@@ -149,7 +159,15 @@ fun BottomTabBar(
                         onClick = { onSelect(tab) },
                         modifier = Modifier
                             .weight(1f)
-                            .fillMaxHeight(),
+                            .fillMaxHeight()
+                            // Claim each tab's rect from the OS gesture
+                            // pool. Android limits the cumulative
+                            // exclusion area to 200dp from the bottom
+                            // of the window; one 80dp bar's worth of
+                            // cells is well within that. Required to
+                            // make taps reliable on gesture nav — see
+                            // the header comment on BoxWithConstraints.
+                            .systemGestureExclusion(),
                     )
                 }
             }
