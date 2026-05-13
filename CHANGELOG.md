@@ -9,6 +9,24 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.17] — 2026-05-13
+
+### Added
+- **Follow on Royal Road button on FictionDetail** (#368, closes
+  #211) — inline action bar gains a third button next to *Add to
+  library* and *Listen*, visible only on RR-sourced fictions.
+  Pushes the follow state to RR's account via the existing
+  `RoyalRoadSource.setFollowed()` (CSRF + POST to
+  `/fictions/setbookmark`). Anonymous tap routes to the same
+  `AUTH_WEBVIEW` Browse and Settings already use. Closes the
+  two-way sync loop — pull from `/my/follows` was already wired in
+  v0.4.x.
+
+### Changed
+- `UiFiction` and `FictionSummary` gain `sourceId` and
+  `followedRemotely` fields (defaulted to be backward-compatible
+  with all existing construction sites).
+
 ## [0.5.16] — 2026-05-13
 
 ### Changed
