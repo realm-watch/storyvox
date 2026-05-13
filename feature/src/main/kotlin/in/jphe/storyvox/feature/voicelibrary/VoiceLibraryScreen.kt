@@ -25,9 +25,14 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.PaddingValues as ComposePaddingValues
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -111,14 +116,46 @@ fun VoiceLibraryScreen(
         // Filter is applied locally via remember — VM stays simple,
         // costs ~O(n) per query change.
         var query by remember { mutableStateOf("") }
-        val filteredFavorites = remember(state.favorites, query) {
-            state.favorites.filterByQuery(query)
+        // Issue #264 part 2 — filter chip state. Empty set in a
+        // dimension = no filter on that dimension. AND across
+        // dimensions, OR within a dimension's chip set.
+        var selectedGenders by remember { mutableStateOf<Set<VoiceGender>>(emptySet()) }
+        var selectedLanguages by remember { mutableStateOf<Set<String>>(emptySet()) }
+        var selectedTiers by remember { mutableStateOf<Set<QualityLevel>>(emptySet()) }
+        var multilingualOnly by remember { mutableStateOf(false) }
+
+        // Top 10 languages by voice count across the full unfiltered
+        // catalog. Computed once per state change — the 1188-row catalog
+        // gives roughly stable language frequencies (English dominant,
+        // long-tail tail of Spanish / French / German / Japanese / etc).
+        val topLanguages = remember(state.installedByEngine, state.availableByEngine) {
+            val all = state.installedByEngine.values.flatMap { it.values.flatten() } +
+                state.availableByEngine.values.flatMap { it.values.flatten() }
+            all.groupingBy { it.primaryLanguageCode() }
+                .eachCount()
+                .entries
+                .filter { it.key.isNotEmpty() }
+                .sortedByDescending { it.value }
+                .take(10)
+                .map { it.key }
         }
-        val filteredInstalled = remember(state.installedByEngine, query) {
-            state.installedByEngine.filterByQuery(query)
+
+        val filterCriteria = VoiceFilterCriteria(
+            query = query,
+            genders = selectedGenders,
+            languages = selectedLanguages,
+            tiers = selectedTiers,
+            multilingualOnly = multilingualOnly,
+        )
+
+        val filteredFavorites = remember(state.favorites, filterCriteria) {
+            state.favorites.filterBy(filterCriteria)
         }
-        val filteredAvailable = remember(state.availableByEngine, query) {
-            state.availableByEngine.filterByQuery(query)
+        val filteredInstalled = remember(state.installedByEngine, filterCriteria) {
+            state.installedByEngine.filterBy(filterCriteria)
+        }
+        val filteredAvailable = remember(state.availableByEngine, filterCriteria) {
+            state.availableByEngine.filterBy(filterCriteria)
         }
         val installedTotal = filteredInstalled.values.sumOf { tiers -> tiers.values.sumOf { it.size } }
         val availableTotal = filteredAvailable.values.sumOf { tiers -> tiers.values.sumOf { it.size } }
@@ -157,6 +194,74 @@ fun VoiceLibraryScreen(
                     .fillMaxWidth()
                     .padding(horizontal = spacing.md, vertical = spacing.xs),
             )
+
+            // Issue #264 part 2 — filter chip row. Horizontally scrollable
+            // so the four chip groups (gender / language / tier / multilingual)
+            // fit on Flip3 portrait. FilterChip is M3's bistable chip; we
+            // use selected= for the visual + content-color contract.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = spacing.md, vertical = spacing.xxs),
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Gender chips
+                FilterChip(
+                    selected = VoiceGender.Female in selectedGenders,
+                    onClick = {
+                        selectedGenders = selectedGenders.toggleMember(VoiceGender.Female)
+                    },
+                    label = { Text("♀ Female") },
+                )
+                FilterChip(
+                    selected = VoiceGender.Male in selectedGenders,
+                    onClick = {
+                        selectedGenders = selectedGenders.toggleMember(VoiceGender.Male)
+                    },
+                    label = { Text("♂ Male") },
+                )
+                FilterChip(
+                    selected = VoiceGender.Unknown in selectedGenders,
+                    onClick = {
+                        selectedGenders = selectedGenders.toggleMember(VoiceGender.Unknown)
+                    },
+                    label = { Text("Neutral") },
+                )
+                // Quality tier chips — descending order matches the visual
+                // sort in the rest of the screen (Studio first).
+                listOf(
+                    QualityLevel.Studio to "Studio",
+                    QualityLevel.High to "High",
+                    QualityLevel.Medium to "Med",
+                    QualityLevel.Low to "Low",
+                ).forEach { (tier, label) ->
+                    FilterChip(
+                        selected = tier in selectedTiers,
+                        onClick = { selectedTiers = selectedTiers.toggleMember(tier) },
+                        label = { Text(label) },
+                    )
+                }
+                // Multilingual toggle — single boolean chip.
+                FilterChip(
+                    selected = multilingualOnly,
+                    onClick = { multilingualOnly = !multilingualOnly },
+                    label = { Text("Multilingual") },
+                )
+                // Language chips — derived from top 10 by voice count.
+                // Two-letter codes ("en", "es", "fr"...) are dense enough
+                // labels for the chip row at this width.
+                topLanguages.forEach { lang ->
+                    FilterChip(
+                        selected = lang in selectedLanguages,
+                        onClick = {
+                            selectedLanguages = selectedLanguages.toggleMember(lang)
+                        },
+                        label = { Text(lang) },
+                    )
+                }
+            }
 
             if (filteredIsEmpty) {
                 Box(
@@ -860,3 +965,60 @@ private fun UiVoiceInfo.matchesQuery(query: String): Boolean {
     }
     return engineLabel.contains(needle, ignoreCase = true)
 }
+
+// ─── Issue #264 part 2 filter-chip helpers ─────────────────────────
+//
+// All four dimensions AND together. Within each dimension, an empty
+// set means "no filter on this dimension" (every voice passes).
+// Multilingual is a single boolean (no set), so it's a straightforward
+// gate rather than membership.
+
+internal data class VoiceFilterCriteria(
+    val query: String = "",
+    val genders: Set<VoiceGender> = emptySet(),
+    val languages: Set<String> = emptySet(),
+    val tiers: Set<QualityLevel> = emptySet(),
+    val multilingualOnly: Boolean = false,
+)
+
+/** First-two-letter language code (`en`, `es`, `de`, `ja`, …). Used
+ *  for chip aggregation so `en-US` / `en-GB` / `en-AU` all roll up
+ *  under the "en" chip. */
+private fun UiVoiceInfo.primaryLanguageCode(): String =
+    language.take(2).lowercase()
+
+/** Multilingual voices have "Multilingual" in their displayName (Azure
+ *  convention: `en-US-AndrewMultilingualNeural`, etc). Piper / Kokoro
+ *  don't have a multilingual variant today; the chip naturally
+ *  filters to Azure-only when checked. */
+private fun UiVoiceInfo.isMultilingual(): Boolean =
+    displayName.contains("multilingual", ignoreCase = true)
+
+private fun UiVoiceInfo.matchesCriteria(criteria: VoiceFilterCriteria): Boolean {
+    if (!matchesQuery(criteria.query)) return false
+    if (criteria.genders.isNotEmpty() && gender !in criteria.genders) return false
+    if (criteria.languages.isNotEmpty() && primaryLanguageCode() !in criteria.languages) return false
+    if (criteria.tiers.isNotEmpty() && qualityLevel !in criteria.tiers) return false
+    if (criteria.multilingualOnly && !isMultilingual()) return false
+    return true
+}
+
+private fun List<UiVoiceInfo>.filterBy(criteria: VoiceFilterCriteria): List<UiVoiceInfo> {
+    if (criteria == VoiceFilterCriteria()) return this  // pass-through
+    return filter { it.matchesCriteria(criteria) }
+}
+
+private fun Map<VoiceEngine, Map<QualityLevel, List<UiVoiceInfo>>>.filterBy(
+    criteria: VoiceFilterCriteria,
+): Map<VoiceEngine, Map<QualityLevel, List<UiVoiceInfo>>> {
+    if (criteria == VoiceFilterCriteria()) return this
+    return mapValues { (_, tiers) ->
+        tiers.mapValues { (_, voices) -> voices.filter { it.matchesCriteria(criteria) } }
+            .filterValues { it.isNotEmpty() }
+    }.filterValues { it.isNotEmpty() }
+}
+
+/** Toggle-membership helper — adds an element if absent, removes if
+ *  present. Used by every chip's onClick to flip the relevant set. */
+private fun <T> Set<T>.toggleMember(item: T): Set<T> =
+    if (item in this) this - item else this + item
