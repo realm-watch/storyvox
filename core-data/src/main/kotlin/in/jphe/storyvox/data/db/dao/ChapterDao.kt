@@ -251,6 +251,17 @@ interface ChapterDao {
     suspend fun getBookmark(id: String): Int?
 
     /**
+     * All chapters that currently carry a bookmark. Used by the sync
+     * layer ([`PronunciationDictSyncer`]'s sibling, `BookmarksSyncer`)
+     * to snapshot the user's bookmarks for upload to InstantDB. The
+     * shape mirrors the on-disk row — chapter id and char offset, no
+     * body text. Cheap enough to read in full (bookmarks are user-
+     * authored events, so the row count is small).
+     */
+    @Query("SELECT id AS chapterId, bookmarkCharOffset AS charOffset FROM chapter WHERE bookmarkCharOffset IS NOT NULL")
+    suspend fun allBookmarks(): List<BookmarkRow>
+
+    /**
      * Issue #293 — debug-surface storage diagnostic. Single round-trip
      * returns both the count of cached chapters AND the rough byte usage
      * of their text bodies. SQLite's `LENGTH()` on a TEXT column returns
@@ -278,6 +289,19 @@ interface ChapterDao {
 data class ChapterDownloadStateRow(
     val id: String,
     val downloadState: ChapterDownloadState,
+)
+
+/**
+ * Slim (chapterId, charOffset) pair used by [ChapterDao.allBookmarks]
+ * — surfaced for the sync layer which needs every bookmark across
+ * every chapter for the per-user upload. Char offset is non-null
+ * (the DAO query only returns rows where it isn't), but Room can't
+ * express that constraint statically, so it's typed `Int?` to
+ * match the column.
+ */
+data class BookmarkRow(
+    val chapterId: String,
+    val charOffset: Int?,
 )
 
 /** Issue #293 — combined count + estimated byte usage of cached chapter
