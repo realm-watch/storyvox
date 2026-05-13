@@ -175,7 +175,8 @@ fun BrowseScreen(
                 BrowseSourceKey.MemPalace -> true
                 BrowseSourceKey.Rss,
                 BrowseSourceKey.Epub,
-                BrowseSourceKey.Outline -> false
+                BrowseSourceKey.Outline,
+                BrowseSourceKey.Gutenberg -> false
             }
             if (filterableSource) {
                 FilterButton(
@@ -190,7 +191,8 @@ fun BrowseScreen(
                         // but Kotlin still wants exhaustive coverage.
                         BrowseSourceKey.Rss,
                         BrowseSourceKey.Epub,
-                        BrowseSourceKey.Outline -> 0
+                        BrowseSourceKey.Outline,
+                        BrowseSourceKey.Gutenberg -> 0
                     },
                     onClick = { showFilterSheet = true },
                 )
@@ -426,6 +428,9 @@ fun BrowseScreen(
             // Settings).
             BrowseSourceKey.Epub -> { showFilterSheet = false }
             BrowseSourceKey.Outline -> { showFilterSheet = false }
+            // #237 — Gutenberg has no filter sheet; topic-search via
+            // the Search tab covers the discovery cases.
+            BrowseSourceKey.Gutenberg -> { showFilterSheet = false }
         }
     }
 }
@@ -508,6 +513,7 @@ private fun searchHintForSource(sourceKey: BrowseSourceKey): String = when (sour
     BrowseSourceKey.Rss -> "Search your subscribed feeds"
     BrowseSourceKey.Epub -> "Search your local EPUB library"
     BrowseSourceKey.Outline -> "Search your Outline notes"
+    BrowseSourceKey.Gutenberg -> "Search Project Gutenberg's 70,000+ public-domain books"
 }
 
 private val BrowseTab.label: String

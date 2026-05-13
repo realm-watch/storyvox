@@ -489,6 +489,12 @@ fun SettingsScreen(
             if (s.sourceOutlineEnabled) {
                 OutlineConfigRow(viewModel = viewModel)
             }
+            SettingsSwitchRow(
+                title = "Project Gutenberg",
+                subtitle = "70,000+ public-domain books. Tap one to import its EPUB.",
+                checked = s.sourceGutenbergEnabled,
+                onCheckedChange = viewModel::setSourceGutenbergEnabled,
+            )
         }
 
         // ── Sync sub-card ─────────────────────────────────────────

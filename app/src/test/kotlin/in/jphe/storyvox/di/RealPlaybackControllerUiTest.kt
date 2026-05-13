@@ -287,6 +287,7 @@ class RealPlaybackControllerUiTest {
         override suspend fun setOutlineHost(host: String) = Unit
         override suspend fun setOutlineApiKey(apiKey: String) = Unit
         override suspend fun clearOutlineConfig() = Unit
+        override suspend fun setSourceGutenbergEnabled(enabled: Boolean) = Unit
         override val suggestedRssFeeds: kotlinx.coroutines.flow.Flow<List<`in`.jphe.storyvox.feature.api.SuggestedFeed>> = kotlinx.coroutines.flow.flowOf(emptyList())
         override suspend fun setSleepShakeToExtendEnabled(enabled: Boolean) = Unit
         override suspend fun setAzureKey(key: String?) = Unit

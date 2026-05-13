@@ -709,6 +709,13 @@ data class UiSettings(
      *  RSS-only first-launch story; user opts in from Settings →
      *  Library & Sync. */
     val sourceOutlineEnabled: Boolean = false,
+    /** Project Gutenberg backend (#237). Default ON for fresh installs
+     *  — PG is the most-legally-clean source in the roster (public
+     *  domain by definition, no ToS surface), so it carries no risk
+     *  in the first-launch picker. The 70,000+ catalog also pairs
+     *  with the existing EPUB infrastructure (#235), so opting in is
+     *  free in terms of new dependencies the user has to configure. */
+    val sourceGutenbergEnabled: Boolean = true,
     /** Issue #150 — when ON, a shake during the sleep timer's fade
      *  tail re-arms the timer. Default ON; users with bumpy commutes
      *  can disable to avoid accidental extensions. */
@@ -1087,6 +1094,9 @@ interface SettingsRepositoryUi {
     suspend fun setOutlineHost(host: String)
     suspend fun setOutlineApiKey(apiKey: String)
     suspend fun clearOutlineConfig()
+
+    /** Issue #237 — Project Gutenberg backend on/off. */
+    suspend fun setSourceGutenbergEnabled(enabled: Boolean)
 
     /** Issue #236 — manage subscribed feed URLs. */
     suspend fun addRssFeed(url: String)

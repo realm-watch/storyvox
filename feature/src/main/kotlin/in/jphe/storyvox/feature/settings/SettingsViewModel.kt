@@ -161,6 +161,10 @@ class SettingsViewModel @Inject constructor(
     /** Issue #245 — Outline backend on/off + host/API-key plumbing. */
     fun setSourceOutlineEnabled(enabled: Boolean) =
         viewModelScope.launch { repo.setSourceOutlineEnabled(enabled) }
+
+    /** Issue #237 — Project Gutenberg backend on/off. */
+    fun setSourceGutenbergEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setSourceGutenbergEnabled(enabled) }
     fun setOutlineHost(host: String) = viewModelScope.launch { repo.setOutlineHost(host) }
     fun setOutlineApiKey(apiKey: String) = viewModelScope.launch { repo.setOutlineApiKey(apiKey) }
     fun clearOutlineConfig() = viewModelScope.launch { repo.clearOutlineConfig() }
