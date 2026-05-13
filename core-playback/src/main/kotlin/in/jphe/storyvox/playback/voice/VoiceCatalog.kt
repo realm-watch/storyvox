@@ -51,11 +51,19 @@ object VoiceCatalog {
      *  The inline ⭐ prefix on the curated displayNames that used to
      *  pair with this list has been removed — the favorites feature
      *  in the Voice Library now owns the ⭐ glyph, and double-using it
-     *  for "featured" was reading as a stale favorite to users. */
+     *  for "featured" was reading as a stale favorite to users.
+     *
+     *  Cori (en_GB) joins Lessac (en_US) so the starter triplet
+     *  becomes a Lessac/Cori pair across two accents. Cori only
+     *  ships in medium and high upstream (rhasspy/piper-voices
+     *  doesn't publish a Cori-low), so the en_GB column is two
+     *  entries to en_US's three — five voices total in the gate. */
     val featuredIds: List<String> = listOf(
         "piper_lessac_en_US_low",
         "piper_lessac_en_US_medium",
         "piper_lessac_en_US_high",
+        "piper_cori_en_GB_medium",
+        "piper_cori_en_GB_high",
     )
     private fun piperEntries(): List<CatalogEntry> = listOf(
         CatalogEntry(
