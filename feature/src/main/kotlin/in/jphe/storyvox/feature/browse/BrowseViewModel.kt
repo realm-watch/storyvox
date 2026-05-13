@@ -257,7 +257,7 @@ private data class ControlsView(
 @HiltViewModel
 class BrowseViewModel @Inject constructor(
     private val repo: BrowseRepositoryUi,
-    settings: SettingsRepositoryUi,
+    private val settings: SettingsRepositoryUi,
 ) : ViewModel() {
 
     private val _sourceKey = MutableStateFlow(BrowseSourceKey.RoyalRoad)
@@ -608,6 +608,36 @@ class BrowseViewModel @Inject constructor(
      *  calls. */
     fun loadMore() {
         viewModelScope.launch { paginator.value?.loadNext() }
+    }
+
+    // ─── RSS feed management (#247) ────────────────────────────────────
+    // Moved from SettingsViewModel as part of the "whole move" of feed
+    // add/remove out of Settings into a FAB-launched sheet on Browse →
+    // RSS. The underlying repository surface didn't change; we just
+    // changed where the user reaches it. SettingsScreen still owns the
+    // RSS source on/off toggle (that's a "source enable" call, not
+    // "feed management").
+
+    /** Hot stream of currently-subscribed feed URLs. Drives the
+     *  removable-feeds list in the Browse RSS management sheet. */
+    val rssSubscriptions: StateFlow<List<String>> =
+        settings.rssSubscriptions
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Hot stream of curated suggested feeds. Backed by the
+     *  jphein/storyvox-feeds registry (#246) with a baked-in seed list
+     *  so the sheet's "Suggested" section has something to render
+     *  before the network fetch resolves. */
+    val suggestedRssFeeds: StateFlow<List<`in`.jphe.storyvox.feature.api.SuggestedFeed>> =
+        settings.suggestedRssFeeds
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun addRssFeed(url: String) {
+        viewModelScope.launch { settings.addRssFeed(url) }
+    }
+
+    fun removeRssFeedByUrl(url: String) {
+        viewModelScope.launch { settings.removeRssFeedByUrl(url) }
     }
 }
 
