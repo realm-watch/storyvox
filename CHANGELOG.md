@@ -9,6 +9,23 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.13] — 2026-05-13
+
+### Added
+- **EPUB export from FictionDetail** (#364, closes #117) — overflow-menu
+  "Export as EPUB" action. New `:source-epub-writer` module mirrors
+  the reader/import that landed in #235: persisted rows assemble into
+  a valid EPUB 3.0 zip at `cacheDir/exports/<sanitized-title>.epub` and
+  hand off to the Android share-sheet through a scoped FileProvider
+  (`xml/file_paths.xml` only exposes `exports/`, not the rest of
+  cacheDir). `<dc:source>` metadata names the original backend
+  (Royal Road, RSS, Outline, GitHub, EPUB).
+
+### Changed
+- `ChapterDao.allChapters(fictionId)` — new single-pass query returning
+  every chapter row (including bodies) for export. Independent of the
+  shelves/history v6 schema; no migration.
+
 ## [0.5.12] — 2026-05-13
 
 ### Added
