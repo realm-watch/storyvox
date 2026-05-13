@@ -37,24 +37,38 @@ object VoiceCatalog {
      *  on the first-launch [VoicePickerGate] picker so newcomers don't
      *  have to scroll the 98-voice catalog hunting for the good ones.
      *
-     *  In the Voice Library these are marked with the inline ⭐ prefix
-     *  on their [CatalogEntry.displayName] (kept across #128's title
-     *  cleanup) — the dedicated "Featured" section was removed in #129
-     *  and these voices now appear in their natural Engine → Tier home
-     *  alongside every other entry, just visually marked.
+     *  Revised 2026-05-13: the three starter voices are now the three
+     *  quality tiers of ONE Piper voice (Lessac en_US — low / medium /
+     *  high) so a first-time user can hear the quality-vs-download-size
+     *  trade-off directly. The earlier "one Cori, one Lessac, one
+     *  Kokoro" mix had a Kokoro entry whose declared `sizeBytes = 0`
+     *  rendered as "1 MB" in the picker (shared-model artefact —
+     *  Kokoro's ~330 MB model is downloaded once and shared across
+     *  every speaker, so per-voice byte counts are meaningless).
+     *  Sticking to Piper for the starter triplet keeps the sizes
+     *  honest: 63 / 63 / 114 MB.
      *
-     *  Curated per JP's call (issue #10): Cori for en_GB Piper, Lessac
-     *  for en_US Piper, Aoede for the multi-speaker Kokoro path. Three
-     *  distinct engines and accents so first-time users hear the range. */
+     *  The inline ⭐ prefix on the curated displayNames that used to
+     *  pair with this list has been removed — the favorites feature
+     *  in the Voice Library now owns the ⭐ glyph, and double-using it
+     *  for "featured" was reading as a stale favorite to users.
+     *
+     *  Cori (en_GB) joins Lessac (en_US) so the starter triplet
+     *  becomes a Lessac/Cori pair across two accents. Cori only
+     *  ships in medium and high upstream (rhasspy/piper-voices
+     *  doesn't publish a Cori-low), so the en_GB column is two
+     *  entries to en_US's three — five voices total in the gate. */
     val featuredIds: List<String> = listOf(
-        "piper_cori_en_GB_high",
+        "piper_lessac_en_US_low",
+        "piper_lessac_en_US_medium",
         "piper_lessac_en_US_high",
-        "kokoro_aoede_en_US_1",
+        "piper_cori_en_GB_medium",
+        "piper_cori_en_GB_high",
     )
     private fun piperEntries(): List<CatalogEntry> = listOf(
         CatalogEntry(
             id = "piper_lessac_en_US_high",
-            displayName = "⭐ Lessac",
+            displayName = "Lessac",
             language = "en_US",
             sizeBytes = 113895332L,
             qualityLevel = QualityLevel.High,
@@ -67,7 +81,7 @@ object VoiceCatalog {
         ),
         CatalogEntry(
             id = "piper_ryan_en_US_high",
-            displayName = "⭐ Ryan",
+            displayName = "Ryan",
             language = "en_US",
             sizeBytes = 120786923L,
             qualityLevel = QualityLevel.High,
@@ -80,7 +94,7 @@ object VoiceCatalog {
         ),
         CatalogEntry(
             id = "piper_amy_en_US_medium",
-            displayName = "⭐ Amy",
+            displayName = "Amy",
             language = "en_US",
             sizeBytes = 63201425L,
             qualityLevel = QualityLevel.Medium,

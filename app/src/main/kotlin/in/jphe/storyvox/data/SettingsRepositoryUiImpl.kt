@@ -123,22 +123,23 @@ internal val PunctuationPauseEnumToMultiplierMigration: DataMigration<Preference
     }
 
 /**
- * Issue #294 — seed `pref_default_voice_id` to `piper_cori_en_GB_high`
- * on a fresh install. The VoicePickerGate's ordering already shows
- * Cori first (see VoiceCatalog.featuredIds[0]), but the "no voice
- * activated yet" state would otherwise leave defaultVoiceId null until
- * the user explicitly picks one — that pushes the first-run friction
- * onto a picker tap.
+ * Issue #294 — seed `pref_default_voice_id` on a fresh install so the
+ * "no voice activated yet" state doesn't leave defaultVoiceId null
+ * until the user explicitly picks one (that pushes first-run friction
+ * onto a picker tap).
+ *
+ * Updated 2026-05-13: the seed follows
+ * `VoiceCatalog.featuredIds[0]` — currently `piper_lessac_en_US_low`,
+ * the smallest of the three Lessac quality tiers the VoicePickerGate
+ * presents. Picking the low tier as the implicit default minimizes
+ * first-launch download size; users who want richer audio can pick
+ * Medium or High in the picker before the gate dismisses.
  *
  * Runs once per process at first DataStore read. Idempotent —
  * `shouldMigrate` returns false the moment the key is present, so a
  * user who picks a different voice on first launch (or who upgraded
  * from a build that already has a stored voice) gets their choice
  * preserved verbatim.
- *
- * Cori High is a 114 MB download. The VoicePickerGate's three featured
- * tiles still offer Lessac High and Aoede Kokoro as alternatives, so a
- * connection-sensitive user can swap before the install completes.
  */
 internal val FirstTimeDefaultVoiceMigration: DataMigration<Preferences> =
     object : DataMigration<Preferences> {
@@ -149,7 +150,7 @@ internal val FirstTimeDefaultVoiceMigration: DataMigration<Preferences> =
 
         override suspend fun migrate(currentData: Preferences): Preferences {
             val mutable = currentData.toMutablePreferences()
-            mutable[voiceKey] = "piper_cori_en_GB_high"
+            mutable[voiceKey] = "piper_lessac_en_US_low"
             return mutable.toPreferences()
         }
 
