@@ -66,6 +66,12 @@ enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
      *  EPUB once and renders it through the `:source-epub` parser.
      *  Most-legally-clean source in the roster. */
     Gutenberg(SourceIds.GUTENBERG, "Gutenberg"),
+    /** Archive of Our Own (#381) — 14M+ fanfiction works via AO3's
+     *  per-tag Atom feeds (catalog) + per-work EPUB downloads
+     *  (content). Same content pipeline as Gutenberg; discovery is
+     *  fundamentally per-tag rather than per-catalog, so the
+     *  genre picker drives a curated fandom list. */
+    Ao3(SourceIds.AO3, "AO3"),
 }
 
 /** Tabs that are meaningful for [source]. GitHub registry doesn't
@@ -134,6 +140,17 @@ fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseT
         BrowseTab.Popular,
         BrowseTab.NewReleases,
         BrowseTab.Search,
+    )
+    // AO3 (#381): Popular and NewReleases both surface the
+    // per-tag Atom feed (sorted by recency — AO3 doesn't expose a
+    // separate popularity signal without HTML scraping, which v1
+    // explicitly opts out of). Search is hidden in v1 because the
+    // AO3 search endpoint returns HTML only; reinstating it is the
+    // follow-up. The fandom row (BrowseFilter genres) routes
+    // through byGenre() to a specific tag's feed.
+    BrowseSourceKey.Ao3 -> listOf(
+        BrowseTab.Popular,
+        BrowseTab.NewReleases,
     )
 }
 
@@ -339,6 +356,7 @@ class BrowseViewModel @Inject constructor(
                     if (s.sourceEpubEnabled) add(BrowseSourceKey.Epub)
                     if (s.sourceOutlineEnabled) add(BrowseSourceKey.Outline)
                     if (s.sourceGutenbergEnabled) add(BrowseSourceKey.Gutenberg)
+                    if (s.sourceAo3Enabled) add(BrowseSourceKey.Ao3)
                 }
             }
             .distinctUntilChanged()
@@ -576,6 +594,17 @@ class BrowseViewModel @Inject constructor(
                 _githubFilter.value = GitHubSearchFilter()
                 _palaceFilter.value = MemPalaceFilter()
             }
+            BrowseSourceKey.Ao3 -> {
+                // AO3 has no per-source filter sheet in v1 — the
+                // fandom picker rides on the genre row (which
+                // belongs to the source itself, not a filter
+                // overlay). Clear sibling filters so a future
+                // switch back to RR/GH doesn't pick up leftover
+                // state.
+                _filter.value = BrowseFilter()
+                _githubFilter.value = GitHubSearchFilter()
+                _palaceFilter.value = MemPalaceFilter()
+            }
         }
     }
 
@@ -756,6 +785,16 @@ private fun resolveSource(
         BrowseTab.Popular -> BrowseSource.Popular
         BrowseTab.NewReleases -> BrowseSource.NewReleases
         BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
+        else -> null
+    }
+    // AO3 (#381): both tabs route through the same Atom feed
+    // (the source's popular() and latestUpdates() return the
+    // tag-feed-sorted-by-recency in both cases — AO3 doesn't
+    // expose a separate popularity signal without HTML scraping,
+    // which v1 opts out of). Search is hidden via supportedTabs.
+    BrowseSourceKey.Ao3 -> when (tab) {
+        BrowseTab.Popular -> BrowseSource.Popular
+        BrowseTab.NewReleases -> BrowseSource.NewReleases
         else -> null
     }
 }

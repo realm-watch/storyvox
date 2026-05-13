@@ -747,6 +747,14 @@ data class UiSettings(
      *  with the existing EPUB infrastructure (#235), so opting in is
      *  free in terms of new dependencies the user has to configure. */
     val sourceGutenbergEnabled: Boolean = true,
+    /** Archive of Our Own backend (#381). Default OFF for fresh
+     *  installs — AO3 content can be Explicit-rated and we don't
+     *  want first-launch users seeing it before opting in. Users
+     *  enable from Settings → Library & Sync. Same content
+     *  pipeline as Gutenberg (per-work EPUB downloads parsed via
+     *  `:source-epub`); discovery is via per-tag Atom feeds rather
+     *  than a unified JSON catalog. */
+    val sourceAo3Enabled: Boolean = false,
     /** Issue #150 — when ON, a shake during the sleep timer's fade
      *  tail re-arms the timer. Default ON; users with bumpy commutes
      *  can disable to avoid accidental extensions. */
@@ -1128,6 +1136,9 @@ interface SettingsRepositoryUi {
 
     /** Issue #237 — Project Gutenberg backend on/off. */
     suspend fun setSourceGutenbergEnabled(enabled: Boolean)
+
+    /** Issue #381 — Archive of Our Own backend on/off. */
+    suspend fun setSourceAo3Enabled(enabled: Boolean)
 
     /** Issue #236 — manage subscribed feed URLs. */
     suspend fun addRssFeed(url: String)

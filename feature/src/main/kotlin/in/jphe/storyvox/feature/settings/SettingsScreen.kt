@@ -491,6 +491,15 @@ fun SettingsScreen(
                 checked = s.sourceGutenbergEnabled,
                 onCheckedChange = viewModel::setSourceGutenbergEnabled,
             )
+            // #381 — AO3 defaults OFF. Subtitle flags the
+            // Explicit-content possibility so the toggle is an
+            // informed opt-in, not a surprise.
+            SettingsSwitchRow(
+                title = "Archive of Our Own",
+                subtitle = "Fanfiction via per-tag feeds and official EPUB downloads. May include Explicit-rated works.",
+                checked = s.sourceAo3Enabled,
+                onCheckedChange = viewModel::setSourceAo3Enabled,
+            )
         }
 
         // ── Sync sub-card ─────────────────────────────────────────
