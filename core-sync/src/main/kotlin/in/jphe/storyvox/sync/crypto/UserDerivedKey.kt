@@ -38,9 +38,12 @@ import javax.crypto.spec.SecretKeySpec
  *    floor was flagged as below the modern minimum. Argus measured 600k
  *    at ~700ms on a Galaxy S8 (API 26 floor), well inside acceptable
  *    for a once-per-sync-startup KDF.
- *  - Output: a self-describing blob with `v1:<salt-b64>:<iv-b64>:<ct-b64>`.
+ *  - Output: a self-describing blob with `v2:<iv-b64>:<ct-b64>`.
  *    Format-versioned so a future move to Argon2id or AES-SIV can
- *    co-exist with v1 blobs.
+ *    co-exist with older blobs. The salt slot was dropped in v2 (PR
+ *    #360, argus finding 5) — see [envelope] for the design note.
+ *    v1 envelopes (`v1:salt:iv:ct`) are still readable on the
+ *    decode-side so any in-flight pre-fix blob can still be decrypted.
  */
 object UserDerivedKey {
 
@@ -60,7 +63,8 @@ object UserDerivedKey {
     private const val SALT_BYTES = 16
     private const val IV_BYTES = 12
     private const val GCM_TAG_BITS = 128
-    private const val ENVELOPE_VERSION = "v1"
+    private const val ENVELOPE_VERSION = "v2"
+    private const val LEGACY_V1 = "v1"
 
     /** Derive a 32-byte AES key from the passphrase + salt. Deterministic. */
     fun deriveKey(passphrase: CharArray, salt: ByteArray): SecretKey {
@@ -97,33 +101,61 @@ object UserDerivedKey {
     /**
      * Build a self-describing envelope string for storage.
      *
-     * Format: `v1:<base64(salt)>:<base64(iv)>:<base64(ct)>`
+     * Format: `v2:<base64(iv)>:<base64(ct)>`
      *
-     * The salt is part of the envelope so a new device with the same
-     * passphrase can derive the right key. Iterations are pinned in code.
+     * **Why no salt in the envelope?** Issue #360 finding 5 (argus): in
+     * v1 we generated a fresh per-encrypt salt and stored it in the
+     * envelope, but the AES key was derived from a *different*,
+     * deterministic-per-userId salt (`SHA-256("storyvox-secrets:" +
+     * userId)[0..16]` in [SecretsSyncer]). The envelope salt was
+     * unread on decrypt — cross-device decrypt worked only because
+     * both devices independently recomputed the deterministic salt.
+     *
+     * The design constraint is "same user on a new device must derive
+     * the same key from the same passphrase." A real per-encrypt
+     * random salt would make that impossible without an extra
+     * KDF-per-blob on every pull (~700ms at 600k iterations, × N
+     * blobs — unacceptable for cold-start sync). So the deterministic
+     * salt IS the design; the v2 envelope drops the misleading slot.
+     *
+     * Threat-model note: the deterministic salt + low-entropy
+     * passphrase combination is offline-crackable if the rows are
+     * exfiltrated. Mitigations: (1) PBKDF2 iterations bumped to 600k
+     * (finding 4), (2) users should pick a high-entropy passphrase —
+     * the UI tells them this. A per-user random salt stored
+     * server-side under a separate path is a documented v2 follow-up.
      */
-    fun envelope(salt: ByteArray, blob: EncryptedBlob): String {
-        require(salt.size == SALT_BYTES) { "salt must be $SALT_BYTES bytes" }
+    fun envelope(blob: EncryptedBlob): String {
         val encoder = Base64.getEncoder().withoutPadding()
-        val saltB64 = encoder.encodeToString(salt)
         val ivB64 = encoder.encodeToString(blob.iv)
         val ctB64 = encoder.encodeToString(blob.ciphertext)
-        return "$ENVELOPE_VERSION:$saltB64:$ivB64:$ctB64"
+        return "$ENVELOPE_VERSION:$ivB64:$ctB64"
     }
 
-    /** Parse a [envelope] string. Returns null on any structural mismatch. */
+    /** Parse a [envelope] string. Returns null on any structural
+     *  mismatch. Reads both v2 (`v2:iv:ct`) and legacy v1
+     *  (`v1:salt:iv:ct`, salt ignored) for read-side back-compat with
+     *  any in-flight pre-fix blob — caller doesn't see the salt slot
+     *  either way. */
     fun parseEnvelope(envelope: String): ParsedEnvelope? {
         val parts = envelope.split(':')
-        if (parts.size != 4 || parts[0] != ENVELOPE_VERSION) return null
         val decoder = Base64.getDecoder()
         return runCatching {
-            ParsedEnvelope(
-                salt = decoder.decode(parts[1]),
-                blob = EncryptedBlob(
-                    iv = decoder.decode(parts[2]),
-                    ciphertext = decoder.decode(parts[3]),
-                ),
-            )
+            when {
+                parts.size == 3 && parts[0] == ENVELOPE_VERSION -> ParsedEnvelope(
+                    blob = EncryptedBlob(
+                        iv = decoder.decode(parts[1]),
+                        ciphertext = decoder.decode(parts[2]),
+                    ),
+                )
+                parts.size == 4 && parts[0] == LEGACY_V1 -> ParsedEnvelope(
+                    blob = EncryptedBlob(
+                        iv = decoder.decode(parts[2]),
+                        ciphertext = decoder.decode(parts[3]),
+                    ),
+                )
+                else -> null
+            }
         }.getOrNull()
     }
 
@@ -141,12 +173,8 @@ object UserDerivedKey {
         override fun hashCode(): Int = iv.contentHashCode() * 31 + ciphertext.contentHashCode()
     }
 
-    data class ParsedEnvelope(val salt: ByteArray, val blob: EncryptedBlob) {
-        override fun equals(other: Any?): Boolean {
-            if (this === other) return true
-            if (other !is ParsedEnvelope) return false
-            return salt.contentEquals(other.salt) && blob == other.blob
-        }
-        override fun hashCode(): Int = salt.contentHashCode() * 31 + blob.hashCode()
-    }
+    /** Issue #360 finding 5: the `salt` field was dropped (it had no
+     *  cryptographic role — the actual key salt is deterministic
+     *  per-userId, computed in [SecretsSyncer]). */
+    data class ParsedEnvelope(val blob: EncryptedBlob)
 }
