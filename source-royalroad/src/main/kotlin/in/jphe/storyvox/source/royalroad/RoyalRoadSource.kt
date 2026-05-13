@@ -52,6 +52,11 @@ class RoyalRoadSource @Inject internal constructor(
 
     override val id: String = RoyalRoadIds.SOURCE_ID
     override val displayName: String = RoyalRoadIds.SOURCE_NAME
+    // Issue #382 — RR is the canonical follow-supporting source today.
+    // The push path: [setFollowed] POSTs to /fictions/setbookmark with
+    // a fresh __RequestVerificationToken; pull is the periodic
+    // /my/follows scrape from FollowsViewModel.refreshFollows.
+    override val supportsFollow: Boolean = true
 
     override suspend fun popular(page: Int): FictionResult<ListPage<FictionSummary>> =
         fetchBrowsePage(browseUrl("/fictions/active-popular", page), page)

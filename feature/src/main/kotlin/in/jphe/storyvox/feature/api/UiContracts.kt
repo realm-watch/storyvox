@@ -32,6 +32,12 @@ data class UiFiction(
      *  follows this fiction on RR. Drives the Follow-button label
      *  (Follow / Following). */
     val isFollowedRemote: Boolean = false,
+    /** Issue #382 — generalized from #211's hardcoded RR check.
+     *  True when the originating FictionSource exposes a follow
+     *  action via `FictionSource.supportsFollow`. Drives the
+     *  Follow-button *visibility* on FictionDetail; absent / false
+     *  means the button is hidden regardless of sign-in state. */
+    val sourceSupportsFollow: Boolean = false,
 )
 
 data class UiChapter(

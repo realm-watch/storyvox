@@ -28,6 +28,19 @@ interface FictionSource {
     /** Human-readable name for UI, e.g. `"Royal Road"`. */
     val displayName: String
 
+    /**
+     * Issue #382 — true when this source has a meaningful account-side
+     * follow concept that storyvox can push to via [setFollowed]. False
+     * (the default) means the FictionDetail Follow button stays hidden
+     * for fictions from this source. Royal Road overrides to true today;
+     * AO3 / GitHub / Wikipedia can override when their respective
+     * sign-in flows land.
+     *
+     * The default-false posture means a backend that never overrides
+     * gets the right (no-Follow-button) behavior automatically.
+     */
+    val supportsFollow: Boolean get() = false
+
     // ─── browse ───────────────────────────────────────────────────────────
 
     /** Front-page popular / "best" list, paginated. */

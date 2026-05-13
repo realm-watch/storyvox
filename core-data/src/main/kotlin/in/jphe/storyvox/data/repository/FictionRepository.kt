@@ -145,17 +145,29 @@ class FictionRepositoryImpl @Inject constructor(
         sources[sourceId]
             ?: error("No FictionSource for id=$sourceId; bound: ${sources.keys}")
 
+    // Issue #382 — small helper to look up `supportsFollow` on the
+    // FictionSource the row came from. Returns false for unknown
+    // sourceIds (a fiction row whose backend module has since been
+    // unbound), which is the safest UI default — hides the Follow
+    // button rather than wiring a never-firing path.
+    private fun supportsFollowFor(sourceId: String): Boolean =
+        sources[sourceId]?.supportsFollow ?: false
+
     override fun observeLibrary(): Flow<List<FictionSummary>> =
-        fictionDao.observeLibrary().map { rows -> rows.map { it.toSummary() } }
+        fictionDao.observeLibrary().map { rows ->
+            rows.map { it.toSummary(supportsFollow = supportsFollowFor(it.sourceId)) }
+        }
 
     override fun observeFollowsRemote(): Flow<List<FictionSummary>> =
-        fictionDao.observeFollowsRemote().map { rows -> rows.map { it.toSummary() } }
+        fictionDao.observeFollowsRemote().map { rows ->
+            rows.map { it.toSummary(supportsFollow = supportsFollowFor(it.sourceId)) }
+        }
 
     override fun observeFiction(id: String): Flow<FictionDetail?> =
         fictionDao.observe(id).combine(chapterDao.observeChapterInfosByFiction(id)) { fiction, chapters ->
             fiction?.let {
                 FictionDetail(
-                    summary = it.toSummary(),
+                    summary = it.toSummary(supportsFollow = supportsFollowFor(it.sourceId)),
                     chapters = chapters.map(::toInfo),
                     genres = it.genres,
                     wordCount = it.wordCount,
@@ -377,7 +389,7 @@ class FictionRepositoryImpl @Inject constructor(
 
 // ─── mappers ──────────────────────────────────────────────────────────────
 
-internal fun Fiction.toSummary(): FictionSummary = FictionSummary(
+internal fun Fiction.toSummary(supportsFollow: Boolean = false): FictionSummary = FictionSummary(
     id = id,
     sourceId = sourceId,
     title = title,
@@ -389,6 +401,7 @@ internal fun Fiction.toSummary(): FictionSummary = FictionSummary(
     chapterCount = chapterCount,
     rating = rating,
     followedRemotely = followedRemotely,
+    supportsFollow = supportsFollow,
 )
 
 internal fun FictionSummary.toEntity(now: Long): Fiction = Fiction(

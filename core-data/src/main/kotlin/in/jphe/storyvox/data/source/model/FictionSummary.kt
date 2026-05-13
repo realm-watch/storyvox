@@ -23,4 +23,9 @@ data class FictionSummary(
      *  Defaults to false; only meaningful for sources with an
      *  account-side follow concept (RR today). */
     val followedRemotely: Boolean = false,
+    /** Issue #382 — populated from `FictionSource.supportsFollow` at
+     *  the repository mapper layer. Drives the FictionDetail Follow
+     *  button's visibility on the UI side without each consumer
+     *  needing to know which sources happen to support follow. */
+    val supportsFollow: Boolean = false,
 )
