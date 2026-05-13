@@ -17,47 +17,29 @@ concurrency:
 jobs:
   build-debug:
     name: Build debug APK
-    runs-on: ubuntu-latest
+    # Self-hosted runner on katana (jp-desktop). Switched off
+    # ubuntu-latest 2026-05-12 after the jphein account hit its 3,000
+    # Actions-min/mo cap. The desktop has JDK 17, Android SDK 34/35,
+    # build-tools, adb, and a persistent ~/.gradle cache between runs
+    # — so this is both free and faster than a cold hosted runner.
+    # When/if we move back to hosted, swap `runs-on` for
+    # `ubuntu-latest` and re-add the setup-java / setup-android /
+    # actions/cache steps from git history.
+    runs-on: [self-hosted, linux, android]
     timeout-minutes: 45
+    env:
+      JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+      ANDROID_HOME: /home/jp/Android/Sdk
+      ANDROID_SDK_ROOT: /home/jp/Android/Sdk
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          accept-android-sdk-licenses: true
-
-      - name: Cache Gradle (deps only)
-        # Cache only resolved dependency files, not the whole ~/.gradle
-        # tree. The full tree includes transformed AARs / R8 mapping /
-        # build outputs and balloons to ~3 GB per build — fast to
-        # rebuild but expensive to store on the 2 GB free-tier quota.
-        # Dependency files alone are ~300-500 MB and what actually
-        # earns its keep across runs. Key is stable across day-to-day
-        # commits (only changes when Gradle wrapper or version catalog
-        # moves), so we get a single shared cache instead of one per
-        # gradle-file edit.
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches/modules-2
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
       - name: Assemble debug APK
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+        run: PATH="$JAVA_HOME/bin:$PATH" ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
       - name: Upload debug APK
         # Only upload on tag builds — the artifact is consumed by the
@@ -77,7 +59,9 @@ jobs:
     name: Attach APK to release
     needs: build-debug
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    # Same self-hosted runner as build-debug — keeps the artifact
+    # download local (no cross-region transfer) and stays in budget.
+    runs-on: [self-hosted, linux, android]
     permissions:
       contents: write
     steps:

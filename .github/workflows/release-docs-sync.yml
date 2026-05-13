@@ -24,7 +24,11 @@ permissions:
 
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    # Self-hosted runner (see android.yml header note for context on
+    # the 2026-05-12 cap-hit migration). This workflow only commits
+    # docs back, so a hosted runner would also work after the
+    # 2026-06-01 reset — but self-hosted is free.
+    runs-on: [self-hosted, linux]
     timeout-minutes: 10
     steps:
       - name: Checkout main (full history for commit-back)
