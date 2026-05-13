@@ -9,6 +9,23 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.15] — 2026-05-13
+
+### Added
+- **Project Gutenberg backend** (#366, closes #237) — 70,000+
+  public-domain books via Gutendex. New `:source-gutenberg` module:
+  catalog browsing via the JSON API; add-to-library downloads each
+  book's EPUB to `cacheDir/gutenberg/<id>.epub` and renders chapters
+  through `:source-epub`'s parser. Most-legally-clean source in the
+  storyvox roster — PG actively encourages programmatic access.
+  Defaults to ON for fresh installs.
+
+### Changed
+- New `BrowseSourceKey.Gutenberg` chip in the picker; supports
+  Popular / NewReleases / Search tabs. BestRated has no analogue on
+  PG. No filter sheet in v1 — topic search through the Search tab
+  covers the discovery cases.
+
 ## [0.5.14] — 2026-05-13
 
 ### Added
