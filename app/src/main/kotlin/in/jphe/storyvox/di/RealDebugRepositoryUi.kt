@@ -28,7 +28,9 @@ import `in`.jphe.storyvox.playback.PlaybackState
 import `in`.jphe.storyvox.playback.PlaybackUiEvent
 import `in`.jphe.storyvox.source.azure.AzureCredentials
 import `in`.jphe.storyvox.source.azure.AzureError
+import `in`.jphe.storyvox.source.azure.AzureSpeechClient
 import `in`.jphe.storyvox.source.azure.AzureVoiceEngine
+import `in`.jphe.storyvox.source.azure.AzureVoiceRoster
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -76,6 +78,8 @@ internal class RealDebugRepositoryUi(
     private val settings: SettingsRepositoryUi,
     private val azureCreds: AzureCredentials,
     private val azureEngine: AzureVoiceEngine,
+    private val azureSpeechClient: AzureSpeechClient,
+    private val azureVoiceRoster: AzureVoiceRoster,
     private val chapterRepo: ChapterRepository,
 ) : DebugRepositoryUi {
 
@@ -413,10 +417,17 @@ internal class RealDebugRepositoryUi(
             azure = DebugAzure(
                 isConfigured = azureCreds.isConfigured,
                 regionId = azureCreds.regionId(),
-                pendingRequests = 0,
-                lastLatencyMs = null,
+                // Issue #291 — wired live from AzureSpeechClient's
+                // synth-path instrumentation + AzureVoiceRoster's
+                // fetch timestamp. Cache age computed at read time
+                // from elapsedRealtime delta so a 1Hz snapshot
+                // doesn't need a separate ticker on the roster
+                // side.
+                pendingRequests = azureSpeechClient.pendingRequests.value,
+                lastLatencyMs = azureSpeechClient.lastSynthLatencyMs.value,
                 lastErrorTag = mapAzureErrorTag(azureErr),
-                voiceCacheAgeSec = null,
+                voiceCacheAgeSec = azureVoiceRoster.lastFetchAtElapsedMs.value
+                    ?.let { (SystemClock.elapsedRealtime() - it) / 1000 },
             ),
             network = DebugNetwork(
                 online = isOnline(),

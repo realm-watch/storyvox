@@ -125,6 +125,8 @@ object AppBindings {
         settings: SettingsRepositoryUi,
         azureCreds: `in`.jphe.storyvox.source.azure.AzureCredentials,
         azureEngine: `in`.jphe.storyvox.source.azure.AzureVoiceEngine,
+        azureSpeechClient: `in`.jphe.storyvox.source.azure.AzureSpeechClient,
+        azureVoiceRoster: `in`.jphe.storyvox.source.azure.AzureVoiceRoster,
         chapterRepo: `in`.jphe.storyvox.data.repository.ChapterRepository,
     ): `in`.jphe.storyvox.feature.api.DebugRepositoryUi =
         RealDebugRepositoryUi(
@@ -133,6 +135,8 @@ object AppBindings {
             settings = settings,
             azureCreds = azureCreds,
             azureEngine = azureEngine,
+            azureSpeechClient = azureSpeechClient,
+            azureVoiceRoster = azureVoiceRoster,
             chapterRepo = chapterRepo,
         )
 

@@ -1,5 +1,6 @@
 package `in`.jphe.storyvox.source.azure
 
+import android.os.SystemClock
 import android.util.Log
 import `in`.jphe.storyvox.data.source.AzureVoiceDescriptor
 import `in`.jphe.storyvox.data.source.AzureVoiceProvider
@@ -11,6 +12,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
@@ -51,6 +53,22 @@ class AzureVoiceRoster @Inject constructor(
     private var lastFetchedRegion: String? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /**
+     * Issue #291 — elapsedRealtime() at the moment of the last
+     * successful voices/list fetch. null until the first fetch
+     * succeeds; cleared back to null when the user removes their key
+     * (the roster collapses to empty in that path).
+     *
+     * Consumers (Debug overlay) compute the cache age in seconds as
+     * `(SystemClock.elapsedRealtime() - this.value) / 1000`. We expose
+     * the timestamp rather than a derived `cacheAgeSec` so a 1Hz
+     * snapshot doesn't need a separate ticker coroutine to keep the
+     * age value fresh — the elapsedRealtime delta is recomputed at
+     * read time.
+     */
+    private val _lastFetchAtElapsedMs = MutableStateFlow<Long?>(null)
+    val lastFetchAtElapsedMs: StateFlow<Long?> = _lastFetchAtElapsedMs.asStateFlow()
+
     /** Public flow — kicks the first refresh when something starts
      *  collecting (typically the picker UI on app start). The refresh
      *  is async so the first emission is the cached snapshot
@@ -77,6 +95,7 @@ class AzureVoiceRoster @Inject constructor(
                 state.value = emptyList()
                 lastFetchedKey = null
                 lastFetchedRegion = null
+                _lastFetchAtElapsedMs.value = null
                 return
             }
             if (key == lastFetchedKey &&
@@ -92,6 +111,7 @@ class AzureVoiceRoster @Inject constructor(
                 state.value = voices
                 lastFetchedKey = key
                 lastFetchedRegion = region
+                _lastFetchAtElapsedMs.value = SystemClock.elapsedRealtime()
                 Log.i(TAG, "Fetched ${voices.size} voices for region=$region")
             } catch (t: Throwable) {
                 Log.w(TAG, "Roster fetch failed: ${t.javaClass.simpleName}: ${t.message}")
