@@ -156,6 +156,7 @@ dependencies {
     implementation(project(":source-epub"))
     implementation(project(":source-outline"))
     implementation(project(":source-azure"))
+    implementation(project(":core-sync"))
     implementation(project(":feature"))
 
     implementation(libs.androidx.core.ktx)
