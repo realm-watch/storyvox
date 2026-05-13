@@ -195,6 +195,8 @@ class SettingsViewModelBufferTest {
         override suspend fun setSourceGutenbergEnabled(enabled: Boolean) = Unit
         override suspend fun setSourceAo3Enabled(enabled: Boolean) = Unit
         override suspend fun setSourceStandardEbooksEnabled(enabled: Boolean) = Unit
+        override suspend fun setSourceWikipediaEnabled(enabled: Boolean) = Unit
+        override suspend fun setWikipediaLanguageCode(code: String) = Unit
         override val outlineHost: kotlinx.coroutines.flow.Flow<String> = kotlinx.coroutines.flow.flowOf("")
         override suspend fun setOutlineHost(host: String) = Unit
         override suspend fun setOutlineApiKey(apiKey: String) = Unit

@@ -78,6 +78,11 @@ enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
      *  recommended-compatible EPUB once and renders chapters through
      *  the `:source-epub` parser. Same CC0 legal posture as Gutenberg. */
     StandardEbooks(SourceIds.STANDARD_EBOOKS, "Standard Ebooks"),
+    /** Wikipedia (#377) — first non-fiction long-form backend. Each
+     *  article is one fiction; each top-level section is one chapter
+     *  (chapter 0 = "Introduction"). Sourced from `<lang>.wikipedia.org`
+     *  with the language code configurable in Settings. */
+    Wikipedia(SourceIds.WIKIPEDIA, "Wikipedia"),
 }
 
 /** Tabs that are meaningful for [source]. GitHub registry doesn't
@@ -157,6 +162,7 @@ fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseT
     BrowseSourceKey.Ao3 -> listOf(
         BrowseTab.Popular,
         BrowseTab.NewReleases,
+    )
     // Standard Ebooks (#375): Popular sorts by SE's "popularity"
     // (most → least); NewReleases sorts by SE's "default" (release
     // date desc — i.e. newest produced first). Search hits the same
@@ -166,6 +172,16 @@ fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseT
     BrowseSourceKey.StandardEbooks -> listOf(
         BrowseTab.Popular,
         BrowseTab.NewReleases,
+        BrowseTab.Search,
+    )
+    // Wikipedia (#377): Popular = Today's Featured Article + the
+    // mostread cluster from yesterday's feed (a curated landing,
+    // not paginated). Search hits MediaWiki's opensearch endpoint.
+    // BestRated has no analogue; NewReleases overlaps the featured
+    // listing since Wikipedia doesn't expose a stable "new
+    // articles" feed worth surfacing.
+    BrowseSourceKey.Wikipedia -> listOf(
+        BrowseTab.Popular,
         BrowseTab.Search,
     )
 }
@@ -374,6 +390,7 @@ class BrowseViewModel @Inject constructor(
                     if (s.sourceGutenbergEnabled) add(BrowseSourceKey.Gutenberg)
                     if (s.sourceAo3Enabled) add(BrowseSourceKey.Ao3)
                     if (s.sourceStandardEbooksEnabled) add(BrowseSourceKey.StandardEbooks)
+                    if (s.sourceWikipediaEnabled) add(BrowseSourceKey.Wikipedia)
                 }
             }
             .distinctUntilChanged()
@@ -613,17 +630,20 @@ class BrowseViewModel @Inject constructor(
             }
             BrowseSourceKey.Ao3 -> {
                 // AO3 has no per-source filter sheet in v1 — the
-                // fandom picker rides on the genre row (which
-                // belongs to the source itself, not a filter
-                // overlay). Clear sibling filters so a future
-                // switch back to RR/GH doesn't pick up leftover
-                // state.
+                // fandom picker rides on the genre row.
+                _filter.value = BrowseFilter()
+                _githubFilter.value = GitHubSearchFilter()
+                _palaceFilter.value = MemPalaceFilter()
+            }
             BrowseSourceKey.StandardEbooks -> {
-                // SE has no per-source filter in v1 — same shape as PG:
-                // tab-driven Popular/NewReleases + free-form Search.
-                // (Subject-by-genre exists upstream and could land later
-                // as a filter sheet; v1 keeps the surface symmetrical
-                // with Gutenberg.)
+                // SE has no per-source filter in v1 — same shape as PG.
+                _filter.value = BrowseFilter()
+                _githubFilter.value = GitHubSearchFilter()
+                _palaceFilter.value = MemPalaceFilter()
+            }
+            BrowseSourceKey.Wikipedia -> {
+                // Wikipedia has no per-source filter in v1 — Popular is
+                // featured + mostread, Search hits opensearch.
                 _filter.value = BrowseFilter()
                 _githubFilter.value = GitHubSearchFilter()
                 _palaceFilter.value = MemPalaceFilter()
@@ -818,6 +838,8 @@ private fun resolveSource(
     BrowseSourceKey.Ao3 -> when (tab) {
         BrowseTab.Popular -> BrowseSource.Popular
         BrowseTab.NewReleases -> BrowseSource.NewReleases
+        else -> null
+    }
     // Standard Ebooks (#375): Popular hits SE `?sort=popularity`;
     // NewReleases hits `?sort=default` (release date desc); Search
     // hits `?query=<term>`. No filter surface in v1 — same shape as
@@ -825,6 +847,16 @@ private fun resolveSource(
     BrowseSourceKey.StandardEbooks -> when (tab) {
         BrowseTab.Popular -> BrowseSource.Popular
         BrowseTab.NewReleases -> BrowseSource.NewReleases
+        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
+        else -> null
+    }
+    // Wikipedia (#377): Popular = Today's Featured Article +
+    // mostread (one-shot, not paginated). Search hits the MediaWiki
+    // opensearch endpoint. No filter surface — Wikipedia's category
+    // system is too fan-shaped to flatten into a filter sheet, and
+    // free-form search covers the discovery cases.
+    BrowseSourceKey.Wikipedia -> when (tab) {
+        BrowseTab.Popular -> BrowseSource.Popular
         BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
         else -> null
     }

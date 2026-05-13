@@ -159,6 +159,7 @@ dependencies {
     implementation(project(":source-gutenberg"))
     implementation(project(":source-ao3"))
     implementation(project(":source-standard-ebooks"))
+    implementation(project(":source-wikipedia"))
     implementation(project(":source-azure"))
     implementation(project(":core-sync"))
     implementation(project(":feature"))

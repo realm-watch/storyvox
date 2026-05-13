@@ -176,6 +176,11 @@ class SettingsViewModel @Inject constructor(
     /** Issue #375 — Standard Ebooks backend on/off. */
     fun setSourceStandardEbooksEnabled(enabled: Boolean) =
         viewModelScope.launch { repo.setSourceStandardEbooksEnabled(enabled) }
+    /** Issue #377 — Wikipedia backend on/off + per-language host. */
+    fun setSourceWikipediaEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setSourceWikipediaEnabled(enabled) }
+    fun setWikipediaLanguageCode(code: String) =
+        viewModelScope.launch { repo.setWikipediaLanguageCode(code) }
     fun setOutlineHost(host: String) = viewModelScope.launch { repo.setOutlineHost(host) }
     fun setOutlineApiKey(apiKey: String) = viewModelScope.launch { repo.setOutlineApiKey(apiKey) }
     fun clearOutlineConfig() = viewModelScope.launch { repo.clearOutlineConfig() }

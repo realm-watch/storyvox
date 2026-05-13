@@ -57,4 +57,12 @@ object SourceIds {
      *  Tap-to-add downloads the compatible EPUB to local cache and
      *  reuses the `:source-epub` parser for chapter rendering. */
     const val STANDARD_EBOOKS: String = "standardebooks"
+    /** Wikipedia (#377) — first non-fiction long-form backend in the
+     *  storyvox roster. Each Wikipedia article is one fiction; each
+     *  top-level section (`<h2>`) within the article is one chapter
+     *  (chapter 0 is the lead / "Introduction"). Sourced from the
+     *  Wikimedia REST API at `<lang>.wikipedia.org`; the language
+     *  code is user-configurable so the same module serves all
+     *  language Wikipedias. */
+    const val WIKIPEDIA: String = "wikipedia"
 }

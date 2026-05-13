@@ -513,12 +513,29 @@ fun SettingsScreen(
                 subtitle = "Fanfiction via per-tag feeds and official EPUB downloads. May include Explicit-rated works.",
                 checked = s.sourceAo3Enabled,
                 onCheckedChange = viewModel::setSourceAo3Enabled,
+            )
             SettingsSwitchRow(
                 title = "Standard Ebooks",
                 subtitle = "Curated, typographically polished public-domain classics. Tap one to import its EPUB.",
                 checked = s.sourceStandardEbooksEnabled,
                 onCheckedChange = viewModel::setSourceStandardEbooksEnabled,
             )
+            // Issue #377 — Wikipedia: first non-fiction long-form
+            // backend. Each article = one fiction, each top-level
+            // section = one chapter. Language-code field shows only
+            // when the toggle is on, same pattern as Outline / EPUB.
+            SettingsSwitchRow(
+                title = "Wikipedia",
+                subtitle = "Narrate any Wikipedia article. Sections become chapters.",
+                checked = s.sourceWikipediaEnabled,
+                onCheckedChange = viewModel::setSourceWikipediaEnabled,
+            )
+            if (s.sourceWikipediaEnabled) {
+                WikipediaLanguageRow(
+                    languageCode = s.wikipediaLanguageCode,
+                    onLanguageCodeChange = viewModel::setWikipediaLanguageCode,
+                )
+            }
         }
 
         // ── Sync sub-card ─────────────────────────────────────────
@@ -2933,6 +2950,60 @@ private fun OutlineConfigRow(viewModel: SettingsViewModel) {
                     },
                 ) { Text("Clear") }
             }
+        }
+    }
+}
+
+/**
+ * Issue #377 — Wikipedia language-code picker. Inline row under the
+ * Wikipedia toggle in Library & Sync. Single short text field — `en`,
+ * `de`, `ja`, `simple`, etc. — resolves to the matching Wikipedia
+ * host (`<lang>.wikipedia.org`). Mirrors the inline-config shape of
+ * [OutlineConfigRow] / [EpubFolderPickerRow]; nothing to save
+ * imperatively because the language code is short and the impl
+ * accepts any non-blank value.
+ *
+ * The Save button keeps the row's interaction visible — users can
+ * type without persisting on every keystroke, and a deliberate Save
+ * action mirrors what they see on Outline / Memory Palace below.
+ */
+@Composable
+private fun WikipediaLanguageRow(
+    languageCode: String,
+    onLanguageCodeChange: (String) -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    var draft by remember(languageCode) { mutableStateOf(languageCode) }
+    Column(modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm)) {
+        Text(
+            "Wikipedia language",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = spacing.xs),
+        )
+        Text(
+            text = "Pick a Wikipedia. Use the URL prefix: en, de, ja, simple, fr, ...",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = spacing.sm),
+        )
+        androidx.compose.material3.OutlinedTextField(
+            value = draft,
+            onValueChange = { draft = it.trim().lowercase().take(16) },
+            label = { Text("Language code") },
+            placeholder = { Text("en") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            BrassButton(
+                label = "Save",
+                onClick = { onLanguageCodeChange(draft) },
+                variant = BrassButtonVariant.Primary,
+            )
         }
     }
 }

@@ -206,6 +206,7 @@ fun BrowseScreen(
                 // driven sources.
                 BrowseSourceKey.Ao3 -> false
                 BrowseSourceKey.StandardEbooks -> false
+                BrowseSourceKey.Wikipedia -> false
             }
             if (filterableSource) {
                 FilterButton(
@@ -224,6 +225,7 @@ fun BrowseScreen(
                         BrowseSourceKey.Gutenberg,
                         BrowseSourceKey.Ao3 -> 0
                         BrowseSourceKey.StandardEbooks -> 0
+                        BrowseSourceKey.Wikipedia -> 0
                     },
                     onClick = { showFilterSheet = true },
                 )
@@ -494,6 +496,10 @@ fun BrowseScreen(
             // #375 — Standard Ebooks mirrors Gutenberg's surface: no
             // filter sheet in v1, free-form Search covers discovery.
             BrowseSourceKey.StandardEbooks -> { showFilterSheet = false }
+            // #377 — Wikipedia has no filter sheet; the language code
+            // lives in Settings and topic-search via opensearch covers
+            // discovery.
+            BrowseSourceKey.Wikipedia -> { showFilterSheet = false }
         }
     }
 }
@@ -583,6 +589,7 @@ private fun searchHintForSource(sourceKey: BrowseSourceKey): String = when (sour
     // wants exhaustive coverage. Keep the copy ready for that day.
     BrowseSourceKey.Ao3 -> "Search AO3 by tag, fandom, or character"
     BrowseSourceKey.StandardEbooks -> "Search Standard Ebooks' hand-curated public-domain classics"
+    BrowseSourceKey.Wikipedia -> "Search Wikipedia — narrate any article"
 }
 
 private val BrowseTab.label: String
