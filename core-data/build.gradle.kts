@@ -38,18 +38,20 @@ android {
         getByName("main") {
             java.srcDirs("src/main/kotlin")
         }
-    }
-
-    // Robolectric-backed unit tests need the exported Room schemas on the
-    // assets path so `MigrationTestHelper` can resolve them. The schemas
-    // are exported by KSP at `core-data/schemas/`.
-    sourceSets {
+        // Room's MigrationTestHelper needs the schema JSONs visible
+        // on the test classpath so it can reconstruct the prior-version
+        // databases. Without this entry it fails with
+        // "Cannot find the schema file in the assets folder."
+        getByName("test") {
+            assets.srcDirs(files("$projectDir/schemas"))
+        }
         getByName("androidTest").assets.srcDirs("$projectDir/schemas")
-        getByName("test").assets.srcDirs("$projectDir/schemas")
     }
 
     testOptions {
         unitTests {
+            // Robolectric needs Android resources on the unit-test classpath
+            // so MigrationTestHelper can spin up a real SQLiteOpenHelper.
             isIncludeAndroidResources = true
         }
     }
@@ -89,8 +91,8 @@ dependencies {
     // Test
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.androidx.room.testing)
     testImplementation(libs.robolectric)
-    testImplementation("androidx.room:room-testing:2.6.1")
     testImplementation("androidx.test:core:1.6.1")
     testImplementation("androidx.test.ext:junit:1.2.1")
 }

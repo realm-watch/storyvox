@@ -116,9 +116,55 @@ val MIGRATION_4_5: Migration = object : Migration(4, 5) {
     }
 }
 
+/**
+ * v6 — issue #158: chapter_history table backing the Library "History"
+ * sub-tab. Single CREATE TABLE + two indexes (openedAt for the ordering
+ * the History feed uses, chapterId for the FK cascade-delete planner).
+ * Purely additive — no existing data touched.
+ *
+ * The composite PK + UPSERT semantics mean re-opening the same chapter
+ * twenty times produces one row, not twenty audit entries — see the
+ * kdoc on [`in`.jphe.storyvox.data.db.entity.ChapterHistory] for the
+ * product call.
+ *
+ * Originally authored as MIGRATION_4_5 against pre-shelves main;
+ * renumbered to 5→6 at merge time because #116 (shelves) landed first
+ * and claimed the v5 slot. SQL is unchanged — chapter_history doesn't
+ * touch any shelves columns, so ordering is independent.
+ */
+val MIGRATION_5_6: Migration = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `chapter_history` (
+                `fictionId` TEXT NOT NULL,
+                `chapterId` TEXT NOT NULL,
+                `openedAt` INTEGER NOT NULL,
+                `completed` INTEGER NOT NULL DEFAULT 0,
+                `fractionRead` REAL,
+                PRIMARY KEY(`fictionId`, `chapterId`),
+                FOREIGN KEY(`fictionId`) REFERENCES `fiction`(`id`)
+                  ON UPDATE NO ACTION ON DELETE CASCADE,
+                FOREIGN KEY(`chapterId`) REFERENCES `chapter`(`id`)
+                  ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_chapter_history_openedAt` " +
+                "ON `chapter_history` (`openedAt`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_chapter_history_chapterId` " +
+                "ON `chapter_history` (`chapterId`)",
+        )
+    }
+}
+
 val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
     MIGRATION_3_4,
     MIGRATION_4_5,
+    MIGRATION_5_6,
 )
