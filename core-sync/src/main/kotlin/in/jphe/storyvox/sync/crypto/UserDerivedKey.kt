@@ -32,19 +32,30 @@ import javax.crypto.spec.SecretKeySpec
  * for not having to trust the sync provider with our LLM API keys.
  *
  * Implementation notes:
- *  - PBKDF2WithHmacSHA256, 100k iterations, 32-byte key, 16-byte salt.
- *    100k is below 600k (OWASP 2026) for performance — the KDF runs on
- *    Android phones from API 26 (Galaxy S8 era), so we trade a touch of
- *    margin for usable latency. Salt is per-user (stored alongside the
- *    encrypted blob); iterations are public.
+ *  - PBKDF2WithHmacSHA256, 600k iterations, 32-byte key, 16-byte salt.
+ *    600k matches NIST SP 800-132 + OWASP 2024 guidance — the upgrade
+ *    landed in PR #360 (argus review finding 4) after the original 100k
+ *    floor was flagged as below the modern minimum. Argus measured 600k
+ *    at ~700ms on a Galaxy S8 (API 26 floor), well inside acceptable
+ *    for a once-per-sync-startup KDF.
  *  - Output: a self-describing blob with `v1:<salt-b64>:<iv-b64>:<ct-b64>`.
- *    Format-versioned so a future move to a stronger KDF can co-exist with
- *    legacy blobs.
+ *    Format-versioned so a future move to Argon2id or AES-SIV can
+ *    co-exist with v1 blobs.
  */
 object UserDerivedKey {
 
     private const val KDF_ALG = "PBKDF2WithHmacSHA256"
-    private const val KDF_ITERATIONS = 100_000
+    /**
+     * NIST SP 800-132 / OWASP 2024 minimum for PBKDF2-HMAC-SHA256.
+     *
+     * Issue #360 finding 4 (argus): the previous 100k was below the
+     * modern floor — the kdoc justified it with API 26 phone latency,
+     * but argus's measurement (Galaxy S8 → ~700ms at 600k) shows the
+     * latency budget is fine. The KDF only runs once per sync-startup
+     * and once per passphrase change, so a 700ms cost is invisible to
+     * the user.
+     */
+    private const val KDF_ITERATIONS = 600_000
     private const val KDF_KEY_BITS = 256
     private const val SALT_BYTES = 16
     private const val IV_BYTES = 12
