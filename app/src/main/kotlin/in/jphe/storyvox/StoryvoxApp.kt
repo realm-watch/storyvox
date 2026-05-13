@@ -9,6 +9,7 @@ import `in`.jphe.storyvox.BuildConfig
 import `in`.jphe.storyvox.data.auth.SessionHydrator
 import `in`.jphe.storyvox.data.repository.AuthRepository
 import `in`.jphe.storyvox.data.work.WorkScheduler
+import `in`.jphe.storyvox.sync.coordinator.SyncCoordinator
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +23,7 @@ class StoryvoxApp : Application(), Configuration.Provider {
     @Inject lateinit var workScheduler: WorkScheduler
     @Inject lateinit var authRepository: AuthRepository
     @Inject lateinit var sessionHydrator: SessionHydrator
+    @Inject lateinit var syncCoordinator: SyncCoordinator
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -33,6 +35,10 @@ class StoryvoxApp : Application(), Configuration.Provider {
         super.onCreate()
         workScheduler.ensurePeriodicWorkScheduled()
         rehydrateRoyalRoadCookies()
+        // InstantDB sync — if a refresh token is stored, validate it and
+        // pull every per-domain syncer. No-op when no one is signed in.
+        // Fire-and-forget: the coordinator launches its own coroutines.
+        syncCoordinator.initialize()
     }
 
     /**

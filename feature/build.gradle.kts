@@ -58,6 +58,7 @@ dependencies {
     implementation(project(":core-data"))
     implementation(project(":core-llm"))
     implementation(project(":core-playback"))
+    implementation(project(":core-sync"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.bundles.lifecycle)
