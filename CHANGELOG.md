@@ -9,6 +9,24 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.14] — 2026-05-13
+
+### Added
+- **Royal Road soft sign-in gate on Browse listings** (#365, closes
+  #241) — when the user is not signed in to RR, the Browse → RR
+  Popular / NewReleases / BestRated / filter-active tabs render a
+  brass sign-in CTA instead of firing an anonymous request. Search
+  and Add-by-URL stay open anonymously. Authenticated traffic
+  removes the "anonymous bot" framing — every listing fetch now
+  carries a real RR session cookie. Closes #240 as superseded
+  (#241's soft alternative chosen).
+
+### Changed
+- `BrowseViewModel` — three auth signals (gh sign-in, gh repo scope,
+  rr sign-in) now bundle through a single `AuthSnapshot` flow so the
+  outer controls combine stays under the 5-arg overload ceiling
+  after gaining a third boolean.
+
 ## [0.5.13] — 2026-05-13
 
 ### Added
