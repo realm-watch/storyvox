@@ -28,14 +28,21 @@ import org.junit.Test
 class VoiceNamingTest {
 
     @Test
-    fun `Piper Lessac high keeps star marker and drops tier paren`() {
+    fun `Piper Lessac high has no star marker and drops tier paren`() {
         val entry = VoiceCatalog.byId("piper_lessac_en_US_high")
         requireNotNull(entry) { "piper_lessac_en_US_high must exist in catalog" }
-        // ⭐ marker stays inline (curated featured voice). Tier paren gone.
-        assertEquals("⭐ Lessac", entry.displayName)
+        // ⭐ marker removed 2026-05-13 — favorites in the Voice Library
+        // now own the star glyph; double-using it for "featured" was
+        // reading to users as a stale favorite. The starter triplet
+        // surfacing is driven by [VoiceCatalog.featuredIds] alone now.
+        assertEquals("Lessac", entry.displayName)
         assertFalse(
             "displayName must not contain '(High)' parenthetical",
             entry.displayName.contains("(High)"),
+        )
+        assertFalse(
+            "displayName must not carry the ⭐ marker (favorites own that glyph now)",
+            entry.displayName.contains("⭐"),
         )
         assertEquals(VoiceGender.Female, entry.gender)
     }
