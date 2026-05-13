@@ -14,6 +14,7 @@ import dagger.hilt.components.SingletonComponent
 import `in`.jphe.storyvox.data.db.StoryvoxDatabase
 import `in`.jphe.storyvox.data.db.dao.AuthDao
 import `in`.jphe.storyvox.data.db.dao.ChapterDao
+import `in`.jphe.storyvox.data.db.dao.ChapterHistoryDao
 import `in`.jphe.storyvox.data.db.dao.FictionDao
 import `in`.jphe.storyvox.data.db.dao.FictionShelfDao
 import `in`.jphe.storyvox.data.db.dao.LlmMessageDao
@@ -29,6 +30,8 @@ import `in`.jphe.storyvox.data.repository.FictionRepository
 import `in`.jphe.storyvox.data.repository.FictionRepositoryImpl
 import `in`.jphe.storyvox.data.repository.FollowsRepository
 import `in`.jphe.storyvox.data.repository.FollowsRepositoryImpl
+import `in`.jphe.storyvox.data.repository.HistoryRepository
+import `in`.jphe.storyvox.data.repository.HistoryRepositoryImpl
 import `in`.jphe.storyvox.data.repository.LibraryRepository
 import `in`.jphe.storyvox.data.repository.LibraryRepositoryImpl
 import `in`.jphe.storyvox.data.repository.PlaybackPositionRepository
@@ -57,6 +60,7 @@ object DataModule {
 
     @Provides fun fictionDao(db: StoryvoxDatabase): FictionDao = db.fictionDao()
     @Provides fun chapterDao(db: StoryvoxDatabase): ChapterDao = db.chapterDao()
+    @Provides fun chapterHistoryDao(db: StoryvoxDatabase): ChapterHistoryDao = db.chapterHistoryDao()
     @Provides fun playbackDao(db: StoryvoxDatabase): PlaybackDao = db.playbackDao()
     @Provides fun authDao(db: StoryvoxDatabase): AuthDao = db.authDao()
     @Provides fun llmSessionDao(db: StoryvoxDatabase): LlmSessionDao = db.llmSessionDao()
@@ -105,6 +109,9 @@ abstract class RepositoryBindings {
 
     @Binds @Singleton
     abstract fun bindShelfRepository(impl: ShelfRepositoryImpl): ShelfRepository
+
+    @Binds @Singleton
+    abstract fun bindHistoryRepository(impl: HistoryRepositoryImpl): HistoryRepository
 
     @Binds @Singleton
     abstract fun bindChapterDownloadScheduler(
