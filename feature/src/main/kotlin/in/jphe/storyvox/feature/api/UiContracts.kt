@@ -637,6 +637,16 @@ data class UiSettings(
      * `:app`'s `SettingsRepositoryUiImpl` for the mapping.
      */
     val punctuationPauseMultiplier: Float = PUNCTUATION_PAUSE_DEFAULT_MULTIPLIER,
+    /**
+     * Issue #193 — VoxSherpa-TTS v2.7.13 — Sonic pitch-interpolation
+     * quality. Default true (quality=1) for smoother pitch-shifted
+     * output. Costs ~20% extra CPU per pitch-shifted chunk, which is
+     * fine for storyvox because chapter PCM is pre-rendered and
+     * cached (post-#97). Users on slow hardware can flip this off to
+     * fall back to Sonic's upstream default (quality=0, faster but
+     * audibly grittier at non-neutral pitch).
+     */
+    val pitchInterpolationHighQuality: Boolean = true,
     val sigil: UiSigil = UiSigil.UNKNOWN,
     val ai: UiAiSettings = UiAiSettings(),
     /**
@@ -1028,6 +1038,10 @@ interface SettingsRepositoryUi {
      * Replaces the pre-#109 `setPunctuationPause(mode: PunctuationPause)`.
      */
     suspend fun setPunctuationPauseMultiplier(multiplier: Float)
+    /** Issue #193 — toggle high-quality Sonic pitch interpolation
+     *  (quality=1 vs upstream default 0). See
+     *  [UiSettings.pitchInterpolationHighQuality]. */
+    suspend fun setPitchInterpolationHighQuality(enabled: Boolean)
     suspend fun setPlaybackBufferChunks(chunks: Int)
     /** Issue #98 — Mode A toggle. See [UiSettings.warmupWait]. */
     suspend fun setWarmupWait(enabled: Boolean)

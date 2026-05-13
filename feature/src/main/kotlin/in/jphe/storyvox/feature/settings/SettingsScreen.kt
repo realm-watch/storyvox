@@ -228,6 +228,20 @@ fun SettingsScreen(
                 multiplier = s.punctuationPauseMultiplier,
                 onMultiplierChange = viewModel::setPunctuationPauseMultiplier,
             )
+            // Issue #193 — Sonic pitch-interpolation quality toggle.
+            // Default ON for chapter-PCM-cached storyvox (post-#97);
+            // OFF available for users on slow hardware who'd rather
+            // burn the CPU cycles elsewhere.
+            SettingsSwitchRow(
+                title = "High-quality pitch interpolation",
+                subtitle = if (s.pitchInterpolationHighQuality) {
+                    "Smoother pitch-shifted audio. ~20% extra CPU per chapter render."
+                } else {
+                    "Faster pitch shifting. Some grittiness at non-neutral pitch."
+                },
+                checked = s.pitchInterpolationHighQuality,
+                onCheckedChange = viewModel::setPitchInterpolationHighQuality,
+            )
             SettingsLinkRow(
                 title = "Pronunciation",
                 subtitle = "Teach the voice how to say specific names and words.",
