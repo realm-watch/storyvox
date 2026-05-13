@@ -1,26 +1,25 @@
 package `in`.jphe.storyvox.ui.component
 
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Bookmarks
@@ -42,6 +41,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -62,15 +65,18 @@ enum class HomeTab(val label: String, val filled: ImageVector, val outlined: Ima
  * Material 3's `NavigationBar` + `NavigationBarItem` defaults render an
  * indicator pill **per item**, with the selected item's pill fading in
  * and the unselected items' pills fading out. The visual effect reads
- * as a "pop" — even with M3's built-in fade duration, there's no shared
- * element morphing between tab positions, which is the convention users
- * expect from Apple Music / Spotify / Pocket Casts.
+ * as a "pop"; this bar paints a single pill that slides between tabs.
  *
- * The fix here is to drop M3's NavigationBar entirely and lay out the
- * bar as `BoxWithConstraints(Row(tabs), <sliding indicator>)`. The
- * indicator is a single Box whose `offset.x` is driven by
- * `animateDpAsState(targetValue = cellWidth * selectedIdx + ...)`. One
- * shared element, slides across all tab cells with a 280ms ease.
+ * Issue #XXX (2026-05-12) — the first cut put the indicator pill in its
+ * own `Box(.offset(x).size(...).background(...))` sibling to the tab
+ * Row inside `BoxWithConstraints`. Two layout children + a mid-animation
+ * `.offset` made hit-testing flaky under playback's high recomposition
+ * rate: taps on tabs would land on the press-down but lose the press-up,
+ * particularly while audio was playing. The pill is now a `drawBehind`
+ * on the Row itself, so `BoxWithConstraints` has a single layout child
+ * and hit-testing is unambiguous. Each TabCell also pins an explicit
+ * `MutableInteractionSource` so the clickable's state survives the
+ * playback-driven recompositions that previously could interrupt it.
  *
  * `BoxWithConstraints` is required because per-cell width is derived
  * from the parent's measured pixel width — we can't hard-code it
@@ -86,6 +92,7 @@ fun BottomTabBar(
 ) {
     val tabs = HomeTab.entries
     val selectedIndex = tabs.indexOf(selected).coerceAtLeast(0)
+    val indicatorColor = MaterialTheme.colorScheme.primaryContainer
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -95,23 +102,33 @@ fun BottomTabBar(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                // Pad above the Android system navigation gesture/bar so
-                // the tab row doesn't get covered by Samsung's three-button
-                // nav (or the gesture pill). M3's NavigationBar does this
-                // automatically; the custom layout has to opt in.
+                // Pad above the visible nav bar (3-button nav) or
+                // gesture pill (~20px). The deeper OS gesture-exclusion
+                // zone (`mandatorySystemGestures`, ~64px on this
+                // device) is handled per-cell via
+                // `Modifier.systemGestureExclusion()` below — that
+                // tells the OS "I own taps in this rect, don't claim
+                // them as swipe-up gestures." Without that, the bottom
+                // ~44px of each tab fell inside the gesture zone and
+                // taps got swallowed by the OS, especially when
+                // attention drifted (e.g. while audio was playing).
+                // We use the exclusion-rect API instead of padding-by-
+                // the-larger-inset because that approach leaves an
+                // ugly dead strip below the cells.
                 .windowInsetsPadding(WindowInsets.navigationBars)
                 .height(BAR_HEIGHT),
         ) {
-            val cellWidthDp = with(LocalDensity.current) {
-                (constraints.maxWidth.toFloat() / tabs.size).toDp()
-            }
+            val density = LocalDensity.current
+            val cellWidthPx = constraints.maxWidth.toFloat() / tabs.size
+            val pillWidthPx = with(density) { INDICATOR_WIDTH.toPx() }
+            val pillHeightPx = with(density) { INDICATOR_HEIGHT.toPx() }
+            val pillTopPx = with(density) { INDICATOR_TOP_OFFSET.toPx() }
             // Center the indicator pill horizontally within the cell —
             // the pill is narrower than a cell so the math is
             // `cellLeft + (cellWidth - pillWidth) / 2`.
-            val indicatorXTarget = cellWidthDp * selectedIndex +
-                (cellWidthDp - INDICATOR_WIDTH) / 2
-            val indicatorX by animateDpAsState(
-                targetValue = indicatorXTarget,
+            val targetX = cellWidthPx * selectedIndex + (cellWidthPx - pillWidthPx) / 2f
+            val pillX by animateFloatAsState(
+                targetValue = targetX,
                 animationSpec = tween(
                     durationMillis = SLIDE_DURATION_MS,
                     easing = FastOutSlowInEasing,
@@ -119,24 +136,22 @@ fun BottomTabBar(
                 label = "nav-indicator-slide",
             )
 
-            // Indicator behind the icons. Brass primary-container fill,
-            // same shape M3 uses for its per-item pill (32dp rounded
-            // rect). Positioned at the M3 default indicator vertical
-            // offset (~12dp from the top, leaving ~36dp for icon + 16dp
-            // padding + 16dp label below).
-            Box(
+            // Indicator drawn behind the Row. Pill is paint, not a
+            // layout node — so the BoxWithConstraints has exactly one
+            // child (the Row), and hit-testing is never ambiguous.
+            Row(
                 modifier = Modifier
-                    .offset(x = indicatorX, y = INDICATOR_TOP_OFFSET)
-                    .size(INDICATOR_WIDTH, INDICATOR_HEIGHT)
-                    .background(
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        shape = RoundedCornerShape(INDICATOR_HEIGHT / 2),
-                    ),
-            )
-
-            // Tab row in front of the indicator. Each cell handles its
-            // own clickable + ripple; the indicator is purely visual.
-            Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
+                    .fillMaxWidth()
+                    .fillMaxHeight()
+                    .drawBehind {
+                        drawRoundRect(
+                            color = indicatorColor,
+                            topLeft = Offset(pillX, pillTopPx),
+                            size = Size(pillWidthPx, pillHeightPx),
+                            cornerRadius = CornerRadius(pillHeightPx / 2f),
+                        )
+                    },
+            ) {
                 tabs.forEach { tab ->
                     TabCell(
                         tab = tab,
@@ -144,7 +159,15 @@ fun BottomTabBar(
                         onClick = { onSelect(tab) },
                         modifier = Modifier
                             .weight(1f)
-                            .fillMaxHeight(),
+                            .fillMaxHeight()
+                            // Claim each tab's rect from the OS gesture
+                            // pool. Android limits the cumulative
+                            // exclusion area to 200dp from the bottom
+                            // of the window; one 80dp bar's worth of
+                            // cells is well within that. Required to
+                            // make taps reliable on gesture nav — see
+                            // the header comment on BoxWithConstraints.
+                            .systemGestureExclusion(),
                     )
                 }
             }
@@ -159,8 +182,20 @@ private fun TabCell(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Pin the interaction source per cell. Without an explicit
+    // `remember`, `Modifier.clickable(onClick = lambda)` constructs an
+    // anonymous source each composition; under the playback flow's
+    // recomposition pressure the source can lose the press-up half of a
+    // tap. Holding the source across recompositions keeps press state
+    // continuous so the click always fires.
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
     Column(
-        modifier = modifier.clickable(onClick = onClick),
+        modifier = modifier.clickable(
+            interactionSource = interactionSource,
+            indication = indication,
+            onClick = onClick,
+        ),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {

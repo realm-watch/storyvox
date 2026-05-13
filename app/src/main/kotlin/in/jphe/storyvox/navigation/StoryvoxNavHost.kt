@@ -201,14 +201,32 @@ private fun StoryvoxNavHostContent(
                             HomeTab.Settings -> StoryvoxRoutes.SETTINGS
                         }
                         if (target != currentRoute) {
+                            // Pop everything above the start destination so
+                            // tab switches don't accumulate, then push the
+                            // target. `launchSingleTop` collapses repeated
+                            // taps on the active tab.
+                            //
+                            // Deliberately NOT using `saveState`/`restoreState`:
+                            // that pair, combined with the mixed enter/exit
+                            // transition types between home tabs (fade) and
+                            // drill-down routes (slide), caused the NavHost
+                            // transition state machine to commit the back-
+                            // stack change without ever rendering the target
+                            // composable — taps on Library from inside a
+                            // reader chapter appeared dead even though the
+                            // OS back button returned to the reader, proving
+                            // the navigation had landed on the back-stack.
+                            // Net loss: tab state isn't preserved across
+                            // switches (e.g. you start at the top of Library
+                            // each time). Net win: the nav actually renders.
                             navController.navigate(target) {
-                                // popUpTo targets the start destination so the
-                                // back stack stays anchored on Playing — tab
-                                // switches don't accumulate, and Back from
-                                // any home tab returns to Playing then exits.
-                                popUpTo(StoryvoxRoutes.PLAYING) { saveState = true }
+                                // Pop everything above the start destination
+                                // (PLAYING) so tab switches don't pile up the
+                                // back stack. Using the start route name
+                                // instead of `findStartDestination().id` to
+                                // avoid the extra import; equivalent result.
+                                popUpTo(StoryvoxRoutes.PLAYING)
                                 launchSingleTop = true
-                                restoreState = true
                             }
                         }
                     },
