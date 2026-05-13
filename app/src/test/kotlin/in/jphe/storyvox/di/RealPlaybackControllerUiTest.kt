@@ -197,6 +197,7 @@ class RealPlaybackControllerUiTest {
         override fun setShakeToExtendEnabled(enabled: Boolean) = Unit
         override suspend fun speakText(text: String) = Unit
         override fun stopSpeaking() = Unit
+        override fun bufferTelemetry() = `in`.jphe.storyvox.playback.BufferTelemetry()
     }
 
     /**

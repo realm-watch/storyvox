@@ -65,6 +65,13 @@ interface PlaybackController {
 
     /** Issue #189 — cancel an in-flight recap-aloud utterance. Idempotent. */
     fun stopSpeaking()
+
+    /**
+     * Issue #290 — point-in-time snapshot of the active player's
+     * producer queue + AudioTrack buffer state. Returns zeros when no
+     * player is bound. Read by the Debug overlay at 1Hz.
+     */
+    fun bufferTelemetry(): BufferTelemetry
 }
 
 /**
@@ -246,6 +253,9 @@ class DefaultPlaybackController @Inject constructor(
     override fun stopSpeaking() {
         player?.stopSpeaking()
     }
+
+    override fun bufferTelemetry(): BufferTelemetry =
+        player?.bufferTelemetry() ?: BufferTelemetry()
 
     internal fun emitEvent(event: PlaybackUiEvent) {
         _events.tryEmit(event)

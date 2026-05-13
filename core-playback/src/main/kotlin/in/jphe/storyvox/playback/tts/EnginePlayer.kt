@@ -557,6 +557,21 @@ class EnginePlayer @AssistedInject constructor(
      *  file exists for `(chapterId, voiceId, speed, pitch, chunkerVersion)`. */
     private var pcmSource: PcmSource? = null
 
+    /**
+     * Issue #290 — running tally of audio frames written to the main
+     * AudioTrack since the last pipeline build. One frame = one PCM
+     * sample on the single mono channel; at 24 kHz that's 1/24000 s
+     * per frame. The Debug overlay's `audio buffered` row computes
+     * `(framesWritten - track.playbackHeadPosition) * 1000 / sampleRate`
+     * to express buffered ms.
+     *
+     * Updated from the consumer thread inside the write loop. Volatile
+     * read on the snapshot path; the consumer is single-threaded so no
+     * atomic increment is needed. Reset to 0 on every new pipeline
+     * build so the delta against playbackHeadPosition stays meaningful.
+     */
+    @Volatile private var totalFramesWritten: Long = 0L
+
     /** Inter-chunk gap measurement (Tab A7 Lite TTS perf lane). Off by
      *  default — reads a marker file at every chunkStart so a developer
      *  can `adb shell touch /data/data/in.jphe.storyvox/files/chunk-gap-log`
@@ -1100,6 +1115,11 @@ class EnginePlayer @AssistedInject constructor(
         )
         pcmSource = source
         pipelineRunning.set(true)
+        // Issue #290 — reset the frames-written tally so the debug
+        // overlay's `audio buffered ms` reads against the fresh
+        // AudioTrack's playbackHeadPosition rather than a stale total
+        // from the previous pipeline.
+        totalFramesWritten = 0L
         // Clear the prev-chunk-end anchor so the first chunk of this
         // pipeline lifetime doesn't get a "gap" attributed to user
         // pause time, seek time, or model load time.
@@ -1268,6 +1288,10 @@ class EnginePlayer @AssistedInject constructor(
                         val n = track.write(chunk.pcm, written, chunk.pcm.size - written)
                         if (n < 0) break // error code from AudioTrack
                         written += n
+                        // Issue #290 — frames written tally for the
+                        // debug overlay's "audio buffered ms" row.
+                        // 16-bit mono PCM = 2 bytes per frame.
+                        if (n > 0) totalFramesWritten += n / 2
                     }
                     // Spool trailing silence from a shared zero-filled
                     // buffer (no per-sentence allocation).
@@ -1282,6 +1306,8 @@ class EnginePlayer @AssistedInject constructor(
                         val n = track.write(SILENCE_CHUNK, 0, sz)
                         if (n < 0) break
                         remaining -= n
+                        // Silence frames count toward the buffer too.
+                        if (n > 0) totalFramesWritten += n / 2
                     }
 
                     // End-of-chunk: AudioTrack has accepted every byte of
@@ -1786,6 +1812,36 @@ class EnginePlayer @AssistedInject constructor(
     /** Issue #189 — stop an in-flight recap utterance. Idempotent. */
     fun stopSpeaking() {
         stopRecapPipeline()
+    }
+
+    /**
+     * Issue #290 — point-in-time snapshot of the producer queue +
+     * AudioTrack buffer state. Read by the Debug overlay at its 1Hz
+     * snapshot cadence; off the hot path entirely.
+     *
+     * Returns zeros when no pipeline is active (queue/track not bound).
+     * `audioBufferMs` is best-effort: AudioTrack's playbackHeadPosition
+     * wraps every 2^31 / sampleRate seconds (~24 hours at 24 kHz) — the
+     * mask-to-unsigned-int handles single wraps; longer-running pipelines
+     * with no rebuild would need an explicit overflow counter (deferred
+     * — current chapters rebuild the pipeline on chapter-end well before
+     * the wrap window).
+     */
+    fun bufferTelemetry(): `in`.jphe.storyvox.playback.BufferTelemetry {
+        val src = pcmSource
+        val track = audioTrack
+        val audioBufferMs = if (track != null && track.sampleRate > 0) {
+            val head = track.playbackHeadPosition.toLong() and 0xFFFFFFFFL
+            val pendingFrames = (totalFramesWritten - head).coerceAtLeast(0)
+            pendingFrames * 1000L / track.sampleRate
+        } else {
+            0L
+        }
+        return `in`.jphe.storyvox.playback.BufferTelemetry(
+            producerQueueDepth = src?.producerQueueDepth() ?: 0,
+            producerQueueCapacity = src?.producerQueueCapacity() ?: 0,
+            audioBufferMs = audioBufferMs,
+        )
     }
 
     /**

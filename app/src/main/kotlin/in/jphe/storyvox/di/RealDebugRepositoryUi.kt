@@ -406,14 +406,27 @@ internal class RealDebugRepositoryUi(
                 pitch = playback.pitch,
                 punctuationPauseMultiplier = ui.punctuationPauseMultiplier,
             ),
-            audio = DebugAudio(
-                producerQueueDepth = 0, // not exposed from EnginePlayer today
-                producerQueueCapacity = ui.playbackBufferChunks,
-                audioBufferMs = 0L, // see follow-up issue
-                reorderBufferOccupancy = 0,
-                sampleRate = 0,
-                outputDevice = outputDeviceLabel.value,
-            ),
+            audio = run {
+                // Issue #290 — pull producer-queue depth + audioBufferMs
+                // from the bound player's BufferTelemetry snapshot.
+                // Returns zeros when no pipeline is active. Capacity
+                // falls back to the configured slider value when the
+                // source hasn't reported its own (cache sources have
+                // no queue).
+                val tel = controller.bufferTelemetry()
+                DebugAudio(
+                    producerQueueDepth = tel.producerQueueDepth,
+                    producerQueueCapacity = if (tel.producerQueueCapacity > 0) {
+                        tel.producerQueueCapacity
+                    } else {
+                        ui.playbackBufferChunks
+                    },
+                    audioBufferMs = tel.audioBufferMs,
+                    reorderBufferOccupancy = 0,
+                    sampleRate = 0,
+                    outputDevice = outputDeviceLabel.value,
+                )
+            },
             azure = DebugAzure(
                 isConfigured = azureCreds.isConfigured,
                 regionId = azureCreds.regionId(),
