@@ -7,12 +7,14 @@ import `in`.jphe.storyvox.data.db.converter.Converters
 import `in`.jphe.storyvox.data.db.dao.AuthDao
 import `in`.jphe.storyvox.data.db.dao.ChapterDao
 import `in`.jphe.storyvox.data.db.dao.FictionDao
+import `in`.jphe.storyvox.data.db.dao.FictionShelfDao
 import `in`.jphe.storyvox.data.db.dao.LlmMessageDao
 import `in`.jphe.storyvox.data.db.dao.LlmSessionDao
 import `in`.jphe.storyvox.data.db.dao.PlaybackDao
 import `in`.jphe.storyvox.data.db.entity.AuthCookie
 import `in`.jphe.storyvox.data.db.entity.Chapter
 import `in`.jphe.storyvox.data.db.entity.Fiction
+import `in`.jphe.storyvox.data.db.entity.FictionShelf
 import `in`.jphe.storyvox.data.db.entity.LlmSession
 import `in`.jphe.storyvox.data.db.entity.LlmStoredMessage
 import `in`.jphe.storyvox.data.db.entity.PlaybackPosition
@@ -26,8 +28,10 @@ import `in`.jphe.storyvox.data.db.entity.PlaybackPosition
         // v3 (#81 AI integration) — multi-session chat tables.
         LlmSession::class,
         LlmStoredMessage::class,
+        // v5 (#116 library shelves) — many-to-many junction.
+        FictionShelf::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -38,6 +42,7 @@ abstract class StoryvoxDatabase : RoomDatabase() {
     abstract fun authDao(): AuthDao
     abstract fun llmSessionDao(): LlmSessionDao
     abstract fun llmMessageDao(): LlmMessageDao
+    abstract fun fictionShelfDao(): FictionShelfDao
 
     companion object {
         const val NAME: String = "storyvox.db"

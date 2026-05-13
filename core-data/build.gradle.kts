@@ -39,6 +39,20 @@ android {
             java.srcDirs("src/main/kotlin")
         }
     }
+
+    // Robolectric-backed unit tests need the exported Room schemas on the
+    // assets path so `MigrationTestHelper` can resolve them. The schemas
+    // are exported by KSP at `core-data/schemas/`.
+    sourceSets {
+        getByName("androidTest").assets.srcDirs("$projectDir/schemas")
+        getByName("test").assets.srcDirs("$projectDir/schemas")
+    }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 ksp {
@@ -75,4 +89,8 @@ dependencies {
     // Test
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.robolectric)
+    testImplementation("androidx.room:room-testing:2.6.1")
+    testImplementation("androidx.test:core:1.6.1")
+    testImplementation("androidx.test.ext:junit:1.2.1")
 }
