@@ -5,6 +5,9 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import `in`.jphe.storyvox.data.repository.ContinueListeningEntry
+import `in`.jphe.storyvox.data.repository.PlaybackPositionRepository
+import `in`.jphe.storyvox.data.repository.playback.PlaybackResumePolicyConfig
 import `in`.jphe.storyvox.feature.api.PlaybackControllerUi
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.UiPlaybackState
@@ -113,6 +116,21 @@ class ReaderViewModel @Inject constructor(
     private val playback: PlaybackControllerUi,
     private val settings: SettingsRepositoryUi,
     private val chapterRecap: ChapterRecap,
+    /**
+     * Source for the Playing-tab Resume prompt (#? Lyra). Same flow
+     * LibraryViewModel reads for its "Continue listening" tile — keeps
+     * the two surfaces visually in lock-step (same fiction, same chapter,
+     * same updatedAt).
+     */
+    private val positionRepo: PlaybackPositionRepository,
+    /**
+     * #90 — the smart-resume policy. When the user explicitly paused
+     * before, the Resume CTA should load-but-not-auto-play. When the app
+     * was killed mid-playback (no explicit pause), the flag stays true
+     * and Resume auto-plays. Identical wiring to
+     * [`in`.jphe.storyvox.feature.library.LibraryViewModel.resume].
+     */
+    private val resumePolicy: PlaybackResumePolicyConfig,
     @Suppress("UnusedPrivateProperty") savedState: SavedStateHandle,
 ) : ViewModel() {
 
@@ -242,6 +260,19 @@ class ReaderViewModel @Inject constructor(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReaderUiState())
 
+    /**
+     * Most-recent continue-listening entry. Drives the magical Resume
+     * prompt that [HybridReaderScreen] renders when the player has no
+     * chapter loaded yet, or when the loading timer hit [LoadingPhase.TimedOut]
+     * with stale ids. Null while the DAO row is unset (first-launch /
+     * wiped-data) — in that case the screen renders [ResumeEmptyPrompt]
+     * instead. Same flow LibraryViewModel reads for its tile so both
+     * surfaces stay in lock-step.
+     */
+    val resumeEntry: StateFlow<ContinueListeningEntry?> = positionRepo
+        .observeMostRecentContinueListening()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     /** Issue #278 — user-initiated retry from the timed-out error block.
      *  Re-invokes the playback `play()` path; the underlying controller
      *  will re-fetch the chapter / re-prime the voice. We also reset the
@@ -254,6 +285,41 @@ class ReaderViewModel @Inject constructor(
     fun retryLoading() {
         _loadingPhase.value = LoadingPhase.Loading
         playback.play()
+    }
+
+    /**
+     * Playing-tab Resume CTA. Loads the chapter referenced by
+     * [resumeEntry], seeks to [ContinueListeningEntry.charOffset] (or to
+     * the chapter head when [fromStart] is true), and — per the smart-
+     * resume policy (#90) — auto-plays iff the user's last play/pause
+     * intent was play. App-killed-mid-playback leaves the flag at true,
+     * so the dominant "phone died, keep going" case still auto-plays.
+     *
+     * No screen transition: the playback state flow drives the
+     * Playing-tab content swap from [ResumePrompt] to the normal
+     * AudiobookView the moment `playback.state.fictionId` flips
+     * non-null. The user feels the prompt dissolve into the player
+     * rather than a discrete navigation.
+     *
+     * Also resets [_loadingPhase] back to `Loading` so the timed-out
+     * error path's escape hatch (Lyra: ResumePrompt as the recovery UI
+     * for TimedOut) restarts the 30 s timer cleanly — if the new load
+     * also stalls, the user gets the same friendly error block on the
+     * next round, not an immediate re-fire of the stale `TimedOut` from
+     * the previous attempt.
+     */
+    fun resume(fromStart: Boolean = false) {
+        val entry = resumeEntry.value ?: return
+        _loadingPhase.value = LoadingPhase.Loading
+        viewModelScope.launch {
+            val autoPlay = resumePolicy.currentLastWasPlaying()
+            playback.startListening(
+                fictionId = entry.fiction.id,
+                chapterId = entry.chapter.id,
+                charOffset = if (fromStart) 0 else entry.charOffset,
+                autoPlay = autoPlay,
+            )
+        }
     }
 
     fun setActivePane(pane: ReaderView) { _activePane.value = pane }
