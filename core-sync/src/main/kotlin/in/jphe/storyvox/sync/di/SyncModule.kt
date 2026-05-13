@@ -22,8 +22,11 @@ import `in`.jphe.storyvox.sync.coordinator.TombstoneStore
 import `in`.jphe.storyvox.sync.domain.BookmarksSyncer
 import `in`.jphe.storyvox.sync.domain.FollowsSyncer
 import `in`.jphe.storyvox.sync.domain.LibrarySyncer
+import `in`.jphe.storyvox.sync.domain.PassphraseProvider
 import `in`.jphe.storyvox.sync.domain.PlaybackPositionSyncer
 import `in`.jphe.storyvox.sync.domain.PronunciationDictSyncer
+import `in`.jphe.storyvox.sync.domain.SecretsSyncer
+import javax.inject.Named
 import javax.inject.Singleton
 
 /**
@@ -47,11 +50,13 @@ import javax.inject.Singleton
  * + `@IntoSet` line — no risk of forgetting to register, and the
  * coordinator's signature documents the contract.
  *
- * SecretsSyncer is wired in [`:app`] instead of here because it
- * depends on the EncryptedSharedPreferences provider that lives in
- * `:core-data` and on a passphrase provider that lives in
- * `:feature` (Settings). Keeping it out of this module avoids a
- * circular dep.
+ * SecretsSyncer is wired here alongside the other syncers — the earlier
+ * "circular dep" justification (defer to `:app`) didn't survive a second
+ * look. SecretsSyncer's deps are [SharedPreferences] (from `:core-data`),
+ * [InstantBackend] (this module), and a [PassphraseProvider] (defaulted
+ * to a no-op null binding here; `:app` or `:feature` overrides once the
+ * Settings → Account passphrase entry lands). No cycle, and this module
+ * now controls the full multibound set.
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -100,4 +105,25 @@ object SyncModule {
 
     @Provides @IntoSet
     fun provideBookmarksSyncer(impl: BookmarksSyncer): Syncer = impl
+
+    /** Issue #360 finding 1 (argus) — SecretsSyncer is now in the
+     *  multibound set so its push/pull actually fires from the
+     *  coordinator. Without this binding, secrets sync silently no-ops
+     *  on every device and a reinstall loses the user's LLM keys / RR
+     *  cookies / GitHub PAT / Outline tokens. */
+    @Provides @IntoSet
+    fun provideSecretsSyncer(impl: SecretsSyncer): Syncer = impl
+
+    /**
+     * Default passphrase provider — returns null, i.e. "secrets sync is
+     * a no-op." The real provider lives in `:app` once the Settings →
+     * Account passphrase entry is wired; until then this lets the DI
+     * graph resolve and the rest of the syncers run while
+     * [SecretsSyncer.reconcile] returns `Permanent("set a passphrase")`
+     * straight away.
+     */
+    @Provides
+    @Singleton
+    @Named(SecretsSyncer.PASSPHRASE_PROVIDER)
+    fun provideDefaultPassphraseProvider(): PassphraseProvider = PassphraseProvider { null }
 }
