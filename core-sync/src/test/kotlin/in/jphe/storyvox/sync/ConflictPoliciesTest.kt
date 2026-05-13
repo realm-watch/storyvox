@@ -42,6 +42,41 @@ class ConflictPoliciesTest {
         assertEquals(setOf("a"), merged)
     }
 
+    @Test fun `unionWithTombstoneStamps applies the freshness window to expired tombstones`() {
+        // Issue #360 finding 3 (argus): an expired tombstone (older
+        // than `tombstoneTtlMs` from `now`) does NOT block the
+        // corresponding id from appearing in the merged set.
+        val local = setOf("a")
+        val remote = setOf<String>()
+        val ttlMs = 1000L
+        val now = 10_000L
+        // Tombstone for "a" was recorded WAY before the TTL window.
+        val expiredTombs = mapOf("a" to 5_000L) // delta = 5000ms > 1000ms TTL
+        val merged = ConflictPolicies.unionWithTombstoneStamps(
+            local = local, remote = remote, tombstones = expiredTombs,
+            now = now, tombstoneTtlMs = ttlMs,
+        )
+        // "a" survives the expired tombstone.
+        assertTrue("a" in merged)
+    }
+
+    @Test fun `unionWithTombstoneStamps still blocks within the freshness window`() {
+        // A fresh tombstone (within the TTL) DOES block the id, same
+        // as the old behaviour. This guards the "delete still
+        // propagates" contract from being accidentally regressed.
+        val local = setOf("a", "b")
+        val remote = setOf("a", "b")
+        val ttlMs = 1000L
+        val now = 10_000L
+        val freshTombs = mapOf("b" to 9_500L) // delta = 500ms < 1000ms TTL
+        val merged = ConflictPolicies.unionWithTombstoneStamps(
+            local = local, remote = remote, tombstones = freshTombs,
+            now = now, tombstoneTtlMs = ttlMs,
+        )
+        assertTrue("a" in merged)
+        assertFalse("b should be blocked by fresh tombstone", "b" in merged)
+    }
+
     @Test fun `maxScalar picks the higher`() {
         assertEquals(200, ConflictPolicies.maxScalar(100, 200))
         assertEquals(200, ConflictPolicies.maxScalar(200, 100))

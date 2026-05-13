@@ -24,17 +24,70 @@ object ConflictPolicies {
 
     /**
      * Union two sets, suppressing entries that appear in [tombstones].
-     * Tombstones win over presence — if A is in local and in tombstones,
-     * the merged set won't contain A (the user deleted it on some
-     * device, so it should be gone everywhere).
+     * Tombstones win over presence — if A is in local and in
+     * tombstones, the merged set won't contain A (the user deleted it
+     * on some device, so it should be gone everywhere).
      *
-     * This is the library / follows / favorites strategy.
+     * **Deprecated v1 shape** — `Set<T>` tombstones make removals
+     * permanent: once an id is tombstoned, a future re-add of the same
+     * id is filtered forever, because the merge has no signal to tell
+     * "the user re-added this" from "tombstone is stale." See [unionWithTombstoneStamps]
+     * for the timestamped variant.
+     *
+     * Kept here only for callers / tests that still use the old shape;
+     * new code should always go through [unionWithTombstoneStamps].
      */
     fun <T> unionWithTombstones(
         local: Set<T>,
         remote: Set<T>,
         tombstones: Set<T>,
     ): Set<T> = (local union remote) - tombstones
+
+    /**
+     * Same shape as [unionWithTombstones] but tombstones carry a
+     * timestamp (epoch ms) — the moment the removal was first
+     * recorded. An id stays excluded from the merge **only if its
+     * tombstone is still within the freshness window [now] −
+     * [tombstoneTtlMs]**; tombstones older than the TTL are
+     * considered "forgiven" and a re-add of the id propagates
+     * normally.
+     *
+     * **Why a TTL and not per-member add timestamps?** A proper
+     * "tombstones[id] > addedAt[id]" rule requires every member to
+     * carry its own add-timestamp — a schema change to the v1
+     * `members: List<String>` shape that breaks wire-format
+     * compatibility for every domain that uses set-sync (library,
+     * follows). The TTL ships the correctness fix in PR #360 without
+     * forcing a v2 schema. Per-member timestamps are a documented v2
+     * follow-up.
+     *
+     * The TTL value is a knob; 24h is the recommended default (matches
+     * the "I removed a fiction by accident, then re-added it the same
+     * day, sync clobbered it" repro from argus's review). After 24h
+     * the user can recover by re-adding manually and waiting one sync.
+     *
+     * Issue #360 finding 3 (argus). Closes the "tombstones are immortal"
+     * bug — a re-add of a previously-tombstoned id now propagates on
+     * the next sync (within the TTL window if a fresh add races a
+     * fresh tombstone; immediately after the window otherwise).
+     */
+    fun <T> unionWithTombstoneStamps(
+        local: Set<T>,
+        remote: Set<T>,
+        tombstones: Map<T, Long>,
+        now: Long,
+        tombstoneTtlMs: Long = DEFAULT_TOMBSTONE_TTL_MS,
+    ): Set<T> {
+        val fresh = tombstones
+            .filterValues { stamp -> now - stamp < tombstoneTtlMs }
+            .keys
+        return (local union remote) - fresh
+    }
+
+    /** Default tombstone freshness window — 24 hours. After this much
+     *  wall-clock time has passed since a tombstone was recorded, the
+     *  tombstone no longer blocks a re-add of the same id. */
+    const val DEFAULT_TOMBSTONE_TTL_MS: Long = 24L * 60L * 60L * 1000L
 
     /**
      * Max-of-comparable. Used for reading position — the listener
