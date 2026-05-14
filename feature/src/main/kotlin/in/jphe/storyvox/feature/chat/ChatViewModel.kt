@@ -5,7 +5,9 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import `in`.jphe.storyvox.data.repository.ChapterRepository
 import `in`.jphe.storyvox.data.repository.FictionMemoryRepository
+import `in`.jphe.storyvox.data.repository.ShelfRepository
 import `in`.jphe.storyvox.feature.api.FictionRepositoryUi
 import `in`.jphe.storyvox.feature.api.PlaybackControllerUi
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
@@ -13,18 +15,28 @@ import `in`.jphe.storyvox.feature.api.UiChatGrounding
 import `in`.jphe.storyvox.feature.api.UiRecapPlaybackState
 import `in`.jphe.storyvox.feature.chat.memory.CrossFictionMemoryBlock
 import `in`.jphe.storyvox.feature.chat.memory.FictionMemoryExtractor
+import `in`.jphe.storyvox.feature.chat.tools.ChatToolHandlers
 import `in`.jphe.storyvox.llm.FeatureKind
 import `in`.jphe.storyvox.llm.LlmConfig
 import `in`.jphe.storyvox.llm.LlmError
 import `in`.jphe.storyvox.llm.LlmMessage
+import `in`.jphe.storyvox.llm.LlmRepository
 import `in`.jphe.storyvox.llm.LlmSessionRepository
 import `in`.jphe.storyvox.llm.ProviderId
+import `in`.jphe.storyvox.llm.tools.ChatStreamEvent
+import `in`.jphe.storyvox.llm.tools.ToolCallEvent
+import `in`.jphe.storyvox.llm.tools.ToolRegistry
+import `in`.jphe.storyvox.llm.tools.ToolResult
 import javax.inject.Inject
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
@@ -76,6 +88,16 @@ data class ChatUiState(
      *  send). The Settings → AI debug overlay surfaces this so JP
      *  can see how often the block fires and how heavy it is. */
     val crossFictionMemoryDebug: CrossFictionMemoryDebug? = null,
+    /** Issue #216 — tool-call timeline, ordered oldest-first. The
+     *  list resets on each [send]; entries get a [ToolCallEvent.result]
+     *  filled in when the handler completes. ChatScreen renders each
+     *  entry as a brass-edged card. */
+    val toolCalls: List<ToolCallEvent> = emptyList(),
+    /** Issue #216 — true iff the active provider supports function
+     *  calling AND the user has enabled actions in Settings → AI.
+     *  When false the model's catalog stays empty; the chat behaves
+     *  identically to pre-#216. */
+    val actionsAvailable: Boolean = false,
 )
 
 /** Issue #217 — debug overlay metric for cross-fiction memory. The
@@ -86,6 +108,23 @@ data class CrossFictionMemoryDebug(
     val entryCount: Int,
     val droppedCount: Int,
     val approxTokens: Int,
+)
+
+/** Issue #216 — one-shot navigation event from a tool call. Surfaces
+ *  through [ChatViewModel.navEvents]; ChatScreen collects + dispatches
+ *  to the nav controller. SharedFlow semantics (not StateFlow) so each
+ *  emit fires exactly once. */
+sealed class ChatNavEvent {
+    /** open_voice_library tool was called. Caller routes to
+     *  StoryvoxRoutes.VOICE_LIBRARY. */
+    data object OpenVoiceLibrary : ChatNavEvent()
+}
+
+/** Internal helper for combine — pairs together the two provider-
+ *  dependent booleans so the 5-arg combine still fits. */
+private data class ProviderInfo(
+    val noProvider: Boolean,
+    val actionsAvailable: Boolean,
 )
 
 /** UI-side classification of [LlmError] so the screen can pick the
@@ -134,6 +173,14 @@ class ChatViewModel @Inject constructor(
     private val settingsRepo: SettingsRepositoryUi,
     private val memoryRepo: FictionMemoryRepository,
     private val savedState: SavedStateHandle,
+    /** Issue #216 — repos + flow used by [ChatToolHandlers]. Nullable
+     *  with defaults so existing test infra that constructs the
+     *  ViewModel directly with positional args still compiles
+     *  unchanged — the new tool wiring is only active when the
+     *  caller (real Hilt-bound app) provides non-null values. */
+    private val shelfRepo: ShelfRepository? = null,
+    private val chapterRepo: ChapterRepository? = null,
+    private val llmRepo: LlmRepository? = null,
 ) : ViewModel() {
 
     /** Issue #217 — cross-fiction prompt-block builder. The title
@@ -197,28 +244,59 @@ class ChatViewModel @Inject constructor(
      *  block. Reset to null on a send where the block ended up empty. */
     private val _memoryDebug = MutableStateFlow<CrossFictionMemoryDebug?>(null)
 
+    /** Issue #216 — tool-call timeline for the in-flight send.
+     *  Cleared on each new [send]; appended to as
+     *  [ChatStreamEvent.ToolCallStarted] / [ChatStreamEvent.ToolCallCompleted]
+     *  events arrive on the chat-with-tools flow. */
+    private val _toolCalls = MutableStateFlow<List<ToolCallEvent>>(emptyList())
+
+    /** Issue #216 — one-shot navigation events fired by the
+     *  open_voice_library tool handler. ChatScreen collects this
+     *  with `lifecycle.repeatOnLifecycle(...)` and navigates on each
+     *  emit. SharedFlow because the nav action is fire-and-forget;
+     *  StateFlow's "latest value" semantics would replay the action
+     *  on configuration change. */
+    private val _navEvents = MutableSharedFlow<ChatNavEvent>(
+        replay = 0,
+        extraBufferCapacity = 4,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val navEvents: SharedFlow<ChatNavEvent> = _navEvents.asSharedFlow()
+
     /** Public state. Combines storage + in-flight + provider config
      *  + fiction metadata into one immutable [ChatUiState]. The 5-arg
      *  combine ceiling forces a nested shape — the inner combine
-     *  builds the base state, the outer folds in the read-aloud text. */
+     *  builds the base state, the outer folds in the read-aloud text
+     *  + cross-fiction memory + tool-call timeline + actions
+     *  availability. */
     val uiState: StateFlow<ChatUiState> = run {
         val base = combine(
             sessionRepo.observeMessages(sessionId).map { msgs -> msgs.map { it.toTurn() } },
             _streaming,
             _error,
             fictionRepo.fictionById(fictionId).map { it?.title },
-            configFlow.map { it.provider == null },
-        ) { turns, streaming, error, title, noProvider ->
+            configFlow.map { cfg ->
+                ProviderInfo(
+                    noProvider = cfg.provider == null,
+                    actionsAvailable = cfg.aiActionsEnabled &&
+                        cfg.provider?.let { llmRepo?.supportsTools(it) } == true,
+                )
+            },
+        ) { turns, streaming, error, title, info ->
             ChatUiState(
                 turns = turns,
                 streaming = streaming,
                 fictionTitle = title,
-                noProvider = noProvider,
+                noProvider = info.noProvider,
                 error = error,
+                actionsAvailable = info.actionsAvailable,
             )
         }
-        combine(base, _readingText, _memoryDebug) { state, reading, memoryDebug ->
+        val withSecondary = combine(base, _readingText, _memoryDebug) { state, reading, memoryDebug ->
             state.copy(readingText = reading, crossFictionMemoryDebug = memoryDebug)
+        }
+        combine(withSecondary, _toolCalls) { state, toolCalls ->
+            state.copy(toolCalls = toolCalls)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChatUiState())
     }
 
@@ -253,12 +331,18 @@ class ChatViewModel @Inject constructor(
     /** Send [text] as a user turn and stream the assistant reply.
      *  Cancels any in-flight stream first — the user-facing input
      *  is supposed to be disabled while streaming, but the cancel
-     *  guards against races (e.g. text injected via accessibility). */
+     *  guards against races (e.g. text injected via accessibility).
+     *
+     *  Issue #216 — routes through the tool-aware chat path when
+     *  the user has actions enabled AND the active provider
+     *  supports function calling; otherwise falls back to the
+     *  plain text-only chat path (pre-#216 behaviour). */
     fun send(text: String) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
         sendJob?.cancel()
         _error.value = null
+        _toolCalls.value = emptyList()
 
         sendJob = viewModelScope.launch {
             val cfg = configFlow.first()
@@ -298,30 +382,103 @@ class ChatViewModel @Inject constructor(
             } else {
                 null
             }
-            sessionRepo.updateSystemPrompt(sessionId, basePrompt + memoryBlock.text)
+            // Issue #216 — when actions are enabled, append a hint to
+            // the system prompt naming the active fiction's id. The
+            // model uses this to populate `fictionId` arguments without
+            // asking the user.
+            val actionsEnabled = cfg.aiActionsEnabled &&
+                llmRepo?.supportsTools(provider) == true &&
+                shelfRepo != null && chapterRepo != null
+            val actionsHint = if (actionsEnabled) {
+                "\n\nThe user's active fiction id is \"$fictionId\". When " +
+                    "you call a tool that takes a fictionId argument, use " +
+                    "this value unless the user explicitly named a different " +
+                    "book in the message."
+            } else {
+                ""
+            }
+            sessionRepo.updateSystemPrompt(
+                sessionId,
+                basePrompt + memoryBlock.text + actionsHint,
+            )
 
             val buf = StringBuilder()
             _streaming.value = ""
 
-            sessionRepo.chat(sessionId, trimmed)
-                .catch { e -> _error.value = mapError(e) }
-                .onCompletion { cause ->
-                    _streaming.value = null
-                    // Issue #217 — post-process the assistant's
-                    // reply into memory entries. Regex-based, runs
-                    // only on completion (no partial-stream
-                    // extraction — saves work on cancelled sends).
-                    // Cheap, no-network — runs on the same coroutine
-                    // dispatcher as the stream collector.
-                    if (cause == null) {
-                        extractAndRecord(buf.toString())
+            if (actionsEnabled) {
+                streamWithTools(trimmed, buf)
+            } else {
+                streamPlainText(trimmed, buf)
+            }
+        }
+    }
+
+    /** Plain-text streaming path — preserved from pre-#216. Used when
+     *  actions are disabled or the provider doesn't support tool use. */
+    private suspend fun streamPlainText(trimmed: String, buf: StringBuilder) {
+        sessionRepo.chat(sessionId, trimmed)
+            .catch { e -> _error.value = mapError(e) }
+            .onCompletion { cause ->
+                _streaming.value = null
+                if (cause == null) {
+                    extractAndRecord(buf.toString())
+                }
+            }
+            .collect { delta ->
+                buf.append(delta)
+                _streaming.value = buf.toString()
+            }
+    }
+
+    /** Issue #216 — tool-aware path. Same persistence + memory-extract
+     *  contract as [streamPlainText] but consumes [ChatStreamEvent]
+     *  emits, routing tool-call events into [_toolCalls] for the UI to
+     *  render alongside the streaming bubble. */
+    private suspend fun streamWithTools(trimmed: String, buf: StringBuilder) {
+        val handlers = ChatToolHandlers(
+            activeFictionId = fictionId,
+            shelfRepo = shelfRepo!!,
+            chapterRepo = chapterRepo!!,
+            fictionRepo = fictionRepo,
+            playback = playback,
+            settingsRepo = settingsRepo,
+            onOpenVoiceLibrary = {
+                _navEvents.tryEmit(ChatNavEvent.OpenVoiceLibrary)
+            },
+        )
+        sessionRepo.chatWithTools(sessionId, trimmed, handlers.registry())
+            .catch { e -> _error.value = mapError(e) }
+            .onCompletion { cause ->
+                _streaming.value = null
+                if (cause == null) {
+                    extractAndRecord(buf.toString())
+                }
+            }
+            .collect { event ->
+                when (event) {
+                    is ChatStreamEvent.TextDelta -> {
+                        buf.append(event.text)
+                        _streaming.value = buf.toString()
+                    }
+                    is ChatStreamEvent.ToolCallStarted -> {
+                        _toolCalls.value = _toolCalls.value + ToolCallEvent(
+                            id = event.call.id,
+                            name = event.call.name,
+                            arguments = event.call.arguments,
+                            result = null,
+                        )
+                    }
+                    is ChatStreamEvent.ToolCallCompleted -> {
+                        _toolCalls.value = _toolCalls.value.map { existing ->
+                            if (existing.id == event.id) {
+                                existing.copy(result = event.result)
+                            } else {
+                                existing
+                            }
+                        }
                     }
                 }
-                .collect { delta ->
-                    buf.append(delta)
-                    _streaming.value = buf.toString()
-                }
-        }
+            }
     }
 
     /**

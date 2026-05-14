@@ -89,6 +89,72 @@ internal data class FoundryDeployedRequest(
     val stream: Boolean = true,
 )
 
+// ── Tool-aware Anthropic (#216) ─────────────────────────────────────
+//
+// Distinct shape from [AnthropicRequest] because Anthropic's tool-use
+// path requires the content field to be an array of typed blocks
+// (text / tool_use / tool_result) rather than a single string. We
+// keep [AnthropicRequest] for the plain-text path (cheaper, easier to
+// debug) and use these when at least one tool is registered.
+
+@Serializable
+internal data class AnthropicToolRequest(
+    val model: String,
+    @SerialName("max_tokens") val maxTokens: Int,
+    val messages: List<AnthropicToolMessage>,
+    val system: String? = null,
+    val tools: List<AnthropicToolDecl>? = null,
+    val stream: Boolean = false,
+)
+
+@Serializable
+internal data class AnthropicToolMessage(
+    val role: String,        // "user" or "assistant"
+    val content: List<kotlinx.serialization.json.JsonElement>,
+)
+
+@Serializable
+internal data class AnthropicToolDecl(
+    val name: String,
+    val description: String,
+    @SerialName("input_schema")
+    val inputSchema: kotlinx.serialization.json.JsonObject,
+)
+
+// ── Tool-aware OpenAI (#216) ────────────────────────────────────────
+//
+// OpenAI's chat completions schema accepts an optional `tools` array
+// + per-message `tool_calls` array; messages with `role: "tool"`
+// carry `tool_call_id` + result content. We keep [OpenAiRequest]
+// for the plain-text path and use these when tools are registered.
+
+@Serializable
+internal data class OpenAiToolRequest(
+    val model: String,
+    val messages: List<kotlinx.serialization.json.JsonObject>,
+    @SerialName("max_tokens") val maxTokens: Int = 1024,
+    val tools: List<OpenAiToolDecl>? = null,
+    val stream: Boolean = false,
+)
+
+@Serializable
+internal data class OpenAiToolDecl(
+    /** Always emitted (no default) so a strict OpenAI receiver that
+     *  reads `type` first sees it on the wire. The OpenAI API does in
+     *  practice accept a missing type field, but `function` is the
+     *  only documented value, and emitting it is one byte cheaper to
+     *  reason about. */
+    val type: String,
+    val function: OpenAiToolFunction,
+)
+
+@Serializable
+internal data class OpenAiToolFunction(
+    val name: String,
+    val description: String,
+    val parameters: kotlinx.serialization.json.JsonObject,
+)
+
 // ── AWS Bedrock converse-stream ────────────────────────────────────
 //
 // Body shape: { modelId, messages:[{role, content:[{text}]}],

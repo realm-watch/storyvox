@@ -270,6 +270,7 @@ class RealPlaybackControllerUiTest {
         override suspend fun setChatGroundEntireChapter(enabled: Boolean) = Unit
         override suspend fun setChatGroundEntireBookSoFar(enabled: Boolean) = Unit
         override suspend fun setCarryMemoryAcrossFictions(enabled: Boolean) = Unit
+        override suspend fun setAiActionsEnabled(enabled: Boolean) = Unit
         override suspend fun acknowledgeAiPrivacy() = Unit
         override suspend fun resetAiSettings() = Unit
         // ── GitHub OAuth no-op (#91) — playback-controller test doesn't auth. ──

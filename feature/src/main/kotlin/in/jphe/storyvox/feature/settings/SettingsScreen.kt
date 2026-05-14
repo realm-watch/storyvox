@@ -422,6 +422,7 @@ fun SettingsScreen(
             // for AI behaviour toggles (parallel to the grounding-level
             // switches above).
             onSetCarryMemoryAcrossFictions = viewModel::setCarryMemoryAcrossFictions,
+            onSetAiActionsEnabled = viewModel::setAiActionsEnabled,
             onTestConnection = viewModel::testAiConnection,
             onClearProbeOutcome = viewModel::clearProbeOutcome,
             onResetAi = viewModel::resetAiSettings,
@@ -1852,6 +1853,9 @@ private fun AiSection(
      *  conditionally appends the cross-fiction context block to the
      *  system prompt. Default ON. */
     onSetCarryMemoryAcrossFictions: (Boolean) -> Unit,
+    /** Issue #216 — Allow the AI to take actions. See
+     *  [UiAiSettings.actionsEnabled]. Default ON. */
+    onSetAiActionsEnabled: (Boolean) -> Unit,
     onTestConnection: (UiLlmProvider) -> Unit,
     onClearProbeOutcome: () -> Unit,
     onResetAi: () -> Unit,
@@ -2019,6 +2023,19 @@ private fun AiSection(
                 "tokens per turn; oldest entries drop first.",
             checked = ai.carryMemoryAcrossFictions,
             onCheckedChange = onSetCarryMemoryAcrossFictions,
+        )
+        // Issue #216 — actions toggle. Sits below cross-fiction memory
+        // because it's the same kind of opt-in capability ("how much
+        // agency does the AI have?"). Default ON for fresh installs;
+        // subtitle calls out the five v1 tools so the user knows
+        // exactly what's gated.
+        SettingsSwitchRow(
+            title = "Allow the AI to take actions",
+            subtitle = "Chat can add books to shelves, queue chapters, " +
+                "mark chapters read, set playback speed, and open the " +
+                "voice library when you ask. Works on Anthropic and OpenAI.",
+            checked = ai.actionsEnabled,
+            onCheckedChange = onSetAiActionsEnabled,
         )
         // Issue #262 — destructive AI-reset path. Previously a plain
         // brass-tinted TextButton that looked identical to a 'Save' or
