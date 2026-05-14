@@ -9,6 +9,23 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.39] — 2026-05-14
+
+### Added
+- **Nav restructure: Settings becomes a primary destination** (#469) — the bottom bar collapses from 5 destinations to `{Library, Settings}`. The Library tab now hosts 5 scrollable sub-tabs: `{Library, Browse, Follows, Inbox, History}`. Browse / Follows / Inbox / History are no longer separate bottom destinations — they fold into Library as embedded subscreens (`embedded: Boolean` param on Browse/Follows skips their own TopAppBar when rendered under Library). The legacy `BROWSE` / `FOLLOWS` routes are preserved for deep-link survival. Pins via `NavStructureTest` (10 cases) + `LibraryTabCollapseTest` (8 cases).
+- **InstantDB sync for settings + secrets** (#470, partial follow-up to #360) — `:core-sync` now round-trips 50+ allowlisted DataStore prefs (theme override, voice tuning, AI config, source toggles + the Phase-3 plugins-enabled map, inbox mute, sleep timer, per-backend non-secret config like Wikipedia lang / Notion db id / Discord coalesce-minutes / Outline host / Memory Palace host) as a single last-write-wins JSON blob to InstantDB. Tier 2 widens the encrypted-secret allowlist to fold in Notion / Discord / Outline tokens that already lived in `EncryptedSharedPreferences`. Encryption posture: client-side envelope with PBKDF2-HMAC-SHA256/600k + AES-GCM-256 and per-user deterministic salt; no-passphrase hard-fails Permanent (never plaintext-fallbacks). Device-local flags (`SIGNED_IN`, `LAST_WAS_PLAYING`, milestone gates) are explicitly excluded.
+- **Settings hub finished — 7 dedicated subscreens** (#471, closes the v0.5.38 #440 follow-up) — the SettingsHub used to route only 5 of 13 cards to focused subscreens (Voice library, Plugins, AI sessions, Pronunciation, Debug); the other 7 fell back to a legacy long-scroll Settings page. This release adds dedicated subscreens for `Voice & Playback`, `Reading`, `Performance`, `AI`, `Account`, `Memory Palace`, and `About`, each composed from a shared `SettingsSubscreenScaffold`/`Body` wrapping the row composables in `SettingsScreen.kt` (those went from `private` to `internal`). Legacy `SettingsScreen` stays as an "All settings" power-user fallback. 21 new tests across `SettingsSubscreenContractTest`, `SettingsSubscreenRoutesTest`, and `SettingsHubSectionsTest`.
+
+### Fixed — QA UX-blocker bundle
+- **Notebook + Pronunciation Add dialogs didn't shift focus on second-field tap** (#468, closes #450) — `NotebookFocusContractTest` pins the regression.
+- **Library grid empty in landscape orientation** (#468, closes #452) — `LibraryGridLandscapeTest` pins it.
+- **RSS Add-feed dialog Add button was overlapped by the EditText** (#468, closes #459) — `BrowseRssAddSubmitTest` pins the layout fix.
+- **FictionDetail chapter list rows were non-clickable** (#468, closes #461 — `priority: high`, blocked the read flow on every fiction).
+
+### Under the hood
+- `:core-sync` `SettingsSyncer` (new): exact-key allowlist of 50+ DataStore prefs (typed as `Set<String>`), per-backend non-secret config routed through each `*ConfigImpl` setter on apply. `SettingsSyncerTest` (round-trip on every allowlisted key + device-local-key rejection) + `SecretsSyncerExtensionTest` (Tier 2 allowlist widening) + 24 more = 26 new tests.
+- CI workflow gained a self-hosted-runner-specific step that copies `local.properties` from `/home/jp/Projects/storyvox/` into the runner's checkout pre-assemble, so release APKs bake the real `INSTANTDB_APP_ID` into `BuildConfig` instead of the `PLACEHOLDER` sentinel.
+
 ## [0.5.38] — 2026-05-14
 
 ### Fixed — QA bundle from the exhaustive Flip3 pass
