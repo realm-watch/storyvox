@@ -30,6 +30,8 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -289,6 +291,17 @@ fun BrowseScreen(
                 modifier = Modifier.fillMaxWidth().padding(spacing.md),
                 singleLine = true,
             )
+        }
+
+        // Issue #443 — when the Notion chip is active and the user
+        // has no integration token configured, the source falls back
+        // to TechEmpower's public Notion content via the anonymous
+        // reader. Surface that as a labeled demo so users don't see
+        // "Notion" → TechEmpower cards and conclude the source is
+        // broken / mis-wired. JP design (issue comment): keep the
+        // fallback, add a clear demo label + a Settings deep-link.
+        if (state.sourceId == SourceIds.NOTION && state.notionAnonymousActive) {
+            NotionDemoBanner(onOpenSettings = onOpenSettings)
         }
 
         when {
@@ -573,6 +586,48 @@ private fun SkeletonGrid() {
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         items(12) { FictionCardSkeleton(modifier = Modifier.fillMaxWidth()) }
+    }
+}
+
+/**
+ * Issue #443 — demo-content banner for the Notion chip when no
+ * integration token is configured. The Notion source falls back to
+ * the TechEmpower public Notion content via the anonymous-public
+ * reader (#393), which surfaces TechEmpower's Guides / Resources /
+ * About / Donate as fictions. Without a banner the user reads the
+ * cards as "Notion is broken — why is it showing TechEmpower?". The
+ * banner names the demo state explicitly and routes to Settings →
+ * Notion for the user's own token.
+ */
+@Composable
+private fun NotionDemoBanner(onOpenSettings: () -> Unit) {
+    val spacing = LocalSpacing.current
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = spacing.md, vertical = spacing.xs),
+    ) {
+        Column(modifier = Modifier.padding(spacing.md)) {
+            Text(
+                "Demo content",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                "You're browsing TechEmpower's public Notion site. " +
+                    "Add a Notion integration token to read your own database.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = spacing.xxs),
+            )
+            androidx.compose.material3.TextButton(
+                onClick = onOpenSettings,
+                modifier = Modifier.padding(top = spacing.xs),
+            ) { Text("Set up Notion in Settings") }
+        }
     }
 }
 

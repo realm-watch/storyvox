@@ -3187,6 +3187,13 @@ private fun NotionConfigRow(
     var dbDraft by remember(databaseId) { mutableStateOf(databaseId) }
     var tokenDraft by remember { mutableStateOf("") }
 
+    // Issue #447 — the prefilled Database ID ("2a3d70…") read as
+    // either a leaked infrastructure id or a confusing placeholder.
+    // Detect when the field is still at the TechEmpower default and
+    // surface a clear label so the user knows it's a public DB they
+    // can replace with their own.
+    val techempowerDefaultId = "2a3d706803c649409e74e9ce5ccd4c4b"
+    val isDefaultDatabaseId = databaseId == techempowerDefaultId
     Column(modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm)) {
         Text(
             "Notion integration",
@@ -3195,12 +3202,20 @@ private fun NotionConfigRow(
             modifier = Modifier.padding(bottom = spacing.xs),
         )
         Text(
-            text = if (tokenConfigured)
-                "Token configured. Paste a new token to replace it."
-            else
-                "Paste a Notion Internal Integration Token. " +
-                    "Create one at notion.so/my-integrations, then share " +
-                    "your database with the integration.",
+            text = when {
+                tokenConfigured ->
+                    "Token configured. Paste a new token to replace it, " +
+                        "or clear it to switch back to the anonymous TechEmpower demo content."
+                isDefaultDatabaseId ->
+                    "No token configured — Browse → Notion shows TechEmpower's public " +
+                        "Notion content as a demo. Paste a Notion Internal Integration " +
+                        "Token from notion.so/my-integrations to read your own database; " +
+                        "replace the Database ID below with your own."
+                else ->
+                    "Paste a Notion Internal Integration Token. " +
+                        "Create one at notion.so/my-integrations, then share " +
+                        "your database with the integration."
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = spacing.sm),
@@ -3208,9 +3223,25 @@ private fun NotionConfigRow(
         androidx.compose.material3.OutlinedTextField(
             value = dbDraft,
             onValueChange = { dbDraft = it.trim().take(64) },
-            label = { Text("Database ID") },
+            label = {
+                Text(
+                    if (dbDraft == techempowerDefaultId)
+                        "Database ID (TechEmpower demo)"
+                    else
+                        "Database ID",
+                )
+            },
             placeholder = { Text("32-hex or hyphenated UUID") },
             singleLine = true,
+            supportingText = {
+                if (dbDraft == techempowerDefaultId) {
+                    Text(
+                        "Default points at TechEmpower's public Resources DB. " +
+                            "Replace with your own DB id to read a personal database.",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            },
             modifier = Modifier.fillMaxWidth(),
         )
         androidx.compose.material3.OutlinedTextField(

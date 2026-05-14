@@ -66,6 +66,12 @@ data class BrowseUiState(
      *  enabled subset, in registry display order). Surfaced here so the
      *  chip strip can render without re-injecting the registry. */
     val visibleSources: List<SourcePluginDescriptor> = emptyList(),
+    /** Issue #443 — true when the Notion source is in anonymous-public
+     *  mode (no integration token configured). The Notion listing then
+     *  surfaces TechEmpower's public content as a zero-setup demo; the
+     *  Browse screen renders a clarifying banner so users understand
+     *  what they're seeing isn't "their Notion". */
+    val notionAnonymousActive: Boolean = true,
 )
 
 /** Typed view of a paginator's five state flows. */
@@ -132,6 +138,16 @@ class BrowseViewModel @Inject constructor(
         .map { it.isSignedIn }
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    /** Issue #443 — anonymous-public Notion mode is active when no
+     *  integration token is configured (the source falls back to the
+     *  TechEmpower public Notion content). Surfaces a demo banner on
+     *  the Browse → Notion chip so users understand what they're
+     *  seeing. */
+    private val notionAnonymousActive: StateFlow<Boolean> = settings.settings
+        .map { !it.notionTokenConfigured }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
     private val hasGitHubRepoScope: kotlinx.coroutines.flow.Flow<Boolean> =
         settings.settings
@@ -255,7 +271,7 @@ class BrowseViewModel @Inject constructor(
 
     val uiState: StateFlow<BrowseUiState> = paginator.flatMapLatest { p ->
         if (p == null) {
-            combine(controls, _palaceWings) { c, wings ->
+            combine(controls, _palaceWings, notionAnonymousActive) { c, wings, notionAnon ->
                 BrowseUiState(
                     sourceId = c.sourceId,
                     tab = c.tab,
@@ -276,6 +292,7 @@ class BrowseViewModel @Inject constructor(
                     royalRoadSignedIn = c.royalRoadSignedIn,
                     enabledSourceIds = c.enabledSourceIds,
                     visibleSources = c.visibleSources,
+                    notionAnonymousActive = notionAnon,
                 )
             }
         } else {
@@ -288,7 +305,7 @@ class BrowseViewModel @Inject constructor(
             ) { items, loading, appending, more, error ->
                 PaginatorView(items, loading, appending, more, error)
             }
-            combine(paginatorView, controls, _palaceWings) { view, c, wings ->
+            combine(paginatorView, controls, _palaceWings, notionAnonymousActive) { view, c, wings, notionAnon ->
                 BrowseUiState(
                     sourceId = c.sourceId,
                     tab = c.tab,
@@ -309,6 +326,7 @@ class BrowseViewModel @Inject constructor(
                     royalRoadSignedIn = c.royalRoadSignedIn,
                     enabledSourceIds = c.enabledSourceIds,
                     visibleSources = c.visibleSources,
+                    notionAnonymousActive = notionAnon,
                 )
             }
         }
