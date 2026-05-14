@@ -1,12 +1,12 @@
 {
   "name": "storyvox",
   "description": "Neural-voice audiobook player for any text you have \u2014 offline TTS, optional Azure HD cloud voices, Library Nocturne aesthetic",
-  "version": "Arcane Pinnacle \u00b7 37633d1",
-  "hash": "37633d1",
-  "branch": "HEAD",
+  "version": "Fabled Grimoire \u00b7 5d757b7",
+  "hash": "5d757b7",
+  "branch": "main",
   "dirty": false,
-  "built": "2026-05-14T16:44:01Z",
+  "built": "2026-05-14T23:04:18Z",
   "realm": "fantasy",
   "repo": "https://github.com/techempower-org/storyvox",
-  "commit_url": "https://github.com/techempower-org/storyvox/commit/37633d1"
+  "commit_url": "https://github.com/techempower-org/storyvox/commit/5d757b7"
 }
