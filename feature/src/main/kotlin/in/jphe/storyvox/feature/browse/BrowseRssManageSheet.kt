@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -26,6 +28,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -34,6 +40,17 @@ import `in`.jphe.storyvox.feature.api.SuggestedFeedKind
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
+
+/**
+ * Issue #459 — structural marker for [BrowseRssAddSubmitTest]. Set to
+ * `true` when the RSS Add-by-URL surface stacks the Add button BELOW
+ * the URL field (rather than the regressed pre-#459 Row layout where
+ * field + button shared a single row with `Modifier.weight(1f)` on the
+ * field). The regressed shape had a hit-target overlap on the Z Flip3:
+ * taps on the Add button were routed to the EditText and inserted
+ * digits at the cursor.
+ */
+internal const val rssAddButtonStackedBelowField: Boolean = true
 
 /**
  * Issue #247 — RSS feed management bottom sheet, opened by the FAB on
@@ -64,6 +81,26 @@ internal fun BrowseRssManageSheet(
 
     var draftUrl by remember { mutableStateOf("") }
     var suggestionsExpanded by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+
+    // Issue #459 — the Add button + Feed URL field used to share a single
+    // Row(verticalAlignment = CenterVertically) with `Modifier.weight(1f)`
+    // on the field and the button at the right. On the Z Flip3, taps in
+    // the button's visible region (x=882-960) were routed to the
+    // OutlinedTextField — the field's hit-target was extending past its
+    // visible bounds, eating taps and inserting digits at the cursor.
+    // Two-part fix: (a) stack the button BELOW the field on its own row
+    // so the hit-targets can't overlap; (b) wire `ImeAction.Done` +
+    // `onDone = submit()` so the keyboard's Go / enter key also submits,
+    // matching `AddByUrlSheet`'s pattern from #200.
+    fun submitDraft() {
+        val trimmed = draftUrl.trim()
+        if (trimmed.isNotEmpty()) {
+            viewModel.addRssFeed(trimmed)
+            draftUrl = ""
+            focusManager.clearFocus()
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -89,29 +126,33 @@ internal fun BrowseRssManageSheet(
             )
 
             // ── Add by URL ───────────────────────────────────────────
+            // Issue #459 — field on its own row, button on the next row.
+            // The previous Row(field + button + CenterVertically) had a
+            // hit-target overlap that ate button taps on the Flip3.
+            OutlinedTextField(
+                value = draftUrl,
+                onValueChange = { draftUrl = it },
+                label = { Text("Feed URL") },
+                placeholder = { Text("https://example.com/feed.xml") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Done,
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrectEnabled = false,
+                ),
+                keyboardActions = KeyboardActions(onDone = { submitDraft() }),
+                modifier = Modifier.fillMaxWidth(),
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End,
             ) {
-                OutlinedTextField(
-                    value = draftUrl,
-                    onValueChange = { draftUrl = it },
-                    label = { Text("Feed URL") },
-                    placeholder = { Text("https://example.com/feed.xml") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                )
                 BrassButton(
                     label = "Add",
-                    onClick = {
-                        val trimmed = draftUrl.trim()
-                        if (trimmed.isNotEmpty()) {
-                            viewModel.addRssFeed(trimmed)
-                            draftUrl = ""
-                        }
-                    },
+                    onClick = { submitDraft() },
                     variant = BrassButtonVariant.Primary,
-                    modifier = Modifier.padding(start = spacing.sm),
+                    enabled = draftUrl.isNotBlank(),
                 )
             }
 

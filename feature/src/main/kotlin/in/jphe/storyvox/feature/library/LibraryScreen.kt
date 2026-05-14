@@ -207,13 +207,24 @@ fun LibraryScreen(
                         selected = state.filter,
                         onSelect = viewModel::selectFilter,
                     )
-                    LibraryGridBody(
-                        state = state,
-                        dedupedFictions = dedupedFictions,
-                        onResume = viewModel::resume,
-                        onOpenFiction = viewModel::openFiction,
-                        onLongPress = viewModel::openManageShelves,
-                    )
+                    // Issue #452 — LazyVerticalGrid inside a Column needs a
+                    // bounded height constraint. Without `weight(1f)`, the
+                    // grid was being measured with `Constraints.Infinity` on
+                    // the inner axis: it survived in portrait because the
+                    // parent Column's natural height happened to bound it,
+                    // but in landscape (or Flip3 unfolded → wider-than-tall)
+                    // the unbounded measurement collapsed the grid to zero
+                    // rows. Wrapping in a Box with `weight(1f)` gives the
+                    // grid a concrete bounded height in both orientations.
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        LibraryGridBody(
+                            state = state,
+                            dedupedFictions = dedupedFictions,
+                            onResume = viewModel::resume,
+                            onOpenFiction = viewModel::openFiction,
+                            onLongPress = viewModel::openManageShelves,
+                        )
+                    }
                 }
 
                 LibraryTab.Inbox -> Box(modifier = Modifier.fillMaxSize().padding(top = spacing.md)) {
@@ -400,6 +411,26 @@ private fun ContinueListeningEntry.progressFraction(): Float? {
 }
 
 /**
+ * Issue #452 — structural marker for [LibraryGridLandscapeTest]. Set
+ * to `true` when `LibraryGridBody` is wrapped in a
+ * `Box(Modifier.weight(1f).fillMaxWidth())` inside its parent Column.
+ * The regressed pre-#452 shape placed `LazyVerticalGrid` directly as a
+ * Column child without a weight wrapper; in landscape orientation
+ * (incl. Z Flip3 unfolded) the grid measured to zero height and the
+ * library appeared empty even though the books were in the database.
+ */
+internal const val libraryGridIsWeightBounded: Boolean = true
+
+/**
+ * Issue #452 — pinned value of the `GridCells.Adaptive` `minSize` (in
+ * dp). The 140dp tuning matches the cover-thumb aspect ratio used
+ * elsewhere in the library; changing it shifts the column count on
+ * every supported display, so the test pins the value and asks any PR
+ * that bumps it to bump the test in lock-step.
+ */
+internal const val libraryGridAdaptiveMinSizeDp: Int = 140
+
+/**
  * Issue #158 — All / Reading library grid. Extracted from the inlined body
  * so the same composable serves both sub-tabs without duplication. The
  * Resume card + "Your library" caption hero zone is preserved as the
@@ -434,7 +465,11 @@ private fun LibraryGridBody(
         return
     }
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 140.dp),
+        // Issue #452 — see [libraryGridAdaptiveMinSizeDp] for the
+        // rationale. Pinned to 140dp; the regression test
+        // [LibraryGridLandscapeTest] guards both the value and the
+        // weight-bounded parent wrapper.
+        columns = GridCells.Adaptive(minSize = libraryGridAdaptiveMinSizeDp.dp),
         contentPadding = PaddingValues(spacing.md),
         horizontalArrangement = Arrangement.spacedBy(spacing.sm),
         verticalArrangement = Arrangement.spacedBy(spacing.md),

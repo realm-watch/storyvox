@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
@@ -29,6 +31,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -203,6 +210,15 @@ private fun EntryEditorDialog(
     var replacement by remember { mutableStateOf(initial?.replacement ?: "") }
     var matchType by remember { mutableStateOf(initial?.matchType ?: MatchType.WORD) }
     var caseSensitive by remember { mutableStateOf(initial?.caseSensitive ?: false) }
+    // Issue #450 — explicit focus plumbing for the two-field dialog so a
+    // tap on the Replacement field actually moves focus there (without
+    // these, Compose's `bringIntoViewRequester` was keeping the Pattern
+    // field focused inside an AlertDialog while the IME was up, and
+    // typed characters concatenated into Pattern). The Next IME action
+    // is the keyboard-side equivalent.
+    val patternFocus = remember { FocusRequester() }
+    val replacementFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -214,14 +230,26 @@ private fun EntryEditorDialog(
                     onValueChange = { pattern = it },
                     label = { Text("Pattern (the word as written)") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(
+                        onNext = { focusManager.moveFocus(FocusDirection.Down) },
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(patternFocus),
                 )
                 OutlinedTextField(
                     value = replacement,
                     onValueChange = { replacement = it },
                     label = { Text("Replacement (how to say it)") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(
+                        onDone = { focusManager.clearFocus() },
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(replacementFocus),
                 )
 
                 // Match-type picker. Phase 1 exposes WORD (default) +
