@@ -115,12 +115,12 @@ image: /screenshots/03-reader.png
     <a class="source-card" href="https://github.com/techempower-org/storyvox-registry">
       <span class="source-glyph" aria-hidden="true">GH</span>
       <h3>GitHub</h3>
-      <p>Curated <a href="https://github.com/techempower-org/storyvox-registry">storyvox-registry</a> plus live <code>/search/repositories</code>. OAuth Device Flow lifts the 60→5000 req/hr cap.</p>
+      <p>Curated <strong>storyvox-registry</strong> plus live <code>/search/repositories</code>. OAuth Device Flow lifts the 60→5000 req/hr cap.</p>
     </a>
     <a class="source-card" href="https://github.com/techempower-org/storyvox-feeds">
       <span class="source-glyph" aria-hidden="true">RSS</span>
       <h3>RSS / Atom feeds</h3>
-      <p>Any RSS or Atom feed, plus a managed suggested-feeds list from <a href="https://github.com/techempower-org/storyvox-feeds">storyvox-feeds</a>.</p>
+      <p>Any RSS or Atom feed, plus a managed suggested-feeds list from <strong>storyvox-feeds</strong>.</p>
     </a>
     <a class="source-card" href="https://www.getoutline.com">
       <span class="source-glyph" aria-hidden="true">OL</span>
@@ -130,7 +130,7 @@ image: /screenshots/03-reader.png
     <a class="source-card" href="https://github.com/techempower-org/mempalace">
       <span class="source-glyph" aria-hidden="true">MP</span>
       <h3>Memory Palace</h3>
-      <p>Your own self-hosted <a href="https://github.com/techempower-org/mempalace">Memory Palace</a>. Drawers become chapters; the palace becomes a personal canon.</p>
+      <p>Your own self-hosted Memory Palace. Drawers become chapters; the palace becomes a personal canon.</p>
     </a>
     <a class="source-card">
       <span class="source-glyph" aria-hidden="true">EPUB</span>
@@ -165,7 +165,7 @@ image: /screenshots/03-reader.png
     <a class="source-card" href="https://www.radio-browser.info/">
       <span class="source-glyph" aria-hidden="true">FM</span>
       <h3>Radio</h3>
-      <p>Five curated stations (KVMR, Cap Public, KQED, KCSB, SomaFM) plus <a href="https://www.radio-browser.info/">Radio Browser</a> search across 30,000+ stations.</p>
+      <p>Five curated stations (KVMR, Cap Public, KQED, KCSB, SomaFM) plus <strong>Radio Browser</strong> search across 30,000+ stations.</p>
     </a>
     <a class="source-card" href="https://notion.so">
       <span class="source-glyph" aria-hidden="true">N</span>

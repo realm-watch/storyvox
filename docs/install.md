@@ -24,9 +24,10 @@ That's it. There's no account requirement. Anonymous browsing works for all publ
 | Requirement | Minimum |
 |---|---|
 | Android version | 8.0 (API 26) |
-| Free storage (APK only) | ~50 MB |
-| Free storage (APK + one Piper voice) | ~70 MB |
-| Free storage (APK + Kokoro) | ~400 MB |
+| Free storage (APK only) | ~140 MB |
+| Free storage (APK + one Piper voice) | ~155 MB |
+| Free storage (APK + KittenTTS) | ~165 MB |
+| Free storage (APK + Kokoro) | ~470 MB |
 | RAM | 2 GB+ recommended; tested on 3 GB Tab A7 Lite |
 | Network | Wi-Fi for first launch and voice download; chapters cache locally |
 

@@ -84,7 +84,7 @@ storyvox is currently distributed by sideloading. CI builds debug APKs on every 
 System requirements:
 
 - Android 8.0 (API 26) or higher
-- ~50 MB free storage for the APK; voice models add 14 MB to ~330 MB
+- ~140 MB free storage for the APK; voice models add ~14 MB (Piper / KittenTTS) to ~330 MB (Kokoro)
 - An internet connection for browsing, chapter download, and the first-time voice download (chapters and voices cache locally)
 
 ## Optional: sign in to Royal Road
