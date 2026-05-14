@@ -50,25 +50,46 @@ import kotlinx.coroutines.launch
  * **#438 collapse** — v0.5.36 shipped four tabs (`All / Reading / Inbox /
  * History`) stacked directly above a four-chip shelf row (`All / Reading
  * / Read / Wishlist`), so the same strings (`All`, `Reading`) appeared in
- * two adjacent nested navigation surfaces — a Material 3 anti-pattern
- * that retrained users to ignore navigation. Collapsed to three tabs:
+ * two adjacent nested navigation surfaces — a Material 3 anti-pattern.
+ * Collapsed to three tabs (Library / Inbox / History) at the time.
  *
- *  - [Library] — the previous `All` tab renamed. Hosts the four-chip
- *    shelf strip below, so `Reading` lives there as a one-tap chip
- *    rather than competing for the same word with the tab row.
- *  - [Inbox] — chronological cross-source notification feed (#383).
+ * **Restructure (v0.5.40)** — JP directive: "put follows and browse into
+ * the library tab." The bottom nav drops to two destinations (Library +
+ * Settings), and the Library tab becomes the umbrella for everything
+ * book-related. Sub-tab order — left-to-right reading flow:
+ *
+ *  - [Library] — the user's own books (the existing shelf grid with the
+ *    chip-row #116 filter). First and default so a fresh launch lands
+ *    on what the user owns, not on a discovery surface.
+ *  - [Browse]  — the existing standalone Browse surface, embedded.
+ *    Source picker (RR / GitHub / Outline / etc.) + Popular / Search /
+ *    New Releases / Best Rated sub-tabs render inside the Library body.
+ *  - [Follows] — the existing standalone Follows surface, embedded.
+ *  - [Inbox]   — chronological cross-source notification feed (#383).
  *  - [History] — chronological chapter-open feed (#158).
  *
- * The pre-#438 `Reading` tab is reached in one tap via the shelf chip
- * row, so no functionality is lost; only the visual conflict is.
+ * Five tabs forces [SecondaryScrollableTabRow] (vs the fixed
+ * SecondaryTabRow used pre-restructure) because the labels do not fit
+ * the Flip3 portrait width when laid out evenly. Scrollable is the
+ * pattern already used by BrowseScreen's own narrow-viewport tab row,
+ * so this stays inside the existing visual vocabulary.
  */
 enum class LibraryTab(val label: String) {
     Library("Library"),
     /**
+     * Restructure (v0.5.40) — Browse folded under Library. The embedded
+     * BrowseScreen body renders here, source picker and all, sans its
+     * own TopAppBar (the Library TopAppBar serves both).
+     */
+    Browse("Browse"),
+    /**
+     * Restructure (v0.5.40) — Follows folded under Library. Same
+     * pattern as Browse: embedded body, no internal TopAppBar.
+     */
+    Follows("Follows"),
+    /**
      * Issue #383 — chronological cross-source notification feed.
-     * Sits between Library and History so the user finds it next to
-     * Library (the "what's current" surface) rather than buried after
-     * History. Carries a numeric badge driven by unread events.
+     * Carries a numeric badge driven by unread events.
      */
     Inbox("Inbox"),
     History("History"),
@@ -248,8 +269,14 @@ class LibraryViewModel @Inject constructor(
      */
     fun selectTab(tab: LibraryTab) {
         _tab.value = tab
+        // Restructure (v0.5.40) — Browse / Follows render their own
+        // embedded surfaces (own ViewModels via hiltViewModel), so the
+        // selectTab handler has nothing source-specific to coerce.
+        // Each branch is a documented no-op for grep symmetry.
         when (tab) {
             LibraryTab.Library -> { /* chip-row filter persists across tab switches */ }
+            LibraryTab.Browse -> { /* BrowseScreen owns its own state */ }
+            LibraryTab.Follows -> { /* FollowsScreen owns its own state */ }
             LibraryTab.History -> { /* history feed renders from state.history */ }
             LibraryTab.Inbox -> { /* inbox feed renders from state.inbox */ }
         }

@@ -76,6 +76,43 @@ import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
 import `in`.jphe.storyvox.ui.component.MagicSpinner
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
+/**
+ * Restructure (v0.5.40) — switch between the standalone Browse Scaffold
+ * (with its own TopAppBar) and an embedded frame that just renders the
+ * supplied body. Library is the only call-site that passes
+ * `embedded = true`; the deep-linked BROWSE route keeps the original
+ * full-screen rendering.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BrowseScaffoldOrFrame(
+    embedded: Boolean,
+    onOpenSettings: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    if (embedded) {
+        // No Scaffold / TopAppBar — Library owns those.
+        content()
+    } else {
+        Scaffold(
+            topBar = {
+                CenterAlignedTopAppBar(
+                    title = { Text("Browse", style = MaterialTheme.typography.titleMedium) },
+                    actions = {
+                        IconButton(onClick = onOpenSettings) {
+                            Icon(Icons.Outlined.Settings, contentDescription = "Settings")
+                        }
+                    },
+                )
+            },
+        ) { scaffoldPadding ->
+            Box(modifier = Modifier.fillMaxSize().padding(scaffoldPadding)) {
+                content()
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BrowseScreen(
@@ -85,6 +122,16 @@ fun BrowseScreen(
      *  user is not signed in to RR; Search keeps working anonymously. */
     onOpenRoyalRoadSignIn: () -> Unit,
     onOpenSettings: () -> Unit = {},
+    /**
+     * Restructure (v0.5.40) — when true, BrowseScreen renders without
+     * its own Scaffold + TopAppBar. The Library tab's TopAppBar serves
+     * as the parent header and this body fills the parent's content
+     * area. Standalone (`embedded = false`) preserves the legacy
+     * full-screen rendering for the deep-linked BROWSE route, which
+     * still exists for the HybridReader empty-state CTA + back-stack
+     * pushes that bypass the bottom nav.
+     */
+    embedded: Boolean = false,
     viewModel: BrowseViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -110,19 +157,15 @@ fun BrowseScreen(
         out
     }
 
-    Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("Browse", style = MaterialTheme.typography.titleMedium) },
-                actions = {
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Outlined.Settings, contentDescription = "Settings")
-                    }
-                },
-            )
-        },
-    ) { scaffoldPadding ->
-    Box(modifier = Modifier.fillMaxSize().padding(scaffoldPadding)) {
+    // Restructure (v0.5.40) — when embedded under Library, skip the
+    // standalone Scaffold/TopAppBar: the parent screen already owns
+    // those. The inner Box stays in both branches because the RSS FAB
+    // uses `Modifier.align(Alignment.BottomEnd)` against it.
+    BrowseScaffoldOrFrame(
+        embedded = embedded,
+        onOpenSettings = onOpenSettings,
+    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize().padding(top = spacing.md)) {
         // Top-level source picker. Switches the multibinding lookup in
         // FictionRepository between Royal Road and GitHub. Tabs and the
@@ -424,7 +467,7 @@ fun BrowseScreen(
         }
     }
     }  // Box
-    }  // Scaffold
+    }  // BrowseScaffoldOrFrame body
 
     if (showRssManageSheet) {
         BrowseRssManageSheet(

@@ -114,7 +114,18 @@ object StoryvoxRoutes {
         else "$base?prefill=${Uri.encode(prefill)}"
     }
 
-    private val HOME_ROUTES = setOf(PLAYING, LIBRARY, FOLLOWS, BROWSE, VOICE_LIBRARY)
+    /**
+     * Routes treated as "home" surfaces — bottom nav stays visible while
+     * the user is on one of these. The set was pruned in the v0.5.40
+     * restructure: only [LIBRARY] and [SETTINGS_HUB] are bottom-bar
+     * destinations now, but FOLLOWS / BROWSE / VOICE_LIBRARY / PLAYING /
+     * SETTINGS stay in HOME_ROUTES because they still render at the
+     * "primary surface" depth (deep-linked or reached via in-Library
+     * sub-tab navigation), and we want the bottom bar visible there
+     * too. The bar's *selected* mapping (below) collapses any of these
+     * to the LIBRARY pill since that's the umbrella destination now.
+     */
+    private val HOME_ROUTES = setOf(PLAYING, LIBRARY, FOLLOWS, BROWSE, VOICE_LIBRARY, SETTINGS_HUB, SETTINGS)
     fun isHome(route: String?) = route in HOME_ROUTES
 
     /** Issue #267 — Reader / Audiobook routes ARE the player surface, just
@@ -191,26 +202,26 @@ private fun StoryvoxNavHostContent(
         bottomBar = {
             if (showBottomBar) {
                 BottomTabBar(
-                    selected = when {
-                        currentRoute == StoryvoxRoutes.PLAYING -> HomeTab.Playing
-                        currentRoute == StoryvoxRoutes.FOLLOWS -> HomeTab.Follows
-                        currentRoute == StoryvoxRoutes.BROWSE -> HomeTab.Browse
-                        currentRoute == StoryvoxRoutes.VOICE_LIBRARY -> HomeTab.Voices
-                        // Issue #267 — the Reader / Audiobook drill-downs ARE
-                        // the player surface, so light the Playing tab while
-                        // we're on them. Without this branch they'd fall
-                        // through to Library, which is misleading.
-                        currentRoute == StoryvoxRoutes.READER ||
-                            currentRoute == StoryvoxRoutes.AUDIOBOOK -> HomeTab.Playing
+                    selected = when (currentRoute) {
+                        // Restructure (v0.5.40) — Settings is the second
+                        // primary destination. Both the hub and the
+                        // legacy long-scroll page (reached from inside
+                        // the hub) light the Settings pill.
+                        StoryvoxRoutes.SETTINGS_HUB,
+                        StoryvoxRoutes.SETTINGS -> HomeTab.Settings
+                        // Everything else — Library, Browse, Follows,
+                        // Voice Library, Playing, Reader, Audiobook —
+                        // lights the Library pill since Library is now
+                        // the umbrella destination for all of those
+                        // surfaces (Browse / Follows live as Library
+                        // sub-tabs; Reader / Audiobook are drill-downs
+                        // from a Library entry).
                         else -> HomeTab.Library
                     },
                     onSelect = { tab ->
                         val target = when (tab) {
-                            HomeTab.Playing -> StoryvoxRoutes.PLAYING
                             HomeTab.Library -> StoryvoxRoutes.LIBRARY
-                            HomeTab.Follows -> StoryvoxRoutes.FOLLOWS
-                            HomeTab.Browse -> StoryvoxRoutes.BROWSE
-                            HomeTab.Voices -> StoryvoxRoutes.VOICE_LIBRARY
+                            HomeTab.Settings -> StoryvoxRoutes.SETTINGS_HUB
                         }
                         if (target != currentRoute) {
                             // Pop everything above the start destination so
@@ -233,11 +244,12 @@ private fun StoryvoxNavHostContent(
                             // each time). Net win: the nav actually renders.
                             navController.navigate(target) {
                                 // Pop everything above the start destination
-                                // (PLAYING) so tab switches don't pile up the
-                                // back stack. Using the start route name
-                                // instead of `findStartDestination().id` to
-                                // avoid the extra import; equivalent result.
-                                popUpTo(StoryvoxRoutes.PLAYING)
+                                // (LIBRARY after v0.5.40 restructure) so tab
+                                // switches don't pile up the back stack.
+                                // Using the start route name instead of
+                                // `findStartDestination().id` to avoid the
+                                // extra import; equivalent result.
+                                popUpTo(StoryvoxRoutes.LIBRARY)
                                 launchSingleTop = true
                             }
                         }
@@ -298,10 +310,15 @@ private fun StoryvoxNavHostContent(
 
         NavHost(
             navController = navController,
-            // Default to the Playing tab on launch — when the user
-            // returns to the app they almost always want to resume what
-            // they were listening to, not browse the library shelf.
-            startDestination = StoryvoxRoutes.PLAYING,
+            // Restructure (v0.5.40) — Library is the start destination
+            // and primary umbrella surface. Playing (HybridReaderScreen)
+            // is reached via the Resume card on the Library tab when
+            // the user has a continue-listening entry; if they don't,
+            // landing on Library showed them an empty grid before too,
+            // but the empty-state copy now invites them to Browse
+            // (which is one Library sub-tab away, not a separate
+            // bottom-bar destination).
+            startDestination = StoryvoxRoutes.LIBRARY,
             modifier = Modifier.padding(padding),
         ) {
             composable(
@@ -322,11 +339,17 @@ private fun StoryvoxNavHostContent(
                     // populated ResumePrompt doesn't navigate; tapping
                     // Resume reloads the chapter in place.
                     onBrowse = {
+                        // Restructure (v0.5.40) — Browse is no longer a
+                        // bottom-bar destination; it lives inside the
+                        // Library tab. The empty-state "Browse the
+                        // realms" CTA could open the standalone BROWSE
+                        // route (still in the nav graph) or route to
+                        // LIBRARY and let the user tap the Browse
+                        // sub-tab. We open BROWSE directly here so the
+                        // CTA's verb still matches its destination
+                        // exactly.
                         navController.navigate(StoryvoxRoutes.BROWSE) {
-                            // Same pop-and-singleTop discipline as the
-                            // bottom-tab handler so the Browse-tab back
-                            // stack doesn't accumulate.
-                            popUpTo(StoryvoxRoutes.PLAYING)
+                            popUpTo(StoryvoxRoutes.LIBRARY)
                             launchSingleTop = true
                         }
                     },
@@ -343,6 +366,14 @@ private fun StoryvoxNavHostContent(
                     onOpenFiction = { id -> navController.navigate(StoryvoxRoutes.fictionDetail(id)) },
                     onOpenReader = { f, c -> navController.navigate(StoryvoxRoutes.reader(f, c)) },
                     onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS_HUB) },
+                    // Restructure (v0.5.40) — Browse + Follows are
+                    // embedded sub-tabs now. Both rely on the host
+                    // (this NavHost) to surface the auth WebView for
+                    // Royal Road sign-in; we route to the same shared
+                    // sign-in surface used by FictionDetail #211 and
+                    // standalone Browse #241.
+                    onOpenRoyalRoadSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
+                    onOpenFollowsSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
                     // Issue #383 — Inbox row tap deep-link. The URI is a
                     // pre-resolved `storyvox://reader/<fid>/<cid>` or
                     // `storyvox://fiction/<fid>` string. Decode here and

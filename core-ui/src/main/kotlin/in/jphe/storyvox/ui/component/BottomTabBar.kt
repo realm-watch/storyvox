@@ -22,15 +22,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
-import androidx.compose.material.icons.filled.Bookmarks
-import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.Headphones
-import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.AutoStories
-import androidx.compose.material.icons.outlined.Bookmarks
-import androidx.compose.material.icons.outlined.Explore
-import androidx.compose.material.icons.outlined.Headphones
-import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -49,13 +43,25 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 
+/**
+ * Top-level bottom-nav destinations.
+ *
+ * **Restructure (v0.5.40)** — JP directive: "put settings in the main nav bar,
+ * and put follows and browse into the library tab." The bar collapses to two
+ * destinations: [Library] (umbrella for the user's books + Browse + Follows +
+ * Inbox + History as sub-tabs) and [Settings] (landing on the v0.5.38
+ * SettingsHubScreen).
+ *
+ *  - Playing / Follows / Browse / Voices were previously primary destinations.
+ *    Their routes still exist (so deep-links resolve and the in-Library
+ *    sub-tabs render their content), but they no longer carry bottom-bar
+ *    icons. Voices is reached via Settings → Voices; Browse / Follows live
+ *    under Library; Playing returns when a player surface (#267) is needed.
+ */
 @Immutable
 enum class HomeTab(val label: String, val filled: ImageVector, val outlined: ImageVector) {
-    Playing("Playing", Icons.Filled.Headphones, Icons.Outlined.Headphones),
     Library("Library", Icons.Filled.AutoStories, Icons.Outlined.AutoStories),
-    Follows("Follows", Icons.Filled.Bookmarks, Icons.Outlined.Bookmarks),
-    Browse("Browse", Icons.Filled.Explore, Icons.Outlined.Explore),
-    Voices("Voices", Icons.Filled.RecordVoiceOver, Icons.Outlined.RecordVoiceOver),
+    Settings("Settings", Icons.Filled.Settings, Icons.Outlined.Settings),
 }
 
 /**
