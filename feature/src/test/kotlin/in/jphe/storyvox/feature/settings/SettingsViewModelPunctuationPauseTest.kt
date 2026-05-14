@@ -175,6 +175,7 @@ class SettingsViewModelPunctuationPauseTest {
         override suspend fun setOllamaModel(model: String) = Unit
         override suspend fun setVertexApiKey(key: String?) = Unit
         override suspend fun setVertexModel(model: String) = Unit
+        override suspend fun setVertexServiceAccountJson(json: String?) = Unit
         override suspend fun setFoundryApiKey(key: String?) = Unit
         override suspend fun setFoundryEndpoint(url: String) = Unit
         override suspend fun setFoundryDeployment(deployment: String) = Unit
@@ -251,7 +252,10 @@ class SettingsViewModelPunctuationPauseTest {
             claude = ClaudeApiProvider(http, store, cfg, json),
             openAi = OpenAiApiProvider(http, store, cfg, json),
             ollama = OllamaProvider(http, cfg, json),
-            vertex = VertexProvider(http, store, cfg, json),
+            vertex = VertexProvider(
+                http, store, cfg, json,
+                `in`.jphe.storyvox.llm.auth.GoogleOAuthTokenSource(http),
+            ),
             foundry = AzureFoundryProvider(http, store, cfg, json),
             bedrock = BedrockProvider(http, store, cfg, json),
             teams = AnthropicTeamsProvider(

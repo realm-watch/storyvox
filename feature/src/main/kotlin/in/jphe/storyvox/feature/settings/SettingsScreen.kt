@@ -395,6 +395,9 @@ fun SettingsScreen(
             onSetOllamaModel = viewModel::setOllamaModel,
             onSetVertexKey = viewModel::setVertexApiKey,
             onSetVertexModel = viewModel::setVertexModel,
+            onSetVertexServiceAccountJson = viewModel::setVertexServiceAccountJson,
+            vertexSaError = viewModel.vertexSaError.collectAsStateWithLifecycle().value,
+            onClearVertexSaError = viewModel::clearVertexSaError,
             onSetFoundryKey = viewModel::setFoundryApiKey,
             onSetFoundryEndpoint = viewModel::setFoundryEndpoint,
             onSetFoundryDeployment = viewModel::setFoundryDeployment,
@@ -1869,6 +1872,14 @@ private fun AiSection(
     onSetOllamaModel: (String) -> Unit,
     onSetVertexKey: (String?) -> Unit,
     onSetVertexModel: (String) -> Unit,
+    /** Issue #219 — install or clear a Google service-account JSON
+     *  for Vertex auth. The caller (SAF picker) reads the picked
+     *  document's text and passes it through; `null` clears. The
+     *  VM signals parse/validation failures via [vertexSaError]. */
+    onSetVertexServiceAccountJson: (String?) -> Unit,
+    /** Last SA-JSON failure message, or null when none/cleared. */
+    vertexSaError: String?,
+    onClearVertexSaError: () -> Unit,
     onSetFoundryKey: (String?) -> Unit,
     onSetFoundryEndpoint: (String) -> Unit,
     onSetFoundryDeployment: (String) -> Unit,
@@ -1958,6 +1969,9 @@ private fun AiSection(
             ai = ai,
             onSetVertexKey = onSetVertexKey,
             onSetVertexModel = onSetVertexModel,
+            onSetVertexServiceAccountJson = onSetVertexServiceAccountJson,
+            vertexSaError = vertexSaError,
+            onClearVertexSaError = onClearVertexSaError,
         )
         UiLlmProvider.Foundry -> AzureFoundryProviderRows(
             ai = ai,
@@ -2373,6 +2387,9 @@ private fun VertexProviderRows(
     ai: UiAiSettings,
     onSetVertexKey: (String?) -> Unit,
     onSetVertexModel: (String) -> Unit,
+    onSetVertexServiceAccountJson: (String?) -> Unit,
+    vertexSaError: String?,
+    onClearVertexSaError: () -> Unit,
 ) {
     val spacing = LocalSpacing.current
     var keyDraft by remember { mutableStateOf("") }
@@ -2380,7 +2397,49 @@ private fun VertexProviderRows(
     // #338 — see ClaudeProviderRows for the rationale.
     var keyConfiguredOverride by remember { mutableStateOf<Boolean?>(null) }
     val keyConfigured = keyConfiguredOverride ?: ai.vertexKeyConfigured
+    // #219 — local optimistic override for the SA-configured label.
+    // Same pattern as keyConfiguredOverride: EncryptedSharedPreferences
+    // doesn't notify the settings Flow, so the SA-set status would
+    // otherwise lag until the next combine emission.
+    var saConfiguredOverride by remember { mutableStateOf<Boolean?>(null) }
+    val saConfigured = saConfiguredOverride ?: ai.vertexServiceAccountConfigured
+
+    // SAF file picker — single .json document. The system picker
+    // surfaces Drive / Downloads / Files / external-storage by default;
+    // mime filter narrows the list to JSON. Persistent permission
+    // grant isn't needed here because we copy the JSON content out of
+    // the URI immediately and store it encrypted; the URI itself is
+    // discarded.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val saFilePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            val text = runCatching {
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    stream.bufferedReader(Charsets.UTF_8).readText()
+                }
+            }.getOrNull()
+            if (text.isNullOrBlank()) {
+                // Reads can fail when SAF returns a transient URI we
+                // can't open (rare; OOM, permission revoke mid-pick).
+                // Forward to the VM as a fake error so the user sees
+                // why nothing changed.
+                onSetVertexServiceAccountJson(null)
+            } else {
+                onSetVertexServiceAccountJson(text)
+                saConfiguredOverride = true
+                // Picking SA implicitly drops the API key (mutual
+                // exclusion at the repo). Reflect that locally so the
+                // "key set" label updates without waiting for a Flow
+                // round-trip.
+                keyConfiguredOverride = false
+            }
+        }
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        // ── API-key mode (legacy/default) ─────────────────────────
         Text(
             if (keyConfigured) "Vertex API key — set"
             else "Vertex API key — not set",
@@ -2409,6 +2468,9 @@ private fun VertexProviderRows(
                         keyDraft = ""
                         showKey = false
                         keyConfiguredOverride = true
+                        // API key wins → drop the local SA-configured
+                        // sticky bit so the label flips honestly.
+                        saConfiguredOverride = false
                     }
                 },
                 variant = BrassButtonVariant.Primary,
@@ -2424,6 +2486,63 @@ private fun VertexProviderRows(
                 )
             }
         }
+
+        // ── Service-account JSON mode (#219) ──────────────────────
+        // Distinct sub-section under the API-key inputs. The two
+        // modes are mutually exclusive at the repo, so configuring
+        // either side clears the other; the UI reflects that with the
+        // optimistic-override bits above.
+        Spacer(modifier = Modifier.padding(top = spacing.xs))
+        Text(
+            "Service account (advanced)",
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Text(
+            text = when {
+                saConfigured && ai.vertexServiceAccountEmail != null ->
+                    "Service account — ${ai.vertexServiceAccountEmail}"
+                saConfigured -> "Service account — uploaded"
+                else -> "No service account uploaded."
+            },
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+            BrassButton(
+                label = if (saConfigured) "Replace JSON" else "Upload JSON",
+                onClick = {
+                    onClearVertexSaError()
+                    // The Storage Access Framework's OpenDocument
+                    // contract takes an array of mime types. We accept
+                    // application/json explicitly; some pickers also
+                    // need */* fallback for files that landed without
+                    // the right mime (Drive especially), so we list
+                    // both.
+                    saFilePicker.launch(arrayOf("application/json", "*/*"))
+                },
+                variant = BrassButtonVariant.Primary,
+            )
+            if (saConfigured) {
+                BrassButton(
+                    label = "Clear",
+                    onClick = {
+                        onSetVertexServiceAccountJson(null)
+                        saConfiguredOverride = false
+                    },
+                    variant = BrassButtonVariant.Text,
+                )
+            }
+        }
+        if (vertexSaError != null) {
+            // Transient inline error — Compose recomposes when the VM
+            // pushes null after a successful save.
+            Text(
+                text = vertexSaError,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+
+        // ── Model picker ──────────────────────────────────────────
         Text(
             "Model: ${ai.vertexModel}",
             style = MaterialTheme.typography.bodySmall,
@@ -2439,8 +2558,9 @@ private fun VertexProviderRows(
             }
         }
         Text(
-            "Generate a key at aistudio.google.com/app/apikey. " +
-                "Flash is the cheapest, Pro is the smartest, Flash-Lite is the lightest.",
+            "API key: generate at aistudio.google.com/app/apikey — quick BYOK path.\n" +
+                "Service account: GCP console → IAM → Service Accounts → Keys → Create key (JSON). " +
+                "Needs the Vertex AI User role on your project.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

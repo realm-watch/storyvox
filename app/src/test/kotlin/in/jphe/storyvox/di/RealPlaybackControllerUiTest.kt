@@ -253,6 +253,7 @@ class RealPlaybackControllerUiTest {
         override suspend fun setOllamaModel(model: String) = Unit
         override suspend fun setVertexApiKey(key: String?) = Unit
         override suspend fun setVertexModel(model: String) = Unit
+        override suspend fun setVertexServiceAccountJson(json: String?) = Unit
         override suspend fun setFoundryApiKey(key: String?) = Unit
         override suspend fun setFoundryEndpoint(url: String) = Unit
         override suspend fun setFoundryDeployment(deployment: String) = Unit

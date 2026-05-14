@@ -126,10 +126,15 @@ internal class FakeStore(
     private val claude: String? = null,
     private val openAi: String? = null,
     private val vertex: String? = null,
+    private val vertexSaJson: String? = null,
     private val foundry: String? = null,
 ) : LlmCredentialsStore() {
     override fun claudeApiKey(): String? = claude
     override fun openAiApiKey(): String? = openAi
     override fun vertexApiKey(): String? = vertex
+    /** Issue #219 — exposed so VertexProvider tests can exercise the
+     *  SA-JSON dispatch branch without standing up real
+     *  EncryptedSharedPreferences. */
+    override fun vertexServiceAccountJson(): String? = vertexSaJson
     override fun foundryApiKey(): String? = foundry
 }

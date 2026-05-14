@@ -73,6 +73,7 @@ class SettingsRepositoryPitchTest {
             azureCreds = makeFakeAzureCredentials(),
             azureClient = makeFakeAzureClient(),
             azureRoster = makeFakeAzureRoster(),
+            googleTokenSource = `in`.jphe.storyvox.llm.auth.GoogleOAuthTokenSource(okhttp3.OkHttpClient()),
         )
     }
 

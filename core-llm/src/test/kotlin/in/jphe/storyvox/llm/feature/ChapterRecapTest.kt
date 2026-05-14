@@ -254,6 +254,7 @@ private class FakeProvider {
         store = FakeStore(),
         configFlow = flowOf(LlmConfig()),
         json = Json,
+        tokenSource = `in`.jphe.storyvox.llm.auth.GoogleOAuthTokenSource(OkHttpClient()),
     ) {
         override fun stream(
             messages: List<LlmMessage>,
