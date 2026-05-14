@@ -32,7 +32,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SecondaryTabRow
+import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -48,6 +48,8 @@ import `in`.jphe.storyvox.data.db.entity.Shelf
 import `in`.jphe.storyvox.data.repository.ContinueListeningEntry
 import `in`.jphe.storyvox.data.repository.HistoryEntry
 import `in`.jphe.storyvox.data.source.model.FictionSummary
+import `in`.jphe.storyvox.feature.browse.BrowseScreen
+import `in`.jphe.storyvox.feature.follows.FollowsScreen
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.BrassProgressBar
@@ -73,6 +75,17 @@ fun LibraryScreen(
      * the app activity should always supply this.
      */
     onOpenInboxLink: (String) -> Unit = {},
+    /**
+     * Restructure (v0.5.40) — embedded BrowseScreen's RR sign-in CTA.
+     * Default no-op for tests / preview surfaces that don't exercise
+     * the Browse sub-tab.
+     */
+    onOpenRoyalRoadSignIn: () -> Unit = {},
+    /**
+     * Restructure (v0.5.40) — embedded FollowsScreen's sign-in CTA
+     * (Royal Road WebView for now; #241 shared sign-in surface).
+     */
+    onOpenFollowsSignIn: () -> Unit = {},
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -139,20 +152,23 @@ fun LibraryScreen(
         },
     ) { scaffoldPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(scaffoldPadding)) {
-            // Issue #158 — Library sub-tabs. SecondaryTabRow rather than the
-            // PrimaryTabRow used by the bottom-level top-bar tabs, because
-            // these are *inside* a tab — Material 3 reserves the primary
-            // indicator for the top-level surface (BottomTabBar) and uses
-            // secondary for nested division.
+            // Issue #158 — Library sub-tabs. SecondaryScrollableTabRow
+            // rather than the fixed SecondaryTabRow because the
+            // restructure (v0.5.40) grew the tab count to five
+            // (Library / Browse / Follows / Inbox / History) and the
+            // labels do not fit the Flip3 portrait width laid out
+            // evenly. Scrollable is the same pattern BrowseScreen
+            // already uses for its narrow-viewport tab row, so this
+            // stays inside the existing visual vocabulary.
             //
-            // Layering with #116 (shelves): Tab.Reading coerces the chip
-            // filter to OneShelf(Reading) in the VM, so the same shelf-
-            // scoped Room flow drives both surfaces. The chip row is shown
-            // only on Tab.All — on Tab.Reading the tab itself IS the
-            // filter, on Tab.History the chip row isn't meaningful.
-            SecondaryTabRow(
+            // Layering with #116 (shelves): the chip row is shown only
+            // on Tab.Library — on Tab.Browse / Follows the embedded
+            // surfaces own their own scoping, on Tab.Inbox / History
+            // the chip row isn't meaningful.
+            SecondaryScrollableTabRow(
                 selectedTabIndex = state.tab.ordinal,
                 modifier = Modifier.fillMaxWidth(),
+                edgePadding = 0.dp,
             ) {
                 LibraryTab.entries.forEach { tab ->
                     Tab(
@@ -225,6 +241,30 @@ fun LibraryScreen(
                             onLongPress = viewModel::openManageShelves,
                         )
                     }
+                }
+
+                // Restructure (v0.5.40) — Browse embedded under Library.
+                // BrowseScreen carries its own ViewModel (Hilt-scoped to
+                // this NavBackStackEntry) so its state survives sub-tab
+                // switches inside Library, same as it survived
+                // top-level tab switches before the restructure.
+                LibraryTab.Browse -> Box(modifier = Modifier.fillMaxSize()) {
+                    BrowseScreen(
+                        onOpenFiction = onOpenFiction,
+                        onOpenRoyalRoadSignIn = onOpenRoyalRoadSignIn,
+                        onOpenSettings = onOpenSettings,
+                        embedded = true,
+                    )
+                }
+
+                // Restructure (v0.5.40) — Follows embedded under Library.
+                LibraryTab.Follows -> Box(modifier = Modifier.fillMaxSize()) {
+                    FollowsScreen(
+                        onOpenFiction = onOpenFiction,
+                        onOpenSignIn = onOpenFollowsSignIn,
+                        onOpenSettings = onOpenSettings,
+                        embedded = true,
+                    )
                 }
 
                 LibraryTab.Inbox -> Box(modifier = Modifier.fillMaxSize().padding(top = spacing.md)) {

@@ -52,6 +52,15 @@ fun FollowsScreen(
     onOpenFiction: (String) -> Unit,
     onOpenSignIn: () -> Unit,
     onOpenSettings: () -> Unit = {},
+    /**
+     * Restructure (v0.5.40) — when true, FollowsScreen renders without
+     * its own TopAppBar. The Library tab's TopAppBar serves as the
+     * parent header. The "Mark all caught up" action still surfaces,
+     * just as an inline header row above the list instead of in a
+     * TopAppBar slot. Standalone (`embedded = false`) preserves the
+     * legacy full-screen rendering for the deep-linked FOLLOWS route.
+     */
+    embedded: Boolean = false,
     viewModel: FollowsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -83,25 +92,48 @@ fun FollowsScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            TopAppBar(
-                title = { Text("Follows", style = MaterialTheme.typography.titleLarge) },
-                actions = {
-                    if (state.isSignedIn && state.follows.isNotEmpty()) {
-                        BrassButton(
-                            label = "Mark all caught up",
-                            onClick = viewModel::markAllCaughtUp,
-                            variant = BrassButtonVariant.Text,
-                        )
-                    }
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Outlined.Settings, contentDescription = "Settings")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                ),
-            )
+            // Restructure (v0.5.40) — when embedded under Library, skip
+            // the standalone TopAppBar entirely (Library's bar serves
+            // as the parent header). The "Mark all caught up" action
+            // surfaces inline below as a TextButton in an aligned-end
+            // Row so it remains reachable.
+            if (!embedded) {
+                TopAppBar(
+                    title = { Text("Follows", style = MaterialTheme.typography.titleLarge) },
+                    actions = {
+                        if (state.isSignedIn && state.follows.isNotEmpty()) {
+                            BrassButton(
+                                label = "Mark all caught up",
+                                onClick = viewModel::markAllCaughtUp,
+                                variant = BrassButtonVariant.Text,
+                            )
+                        }
+                        IconButton(onClick = onOpenSettings) {
+                            Icon(Icons.Outlined.Settings, contentDescription = "Settings")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
+                )
+            } else if (state.isSignedIn && state.follows.isNotEmpty()) {
+                // Embedded fallback for the "Mark all caught up"
+                // action — same affordance, just relocated below the
+                // parent TopAppBar.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = spacing.md, vertical = spacing.xs),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    BrassButton(
+                        label = "Mark all caught up",
+                        onClick = viewModel::markAllCaughtUp,
+                        variant = BrassButtonVariant.Text,
+                    )
+                }
+            }
             when {
                 // Brass-sigil skeletons while the network refresh is in flight
                 // and we have no cached follows to show yet.
