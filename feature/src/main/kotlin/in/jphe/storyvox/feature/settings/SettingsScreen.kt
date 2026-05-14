@@ -93,6 +93,8 @@ import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.SkeletonBlock
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.delay
 
 @Composable
@@ -3043,6 +3045,7 @@ private fun abbreviateSafUri(raw: String): String {
 private fun OutlineConfigRow(viewModel: SettingsViewModel) {
     val host by viewModel.outlineHost.collectAsStateWithLifecycle()
     val spacing = LocalSpacing.current
+    val context = LocalContext.current
     var hostDraft by remember(host) { mutableStateOf(host) }
     var apiKeyDraft by remember { mutableStateOf("") }
 
@@ -3085,10 +3088,28 @@ private fun OutlineConfigRow(viewModel: SettingsViewModel) {
                 label = "Save",
                 onClick = {
                     val trimmedHost = hostDraft.trim()
+                    // Issue #455 — empty required fields used to silently
+                    // no-op the Save action with no feedback. JP design
+                    // (issue comment): apply defaults silently to the
+                    // model but surface a transient toast naming the
+                    // skipped field(s) so the user sees that something
+                    // was missing. Lighter than Material 3 supported-
+                    // error chips, no save-blocking.
+                    val skipped = buildList {
+                        if (trimmedHost.isEmpty()) add("Outline host")
+                        if (apiKeyDraft.isBlank()) add("API token")
+                    }
                     if (trimmedHost.isNotEmpty()) viewModel.setOutlineHost(trimmedHost)
                     if (apiKeyDraft.isNotBlank()) {
                         viewModel.setOutlineApiKey(apiKeyDraft)
                         apiKeyDraft = ""
+                    }
+                    if (skipped.isNotEmpty()) {
+                        Toast.makeText(
+                            context,
+                            "Saved. Skipped (defaults applied): ${skipped.joinToString(", ")}",
+                            Toast.LENGTH_SHORT,
+                        ).show()
                     }
                 },
                 variant = BrassButtonVariant.Primary,
@@ -3184,6 +3205,7 @@ private fun NotionConfigRow(
     onApiTokenChange: (String?) -> Unit,
 ) {
     val spacing = LocalSpacing.current
+    val context = LocalContext.current
     var dbDraft by remember(databaseId) { mutableStateOf(databaseId) }
     var tokenDraft by remember { mutableStateOf("") }
 
@@ -3260,10 +3282,28 @@ private fun NotionConfigRow(
             BrassButton(
                 label = "Save",
                 onClick = {
+                    // Issue #455 — empty required fields produce a toast
+                    // so the user sees that something was missing.
+                    // Database ID has a baked-in default (TechEmpower),
+                    // so an "empty Database ID at save time" already
+                    // applies that default silently — the toast still
+                    // names it so the user knows the demo content will
+                    // be what they see in Browse → Notion.
+                    val skipped = buildList {
+                        if (dbDraft.isBlank()) add("Database ID")
+                        if (tokenDraft.isBlank() && !tokenConfigured) add("Integration token")
+                    }
                     if (dbDraft != databaseId) onDatabaseIdChange(dbDraft)
                     if (tokenDraft.isNotBlank()) {
                         onApiTokenChange(tokenDraft)
                         tokenDraft = ""
+                    }
+                    if (skipped.isNotEmpty()) {
+                        Toast.makeText(
+                            context,
+                            "Saved. Skipped (defaults applied): ${skipped.joinToString(", ")}",
+                            Toast.LENGTH_SHORT,
+                        ).show()
                     }
                 },
                 variant = BrassButtonVariant.Primary,
