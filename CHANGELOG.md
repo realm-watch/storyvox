@@ -9,6 +9,26 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.25] — 2026-05-13
+
+### Added
+- **Anonymous Notion-site reader mode** (#393, closes the v0.5.24 known limitation) — `:source-notion` now reads public-shared Notion pages via the *unofficial* `www.notion.so/api/v3` surface (`loadPageChunk`, `queryCollection`, `syncRecordValuesMain`, `getPublicPageData` — the same set [react-notion-x](https://github.com/NotionX/react-notion-x)'s `notion-client` package uses). Zero setup: a fresh install opens Browse → Notion and immediately surfaces TechEmpower's content as narratable audio, with no integration token required.
+- **Single-fiction, multi-chapter TechEmpower** — Browse → Notion shows one tile, "Welcome to TechEmpower.org" by TechEmpower, with four chapters mapped to the site's top-level navigation: **Guides** (the root page's own content, with internal `header` blocks preserved as inline sub-headings), **Resources** (an HTML list of the Resources database's ~80 row titles, queried via `queryCollection`), **About**, and **Donate**. Internal sub-page links (the 8 individual guide pages) render as bridge paragraphs inside the Guides chapter so the listener hears their titles without the chapter mid-jumping.
+- **`NotionConfig` mode enum** — new `NotionMode { ANONYMOUS_PUBLIC, OFFICIAL_PAT }` selects the read path. Anonymous mode reads any public-shared root page id; PAT mode keeps the original integration-token + database-id flow for private workspaces. The mode is implicit: blank token → anonymous, non-blank token → PAT. Existing users with a stored PAT keep their current experience unchanged.
+
+### Fixed
+- **Stale "TODO placeholder" rejection in `NotionApi.requireConfigured`** — v0.5.23 shipped a check that fast-failed when `databaseId == TECHEMPOWER_DATABASE_ID`; v0.5.24 replaced that id with the real TechEmpower Resources DB but left the check, silently breaking the bundled default for anyone with a PAT shared to the Resources DB. v0.5.25 removes the equality check; gating is now token presence alone in PAT mode and root-page-id presence in anonymous mode.
+
+### Implementation
+- `NotionUnofficialApi` (new) — OkHttp client for the four `/api/v3` endpoints with hand-crafted JSON bodies (the queryCollection loader shape is deeply nested; full kotlinx-serialization round-trips would be more code than the bodies). Process-lifetime in-memory cache keyed on hyphenated page id; deduplicates round-trips within a Browse → detail flow. Every HTTP call is wrapped in `withContext(Dispatchers.IO)` so the source can be safely called from any coroutine context.
+- `AnonymousNotionDelegate` (new) — implements the FictionSource surface against `NotionUnofficialApi`. Builds a single Browse tile from the configured root page and resolves its chapter list from `NotionDefaults.techempowerChapters` (a hand-curated list of `ChapterSpec.Page` / `ChapterSpec.Collection` entries). Page chapters render their underlying Notion page's blocks via `renderPageBody`; collection chapters query the database via `queryCollection` and render a row-title list. Tombstoned blocks (`alive:false`) are filtered.
+- `NotionConfigImpl` (modified) — persists a new `pref_notion_root_page_id` DataStore key. Defaults to `NotionDefaults.TECHEMPOWER_ROOT_PAGE_ID` on first install; users can override via Settings.
+- `NotionApi.requireConfigured` (bug fix) — removed the stale `databaseId == TECHEMPOWER_DATABASE_ID` placeholder check that v0.5.24 silently broke when it baked the real DB id into the same constant.
+- 23 new unit tests in `AnonymousNotionDelegateTest` + `NotionUnofficialModelsTest` covering the recordMap envelope decode, decoration-array title extraction, page-id hyphenation, collection_view metadata read, chapter spec resolution (TechEmpower vs. generic), page-body rendering with tombstone filtering, collection-row title extraction + sorting, HTML/plain projection of the unofficial block types, mode-posture defaults, and tolerance for unknown top-level recordMap fields.
+
+### Known caveats
+- The unofficial `www.notion.so/api/v3` endpoints are undocumented; Notion may change their shape without notice. Storyvox decodes permissively (all block-payload fields are `JsonElement`) so unknown variants degrade silently rather than breaking parsing. Surface errors come back as structured `NotionUnofficialError` envelopes (`{isNotionError, errorId, name, message}`) which we map to standard `FictionResult.AuthRequired`/`NotFound`/`RateLimited`/`NetworkError`.
+
 ## [0.5.24] — 2026-05-13
 
 ### Fixed

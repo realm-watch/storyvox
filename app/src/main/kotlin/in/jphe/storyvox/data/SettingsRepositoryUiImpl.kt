@@ -511,6 +511,12 @@ class SettingsRepositoryUiImpl(
             sourceNotionEnabled = prefs[Keys.SOURCE_NOTION_ENABLED] ?: true,
             notionDatabaseId = notion.databaseId,
             notionTokenConfigured = notion.apiToken.isNotBlank(),
+            // Issue #393 — surface the anonymous-mode posture so the
+            // Settings UI can render a "Reading TechEmpower content
+            // anonymously" affordance and the user understands the PAT
+            // field is opt-in for private workspaces.
+            notionMode = notion.mode.name,
+            notionRootPageId = notion.rootPageId,
             sleepShakeToExtendEnabled = prefs[Keys.SLEEP_SHAKE_TO_EXTEND_ENABLED] ?: true,
             showDebugOverlay = prefs[Keys.SHOW_DEBUG_OVERLAY] ?: false,
             azure = run {

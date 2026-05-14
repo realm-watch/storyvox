@@ -558,7 +558,14 @@ fun SettingsScreen(
             // at their own Notion DB.
             SettingsSwitchRow(
                 title = "Notion",
-                subtitle = "Read a Notion database as fiction. Heading-1 boundaries split chapters.",
+                // Issue #393 — anonymous-mode is the default for token-less
+                // installs; the subtitle reflects what the user actually
+                // gets out of the box (TechEmpower content) rather than
+                // the PAT-only past behavior.
+                subtitle = if (s.notionMode == "ANONYMOUS_PUBLIC")
+                    "Reads TechEmpower.org as one fiction with chapters for Guides, Resources, About, and Donate. No setup. Paste a token below to read your own private database instead."
+                else
+                    "Read a Notion database as fiction. Heading-1 boundaries split chapters.",
                 checked = s.sourceNotionEnabled,
                 onCheckedChange = viewModel::setSourceNotionEnabled,
             )

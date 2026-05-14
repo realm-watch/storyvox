@@ -11,6 +11,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import `in`.jphe.storyvox.source.notion.config.NotionConfig
 import `in`.jphe.storyvox.source.notion.config.NotionConfigState
 import `in`.jphe.storyvox.source.notion.config.NotionDefaults
+import `in`.jphe.storyvox.source.notion.config.NotionMode
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
@@ -24,9 +25,17 @@ private val Context.notionDataStore: DataStore<Preferences> by preferencesDataSt
 
 private object NotionKeys {
     /** Notion database id — the database the source treats as the
-     *  fiction catalog. Stored as the user enters it (trimmed); the
-     *  Notion API accepts both hyphenated UUID and 32-hex forms. */
+     *  fiction catalog in [NotionMode.OFFICIAL_PAT]. Stored as the user
+     *  enters it (trimmed); the Notion API accepts both hyphenated UUID
+     *  and 32-hex forms. */
     val DATABASE_ID = stringPreferencesKey("pref_notion_database_id")
+
+    /** Issue #393 — root page id for [NotionMode.ANONYMOUS_PUBLIC].
+     *  Defaults to [NotionDefaults.TECHEMPOWER_ROOT_PAGE_ID] when unset
+     *  so fresh installs read TechEmpower's public Notion tree without
+     *  configuration. Users can override to point at any public Notion
+     *  page via Settings. */
+    val ROOT_PAGE_ID = stringPreferencesKey("pref_notion_root_page_id")
 }
 
 /** EncryptedSharedPreferences key for the Notion integration token.
@@ -70,20 +79,35 @@ class NotionConfigImpl(
     private val secretsTick = MutableStateFlow(0L)
 
     override val state: Flow<NotionConfigState> = combine(
-        store.data.map { it[NotionKeys.DATABASE_ID].orEmpty() }.distinctUntilChanged(),
+        store.data.map { prefs ->
+            prefs[NotionKeys.DATABASE_ID].orEmpty() to prefs[NotionKeys.ROOT_PAGE_ID].orEmpty()
+        }.distinctUntilChanged(),
         secretsTick,
-    ) { storedDbId, _ ->
+    ) { (storedDbId, storedRootId), _ ->
+        val token = secrets.getString(NOTION_API_TOKEN_PREF, "") ?: ""
+        // Issue #393 — mode is implicit: a non-blank token means the
+        // user wants the PAT-driven workspace path; blank → anonymous
+        // public reader. Same shape across `state` and `current()`.
+        val mode = if (token.isNotBlank()) NotionMode.OFFICIAL_PAT else NotionMode.ANONYMOUS_PUBLIC
         NotionConfigState(
+            mode = mode,
             databaseId = if (storedDbId.isBlank()) NotionDefaults.TECHEMPOWER_DATABASE_ID else storedDbId,
-            apiToken = secrets.getString(NOTION_API_TOKEN_PREF, "") ?: "",
+            rootPageId = if (storedRootId.isBlank()) NotionDefaults.TECHEMPOWER_ROOT_PAGE_ID else storedRootId,
+            apiToken = token,
         )
     }.distinctUntilChanged()
 
     override suspend fun current(): NotionConfigState {
-        val storedDbId = store.data.first()[NotionKeys.DATABASE_ID].orEmpty()
+        val prefs = store.data.first()
+        val storedDbId = prefs[NotionKeys.DATABASE_ID].orEmpty()
+        val storedRootId = prefs[NotionKeys.ROOT_PAGE_ID].orEmpty()
+        val token = secrets.getString(NOTION_API_TOKEN_PREF, "") ?: ""
+        val mode = if (token.isNotBlank()) NotionMode.OFFICIAL_PAT else NotionMode.ANONYMOUS_PUBLIC
         return NotionConfigState(
+            mode = mode,
             databaseId = if (storedDbId.isBlank()) NotionDefaults.TECHEMPOWER_DATABASE_ID else storedDbId,
-            apiToken = secrets.getString(NOTION_API_TOKEN_PREF, "") ?: "",
+            rootPageId = if (storedRootId.isBlank()) NotionDefaults.TECHEMPOWER_ROOT_PAGE_ID else storedRootId,
+            apiToken = token,
         )
     }
 
@@ -122,10 +146,31 @@ class NotionConfigImpl(
     fun isTokenConfigured(): Boolean =
         !secrets.getString(NOTION_API_TOKEN_PREF, "").isNullOrBlank()
 
-    /** Wipe both database id + token — Settings "Forget Notion" path
-     *  (no UI affordance yet; available for diagnostics + tests). */
+    /**
+     * Persist the anonymous-mode root page id. Trims whitespace. Empty
+     * input wipes the stored value so the state flow falls back to
+     * [NotionDefaults.TECHEMPOWER_ROOT_PAGE_ID]. Accepts hyphenated or
+     * compact 32-hex forms — the unofficial API client hyphenates
+     * before each call.
+     */
+    suspend fun setRootPageId(id: String) {
+        val trimmed = id.trim()
+        if (trimmed.isBlank()) {
+            store.edit { it.remove(NotionKeys.ROOT_PAGE_ID) }
+        } else {
+            store.edit { it[NotionKeys.ROOT_PAGE_ID] = trimmed }
+        }
+    }
+
+    /** Wipe database id, root page id, and token — Settings "Forget
+     *  Notion" path (no UI affordance yet; available for diagnostics +
+     *  tests). After this call the source falls back to the bundled
+     *  TechEmpower defaults in anonymous mode. */
     suspend fun clear() {
-        store.edit { it.remove(NotionKeys.DATABASE_ID) }
+        store.edit {
+            it.remove(NotionKeys.DATABASE_ID)
+            it.remove(NotionKeys.ROOT_PAGE_ID)
+        }
         secrets.edit().remove(NOTION_API_TOKEN_PREF).apply()
         secretsTick.value = secretsTick.value + 1
     }
