@@ -32,7 +32,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout main (full history for commit-back)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: main
           fetch-depth: 0
@@ -69,7 +69,13 @@ jobs:
           # We've checked out main; if the tag doesn't point at main's tip
           # (e.g. someone pushed to main between tag creation and this run),
           # the sigil hash would bind to the wrong commit. Refuse to proceed.
-          TAG_SHA=$(git rev-parse --verify "refs/tags/$TAG")
+          # Dereference via ^{commit} so annotated tags compare correctly —
+          # `git rev-parse refs/tags/$TAG` returns the tag OBJECT's SHA for
+          # annotated tags, NOT the commit they point at, which false-fires
+          # this check on every `git tag -a` release (observed v0.5.30 on
+          # 2026-05-14). The TAG env var is shell-quoted; this preserves
+          # the existing SAFE env-injection pattern.
+          TAG_SHA=$(git rev-parse --verify "refs/tags/$TAG^{commit}")
           MAIN_SHA=$(git rev-parse --verify HEAD)
           if [ "$TAG_SHA" != "$MAIN_SHA" ]; then
             echo "::error::Tag $TAG ($TAG_SHA) does not point at main HEAD ($MAIN_SHA)."
