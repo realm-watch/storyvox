@@ -85,7 +85,7 @@ dependencies {
     // Settings toggle that writes both fields via
     // [VoiceEngineQualityBridge]. Pre-rendered PCM (post-#97) means
     // the ~20% CPU hit lands once per chapter, not per playback.
-    implementation("com.github.realm-watch:VoxSherpa-TTS:v2.7.13")
+    implementation("com.github.techempower-org:VoxSherpa-TTS:v2.7.13")
     implementation("com.github.k2-fsa:sherpa-onnx:1.12.26")
 
     // Media3 — session, player base classes

@@ -5,32 +5,32 @@
 # matters — broadest patterns first, specific overrides last.
 #
 # Tiers:
-#   @realm-watch/owners       — Storyvox project leads. Admin everything.
-#   @realm-watch/maintainers  — Merge rights + sensitive-path approval.
-#   @realm-watch/contributors — Push to feature branches; protected by
+#   @techempower-org/owners       — Storyvox project leads. Admin everything.
+#   @techempower-org/maintainers  — Merge rights + sensitive-path approval.
+#   @techempower-org/contributors — Push to feature branches; protected by
 #                                branch protection from merging own PRs.
 
 # Default — every PR needs at least Maintainers review.
-*  @realm-watch/maintainers
+*  @techempower-org/maintainers
 
 # ── Build & release surface — Maintainers ──────────────────────────────
 # Version bumps, dep upgrades, gradle plugin changes. A botched edit here
 # breaks every CI run and every release.
-/app/build.gradle.kts           @realm-watch/maintainers
-/gradle/libs.versions.toml      @realm-watch/maintainers
-/settings.gradle.kts            @realm-watch/maintainers
-/build.gradle.kts               @realm-watch/maintainers
-/CHANGELOG.md                   @realm-watch/maintainers
+/app/build.gradle.kts           @techempower-org/maintainers
+/gradle/libs.versions.toml      @techempower-org/maintainers
+/settings.gradle.kts            @techempower-org/maintainers
+/build.gradle.kts               @techempower-org/maintainers
+/CHANGELOG.md                   @techempower-org/maintainers
 
 # ── Sensitive / Owners-only ────────────────────────────────────────────
 # Signing key, CI workflows, project-private rules. Compromise here means
 # someone else can sign APKs with our cert, ship code on push to main, or
 # rewrite the AI agent rules.
-/app/storyvox-debug.keystore    @realm-watch/owners
-/.github/workflows/             @realm-watch/owners
-/.github/CODEOWNERS             @realm-watch/owners
-/CLAUDE.md                      @realm-watch/owners
+/app/storyvox-debug.keystore    @techempower-org/owners
+/.github/workflows/             @techempower-org/owners
+/.github/CODEOWNERS             @techempower-org/owners
+/CLAUDE.md                      @techempower-org/owners
 
 # ── Documentation — Maintainers ────────────────────────────────────────
-/docs/                          @realm-watch/maintainers
-/README.md                      @realm-watch/maintainers
+/docs/                          @techempower-org/maintainers
+/README.md                      @techempower-org/maintainers

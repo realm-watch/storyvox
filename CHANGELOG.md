@@ -9,6 +9,14 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.21] — 2026-05-13
+
+### Infrastructure
+- **Repo moved from `realm-watch` to `techempower-org`** — second transfer of the day. realm-watch was originally framed around homelab theming; `techempower-org` is JP's company org and the more permanent home for storyvox and its product-line siblings. Eight repos transferred together: storyvox, storyvox-feeds, VoxSherpa-TTS, forageforall, techempower.org (the website), mempalace, palace-daemon, multipass-structural-memory-eval. realm-watch stays alive for future homelab projects.
+- Owners / Maintainers / Contributors teams replicated on techempower-org with the same admin / maintain / push permissions; all eight repos team-bound. CODEOWNERS team mentions updated to `@techempower-org/*`. Branch protection on `main` re-applied (CODEOWNERS review + green CI + no force-push + no deletion + conversation resolution required).
+- VoxSherpa-TTS JitPack coordinate: `com.github.techempower-org:VoxSherpa-TTS:v2.7.13` (was `com.github.realm-watch:...`, was `com.github.jphein:...`). Verified the new coordinate builds with `--refresh-dependencies` before flipping.
+- SIGIL_REPO updated; CLAUDE.md memories swept of `realm-watch/storyvox` references.
+
 ## [0.5.20] — 2026-05-13
 
 ### Added
