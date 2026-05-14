@@ -30,21 +30,34 @@ object Milestone {
     /** First version that qualifies for the v0.5.00 celebration. */
     private val V0500 = Triple(0, 5, 0)
 
-    /** True when the current build's [BuildConfig.VERSION_NAME] is
-     *  greater than or equal to the v0.5.00 threshold. Cached for the
-     *  process lifetime — VERSION_NAME doesn't change at runtime. */
+    /** Last version that qualifies for the v0.5.00 celebration. The
+     *  dialog is a "we crossed 0.5.0 together" moment — users who
+     *  install fresh on later builds didn't experience the crossing,
+     *  so the celebration window closes after v0.5.5. (#439 reported
+     *  the dialog firing on a fresh install of v0.5.36; the headline
+     *  still said "storyvox 0.5.00", which read as a dead placeholder.
+     *  Closing the window means fresh installers past v0.5.5 silently
+     *  never see it; users who already dismissed it stay dismissed.) */
+    private val V0500_WINDOW_END = Triple(0, 5, 5)
+
+    /** True when the current build's [BuildConfig.VERSION_NAME] falls
+     *  inside the v0.5.00 celebration window. Cached for the process
+     *  lifetime — VERSION_NAME doesn't change at runtime. */
     val isV0500OrLater: Boolean by lazy {
         qualifies(BuildConfig.VERSION_NAME)
     }
 
     /** Visible for testing — parse + compare without touching
-     *  BuildConfig. Returns false on any parse failure. */
+     *  BuildConfig. Returns false on any parse failure OR when the
+     *  build is past the celebration window. */
     internal fun qualifies(versionName: String): Boolean {
         val parts = versionName.split('.', '-', '+')
         val major = parts.getOrNull(0)?.toIntOrNull() ?: return false
         val minor = parts.getOrNull(1)?.toIntOrNull() ?: 0
         val patch = parts.getOrNull(2)?.toIntOrNull() ?: 0
-        return compareTriple(Triple(major, minor, patch), V0500) >= 0
+        val triple = Triple(major, minor, patch)
+        return compareTriple(triple, V0500) >= 0 &&
+            compareTriple(triple, V0500_WINDOW_END) <= 0
     }
 
     private fun compareTriple(a: Triple<Int, Int, Int>, b: Triple<Int, Int, Int>): Int {

@@ -16,19 +16,23 @@ class MilestoneTest {
         assertTrue(Milestone.qualifies("0.5.00"))
     }
 
-    @Test fun `qualifies returns true for newer patch`() {
+    @Test fun `qualifies returns true for newer patch inside the window`() {
         assertTrue(Milestone.qualifies("0.5.1"))
-        assertTrue(Milestone.qualifies("0.5.17"))
+        assertTrue(Milestone.qualifies("0.5.5"))
     }
 
-    @Test fun `qualifies returns true for newer minor`() {
-        assertTrue(Milestone.qualifies("0.6.0"))
-        assertTrue(Milestone.qualifies("0.10.0"))
-    }
-
-    @Test fun `qualifies returns true for newer major`() {
-        assertTrue(Milestone.qualifies("1.0.0"))
-        assertTrue(Milestone.qualifies("2.3.4"))
+    // #439 — celebration window closes after v0.5.5. Anyone fresh-
+    // installing on a later build never lived through the crossing,
+    // so the dialog (which says "storyvox 0.5.00") would read as a
+    // dead placeholder. Window-end bound silently retires the dialog
+    // for fresh installs on later builds.
+    @Test fun `qualifies returns false past the celebration window`() {
+        assertFalse(Milestone.qualifies("0.5.17"))
+        assertFalse(Milestone.qualifies("0.5.36"))
+        assertFalse(Milestone.qualifies("0.6.0"))
+        assertFalse(Milestone.qualifies("0.10.0"))
+        assertFalse(Milestone.qualifies("1.0.0"))
+        assertFalse(Milestone.qualifies("2.3.4"))
     }
 
     @Test fun `qualifies returns false for prior v0_4_x`() {
@@ -43,7 +47,7 @@ class MilestoneTest {
 
     @Test fun `qualifies tolerates two-part version names`() {
         assertTrue(Milestone.qualifies("0.5"))
-        assertTrue(Milestone.qualifies("1.0"))
+        assertFalse(Milestone.qualifies("1.0")) // past window end
         assertFalse(Milestone.qualifies("0.4"))
     }
 
