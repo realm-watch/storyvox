@@ -83,6 +83,13 @@ enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
      *  (chapter 0 = "Introduction"). Sourced from `<lang>.wikipedia.org`
      *  with the language code configurable in Settings. */
     Wikipedia(SourceIds.WIKIPEDIA, "Wikipedia"),
+    /** KVMR (#374, closes #373 first piece) — Nevada City community
+     *  radio. First entry in the audio-stream backend category: the
+     *  one chapter ("Live") carries an audioUrl that the playback
+     *  engine hands to Media3 / ExoPlayer instead of the TTS pipeline.
+     *  Single-fiction backend (no catalog to browse); Popular surfaces
+     *  the station, NewReleases / Search aren't meaningful. */
+    Kvmr(SourceIds.KVMR, "KVMR"),
 }
 
 /** Tabs that are meaningful for [source]. GitHub registry doesn't
@@ -183,6 +190,13 @@ fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseT
     BrowseSourceKey.Wikipedia -> listOf(
         BrowseTab.Popular,
         BrowseTab.Search,
+    )
+    // KVMR (#374): single-fiction backend. Popular surfaces the live
+    // station; Search exists for completeness (matches the station
+    // name) but isn't really a discovery surface. NewReleases /
+    // BestRated have no analogue — the station is the station.
+    BrowseSourceKey.Kvmr -> listOf(
+        BrowseTab.Popular,
     )
 }
 
@@ -391,6 +405,7 @@ class BrowseViewModel @Inject constructor(
                     if (s.sourceAo3Enabled) add(BrowseSourceKey.Ao3)
                     if (s.sourceStandardEbooksEnabled) add(BrowseSourceKey.StandardEbooks)
                     if (s.sourceWikipediaEnabled) add(BrowseSourceKey.Wikipedia)
+                    if (s.sourceKvmrEnabled) add(BrowseSourceKey.Kvmr)
                 }
             }
             .distinctUntilChanged()
@@ -648,6 +663,14 @@ class BrowseViewModel @Inject constructor(
                 _githubFilter.value = GitHubSearchFilter()
                 _palaceFilter.value = MemPalaceFilter()
             }
+            BrowseSourceKey.Kvmr -> {
+                // KVMR (#374) is a single-fiction audio backend — no
+                // filter sheet, no genre picker. Same clear-siblings
+                // shape as RSS / Epub / Outline / Gutenberg.
+                _filter.value = BrowseFilter()
+                _githubFilter.value = GitHubSearchFilter()
+                _palaceFilter.value = MemPalaceFilter()
+            }
         }
     }
 
@@ -858,6 +881,13 @@ private fun resolveSource(
     BrowseSourceKey.Wikipedia -> when (tab) {
         BrowseTab.Popular -> BrowseSource.Popular
         BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
+        else -> null
+    }
+    // KVMR (#374): one fiction, one tab. Popular surfaces the live
+    // station immediately; Search is hidden in supportedTabs so the
+    // tab-router never lands here with anything else.
+    BrowseSourceKey.Kvmr -> when (tab) {
+        BrowseTab.Popular -> BrowseSource.Popular
         else -> null
     }
 }

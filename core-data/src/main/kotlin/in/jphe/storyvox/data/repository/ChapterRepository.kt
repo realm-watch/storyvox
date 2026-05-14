@@ -112,7 +112,20 @@ class ChapterRepositoryImpl @Inject constructor(
 
     override fun observeChapter(chapterId: String): Flow<ChapterContent?> =
         dao.observe(chapterId).map { row ->
-            if (row == null || row.htmlBody == null || row.plainBody == null) null
+            // Issue #373 — audio chapters (audioUrl != null) round-trip
+            // through here with empty bodies; treat as "available" so the
+            // reader / playback layer can pick the audio path. Pure
+            // text chapters still require both bodies to be present.
+            if (row == null) null
+            else if (row.audioUrl != null) ChapterContent(
+                info = row.toInfo(),
+                htmlBody = row.htmlBody.orEmpty(),
+                plainBody = row.plainBody.orEmpty(),
+                notesAuthor = row.notesAuthor,
+                notesAuthorPosition = row.notesAuthorPosition,
+                audioUrl = row.audioUrl,
+            )
+            else if (row.htmlBody == null || row.plainBody == null) null
             else ChapterContent(
                 info = row.toInfo(),
                 htmlBody = row.htmlBody,
@@ -160,10 +173,29 @@ class ChapterRepositoryImpl @Inject constructor(
 
     override suspend fun getChapter(id: String): PlaybackChapter? =
         dao.playbackChapter(id)?.let {
+            // Issue #373 — audio chapters (audioUrl != null) come back
+            // with empty text and the player routes through Media3
+            // instead of TTS. Without this branch the empty-text guard
+            // below would null them out and the player would render
+            // "Chapter not ready" for a chapter that's perfectly
+            // playable as a stream. Order matters: check audioUrl first
+            // so a future audio source that ALSO carries a transcript
+            // (e.g. LibriVox + Internet Archive) doesn't trip the
+            // text-required guard.
+            val audioUrl = it.audioUrl
+            if (audioUrl != null) PlaybackChapter(
+                id = it.id,
+                fictionId = it.fictionId,
+                text = it.text, // may be empty for pure-audio chapters
+                title = it.title,
+                bookTitle = it.bookTitle,
+                coverUrl = it.coverUrl,
+                audioUrl = audioUrl,
+            )
             // The DAO uses COALESCE on plainBody → '', so an undownloaded
             // chapter comes back with empty text. Treat that as "not yet
             // available" so the player doesn't try to speak silence.
-            if (it.text.isEmpty()) null
+            else if (it.text.isEmpty()) null
             else PlaybackChapter(
                 id = it.id,
                 fictionId = it.fictionId,

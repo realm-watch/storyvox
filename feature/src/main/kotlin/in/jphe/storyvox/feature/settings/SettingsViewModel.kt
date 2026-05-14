@@ -181,6 +181,9 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repo.setSourceWikipediaEnabled(enabled) }
     fun setWikipediaLanguageCode(code: String) =
         viewModelScope.launch { repo.setWikipediaLanguageCode(code) }
+    /** Issue #374 — KVMR community radio backend on/off. */
+    fun setSourceKvmrEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setSourceKvmrEnabled(enabled) }
     fun setOutlineHost(host: String) = viewModelScope.launch { repo.setOutlineHost(host) }
     fun setOutlineApiKey(apiKey: String) = viewModelScope.launch { repo.setOutlineApiKey(apiKey) }
     fun clearOutlineConfig() = viewModelScope.launch { repo.clearOutlineConfig() }

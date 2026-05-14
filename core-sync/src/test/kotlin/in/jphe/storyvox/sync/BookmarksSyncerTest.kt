@@ -169,6 +169,7 @@ class BookmarksSyncerTest {
         override suspend fun setBody(
             id: String, html: String, plain: String, checksum: String,
             notesAuthor: String?, notesAuthorPosition: String?, now: Long,
+            audioUrl: String?,
         ) = error("not used")
         override suspend fun setRead(id: String, read: Boolean, now: Long) = error("not used")
         override suspend fun trimDownloadedBodies(fictionId: String, keepLast: Int) = error("not used")

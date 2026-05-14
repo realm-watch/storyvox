@@ -28,6 +28,16 @@ data class PlaybackState(
     val chapterTitle: String? = null,
     val coverUri: String? = null,
     val error: PlaybackError? = null,
+    /**
+     * Issue #373 — true when the currently-loaded chapter is a Media3-
+     * routed audio stream (KVMR live radio, future LibriVox MP3, etc.)
+     * rather than text-for-TTS. The pitch slider hides on this — Sonic
+     * pitch-shifting applies to PCM the engine renders; for a live
+     * stream we're handing bytes to ExoPlayer and there's no PCM to
+     * shift. UI surfaces (AudiobookView pitch slider, Settings → Voice
+     * & Playback pitch slider) read this flag through PlaybackController.
+     */
+    val isLiveAudioChapter: Boolean = false,
 )
 
 @Serializable

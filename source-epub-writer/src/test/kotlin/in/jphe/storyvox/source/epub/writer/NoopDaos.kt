@@ -71,6 +71,7 @@ internal class NoopChapterDao : ChapterDao {
         notesAuthor: String?,
         notesAuthorPosition: String?,
         now: Long,
+        audioUrl: String?,
     ) = Unit
     override suspend fun setRead(id: String, read: Boolean, now: Long) = Unit
     override suspend fun trimDownloadedBodies(fictionId: String, keepLast: Int) = Unit

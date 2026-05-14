@@ -56,6 +56,16 @@ data class Chapter(
      * it — the playhead moves forward, the bookmark stays put.
      */
     val bookmarkCharOffset: Int? = null,
+    /**
+     * Issue #373 — Media3-routed audio source URL. When non-null the
+     * playback layer treats this chapter as a stream / pre-recorded
+     * audio track rather than text-for-TTS. Null preserves the
+     * existing TTS path for every backend that doesn't surface audio.
+     * Persisted alongside the body so the URL survives reboots — for
+     * live streams the URL itself is stable per-source, so a cold-start
+     * resume lands on the same MediaItem the user paused on.
+     */
+    val audioUrl: String? = null,
 )
 
 enum class ChapterDownloadState {

@@ -114,7 +114,8 @@ interface ChapterDao {
                COALESCE(c.plainBody, '') AS text,
                c.title         AS title,
                f.title         AS bookTitle,
-               f.coverUrl      AS coverUrl
+               f.coverUrl      AS coverUrl,
+               c.audioUrl      AS audioUrl
           FROM chapter c
           JOIN fiction f ON f.id = c.fictionId
          WHERE c.id = :id
@@ -214,7 +215,8 @@ interface ChapterDao {
                lastDownloadAttemptAt = :now,
                lastDownloadError = NULL,
                notesAuthor = :notesAuthor,
-               notesAuthorPosition = :notesAuthorPosition
+               notesAuthorPosition = :notesAuthorPosition,
+               audioUrl = :audioUrl
          WHERE id = :id
         """,
     )
@@ -226,6 +228,7 @@ interface ChapterDao {
         notesAuthor: String?,
         notesAuthorPosition: String?,
         now: Long,
+        audioUrl: String?,
     )
 
     @Query(
@@ -350,6 +353,12 @@ data class PlaybackChapterRow(
     val title: String,
     val bookTitle: String,
     val coverUrl: String?,
+    /**
+     * Issue #373 — when non-null the playback layer treats this row as
+     * a Media3-routable audio source (live stream or pre-recorded
+     * audiobook track) and bypasses TTS. Null = existing text→TTS path.
+     */
+    val audioUrl: String?,
 )
 
 /** Joined unread-chapter projection. */

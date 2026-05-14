@@ -899,6 +899,11 @@ internal class RealPlaybackControllerUi(
             voiceId = voiceId,
             voiceLabel = voiceId ?: "Default",
             sleepTimerRemainingMs = sleepTimerRemainingMs,
+            // #373 — propagate the live-audio flag so AudiobookView /
+            // Settings pitch slider can hide on KVMR + future audio
+            // backends. Sourced from PlaybackState.isLiveAudioChapter
+            // which EnginePlayer sets in loadAndPlayAudioStream.
+            isLiveAudioChapter = isLiveAudioChapter,
         )
     }
 }

@@ -72,6 +72,7 @@ class ChapterDownloadWorker @AssistedInject constructor(
                     notesAuthor = content.notesAuthor,
                     notesAuthorPosition = content.notesAuthorPosition?.name,
                     now = System.currentTimeMillis(),
+                    audioUrl = content.audioUrl,
                 )
                 Result.success(output(RESULT_OK))
             }
@@ -110,6 +111,7 @@ class ChapterDownloadWorker @AssistedInject constructor(
                             notesAuthor = retry.value.notesAuthor,
                             notesAuthorPosition = retry.value.notesAuthorPosition?.name,
                             now = System.currentTimeMillis(),
+                            audioUrl = retry.value.audioUrl,
                         )
                         Result.success(output(RESULT_OK))
                     }

@@ -9,6 +9,23 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+### Added
+- **Audio-stream backend category** (closes #373) — `ChapterContent`
+  gains an optional `audioUrl: String?` field. When non-null the
+  playback engine bypasses the TTS pipeline and routes the URL through
+  a sibling Media3 ExoPlayer instance; when null (every existing
+  backend) the existing TTS path is unchanged. Schema migration v6→v7
+  adds the `audioUrl` column to the chapter table so live-stream URLs
+  persist across reboots. Pitch slider hides on live audio (Sonic
+  pitch-shifting applies to engine-rendered PCM, not network audio).
+- **KVMR community radio** (closes #374) — first concrete entry in
+  the audio-stream category. Single live fiction whose one chapter
+  (`Live`) carries the AAC stream URL from KVMR's public listen-live
+  page. Defaults ON on fresh installs — JP's local station, the
+  inaugural audio backend, low-controversy content. Available in
+  Browse → KVMR → Live; lockscreen MediaSession surfaces "KVMR
+  Community Radio" with transport controls.
+
 ## [0.5.19] — 2026-05-13
 
 ### Added
