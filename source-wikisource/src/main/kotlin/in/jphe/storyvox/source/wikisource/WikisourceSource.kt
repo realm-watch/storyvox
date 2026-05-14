@@ -74,10 +74,23 @@ import javax.inject.Singleton
 @Singleton
 internal class WikisourceSource @Inject constructor(
     private val api: WikisourceApi,
-) : FictionSource {
+) : FictionSource, `in`.jphe.storyvox.data.source.UrlMatcher {
 
     override val id: String = SourceIds.WIKISOURCE
     override val displayName: String = "Wikisource"
+
+    /** Issue #472 — `*.wikisource.org/wiki/<title>` URL. Same shape as
+     *  the Wikipedia matcher (above), different host. */
+    override fun matchUrl(url: String): `in`.jphe.storyvox.data.source.RouteMatch? {
+        val m = WIKISOURCE_URL_PATTERN.matchEntire(url.trim()) ?: return null
+        val title = m.groupValues[2].trim().ifBlank { return null }
+        return `in`.jphe.storyvox.data.source.RouteMatch(
+            sourceId = SourceIds.WIKISOURCE,
+            fictionId = wikisourceFictionId(java.net.URLDecoder.decode(title, Charsets.UTF_8)),
+            confidence = 0.95f,
+            label = "Wikisource work",
+        )
+    }
 
     // ─── browse ────────────────────────────────────────────────────────
 
@@ -289,6 +302,13 @@ internal class WikisourceSource @Inject constructor(
 }
 
 // ─── id encoding ──────────────────────────────────────────────────────
+
+/** Issue #472 — Wikisource URL pattern. Same shape as
+ *  [WIKIPEDIA_URL_PATTERN] but anchored on `*.wikisource.org`. */
+internal val WIKISOURCE_URL_PATTERN: Regex = Regex(
+    """^https?://([a-z]{2,3}(?:-[a-z]+)?)\.(?:m\.)?wikisource\.org/wiki/([^?#]+)(?:[?#].*)?$""",
+    RegexOption.IGNORE_CASE,
+)
 
 /** Compose a stable Wikisource fiction id from the page title.
  *  Mirrors `wikipediaFictionId` — spaces → underscores so the id
