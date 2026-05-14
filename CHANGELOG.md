@@ -9,6 +9,19 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.23] — 2026-05-13
+
+### Added
+- **Notion as a 12th fiction backend** (#391, closes #233 #390) — `:source-notion` module brings Notion databases into Browse alongside the other eleven backends. Database query → fiction list; pages split into chapters on every `heading_1`. PAT-based auth (Notion integration token), stored encrypted alongside the Outline / Palace / Royal Road / Wikipedia tokens. The token + database id are pasted in Settings → Library & Sync → Notion. 21 unit tests cover the API mappers, paginator, and config plumbing.
+- **Notion default-on** (#390) — `sourceNotionEnabled = true` for fresh installs; existing users keep their stored preference. The default `databaseId` points at a `TODO_FILL_IN_TECHEMPOWER_DATABASE_ID` placeholder that returns a clean "Notion database id not configured" empty-state until JP pastes the real id (see [[NotionDefaults.kt]]).
+
+### Changed
+- Browse → Notion shows up as the rightmost source chip; Settings → Library & Sync has an inline NotionConfigRow with database-id + token fields.
+- README + docs/index.md updated to "Twelve fiction sources" — the recurring "Six" / "Eleven" framing finally catches up to the actual surface.
+
+### Known limitation
+- The default `TECHEMPOWER_DATABASE_ID` is a placeholder string. The techempower.org website is backed by a Notion **page** (root page id `0959e445...`), not a database. Storyvox's `:source-notion` queries the Notion API's `databases/query` endpoint, which is a different object kind. A future change either (a) creates a separate Notion *database* in the techempower workspace to point at, or (b) extends `:source-notion` with a page-rooted hierarchy mode similar to the way `react-notion-x` traverses the website's root page. Until then, the default install shows the empty-state "Notion database id not configured (TODO placeholder still in use)" until the user pastes their own database id.
+
 ## [0.5.22] — 2026-05-13
 
 ### Infrastructure
