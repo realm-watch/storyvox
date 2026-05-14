@@ -543,7 +543,19 @@ private fun Hero(fiction: UiFiction) {
             verticalArrangement = Arrangement.spacedBy(spacing.xxs),
         ) {
             Text(fiction.title, style = MaterialTheme.typography.headlineSmall, maxLines = 3)
-            Text(fiction.author, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // Issue #463 — without an explicit "by" prefix, the author
+            // line read as a subtitle of the title (especially for
+            // GitHub fictions whose book.toml authors[] can carry an
+            // ambiguous string like a repo-name-shaped label). Adding
+            // "by" anchors the byline role unambiguously, matching the
+            // pattern used on Library Resume cards and Browse listing.
+            if (fiction.author.isNotBlank()) {
+                Text(
+                    "by ${fiction.author}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Spacer(Modifier.height(spacing.xxs))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(spacing.xxs)) {
                 Icon(Icons.Filled.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
