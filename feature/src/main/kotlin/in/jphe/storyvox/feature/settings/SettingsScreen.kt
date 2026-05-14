@@ -539,6 +539,16 @@ fun SettingsScreen(
                     onLanguageCodeChange = viewModel::setWikipediaLanguageCode,
                 )
             }
+            // Issue #376 — Wikisource: transcribed public-domain texts
+            // (Shakespeare, classic novels, historical documents). Same
+            // CC0/PD legal posture as Project Gutenberg / Standard
+            // Ebooks. Default OFF on fresh installs — opt-in surface.
+            SettingsSwitchRow(
+                title = "Wikisource",
+                subtitle = "Transcribed public-domain texts. Multi-part works become per-chapter playlists.",
+                checked = s.sourceWikisourceEnabled,
+                onCheckedChange = viewModel::setSourceWikisourceEnabled,
+            )
             // Issue #374 (closes #373 first piece) — KVMR community
             // radio: first entry in the new audio-stream backend
             // category. Plays the live AAC stream through Media3

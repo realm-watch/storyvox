@@ -207,6 +207,10 @@ fun BrowseScreen(
                 BrowseSourceKey.Ao3 -> false
                 BrowseSourceKey.StandardEbooks -> false
                 BrowseSourceKey.Wikipedia -> false
+                // #376 — Wikisource has no filter sheet; the curated
+                // landing IS the filter (Category:Validated_texts) and
+                // free-form search covers the rest.
+                BrowseSourceKey.Wikisource -> false
                 // #374 — KVMR is a single-fiction audio backend; no
                 // filter surface (you either tune in or you don't).
                 BrowseSourceKey.Kvmr -> false
@@ -234,6 +238,7 @@ fun BrowseScreen(
                         BrowseSourceKey.Ao3 -> 0
                         BrowseSourceKey.StandardEbooks -> 0
                         BrowseSourceKey.Wikipedia -> 0
+                        BrowseSourceKey.Wikisource -> 0
                         BrowseSourceKey.Kvmr -> 0
                         BrowseSourceKey.Notion -> 0
                     },
@@ -510,6 +515,9 @@ fun BrowseScreen(
             // lives in Settings and topic-search via opensearch covers
             // discovery.
             BrowseSourceKey.Wikipedia -> { showFilterSheet = false }
+            // #376 — Wikisource has no filter sheet; the curated landing
+            // (Category:Validated_texts) IS the filter scope.
+            BrowseSourceKey.Wikisource -> { showFilterSheet = false }
             // #374 — KVMR is a single-fiction audio backend; no filter
             // sheet (the station is the station).
             BrowseSourceKey.Kvmr -> { showFilterSheet = false }
@@ -606,6 +614,7 @@ private fun searchHintForSource(sourceKey: BrowseSourceKey): String = when (sour
     BrowseSourceKey.Ao3 -> "Search AO3 by tag, fandom, or character"
     BrowseSourceKey.StandardEbooks -> "Search Standard Ebooks' hand-curated public-domain classics"
     BrowseSourceKey.Wikipedia -> "Search Wikipedia — narrate any article"
+    BrowseSourceKey.Wikisource -> "Search Wikisource — transcribed public-domain texts"
     BrowseSourceKey.Kvmr -> "Tune in to KVMR — live community radio from Nevada City"
     BrowseSourceKey.Notion -> "Search your configured Notion database"
 }
