@@ -1,6 +1,8 @@
 package `in`.jphe.storyvox.source.wikisource.net
 
 import `in`.jphe.storyvox.data.source.model.FictionResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
@@ -182,8 +184,12 @@ internal class WikisourceApi @Inject constructor(
             is FictionResult.Failure -> raw
         }
 
-    private fun getRaw(url: String): FictionResult<String> {
-        return try {
+    // #419 — `execute()` is blocking; without the suspend + Dispatchers.IO
+    // wrapper the whole method runs on whatever coroutine context called
+    // it, which is the main thread in Compose. Crashed Browse → Wikisource
+    // with NetworkOnMainThreadException on first chip tap.
+    private suspend fun getRaw(url: String): FictionResult<String> = withContext(Dispatchers.IO) {
+        try {
             val req = Request.Builder()
                 .url(url)
                 .header("Accept", "application/json")
@@ -209,7 +215,7 @@ internal class WikisourceApi @Inject constructor(
                         )
                     else -> {
                         val text = resp.body?.string()
-                            ?: return FictionResult.NetworkError("empty body", IOException("empty body"))
+                            ?: return@withContext FictionResult.NetworkError("empty body", IOException("empty body"))
                         FictionResult.Success(text)
                     }
                 }

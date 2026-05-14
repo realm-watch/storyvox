@@ -2,7 +2,9 @@ package `in`.jphe.storyvox.source.wikipedia.net
 
 import `in`.jphe.storyvox.data.source.model.FictionResult
 import `in`.jphe.storyvox.source.wikipedia.config.WikipediaConfig
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -145,12 +147,17 @@ internal class WikipediaApi @Inject constructor(
             is FictionResult.Failure -> raw
         }
 
-    private fun getRaw(url: String): FictionResult<String> {
-        return try {
+    private suspend fun getRaw(url: String): FictionResult<String> = withContext(Dispatchers.IO) {
+        try {
             // Accept-Language mirrors the host's language code so any
             // edge-cached payload comes back in the user's chosen
             // Wikipedia rather than negotiating into a different one.
-            // Pulled out of the URL itself to keep transport non-suspend.
+            //
+            // #419 — `execute()` is a blocking OkHttp call; the whole
+            // method MUST be off the main thread, hence the suspend
+            // signature + `withContext(Dispatchers.IO)` wrapper. The
+            // original non-suspend shape crashed Browse → Wikipedia
+            // with NetworkOnMainThreadException on first chip tap.
             val req = Request.Builder()
                 .url(url)
                 .header("Accept", "application/json")
@@ -176,7 +183,7 @@ internal class WikipediaApi @Inject constructor(
                         )
                     else -> {
                         val text = resp.body?.string()
-                            ?: return FictionResult.NetworkError("empty body", IOException("empty body"))
+                            ?: return@withContext FictionResult.NetworkError("empty body", IOException("empty body"))
                         FictionResult.Success(text)
                     }
                 }
