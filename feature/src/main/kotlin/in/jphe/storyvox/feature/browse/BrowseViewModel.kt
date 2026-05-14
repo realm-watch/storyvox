@@ -83,6 +83,12 @@ enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
      *  (chapter 0 = "Introduction"). Sourced from `<lang>.wikipedia.org`
      *  with the language code configurable in Settings. */
     Wikipedia(SourceIds.WIKIPEDIA, "Wikipedia"),
+    /** Wikisource (#376) — Wikimedia transcribed-public-domain-texts
+     *  project (Shakespeare, classic novels, historical documents).
+     *  Multi-part works are walked as `/Subpage` chapters; single-page
+     *  works fall back to the Wikipedia-style heading split. Same
+     *  CC0/PD legal posture as Project Gutenberg / Standard Ebooks. */
+    Wikisource(SourceIds.WIKISOURCE, "Wikisource"),
     /** KVMR (#374, closes #373 first piece) — Nevada City community
      *  radio. First entry in the audio-stream backend category: the
      *  one chapter ("Live") carries an audioUrl that the playback
@@ -195,6 +201,16 @@ fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseT
     // listing since Wikipedia doesn't expose a stable "new
     // articles" feed worth surfacing.
     BrowseSourceKey.Wikipedia -> listOf(
+        BrowseTab.Popular,
+        BrowseTab.Search,
+    )
+    // Wikisource (#376): Popular = Category:Validated_texts (the
+    // curated quality tier where pages have been double-proofread —
+    // reads cleanest through TTS). Search hits MediaWiki's
+    // list=search endpoint restricted to mainspace. NewReleases /
+    // BestRated have no analogue — transcribed-text inflows are
+    // glacial and there's no rating axis.
+    BrowseSourceKey.Wikisource -> listOf(
         BrowseTab.Popular,
         BrowseTab.Search,
     )
@@ -422,6 +438,7 @@ class BrowseViewModel @Inject constructor(
                     if (s.sourceAo3Enabled) add(BrowseSourceKey.Ao3)
                     if (s.sourceStandardEbooksEnabled) add(BrowseSourceKey.StandardEbooks)
                     if (s.sourceWikipediaEnabled) add(BrowseSourceKey.Wikipedia)
+                    if (s.sourceWikisourceEnabled) add(BrowseSourceKey.Wikisource)
                     if (s.sourceKvmrEnabled) add(BrowseSourceKey.Kvmr)
                     if (s.sourceNotionEnabled) add(BrowseSourceKey.Notion)
                 }
@@ -681,6 +698,14 @@ class BrowseViewModel @Inject constructor(
                 _githubFilter.value = GitHubSearchFilter()
                 _palaceFilter.value = MemPalaceFilter()
             }
+            BrowseSourceKey.Wikisource -> {
+                // Wikisource (#376) — no per-source filter; landing
+                // category (Validated_texts) IS the filter scope.
+                // Same clear-siblings shape as the other text backends.
+                _filter.value = BrowseFilter()
+                _githubFilter.value = GitHubSearchFilter()
+                _palaceFilter.value = MemPalaceFilter()
+            }
             BrowseSourceKey.Kvmr -> {
                 // KVMR (#374) is a single-fiction audio backend — no
                 // filter sheet, no genre picker. Same clear-siblings
@@ -905,6 +930,16 @@ private fun resolveSource(
     // system is too fan-shaped to flatten into a filter sheet, and
     // free-form search covers the discovery cases.
     BrowseSourceKey.Wikipedia -> when (tab) {
+        BrowseTab.Popular -> BrowseSource.Popular
+        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
+        else -> null
+    }
+    // Wikisource (#376): Popular = Category:Validated_texts (the
+    // curated, double-proofread landing). Search hits MediaWiki's
+    // list=search restricted to mainspace. Same routing shape as
+    // Wikipedia — no filter sheet, no genre picker, free-form Search
+    // covers the rest.
+    BrowseSourceKey.Wikisource -> when (tab) {
         BrowseTab.Popular -> BrowseSource.Popular
         BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
         else -> null

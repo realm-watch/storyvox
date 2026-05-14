@@ -181,6 +181,9 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repo.setSourceWikipediaEnabled(enabled) }
     fun setWikipediaLanguageCode(code: String) =
         viewModelScope.launch { repo.setWikipediaLanguageCode(code) }
+    /** Issue #376 — Wikisource backend on/off. */
+    fun setSourceWikisourceEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setSourceWikisourceEnabled(enabled) }
     /** Issue #374 — KVMR community radio backend on/off. */
     fun setSourceKvmrEnabled(enabled: Boolean) =
         viewModelScope.launch { repo.setSourceKvmrEnabled(enabled) }

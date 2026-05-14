@@ -160,6 +160,7 @@ dependencies {
     implementation(project(":source-ao3"))
     implementation(project(":source-standard-ebooks"))
     implementation(project(":source-wikipedia"))
+    implementation(project(":source-wikisource"))
     implementation(project(":source-kvmr"))
     implementation(project(":source-notion"))
     implementation(project(":source-azure"))

@@ -251,6 +251,8 @@ internal object LegacySourceKeys {
             Spec(booleanPreferencesKey("pref_source_standard_ebooks_enabled"), defaultValue = false),
         `in`.jphe.storyvox.data.source.SourceIds.WIKIPEDIA to
             Spec(booleanPreferencesKey("pref_source_wikipedia_enabled"), defaultValue = false),
+        `in`.jphe.storyvox.data.source.SourceIds.WIKISOURCE to
+            Spec(booleanPreferencesKey("pref_source_wikisource_enabled"), defaultValue = false),
         `in`.jphe.storyvox.data.source.SourceIds.KVMR to
             Spec(booleanPreferencesKey("pref_source_kvmr_enabled"), defaultValue = true),
         `in`.jphe.storyvox.data.source.SourceIds.NOTION to
@@ -357,6 +359,11 @@ private object Keys {
     /** Issue #377 — Wikipedia backend on/off. Default false for fresh
      *  installs; first non-fiction-shaped source is opt-in. */
     val SOURCE_WIKIPEDIA_ENABLED = booleanPreferencesKey("pref_source_wikipedia_enabled")
+    /** Issue #376 — Wikisource backend on/off. Default false for fresh
+     *  installs; opt-in surface like other text backends. Wikisource is
+     *  the Wikimedia transcribed-public-domain-texts project (CC0/PD
+     *  posture, no third-party-ToS surface). */
+    val SOURCE_WIKISOURCE_ENABLED = booleanPreferencesKey("pref_source_wikisource_enabled")
     /** Issue #374 — KVMR community radio backend on/off. Default TRUE
      *  on fresh installs (JP's local station + the new audio-stream
      *  pipeline should be discoverable without an opt-in step). */
@@ -635,6 +642,9 @@ class SettingsRepositoryUiImpl(
             sourceStandardEbooksEnabled = prefs[Keys.SOURCE_STANDARD_EBOOKS_ENABLED] ?: false,
             sourceWikipediaEnabled = prefs[Keys.SOURCE_WIKIPEDIA_ENABLED] ?: false,
             wikipediaLanguageCode = wikipedia.languageCode,
+            // Issue #376 — Wikisource backend. Default OFF on fresh
+            // installs; opt-in surface like Outline / EPUB / Wikipedia.
+            sourceWikisourceEnabled = prefs[Keys.SOURCE_WIKISOURCE_ENABLED] ?: false,
             // #374 — KVMR defaults ON on fresh installs (first audio-stream
             // backend, JP's local station, low-controversy content).
             sourceKvmrEnabled = prefs[Keys.SOURCE_KVMR_ENABLED] ?: true,
@@ -1288,6 +1298,11 @@ class SettingsRepositoryUiImpl(
     }
     override suspend fun setWikipediaLanguageCode(code: String) =
         wikipediaConfig.setLanguageCode(code)
+
+    override suspend fun setSourceWikisourceEnabled(enabled: Boolean) {
+        store.edit { it[Keys.SOURCE_WIKISOURCE_ENABLED] = enabled }
+        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.WIKISOURCE, enabled)
+    }
 
     override suspend fun setSourceKvmrEnabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_KVMR_ENABLED] = enabled }

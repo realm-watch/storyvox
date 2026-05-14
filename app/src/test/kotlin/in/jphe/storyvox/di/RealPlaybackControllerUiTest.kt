@@ -294,6 +294,7 @@ class RealPlaybackControllerUiTest {
         override suspend fun setSourceStandardEbooksEnabled(enabled: Boolean) = Unit
         override suspend fun setSourceWikipediaEnabled(enabled: Boolean) = Unit
         override suspend fun setWikipediaLanguageCode(code: String) = Unit
+        override suspend fun setSourceWikisourceEnabled(enabled: Boolean) = Unit
         override suspend fun setSourceKvmrEnabled(enabled: Boolean) = Unit
         override suspend fun setSourceNotionEnabled(enabled: Boolean) = Unit
         override suspend fun setSourcePluginEnabled(id: String, enabled: Boolean) = Unit

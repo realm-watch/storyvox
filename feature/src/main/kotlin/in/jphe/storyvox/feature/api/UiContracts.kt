@@ -815,6 +815,15 @@ data class UiSettings(
      *  `<lang>.wikipedia.org`. Default `en`. Empty falls back to the
      *  default so a malformed prefs value doesn't brick the source. */
     val wikipediaLanguageCode: String = "en",
+    /** Wikisource backend (#376). Default off for fresh installs —
+     *  opt-in alongside the other text backends. Wikisource is the
+     *  Wikimedia project for transcribed public-domain texts; same
+     *  legal posture as Project Gutenberg / Standard Ebooks (CC0 /
+     *  public-domain throughout) but with a transcription pipeline
+     *  that's been proofread by Wikimedia volunteers. v1 is en-only
+     *  (`en.wikisource.org`); a per-language picker is a follow-up
+     *  that mirrors Wikipedia's `wikipediaLanguageCode`. */
+    val sourceWikisourceEnabled: Boolean = false,
     /** KVMR community radio backend (#374, closes #373 first piece).
      *  Default ON — KVMR is JP's local station, the inaugural audio-
      *  stream backend, and there's nothing controversial about
@@ -1299,6 +1308,9 @@ interface SettingsRepositoryUi {
      *  `ja`, `simple`, ...). Trimmed + lowercased before persistence;
      *  empty falls back to the default. */
     suspend fun setWikipediaLanguageCode(code: String)
+    /** Issue #376 — Wikisource (transcribed public-domain texts)
+     *  backend on/off. */
+    suspend fun setSourceWikisourceEnabled(enabled: Boolean)
     /** Issue #374 — KVMR community radio backend on/off. */
     suspend fun setSourceKvmrEnabled(enabled: Boolean)
 

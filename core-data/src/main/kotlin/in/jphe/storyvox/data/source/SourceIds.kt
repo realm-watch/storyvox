@@ -65,6 +65,14 @@ object SourceIds {
      *  code is user-configurable so the same module serves all
      *  language Wikipedias. */
     const val WIKIPEDIA: String = "wikipedia"
+    /** Wikisource (#376) — Wikimedia project for transcribed public-
+     *  domain texts (Shakespeare, classic novels, historical documents).
+     *  Same API surface as Wikipedia (MediaWiki Action API + Parsoid
+     *  HTML); chapter splitting prefers `/Subpage` walks when a work
+     *  is structured that way and falls back to in-page heading splits
+     *  for single-page works. Same CC0/public-domain legal posture as
+     *  Project Gutenberg / Standard Ebooks. */
+    const val WIKISOURCE: String = "wikisource"
     /** KVMR (#374, closes #373 first piece) — Nevada City community
      *  radio (kvmr.org). First concrete entry in the audio-stream
      *  backend category (#373). The source surfaces a single live
