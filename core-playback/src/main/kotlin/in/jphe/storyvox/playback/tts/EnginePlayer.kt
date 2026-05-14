@@ -1714,6 +1714,39 @@ class EnginePlayer @AssistedInject constructor(
         false
     }
 
+    /**
+     * Routed pause — first user-facing surface (play-screen button →
+     * PlaybackController.pause()). For audio-stream chapters (#373,
+     * KVMR live + the v0.5.32 radio backend), this drops `playWhenReady`
+     * on the sibling ExoPlayer so the stream actually pauses. For TTS
+     * chapters it tears down the TTS pipeline via [pauseTts].
+     *
+     * The TTS-only path used to be the sole pause surface — clicking
+     * Pause while listening to radio would tear down the (idle) TTS
+     * pipeline and the ExoPlayer would happily keep streaming on top
+     * of it. The Media3 `handleSetPlayWhenReady` command already did
+     * the routing correctly, but the play-screen Pause button bypassed
+     * it via PlaybackController → player.pauseTts(). Bug surfaced on
+     * v0.5.36 on tablet/Flip3 with the Radio backend.
+     */
+    /**
+     * Note: not named `pause()` — that collides with `BasePlayer.pause()`
+     * which Media3 routes through `handleSetPlayWhenReady(false)`. Using
+     * `pauseRouted()` keeps PlaybackController off the Media3 command-
+     * dispatch path while preserving the same routing semantics.
+     */
+    fun pauseRouted() {
+        if (_observableState.value.isLiveAudioChapter) {
+            audioStreamPlayer?.let { p ->
+                p.playWhenReady = false
+                _observableState.update { it.copy(isPlaying = false) }
+                invalidateState()
+            }
+            return
+        }
+        pauseTts()
+    }
+
     fun pauseTts() {
         _observableState.update { it.copy(isPlaying = false) }
         stopPlaybackPipeline()
@@ -1722,6 +1755,19 @@ class EnginePlayer @AssistedInject constructor(
     }
 
     fun resume() {
+        // Audio-stream chapter — bring ExoPlayer back online. Mirror of
+        // the Media3 handleSetPlayWhenReady(true) branch so the play-
+        // screen Play button works on radio chapters too. Returns early
+        // before the TTS-specific guards below; sentences[] is empty
+        // for audio-stream chapters by design.
+        if (_observableState.value.isLiveAudioChapter) {
+            audioStreamPlayer?.let { p ->
+                p.playWhenReady = true
+                _observableState.update { it.copy(isPlaying = true) }
+                invalidateState()
+            }
+            return
+        }
         if (sentences.isEmpty()) return
         // If the user activated a different voice while paused (#8), the
         // existing engine model is the wrong one — route through loadAndPlay

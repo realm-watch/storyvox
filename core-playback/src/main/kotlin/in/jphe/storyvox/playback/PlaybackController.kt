@@ -187,7 +187,12 @@ class DefaultPlaybackController @Inject constructor(
         // #90 — explicit pause is a user intent. Persist so the next
         // Library Resume CTA respects it (load chapter, stay paused).
         scope.launch { runCatching { resumePolicy.setLastWasPlaying(false) } }
-        player?.pauseTts()
+        // Route via the audio-stream-aware pauseRouted() (post-v0.5.36
+        // radio-pause bug fix), not the TTS-only pauseTts() — radio
+        // chapters need the ExoPlayer's playWhenReady=false branch.
+        // (Not named `pause()` on EnginePlayer to avoid colliding with
+        // the BasePlayer override.)
+        player?.pauseRouted()
     }
 
     override fun resume() {
