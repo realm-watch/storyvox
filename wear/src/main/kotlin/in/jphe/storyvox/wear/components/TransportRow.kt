@@ -1,0 +1,99 @@
+package `in`.jphe.storyvox.wear.components
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
+import androidx.wear.compose.material.Button
+import androidx.wear.compose.material.ButtonDefaults
+import androidx.wear.compose.material.Icon
+import `in`.jphe.storyvox.wear.theme.BrassMuted
+import `in`.jphe.storyvox.wear.theme.BrassPrimary
+import `in`.jphe.storyvox.wear.theme.WarmDarkSurface
+
+/**
+ * Brass transport controls — Skip Previous | Play/Pause | Skip Next.
+ *
+ * The center play/pause button is the "active" affordance and gets the full
+ * brass fill; flanking skip buttons get the muted brass tint so the eye lands
+ * on play/pause first. This mirrors the phone reader pattern where the active
+ * sentence carries the brass underline and surrounding text is muted.
+ *
+ * Skip buttons map to `CMD_SKIP_BACK` / `CMD_SKIP_FWD` (30s seek) rather than
+ * chapter nav — same defaults as the phone notification controls.
+ */
+@Composable
+fun TransportRow(
+    isPlaying: Boolean,
+    onPlayPause: () -> Unit,
+    onSkipBack: () -> Unit,
+    onSkipForward: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TransportButton(
+            icon = Icons.Filled.SkipPrevious,
+            contentDescription = "Skip back 30 seconds",
+            onClick = onSkipBack,
+            isPrimary = false,
+        )
+        TransportButton(
+            icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+            contentDescription = if (isPlaying) "Pause" else "Play",
+            onClick = onPlayPause,
+            isPrimary = true,
+        )
+        TransportButton(
+            icon = Icons.Filled.SkipNext,
+            contentDescription = "Skip forward 30 seconds",
+            onClick = onSkipForward,
+            isPrimary = false,
+        )
+    }
+}
+
+@Composable
+private fun TransportButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    isPrimary: Boolean,
+) {
+    val size = if (isPrimary) 44.dp else 36.dp
+    val iconSize = if (isPrimary) 24.dp else 20.dp
+    Button(
+        onClick = onClick,
+        modifier = Modifier.size(size),
+        colors = if (isPrimary) {
+            ButtonDefaults.primaryButtonColors(
+                backgroundColor = BrassPrimary,
+                contentColor = WarmDarkSurface,
+            )
+        } else {
+            ButtonDefaults.secondaryButtonColors(
+                backgroundColor = BrassMuted,
+                contentColor = BrassPrimary,
+            )
+        },
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(iconSize),
+        )
+    }
+}
