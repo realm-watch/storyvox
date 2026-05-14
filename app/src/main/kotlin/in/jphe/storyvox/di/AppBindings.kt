@@ -258,6 +258,25 @@ object AppBindings {
     ): PronunciationDictRepository = impl
 
     /**
+     * Tier 1 settings-sync snapshot/apply seam (this PR — extends #360).
+     * Bridges `:core-sync`'s `SettingsSyncer` to the live DataStore via
+     * the same singleton — one store, every contract, including the
+     * sync-side snapshot/apply pair.
+     */
+    @Provides @Singleton
+    fun provideSettingsSnapshotSource(
+        impl: SettingsRepositoryUiImpl,
+    ): `in`.jphe.storyvox.data.repository.sync.SettingsSnapshotSource = impl
+
+    // Tier 2 secrets sync (this PR — extends #360): all three tokens
+    // (Notion / Discord / Outline) actually live in
+    // EncryptedSharedPreferences already (Notion: `notion.api_token`,
+    // Outline: `outline.api_key`, Discord: `pref_source_discord_token`).
+    // No additional binding needed — `SecretsSyncer` picks them up via
+    // the extended `SECRET_KEY_PREFIXES` (`notion.`) and
+    // `SECRET_KEY_NAMES` (Discord's flat-named token).
+
+    /**
      * Issue #203 — narrow [GitHubScopePreferences] surface for the
      * `GitHubSignInViewModel`. Same singleton as the rest; the
      * `:source-github` module reads only the toggle flag, never the

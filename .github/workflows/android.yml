@@ -43,6 +43,19 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
+      - name: Materialize local.properties from runner-persistent location
+        # Self-hosted runner is katana (jp-desktop). The runner's
+        # checkout starts without a local.properties (gitignored), so
+        # INSTANTDB_APP_ID lives in JP's primary checkout's copy. The
+        # `cp` source is a static absolute path (no untrusted input),
+        # so no command-injection surface.
+        # If we move back to ubuntu-latest, replace this with a step
+        # that writes local.properties from `${{ secrets.* }}`.
+        run: |
+          if [ -f /home/jp/Projects/storyvox/local.properties ]; then
+            cp /home/jp/Projects/storyvox/local.properties ./local.properties
+          fi
+
       - name: Assemble debug APK
         run: PATH="$JAVA_HOME/bin:$PATH" ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
