@@ -2,6 +2,8 @@ package `in`.jphe.storyvox.source.kvmr
 
 import `in`.jphe.storyvox.data.source.FictionSource
 import `in`.jphe.storyvox.data.source.SourceIds
+import `in`.jphe.storyvox.data.source.plugin.SourceCategory
+import `in`.jphe.storyvox.data.source.plugin.SourcePlugin
 import `in`.jphe.storyvox.data.source.model.ChapterContent
 import `in`.jphe.storyvox.data.source.model.ChapterInfo
 import `in`.jphe.storyvox.data.source.model.FictionDetail
@@ -45,6 +47,35 @@ import javax.inject.Singleton
  * `:source-radio-stream` consolidation can follow once three or
  * more stations land — premature for one.
  */
+/**
+ * Plugin-seam Phase 1 worked example (#384). The `@SourcePlugin`
+ * annotation is what makes `:core-plugin-ksp` emit a
+ * `@Provides @IntoSet SourcePluginDescriptor` Hilt module for KVMR
+ * — registering it into [SourcePluginRegistry] without anyone having
+ * to add a new branch to `BrowseSourceKey`, a new `sourceKvmrEnabled`
+ * field on `UiSettings`, or a new toggle row in
+ * `SettingsScreen.kt`. The legacy `@IntoMap @StringKey("kvmr")`
+ * binding in `di/KvmrModule.kt` is intentionally kept for Phase 1 so
+ * the repository's existing `Map<String, FictionSource>` keeps
+ * resolving KVMR; Phase 2 removes the legacy binding once the
+ * registry-driven repository routing lands.
+ *
+ * NOTE: the `internal` visibility on this class matters — KSP's
+ * generated factory references `KvmrSource` by FQN from the
+ * `in.jphe.storyvox.plugin.generated` package. That package is
+ * compiled into the SAME module (`:source-kvmr`), so `internal` is
+ * still visible to the generated code. If a future refactor moves the
+ * generated module to a different Gradle module, this class would
+ * need to be promoted to `public`.
+ */
+@SourcePlugin(
+    id = SourceIds.KVMR,
+    displayName = "KVMR",
+    defaultEnabled = true,
+    category = SourceCategory.AudioStream,
+    supportsFollow = false,
+    supportsSearch = true,
+)
 @Singleton
 internal class KvmrSource @Inject constructor() : FictionSource {
 

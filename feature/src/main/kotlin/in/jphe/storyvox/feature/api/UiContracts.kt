@@ -834,6 +834,24 @@ data class UiSettings(
      *  the source visible in Browse so the empty-state can teach the
      *  user about the one-paste configuration step. */
     val sourceNotionEnabled: Boolean = true,
+    /**
+     * Plugin-seam Phase 1 (#384) — per-plugin on/off keyed by stable
+     * plugin id ("kvmr", "royalroad", "notion", ...). Replaces the
+     * hand-rolled `sourceXxxEnabled` flags above as backends migrate
+     * to the `@SourcePlugin` annotation. Phase 1 ships with only
+     * `:source-kvmr` migrated, so this map currently mirrors
+     * [sourceKvmrEnabled] for the `kvmr` key; other ids are populated
+     * by the one-time migration shim in the settings impl that reads
+     * the legacy per-source preferences on first launch and writes
+     * them into the JSON map.
+     *
+     * Consumers in Phase 1 should keep reading the per-backend
+     * `sourceXxxEnabled` fields; this map is for Phase 2 callers that
+     * iterate the registry. The two views stay in sync via the
+     * settings impl's setters (each per-backend setter also updates
+     * the map and vice-versa).
+     */
+    val sourcePluginsEnabled: Map<String, Boolean> = emptyMap(),
     /** Notion database id (#233 + #390). Defaults to the baked-in
      *  techempower.org placeholder from `NotionDefaults`; existing
      *  users with a different stored value keep it. Notion accepts
@@ -1283,6 +1301,19 @@ interface SettingsRepositoryUi {
     suspend fun setWikipediaLanguageCode(code: String)
     /** Issue #374 — KVMR community radio backend on/off. */
     suspend fun setSourceKvmrEnabled(enabled: Boolean)
+
+    /**
+     * Plugin-seam Phase 1 (#384) — toggle a `@SourcePlugin`-registered
+     * backend by its stable id. Updates the JSON-serialised
+     * `sourcePluginsEnabled` map AND, for ids that still have a
+     * matching legacy `setSourceXxxEnabled` setter, the corresponding
+     * legacy preference so the existing UI keeps observing the change.
+     *
+     * Unknown ids (no plugin registered) write to the map regardless,
+     * letting Phase 2 backends pre-populate their toggle state before
+     * their `@SourcePlugin` annotation lands.
+     */
+    suspend fun setSourcePluginEnabled(id: String, enabled: Boolean)
 
     /** Issue #233 — Notion fiction backend on/off + config. */
     suspend fun setSourceNotionEnabled(enabled: Boolean)

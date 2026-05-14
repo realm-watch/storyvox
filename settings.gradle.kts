@@ -35,6 +35,10 @@ rootProject.name = "storyvox"
 include(":app")
 include(":wear")
 include(":core-data")
+// Plugin-seam Phase 1 (#384) — KSP SymbolProcessor module that emits
+// Hilt @IntoSet contributions for @SourcePlugin-annotated FictionSource
+// classes. Pure Kotlin/JVM (the processor runs in the Kotlin compiler).
+include(":core-plugin-ksp")
 include(":core-llm")
 include(":core-playback")
 include(":core-ui")
