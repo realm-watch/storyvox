@@ -1,7 +1,10 @@
 title: storyvox
-description: A neural-voice audiobook player for any text you have. Offline TTS with optional Azure HD cloud voices, brass-on-warm-dark Library Nocturne aesthetic, six fiction sources (Royal Road, GitHub, RSS, EPUB, Outline, Memory Palace), no per-character billing.
-url: https://jphein.github.io
-baseurl: /storyvox
+description: A neural-voice audiobook player for any text you have. Seventeen fiction backends, three in-process neural voice families, optional Azure HD cloud voices. Brass-on-warm-dark Library Nocturne aesthetic. Free, GPL-3.0, no telemetry, no per-character billing.
+url: https://storyvox.techempower.org
+baseurl: ""
+
+# Default social-share card (override per-page via front-matter image:)
+image: /screenshots/03-reader.png
 
 # Use a minimal theme; we override most styling via _sass / assets/css.
 theme: minima
