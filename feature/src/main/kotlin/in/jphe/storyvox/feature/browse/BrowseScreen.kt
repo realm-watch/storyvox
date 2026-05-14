@@ -303,6 +303,18 @@ fun BrowseScreen(
             state.isLoading && state.items.isEmpty() -> SkeletonGrid()
             state.tab == BrowseTab.Search && state.query.isBlank() && !state.isFilterActive ->
                 SearchHint(state.sourceId, state.visibleSources)
+            // Issue #458 — RSS chip on a fresh install shows the Popular
+            // tab with no subscribed feeds, which used to render as a
+            // blank screen with just a FAB at the corner. Users tapped
+            // RSS, saw nothing, missed the FAB, and concluded the source
+            // was broken. Surface an explicit empty state with copy + a
+            // primary "Add a feed" CTA that opens the same manage sheet.
+            state.sourceId == SourceIds.RSS &&
+                state.tab != BrowseTab.Search &&
+                state.items.isEmpty() &&
+                !state.isLoading &&
+                state.error == null ->
+                RssEmptyState(onAdd = { showRssManageSheet = true })
             // First-load failure with no cached items: full-screen error.
             // Retry triggers viewModel.loadMore() which the paginator
             // resolves to the same page that failed.
@@ -561,6 +573,50 @@ private fun SkeletonGrid() {
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         items(12) { FictionCardSkeleton(modifier = Modifier.fillMaxWidth()) }
+    }
+}
+
+/**
+ * Issue #458 — Browse → RSS first-tap empty state. Replaces the
+ * blank-with-FAB-only screen that read as a broken source. Headline +
+ * one-line explanation of how the source works + a primary "Add a
+ * feed" CTA that opens the same `BrowseRssManageSheet` the FAB does.
+ */
+@Composable
+private fun RssEmptyState(onAdd: () -> Unit) {
+    val spacing = LocalSpacing.current
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            modifier = Modifier.padding(horizontal = spacing.xl),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(48.dp),
+            )
+            Text(
+                "Add your first RSS feed",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                "Paste any feed URL — blog posts, podcasts, news. Each entry " +
+                    "becomes a chapter storyvox can read to you.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(spacing.md))
+            BrassButton(
+                label = "Add a feed",
+                onClick = onAdd,
+                variant = BrassButtonVariant.Primary,
+            )
+        }
     }
 }
 
