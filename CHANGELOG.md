@@ -9,6 +9,18 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.32] — 2026-05-14
+
+### Added
+- **Magical voice settings icon on the play screen** (#428, closes #418) — replaces the buried `⋮` overflow's voice-settings section with a brass-edged soundwave-with-sparkle icon at the top bar. Tap → Material 3 bottom sheet with 5 live-applying rows (Speed / Pitch / Voice picker chip / Sentence silence / Sonic high-quality) + an "Advanced" expander deep-linking to Voice Library for the v0.5.30 per-voice lexicon + Kokoro phonemizer pickers. Long-press → straight to Voice Library. `PlayerOptionsSheet` split into `PlayerOverflowSheet` (sentence step, sleep timer, bookmark, recap, AI chat) — voice rows moved out cleanly. 5 new tests covering row spec, live-audio pitch hiding, speed-first ordering, long-press routing, voice-chip label formatting.
+- **Generalized `:source-kvmr` → `:source-radio` with Radio Browser API search** (#429, closes #417) — rename + reshape lands 5 curated stations (KVMR 89.3, Capital Public Radio KXPR, KQED 88.5, KCSB 91.9, SomaFM Groove Salad) plus a new Search tab on Browse → Radio backed by Radio Browser's free `de1.api.radio-browser.info` directory (30k+ stations worldwide). User can star Radio Browser results to add them to their library — starred station descriptors persist in a dedicated `storyvox_radio_starred` DataStore (full record stored, so a star survives the upstream directory culling the station). `KvmrEnabledToRadioEnabledMigration` seeds `pref_source_radio_enabled` from the legacy `pref_source_kvmr_enabled` on first read; Hilt `RadioModule` dual-binds `RadioSource` under both `radio` and `kvmr` StringKeys so persisted `kvmr:live` library rows resolve unchanged. KNCO trimmed from v1 (no stable stream URL discoverable). 24 new tests.
+
+### Fixed
+- **Light theme selection had no effect at the renderer** (#427, closes #412) — `MainActivity` called `LibraryNocturneTheme { ... }` without arguments, so the theme wrapper's `darkTheme` defaulted to `isSystemInDarkTheme()` and ignored the saved `themeOverride` preference. Settings → Reading → Theme picker (System / Dark / Light) saved the selection to `pref_theme_override` and showed checked in the UI, but the renderer never read it. Light selection was cosmetic only. Fix: inject `SettingsRepositoryUi` into MainActivity, collect the `settings` flow as State, map `ThemeOverride { System, Dark, Light }` to an explicit `darkTheme` Boolean, pass to `LibraryNocturneTheme`. System falls back to `isSystemInDarkTheme()`; Dark/Light force the corresponding palette regardless of device setting. **High-pri regression that masked the parchment-cream daytime aesthetic entirely.**
+
+### Backend count
+- **17 fiction backends** total still (Radio is the rename of KVMR + the new search surface; not a separate addition). The Radio backend now scales from "one station" to "any of 30k+ via Radio Browser star-to-add", so the same source slot is much more useful.
+
 ## [0.5.31] — 2026-05-14
 
 ### Added
