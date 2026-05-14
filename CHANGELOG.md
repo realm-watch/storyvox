@@ -9,6 +9,11 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.37] — 2026-05-14
+
+### Fixed
+- **Pause/Resume on radio chapters actually pause/resume now** (#434) — `PlaybackController.pause()` hard-called `EnginePlayer.pauseTts()`, which tears down the TTS pipeline only. For audio-stream chapters (KVMR + the v0.5.32 radio backend), the sibling ExoPlayer kept streaming on top of the dead TTS state. Pause was a visual lie on radio. Fix: new `EnginePlayer.pauseRouted()` checks `isLiveAudioChapter` and drops `playWhenReady` on `audioStreamPlayer` for radio, falls through to `pauseTts()` for TTS. Same routing added at the top of `EnginePlayer.resume()` so Play button recovers correctly. Reported by JP on tablet R83W80CAFZB v0.5.36.
+
 ## [0.5.36] — 2026-05-14
 
 ### Added
