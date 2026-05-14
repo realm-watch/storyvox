@@ -588,6 +588,11 @@ private class FakeSettingsRepo(
         override suspend fun setSourceHackerNewsEnabled(enabled: Boolean) = Unit
         override suspend fun setSourceArxivEnabled(enabled: Boolean) = Unit
         override suspend fun setSourcePlosEnabled(enabled: Boolean) = Unit
+        override suspend fun setSourceDiscordEnabled(enabled: Boolean) = Unit
+        override suspend fun setDiscordApiToken(token: String?) = Unit
+        override suspend fun setDiscordServer(serverId: String, serverName: String) = Unit
+        override suspend fun setDiscordCoalesceMinutes(minutes: Int) = Unit
+        override suspend fun fetchDiscordGuilds(): List<Pair<String, String>> = emptyList()
         override suspend fun setSourcePluginEnabled(id: String, enabled: Boolean) = Unit
         override suspend fun setNotionDatabaseId(id: String) = Unit
         override suspend fun setNotionApiToken(token: String?) = Unit

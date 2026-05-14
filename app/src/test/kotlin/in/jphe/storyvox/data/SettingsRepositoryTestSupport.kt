@@ -172,6 +172,29 @@ internal fun makeFakeNotionConfig(
     return NotionConfigImpl(notionStore, FakeSecrets())
 }
 
+/** Real [DiscordConfigImpl] over a temp DataStore + fake secrets (#403).
+ *  Settings tests don't exercise Discord state — the signature requires
+ *  the dep, this satisfies it. */
+internal fun makeFakeDiscordConfig(
+    dir: File,
+    scope: CoroutineScope,
+): DiscordConfigImpl {
+    val discordStore = PreferenceDataStoreFactory.create(
+        scope = scope,
+        produceFile = { File(dir, "storyvox_discord.preferences_pb") },
+    )
+    return DiscordConfigImpl(discordStore, FakeSecrets())
+}
+
+/**
+ * Stub [DiscordGuildDirectory] for settings tests. Tests don't
+ * exercise the bot-token guild lookup; the repo signature requires
+ * the dep so the stub returns an empty list (matches "no token" /
+ * "fetch failed" mode in production).
+ */
+internal fun makeFakeDiscordGuildDirectory(): `in`.jphe.storyvox.source.discord.DiscordGuildDirectory =
+    `in`.jphe.storyvox.source.discord.DiscordGuildDirectory.Empty
+
 /**
  * Real [PalaceDaemonApi] over an OkHttpClient + a fake config that emits
  * an empty [PalaceConfigState]. No HTTP is exercised by the settings

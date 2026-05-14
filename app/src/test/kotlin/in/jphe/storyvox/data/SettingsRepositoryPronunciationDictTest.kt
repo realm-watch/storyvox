@@ -67,6 +67,8 @@ class SettingsRepositoryPronunciationDictTest {
             outlineConfig = makeFakeOutlineConfig(tempFolder.newFolder("outline_ds"), scope),
             wikipediaConfig = makeFakeWikipediaConfig(tempFolder.newFolder("wiki_ds"), scope),
             notionConfig = makeFakeNotionConfig(tempFolder.newFolder("notion_ds"), scope),
+            discordConfig = makeFakeDiscordConfig(tempFolder.newFolder("discord_ds"), scope),
+            discordGuildDirectory = makeFakeDiscordGuildDirectory(),
             suggestedFeedsRegistry = SuggestedFeedsRegistry(),
             azureCreds = makeFakeAzureCredentials(),
             azureClient = makeFakeAzureClient(),

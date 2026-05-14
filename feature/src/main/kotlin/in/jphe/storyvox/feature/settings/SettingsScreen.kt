@@ -617,6 +617,32 @@ fun SettingsScreen(
                 checked = s.sourcePlosEnabled,
                 onCheckedChange = viewModel::setSourcePlosEnabled,
             )
+            // Issue #403 — Discord backend. Default OFF; opt-in
+            // surface (bot-token onboarding is high-friction and
+            // Discord is a private workspace). The inline config row
+            // collects the bot token, picks a server from the
+            // populated guild list, and lets the user tune the
+            // same-author message coalesce window.
+            SettingsSwitchRow(
+                title = "Discord",
+                subtitle = "Bot-token-authed channel reader. Server = filter, channel = fiction, message = chapter (with optional same-author coalescing).",
+                checked = s.sourceDiscordEnabled,
+                onCheckedChange = viewModel::setSourceDiscordEnabled,
+            )
+            if (s.sourceDiscordEnabled) {
+                val discordGuilds by viewModel.discordGuilds.collectAsStateWithLifecycle()
+                DiscordConfigRow(
+                    tokenConfigured = s.discordTokenConfigured,
+                    serverId = s.discordServerId,
+                    serverName = s.discordServerName,
+                    coalesceMinutes = s.discordCoalesceMinutes,
+                    guilds = discordGuilds,
+                    onApiTokenChange = viewModel::setDiscordApiToken,
+                    onServerSelected = viewModel::setDiscordServer,
+                    onCoalesceMinutesChange = viewModel::setDiscordCoalesceMinutes,
+                    onRefreshGuilds = viewModel::refreshDiscordGuilds,
+                )
+            }
         }
 
         // ── Inbox notifications sub-card (#383) ────────────────────
@@ -3320,6 +3346,201 @@ private fun NotionConfigRow(
                     },
                 ) { Text("Clear token") }
             }
+        }
+    }
+}
+
+/**
+ * Issue #403 — Discord backend config card. Renders inside the
+ * Library & Sync section when the Discord toggle is ON.
+ *
+ * Three knobs:
+ *  - **Bot token** — masked text field with a "Save" / "Clear"
+ *    affordance. Token is stored encrypted under
+ *    `pref_source_discord_token` in `storyvox.secrets`.
+ *  - **Server picker** — populated from
+ *    `users/@me/guilds` after the token is configured.
+ *    Empty list = "no token / fetch failed / bot not invited yet".
+ *  - **Coalesce minutes slider** — 1-30 min, default 5. Tunes the
+ *    same-author message coalesce window.
+ *
+ * Parallel shape to [NotionConfigRow]: header + explanatory text +
+ * masked token field + extra config + save/clear actions. The
+ * Discord-specific piece is the guilds dropdown, which only renders
+ * once a token is configured (no point listing servers when the bot
+ * isn't authenticated).
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun DiscordConfigRow(
+    tokenConfigured: Boolean,
+    serverId: String,
+    serverName: String,
+    coalesceMinutes: Int,
+    guilds: List<Pair<String, String>>,
+    onApiTokenChange: (String?) -> Unit,
+    onServerSelected: (id: String, name: String) -> Unit,
+    onCoalesceMinutesChange: (Int) -> Unit,
+    onRefreshGuilds: () -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    var tokenDraft by remember { mutableStateOf("") }
+    var serverPickerExpanded by remember { mutableStateOf(false) }
+
+    // Auto-fetch the guild list when the token is configured + nothing
+    // has been fetched yet. Without this, opening the Discord card on
+    // a fresh paste would render an empty dropdown until the user
+    // tapped Refresh manually.
+    LaunchedEffect(tokenConfigured) {
+        if (tokenConfigured && guilds.isEmpty()) onRefreshGuilds()
+    }
+
+    Column(modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm)) {
+        Text(
+            "Discord bot",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = spacing.xs),
+        )
+        Text(
+            text = if (tokenConfigured)
+                "Token configured. Paste a new token to replace it. " +
+                    "Invite the bot to your server with " +
+                    "READ_MESSAGE_HISTORY scope, then pick the server below."
+            else
+                "Create an application at discord.com/developers, " +
+                    "generate a bot token, invite the bot to your " +
+                    "server with READ_MESSAGE_HISTORY scope, and " +
+                    "paste the token here.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = spacing.sm),
+        )
+        androidx.compose.material3.OutlinedTextField(
+            value = tokenDraft,
+            onValueChange = { tokenDraft = it },
+            label = { Text("Bot token") },
+            placeholder = { Text("OD…") },
+            singleLine = true,
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            BrassButton(
+                label = "Save token",
+                onClick = {
+                    if (tokenDraft.isNotBlank()) {
+                        onApiTokenChange(tokenDraft)
+                        tokenDraft = ""
+                    }
+                },
+                variant = BrassButtonVariant.Primary,
+            )
+            if (tokenConfigured) {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        onApiTokenChange(null)
+                        tokenDraft = ""
+                        // Clearing the token also clears the cached
+                        // server so the picker resets to its empty
+                        // state on the next render.
+                        onServerSelected("", "")
+                    },
+                ) { Text("Clear token") }
+            }
+        }
+        // ── Server picker — only meaningful when a token is configured.
+        if (tokenConfigured) {
+            Spacer(Modifier.height(spacing.md))
+            Text(
+                "Server",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = spacing.xs),
+            )
+            androidx.compose.material3.ExposedDropdownMenuBox(
+                expanded = serverPickerExpanded,
+                onExpandedChange = { serverPickerExpanded = !serverPickerExpanded },
+            ) {
+                androidx.compose.material3.OutlinedTextField(
+                    value = when {
+                        serverName.isNotBlank() -> serverName
+                        serverId.isNotBlank() -> serverId
+                        else -> "(none selected)"
+                    },
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Discord server") },
+                    trailingIcon = {
+                        androidx.compose.material3.ExposedDropdownMenuDefaults
+                            .TrailingIcon(expanded = serverPickerExpanded)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(
+                            androidx.compose.material3.MenuAnchorType.PrimaryNotEditable,
+                        ),
+                )
+                ExposedDropdownMenu(
+                    expanded = serverPickerExpanded,
+                    onDismissRequest = { serverPickerExpanded = false },
+                ) {
+                    if (guilds.isEmpty()) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = {
+                                Text(
+                                    "(no servers — invite your bot, then tap Refresh)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            },
+                            onClick = { serverPickerExpanded = false },
+                        )
+                    } else {
+                        for ((id, name) in guilds) {
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(name) },
+                                onClick = {
+                                    onServerSelected(id, name)
+                                    serverPickerExpanded = false
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+            androidx.compose.material3.TextButton(
+                onClick = onRefreshGuilds,
+                modifier = Modifier.padding(top = spacing.xs),
+            ) { Text("Refresh server list") }
+
+            // ── Coalesce-window slider.
+            Spacer(Modifier.height(spacing.md))
+            SettingsSliderBlock(
+                title = "Coalesce window",
+                valueLabel = "$coalesceMinutes min",
+                slider = {
+                    Slider(
+                        value = coalesceMinutes.toFloat(),
+                        onValueChange = { onCoalesceMinutesChange(it.toInt().coerceIn(1, 30)) },
+                        valueRange = 1f..30f,
+                        steps = 28,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Message coalesce window"
+                            stateDescription = "$coalesceMinutes minutes"
+                        },
+                    )
+                },
+            )
+            Text(
+                "Consecutive messages from the same author within this " +
+                    "window collapse into one chapter. Default 5 minutes.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = spacing.xs),
+            )
         }
     }
 }

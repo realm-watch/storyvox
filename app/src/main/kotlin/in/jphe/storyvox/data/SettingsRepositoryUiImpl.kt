@@ -267,6 +267,11 @@ internal object LegacySourceKeys {
         // off and the user flips it on from Settings.
         `in`.jphe.storyvox.data.source.SourceIds.PLOS to
             Spec(booleanPreferencesKey("pref_source_plos_enabled"), defaultValue = false),
+        // #403 — Discord backend. Default OFF on fresh installs —
+        // bot-token onboarding is high-friction and Discord is a
+        // private workspace, not a public catalog.
+        `in`.jphe.storyvox.data.source.SourceIds.DISCORD to
+            Spec(booleanPreferencesKey("pref_source_discord_enabled"), defaultValue = false),
     )
 }
 
@@ -396,6 +401,10 @@ private object Keys {
      *  on/off. Default false for fresh installs; opt-in surface like
      *  Wikipedia. */
     val SOURCE_PLOS_ENABLED = booleanPreferencesKey("pref_source_plos_enabled")
+    /** Issue #403 — Discord backend on/off. Default false for fresh
+     *  installs — bot-token onboarding is high-friction and Discord
+     *  is a private workspace, not a public catalog. */
+    val SOURCE_DISCORD_ENABLED = booleanPreferencesKey("pref_source_discord_enabled")
 
     // ── Plugin-seam Phase 1 (#384) ────────────────────────────────
     /**
@@ -524,6 +533,8 @@ class SettingsRepositoryUiImpl(
     private val outlineConfig: OutlineConfigImpl,
     private val wikipediaConfig: WikipediaConfigImpl,
     private val notionConfig: NotionConfigImpl,
+    private val discordConfig: DiscordConfigImpl,
+    private val discordGuildDirectory: `in`.jphe.storyvox.source.discord.DiscordGuildDirectory,
     private val suggestedFeedsRegistry: SuggestedFeedsRegistry,
     private val azureCreds: AzureCredentials,
     private val azureClient: AzureSpeechClient,
@@ -562,6 +573,8 @@ class SettingsRepositoryUiImpl(
         outlineConfig: OutlineConfigImpl,
         wikipediaConfig: WikipediaConfigImpl,
         notionConfig: NotionConfigImpl,
+        discordConfig: DiscordConfigImpl,
+        discordGuildDirectory: `in`.jphe.storyvox.source.discord.DiscordGuildDirectory,
         suggestedFeedsRegistry: SuggestedFeedsRegistry,
         azureCreds: AzureCredentials,
         azureClient: AzureSpeechClient,
@@ -570,7 +583,9 @@ class SettingsRepositoryUiImpl(
     ) : this(
         context.settingsDataStore, auth, hydrator,
         palaceConfig, palaceApi, llmCreds, githubAuth, teamsAuth, rssConfig, epubConfig,
-        outlineConfig, wikipediaConfig, notionConfig, suggestedFeedsRegistry, azureCreds, azureClient, azureRoster,
+        outlineConfig, wikipediaConfig, notionConfig, discordConfig, discordGuildDirectory,
+        suggestedFeedsRegistry,
+        azureCreds, azureClient, azureRoster,
         googleTokenSource,
     )
 
@@ -585,19 +600,26 @@ class SettingsRepositoryUiImpl(
      */
     private val azureTick = kotlinx.coroutines.flow.MutableStateFlow(0L)
 
-    /** Issue #377 + #233 — non-prefs source configs bundled into a
-     *  single combine so the outer combine stays inside the 5-arg
-     *  overload. Palace + Wikipedia + Notion ride together; each
-     *  re-emits independently when its respective store changes. */
+    /** Issue #377 + #233 + #403 — non-prefs source configs bundled
+     *  into a single combine so the outer combine stays inside the
+     *  5-arg overload. Palace + Wikipedia + Notion + Discord ride
+     *  together; each re-emits independently when its respective
+     *  store changes. */
     private data class NonPrefsConfigs(
         val palace: `in`.jphe.storyvox.source.mempalace.config.PalaceConfigState,
         val wikipedia: `in`.jphe.storyvox.source.wikipedia.config.WikipediaConfigState,
         val notion: `in`.jphe.storyvox.source.notion.config.NotionConfigState,
+        val discord: `in`.jphe.storyvox.source.discord.config.DiscordConfigState,
     )
 
     private val nonPrefsConfigs: Flow<NonPrefsConfigs> =
-        combine(palaceConfig.state, wikipediaConfig.state, notionConfig.state) { palace, wiki, notion ->
-            NonPrefsConfigs(palace, wiki, notion)
+        combine(
+            palaceConfig.state,
+            wikipediaConfig.state,
+            notionConfig.state,
+            discordConfig.state,
+        ) { palace, wiki, notion, discord ->
+            NonPrefsConfigs(palace, wiki, notion, discord)
         }
 
     override val settings: Flow<UiSettings> = combine(
@@ -610,6 +632,7 @@ class SettingsRepositoryUiImpl(
         val palace = configs.palace
         val wikipedia = configs.wikipedia
         val notion = configs.notion
+        val discord = configs.discord
         UiSettings(
             ttsEngine = "VoxSherpa",
             defaultVoiceId = prefs[Keys.DEFAULT_VOICE_ID],
@@ -683,6 +706,13 @@ class SettingsRepositoryUiImpl(
             sourceArxivEnabled = prefs[Keys.SOURCE_ARXIV_ENABLED] ?: false,
             // #380 — PLOS open-access: academic content is opt-in.
             sourcePlosEnabled = prefs[Keys.SOURCE_PLOS_ENABLED] ?: false,
+            // #403 — Discord: opt-in surface; bot-token onboarding is
+            // high-friction so fresh installs ship with this off.
+            sourceDiscordEnabled = prefs[Keys.SOURCE_DISCORD_ENABLED] ?: false,
+            discordTokenConfigured = discord.apiToken.isNotBlank(),
+            discordServerId = discord.serverId,
+            discordServerName = discord.serverName,
+            discordCoalesceMinutes = discord.coalesceMinutes,
             // Plugin-seam Phase 1 (#384) — derive the per-plugin map
             // from the JSON blob seeded by SourcePluginsMapMigration.
             // Empty map (parse error / missing key in a race) falls
@@ -1357,6 +1387,33 @@ class SettingsRepositoryUiImpl(
         store.edit { it[Keys.SOURCE_PLOS_ENABLED] = enabled }
         writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.PLOS, enabled)
     }
+
+    override suspend fun setSourceDiscordEnabled(enabled: Boolean) {
+        store.edit { it[Keys.SOURCE_DISCORD_ENABLED] = enabled }
+        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.DISCORD, enabled)
+    }
+
+    override suspend fun setDiscordApiToken(token: String?) {
+        discordConfig.setApiToken(token)
+    }
+
+    override suspend fun setDiscordServer(serverId: String, serverName: String) {
+        discordConfig.setServer(serverId, serverName)
+    }
+
+    override suspend fun setDiscordCoalesceMinutes(minutes: Int) {
+        discordConfig.setCoalesceMinutes(minutes)
+    }
+
+    override suspend fun fetchDiscordGuilds(): List<Pair<String, String>> =
+        // Delegates to the DiscordGuildDirectory in :source-discord;
+        // that thin wrapper exposes the internal DiscordApi's
+        // listGuilds() through a public surface so :app doesn't reach
+        // into the source's internal wire types directly. On any
+        // failure (no token, network, 401/403) the directory returns
+        // an empty list — the UI handles "empty picker" as the
+        // unified empty-state across the three failure modes.
+        discordGuildDirectory.listGuilds()
 
     /**
      * Plugin-seam Phase 1 (#384) — registry-driven entry point.

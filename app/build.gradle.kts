@@ -166,6 +166,7 @@ dependencies {
     implementation(project(":source-hackernews"))
     implementation(project(":source-arxiv"))
     implementation(project(":source-plos"))
+    implementation(project(":source-discord"))
     implementation(project(":source-azure"))
     implementation(project(":core-sync"))
     implementation(project(":feature"))
