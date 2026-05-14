@@ -53,6 +53,20 @@ internal object NotionHttpModule {
         config: `in`.jphe.storyvox.source.notion.config.NotionConfig,
     ): `in`.jphe.storyvox.source.notion.net.NotionApi =
         `in`.jphe.storyvox.source.notion.net.NotionApi(client, config)
+
+    /**
+     * Issue #393 — anonymous-mode reader against the unofficial
+     * `www.notion.so/api/v3` surface. Shares the [NotionHttp] OkHttp
+     * client with the PAT-mode reader so both flows benefit from the
+     * same connection pool + timeouts.
+     */
+    @Provides
+    @Singleton
+    fun provideNotionUnofficialApi(
+        @NotionHttp client: OkHttpClient,
+        config: `in`.jphe.storyvox.source.notion.config.NotionConfig,
+    ): `in`.jphe.storyvox.source.notion.net.NotionUnofficialApi =
+        `in`.jphe.storyvox.source.notion.net.NotionUnofficialApi(client, config)
 }
 
 /**

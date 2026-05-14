@@ -11,6 +11,8 @@ import `in`.jphe.storyvox.data.source.model.FictionSummary
 import `in`.jphe.storyvox.data.source.model.ListPage
 import `in`.jphe.storyvox.data.source.model.SearchQuery
 import `in`.jphe.storyvox.data.source.model.map
+import `in`.jphe.storyvox.source.notion.config.NotionConfig
+import `in`.jphe.storyvox.source.notion.config.NotionMode
 import `in`.jphe.storyvox.source.notion.net.NotionApi
 import `in`.jphe.storyvox.source.notion.net.NotionBlock
 import `in`.jphe.storyvox.source.notion.net.NotionPage
@@ -55,6 +57,8 @@ import javax.inject.Singleton
 @Singleton
 internal class NotionSource @Inject constructor(
     private val api: NotionApi,
+    private val anonymous: AnonymousNotionDelegate,
+    private val config: NotionConfig,
 ) : FictionSource {
 
     override val id: String = SourceIds.NOTION
@@ -63,6 +67,10 @@ internal class NotionSource @Inject constructor(
     // ─── browse ────────────────────────────────────────────────────────
 
     override suspend fun popular(page: Int): FictionResult<ListPage<FictionSummary>> {
+        val state = config.current()
+        if (state.mode == NotionMode.ANONYMOUS_PUBLIC) {
+            return anonymous.popular(state, page)
+        }
         // Notion paginates via opaque `start_cursor` strings, not integer
         // page numbers. Our BrowsePaginator drives 1-indexed page numbers;
         // we collapse "first call" = page 1 = cursor=null. Page 2+ from a
@@ -108,6 +116,10 @@ internal class NotionSource @Inject constructor(
         FictionResult.Success(emptyList())
 
     override suspend fun search(query: SearchQuery): FictionResult<ListPage<FictionSummary>> {
+        val state = config.current()
+        if (state.mode == NotionMode.ANONYMOUS_PUBLIC) {
+            return anonymous.search(state, query.term)
+        }
         // v1 — client-side filter over the database's first 100 pages.
         // Notion's /search endpoint exists but searches the user's whole
         // workspace, not just the configured database; that's the wrong
@@ -129,6 +141,10 @@ internal class NotionSource @Inject constructor(
     // ─── detail ────────────────────────────────────────────────────────
 
     override suspend fun fictionDetail(fictionId: String): FictionResult<FictionDetail> {
+        val state = config.current()
+        if (state.mode == NotionMode.ANONYMOUS_PUBLIC) {
+            return anonymous.fictionDetail(state, fictionId)
+        }
         val pageId = fictionId.toPageId()
             ?: return FictionResult.NotFound("Notion fiction id not recognized: $fictionId")
         // Two-call pattern: page metadata + block children. Same shape
@@ -170,6 +186,10 @@ internal class NotionSource @Inject constructor(
         fictionId: String,
         chapterId: String,
     ): FictionResult<ChapterContent> {
+        val state = config.current()
+        if (state.mode == NotionMode.ANONYMOUS_PUBLIC) {
+            return anonymous.chapter(state, fictionId, chapterId)
+        }
         val pageId = fictionId.toPageId()
             ?: return FictionResult.NotFound("Notion fiction id not recognized: $fictionId")
         val sectionIndex = chapterId.substringAfterLast("::section-", "")

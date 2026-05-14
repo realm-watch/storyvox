@@ -821,14 +821,26 @@ data class UiSettings(
     /** Notion database id (#233 + #390). Defaults to the baked-in
      *  techempower.org placeholder from `NotionDefaults`; existing
      *  users with a different stored value keep it. Notion accepts
-     *  both hyphenated UUID and compact 32-hex forms. */
+     *  both hyphenated UUID and compact 32-hex forms. Used only in
+     *  [notionMode] = `OFFICIAL_PAT`. */
     val notionDatabaseId: String = "",
     /** True when a Notion Internal Integration Token has been stored.
      *  The token itself is never surfaced to the UI — only this
-     *  boolean. Empty token = source returns AuthRequired on every
-     *  call (Notion has no anonymous tier), but the toggle stays
-     *  visible so the user can paste a token via the Settings row. */
+     *  boolean. Empty token = anonymous-mode reader (#393). */
     val notionTokenConfigured: Boolean = false,
+    /** Issue #393 — read-path selector. Anonymous-mode (default for
+     *  fresh installs and the token-less case) reads the public
+     *  techempower.org Notion tree via `www.notion.so/api/v3` without
+     *  setup; PAT-mode (set automatically when the user pastes a
+     *  token) reads a private workspace database via the official
+     *  Notion REST API. Carried as a string here to keep
+     *  `:feature-settings` independent of `:source-notion`. Values:
+     *  `"ANONYMOUS_PUBLIC"` or `"OFFICIAL_PAT"`. */
+    val notionMode: String = "ANONYMOUS_PUBLIC",
+    /** Issue #393 — anonymous-mode root page id. The public Notion
+     *  page storyvox walks for fictions. Defaults to TechEmpower's
+     *  root; users can override to any public Notion page. */
+    val notionRootPageId: String = "",
     /** Issue #150 — when ON, a shake during the sleep timer's fade
      *  tail re-arms the timer. Default ON; users with bumpy commutes
      *  can disable to avoid accidental extensions. */

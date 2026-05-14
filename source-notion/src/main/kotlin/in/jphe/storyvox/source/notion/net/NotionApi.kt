@@ -224,16 +224,22 @@ internal class NotionApi @Inject constructor(
      * fail without bothering Notion. `null` means "good to go".
      */
     private fun <T> requireConfigured(state: NotionConfigState): FictionResult<T>? {
+        // v0.5.23 shipped with a TODO placeholder database id and this
+        // method rejected it as "not configured". v0.5.24 replaced the
+        // placeholder with TechEmpower's real Resources DB id, but the
+        // rejection check stayed — silently breaking the bundled
+        // default for anyone with an integration token shared to the
+        // Resources DB. v0.5.25 (#393) removes the equality check; the
+        // anonymous-mode path runs without a token, and PAT mode is
+        // gated by token presence alone.
         if (state.apiToken.isBlank()) {
             return FictionResult.AuthRequired(
                 "Notion integration token not configured",
             )
         }
-        if (state.databaseId.isBlank() ||
-            state.databaseId == NotionDefaults.TECHEMPOWER_DATABASE_ID
-        ) {
+        if (state.databaseId.isBlank()) {
             return FictionResult.NotFound(
-                "Notion database id not configured (TODO placeholder still in use)",
+                "Notion database id not configured",
             )
         }
         return null
