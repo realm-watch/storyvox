@@ -9,6 +9,7 @@ import `in`.jphe.storyvox.data.db.dao.ChapterDao
 import `in`.jphe.storyvox.data.db.dao.ChapterHistoryDao
 import `in`.jphe.storyvox.data.db.dao.FictionDao
 import `in`.jphe.storyvox.data.db.dao.FictionShelfDao
+import `in`.jphe.storyvox.data.db.dao.InboxEventDao
 import `in`.jphe.storyvox.data.db.dao.LlmMessageDao
 import `in`.jphe.storyvox.data.db.dao.LlmSessionDao
 import `in`.jphe.storyvox.data.db.dao.PlaybackDao
@@ -17,6 +18,7 @@ import `in`.jphe.storyvox.data.db.entity.Chapter
 import `in`.jphe.storyvox.data.db.entity.ChapterHistory
 import `in`.jphe.storyvox.data.db.entity.Fiction
 import `in`.jphe.storyvox.data.db.entity.FictionShelf
+import `in`.jphe.storyvox.data.db.entity.InboxEvent
 import `in`.jphe.storyvox.data.db.entity.LlmSession
 import `in`.jphe.storyvox.data.db.entity.LlmStoredMessage
 import `in`.jphe.storyvox.data.db.entity.PlaybackPosition
@@ -35,8 +37,12 @@ import `in`.jphe.storyvox.data.db.entity.PlaybackPosition
         // v6 (#158 reading history) — one row per (fiction, chapter)
         // pair, upserted on every open. Forever retention.
         ChapterHistory::class,
+        // v8 (#383 cross-source inbox) — append-only event feed,
+        // source-emitted notifications. No FK to fiction/chapter so
+        // events survive removal of the underlying rows.
+        InboxEvent::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -49,6 +55,7 @@ abstract class StoryvoxDatabase : RoomDatabase() {
     abstract fun llmSessionDao(): LlmSessionDao
     abstract fun llmMessageDao(): LlmMessageDao
     abstract fun fictionShelfDao(): FictionShelfDao
+    abstract fun inboxEventDao(): InboxEventDao
 
     companion object {
         const val NAME: String = "storyvox.db"

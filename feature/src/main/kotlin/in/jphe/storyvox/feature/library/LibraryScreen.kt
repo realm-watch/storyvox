@@ -21,6 +21,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -33,6 +35,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -40,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import `in`.jphe.storyvox.data.db.entity.InboxEvent
 import `in`.jphe.storyvox.data.db.entity.Shelf
 import `in`.jphe.storyvox.data.repository.ContinueListeningEntry
 import `in`.jphe.storyvox.data.repository.HistoryEntry
@@ -61,6 +65,14 @@ fun LibraryScreen(
     onOpenFiction: (String) -> Unit,
     onOpenReader: (String, String) -> Unit,
     onOpenSettings: () -> Unit = {},
+    /**
+     * Issue #383 — Inbox row tap. Carries a fully-resolved deep-link URI
+     * string (`storyvox://reader/<fid>/<cid>` or `storyvox://fiction/<fid>`).
+     * The host decodes it. Default no-op so existing call sites that
+     * haven't been updated still compile; the production wiring in
+     * the app activity should always supply this.
+     */
+    onOpenInboxLink: (String) -> Unit = {},
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -92,6 +104,7 @@ fun LibraryScreen(
             when (event) {
                 is LibraryUiEvent.OpenFiction -> onOpenFiction(event.fictionId)
                 is LibraryUiEvent.OpenReader -> onOpenReader(event.fictionId, event.chapterId)
+                is LibraryUiEvent.OpenInboxLink -> onOpenInboxLink(event.deepLinkUri)
             }
         }
     }
@@ -146,12 +159,37 @@ fun LibraryScreen(
                         selected = state.tab == tab,
                         onClick = { viewModel.selectTab(tab) },
                         text = {
-                            Text(
-                                text = tab.label,
-                                style = MaterialTheme.typography.labelLarge,
-                                maxLines = 1,
-                                softWrap = false,
-                            )
+                            // Issue #383 — Inbox tab carries an unread-count
+                            // badge. BadgedBox positions the badge at the
+                            // top-right of the label without disturbing the
+                            // tab row's alignment. Zero unread = no badge
+                            // (same convention as FollowsScreen #290).
+                            if (tab == LibraryTab.Inbox && state.inboxUnreadCount > 0) {
+                                BadgedBox(
+                                    badge = {
+                                        Badge(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                                        ) {
+                                            Text(state.inboxUnreadCount.toString())
+                                        }
+                                    },
+                                ) {
+                                    Text(
+                                        text = tab.label,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    text = tab.label,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                )
+                            }
                         },
                     )
                 }
@@ -185,6 +223,14 @@ fun LibraryScreen(
                         onResume = viewModel::resume,
                         onOpenFiction = viewModel::openFiction,
                         onLongPress = viewModel::openManageShelves,
+                    )
+                }
+
+                LibraryTab.Inbox -> Box(modifier = Modifier.fillMaxSize().padding(top = spacing.md)) {
+                    InboxList(
+                        events = state.inbox,
+                        onOpenEvent = viewModel::openInboxEvent,
+                        onMarkAllRead = viewModel::markAllInboxRead,
                     )
                 }
 
@@ -617,4 +663,171 @@ private fun relativeTimeLabel(openedAt: Long): String {
     if (days < 7L) return "${days}d ago"
     val weeks = days / 7L
     return "${weeks}w ago"
+}
+
+/**
+ * Issue #383 — cross-source Inbox feed. Mirrors [HistoryList] visually
+ * (single-column LazyColumn, brass-aware card per row, relative-time
+ * stamp) so the user reads the two sub-tabs as members of the same
+ * family. Differences:
+ *  - Row content is the event's pre-rendered `title` / `body` strings;
+ *    no fiction/chapter join (events deliberately survive removal of
+ *    the parent rows — see InboxEvent kdoc).
+ *  - "Mark all read" action sits above the feed when there's anything
+ *    to clear. It's a TextButton, not a top-bar IconButton, because
+ *    the destination is "the feed itself" rather than a separate
+ *    surface.
+ *  - Unread rows render with the surfaceContainerHighest tone vs
+ *    surfaceContainerHigh for read rows — a quiet visual cue that
+ *    the user has business there.
+ */
+@Composable
+private fun InboxList(
+    events: List<InboxEvent>,
+    onOpenEvent: (InboxEvent) -> Unit,
+    onMarkAllRead: () -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    if (events.isEmpty()) {
+        EmptyInbox()
+        return
+    }
+    Column(modifier = Modifier.fillMaxSize()) {
+        // "Mark all read" affordance — only visible when there's
+        // anything unread, so a fully-read feed doesn't render dead
+        // chrome above the rows.
+        if (events.any { !it.isRead }) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.md, vertical = spacing.xs),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                TextButton(onClick = onMarkAllRead) {
+                    Text("Mark all read", style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
+        LazyColumn(
+            contentPadding = PaddingValues(
+                start = spacing.md,
+                end = spacing.md,
+                top = spacing.xxs,
+                bottom = spacing.md,
+            ),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            items(events, key = { it.id }) { event ->
+                InboxRow(event = event, onClick = { onOpenEvent(event) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun InboxRow(event: InboxEvent, onClick: () -> Unit) {
+    val spacing = LocalSpacing.current
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            // Quiet visual cue: unread events sit slightly brighter so
+            // a quick scan tells the user where to look.
+            containerColor = if (event.isRead) {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHighest
+            },
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        Row(
+            modifier = Modifier.padding(spacing.sm).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            // Source-prefix monogram. Same brass-realm sigil family as
+            // the fallback monogram on FictionCoverThumb — a single
+            // glyph keyed off sourceId. Cheap and consistent even for
+            // events whose fiction row has been removed.
+            Box(
+                modifier = Modifier
+                    .size(width = 44.dp, height = 44.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                MagicSkeletonTile(
+                    modifier = Modifier.size(width = 44.dp, height = 44.dp),
+                    shape = MaterialTheme.shapes.small,
+                    glyphSize = 24.dp,
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = event.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 2,
+                )
+                event.body?.takeIf { it.isNotBlank() }?.let { body ->
+                    Text(
+                        text = body,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                    )
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                ) {
+                    Text(
+                        text = event.sourceId.replaceFirstChar { it.uppercase() },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = "·",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = relativeTimeLabel(event.ts),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyInbox() {
+    val spacing = LocalSpacing.current
+    Column(
+        modifier = Modifier.fillMaxSize().padding(spacing.lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        MagicSkeletonTile(
+            modifier = Modifier.size(width = 160.dp, height = 220.dp),
+            shape = MaterialTheme.shapes.medium,
+            glyphSize = 80.dp,
+        )
+        Spacer(Modifier.height(spacing.lg))
+        Text(
+            "Nothing in the Inbox yet",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(spacing.xs))
+        Text(
+            "New chapters, live programs, and other updates from your sources will land here, newest first.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+    }
 }

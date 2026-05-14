@@ -264,6 +264,31 @@ object AppBindings {
     ): `in`.jphe.storyvox.llm.LlmConfigProvider = impl
 
     /**
+     * Issue #383 — per-source mute gate for the cross-source Inbox feed.
+     * Reads the matching INBOX_NOTIFY_* boolean from DataStore via
+     * [SettingsRepositoryUiImpl] so the production wiring lives in
+     * one place. Recognised sourceIds fall back to true when no
+     * preference is stored; unrecognised sources (future backends not
+     * yet given their own toggle) also default to true so events are
+     * never silently dropped.
+     */
+    @Provides @Singleton
+    fun provideInboxNotificationGate(
+        settings: SettingsRepositoryUiImpl,
+    ): `in`.jphe.storyvox.data.repository.InboxNotificationGate =
+        object : `in`.jphe.storyvox.data.repository.InboxNotificationGate {
+            override suspend fun isEnabled(sourceId: String): Boolean {
+                val snap = settings.settings.first()
+                return when (sourceId) {
+                    "royalroad" -> snap.inboxNotifyRoyalRoad
+                    "kvmr" -> snap.inboxNotifyKvmr
+                    "wikipedia" -> snap.inboxNotifyWikipedia
+                    else -> true
+                }
+            }
+        }
+
+    /**
      * Stub WebViewFetcher — Selene's `:core-data` declares the interface; the
      * real impl in `:source-royalroad` is part of the deferred integration.
      * Returns a NetworkError with a clear message so any caller fails loudly.

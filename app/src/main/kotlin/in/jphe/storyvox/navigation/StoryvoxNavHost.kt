@@ -331,6 +331,40 @@ private fun StoryvoxNavHostContent(
                     onOpenFiction = { id -> navController.navigate(StoryvoxRoutes.fictionDetail(id)) },
                     onOpenReader = { f, c -> navController.navigate(StoryvoxRoutes.reader(f, c)) },
                     onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
+                    // Issue #383 — Inbox row tap deep-link. The URI is a
+                    // pre-resolved `storyvox://reader/<fid>/<cid>` or
+                    // `storyvox://fiction/<fid>` string. Decode here and
+                    // route via the existing nav graph — same destinations
+                    // as the History tap path, just chosen by URL prefix.
+                    onOpenInboxLink = { uri ->
+                        val readerPrefix = "storyvox://reader/"
+                        val fictionPrefix = "storyvox://fiction/"
+                        when {
+                            uri.startsWith(readerPrefix) -> {
+                                val rest = uri.removePrefix(readerPrefix)
+                                val slash = rest.indexOf('/')
+                                if (slash > 0) {
+                                    val fid = rest.substring(0, slash)
+                                    val cid = rest.substring(slash + 1)
+                                    navController.navigate(StoryvoxRoutes.reader(fid, cid))
+                                }
+                            }
+                            uri.startsWith(fictionPrefix) -> {
+                                val fid = uri.removePrefix(fictionPrefix)
+                                if (fid.isNotBlank()) {
+                                    navController.navigate(StoryvoxRoutes.fictionDetail(fid))
+                                }
+                            }
+                            else -> {
+                                // Unknown scheme — silently ignore. The
+                                // event row stays marked-read since the VM
+                                // already fired markRead before this
+                                // callback. Future-source URIs that we
+                                // don't decode here just become quiet
+                                // dismissals rather than crashes.
+                            }
+                        }
+                    },
                 )
             }
             composable(

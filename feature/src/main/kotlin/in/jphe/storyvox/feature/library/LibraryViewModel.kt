@@ -4,11 +4,13 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import `in`.jphe.storyvox.data.db.entity.InboxEvent
 import `in`.jphe.storyvox.data.db.entity.Shelf
 import `in`.jphe.storyvox.data.repository.ContinueListeningEntry
 import `in`.jphe.storyvox.data.repository.FictionRepository
 import `in`.jphe.storyvox.data.repository.HistoryEntry
 import `in`.jphe.storyvox.data.repository.HistoryRepository
+import `in`.jphe.storyvox.data.repository.InboxRepository
 import `in`.jphe.storyvox.data.repository.PlaybackPositionRepository
 import `in`.jphe.storyvox.data.repository.ShelfRepository
 import `in`.jphe.storyvox.data.repository.playback.PlaybackResumePolicyConfig
@@ -45,6 +47,13 @@ import kotlinx.coroutines.launch
 enum class LibraryTab(val label: String) {
     All("All"),
     Reading("Reading"),
+    /**
+     * Issue #383 — chronological cross-source notification feed.
+     * Sits between Reading and History so the user finds it next to
+     * Reading (the "what's current" surface) rather than buried after
+     * History. Carries a numeric badge driven by unread events.
+     */
+    Inbox("Inbox"),
     History("History"),
 }
 
@@ -68,6 +77,10 @@ data class LibraryUiState(
     val fictions: List<FictionSummary> = emptyList(),
     /** Issue #158 — chronological history feed, most-recent-open first. */
     val history: List<HistoryEntry> = emptyList(),
+    /** Issue #383 — cross-source Inbox feed, most-recent first. */
+    val inbox: List<InboxEvent> = emptyList(),
+    /** Issue #383 — unread-event count driving the Inbox tab badge. */
+    val inboxUnreadCount: Int = 0,
     /** Selected sub-tab (#158). */
     val tab: LibraryTab = LibraryTab.All,
     /** Active chip filter (#116) — only meaningful while tab == All. */
@@ -93,6 +106,15 @@ sealed interface ManageShelvesSheetState {
 sealed interface LibraryUiEvent {
     data class OpenFiction(val fictionId: String) : LibraryUiEvent
     data class OpenReader(val fictionId: String, val chapterId: String) : LibraryUiEvent
+    /**
+     * Issue #383 — Inbox row tap. Carries a fully-resolved deep-link URI
+     * string (`storyvox://reader/<fid>/<cid>` or `storyvox://fiction/<fid>`).
+     * The host activity decodes the URI and routes — same shape as the
+     * existing Reader / Fiction events, just opaque so the Inbox can
+     * point at surfaces that don't exist today (live audio player,
+     * source-specific detail screens).
+     */
+    data class OpenInboxLink(val deepLinkUri: String) : LibraryUiEvent
 }
 
 /** State for the paste-URL bottom sheet. */
@@ -116,6 +138,8 @@ class LibraryViewModel @Inject constructor(
     private val shelfRepo: ShelfRepository,
     /** Issue #158 — reading history backing the new "History" sub-tab. */
     historyRepo: HistoryRepository,
+    /** Issue #383 — cross-source Inbox feed + unread count. */
+    private val inboxRepo: InboxRepository,
     private val uiRepo: FictionRepositoryUi,
     private val playback: PlaybackControllerUi,
     /** #90 — read the user's last play/pause intent to decide whether
@@ -154,19 +178,44 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Issue #383 — Inbox feed + unread count + filter merged into a
+     * single tab-related snapshot so the outer combine stays inside
+     * the 5-arg overload. Mirrors the `NonPrefsConfigs` pattern in
+     * [SettingsRepositoryUiImpl] — roll multiple deps into one
+     * product type, combine once outside.
+     */
+    private data class TabSnapshot(
+        val inboxEvents: List<InboxEvent>,
+        val inboxUnreadCount: Int,
+        val tab: LibraryTab,
+        val filter: ShelfFilter,
+    )
+
+    private val tabSnapshot: kotlinx.coroutines.flow.Flow<TabSnapshot> =
+        combine(
+            inboxRepo.observeAll(),
+            inboxRepo.observeUnreadCount(),
+            _tab,
+            _filter,
+        ) { events, count, tab, filter ->
+            TabSnapshot(events, count, tab, filter)
+        }
+
     val uiState: StateFlow<LibraryUiState> = combine(
         fictionsFlow,
         positionRepo.observeMostRecentContinueListening(),
         historyRepo.observeAll(),
-        _tab,
-        _filter,
-    ) { library, resume, history, tab, filter ->
+        tabSnapshot,
+    ) { library, resume, history, snap ->
         LibraryUiState(
             resume = resume,
             fictions = library,
             history = history,
-            tab = tab,
-            filter = filter,
+            inbox = snap.inboxEvents,
+            inboxUnreadCount = snap.inboxUnreadCount,
+            tab = snap.tab,
+            filter = snap.filter,
             isLoading = false,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryUiState())
@@ -184,7 +233,28 @@ class LibraryViewModel @Inject constructor(
             LibraryTab.Reading -> _filter.value = ShelfFilter.OneShelf(Shelf.Reading)
             LibraryTab.All -> _filter.value = ShelfFilter.All
             LibraryTab.History -> { /* history feed renders from state.history */ }
+            LibraryTab.Inbox -> { /* inbox feed renders from state.inbox */ }
         }
+    }
+
+    /**
+     * Issue #383 — Inbox row tap. Marks the event read (so the badge
+     * count decrements immediately) and emits a deep-link nav event
+     * for the host activity to decode. If the event has no
+     * deepLinkUri (rare — source-wide events with no good landing
+     * page) we still mark it read; the tap was the acknowledgement.
+     */
+    fun openInboxEvent(event: InboxEvent) {
+        viewModelScope.launch {
+            inboxRepo.markRead(event.id)
+            val link = event.deepLinkUri ?: return@launch
+            _events.send(LibraryUiEvent.OpenInboxLink(link))
+        }
+    }
+
+    /** Issue #383 — "Mark all read" action in the Inbox top affordance. */
+    fun markAllInboxRead() {
+        viewModelScope.launch { inboxRepo.markAllRead() }
     }
 
     /**

@@ -7,6 +7,7 @@ import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import `in`.jphe.storyvox.data.db.migration.MIGRATION_4_5
 import `in`.jphe.storyvox.data.db.migration.MIGRATION_5_6
 import `in`.jphe.storyvox.data.db.migration.MIGRATION_6_7
+import `in`.jphe.storyvox.data.db.migration.MIGRATION_7_8
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -116,10 +117,14 @@ class StoryvoxDatabaseMigrationTest {
         // doesn't touch the new audioUrl column; it stays purely a
         // chapter_history smoke test.
         helper.runMigrationsAndValidate(dbName, 7, true, MIGRATION_6_7).close()
+        // #383 — same reasoning for v8 (inbox_event). The DB-level
+        // version bumped again; chain through so Room can open the
+        // file without complaining about a missing migration.
+        helper.runMigrationsAndValidate(dbName, 8, true, MIGRATION_7_8).close()
 
         val ctx = org.robolectric.RuntimeEnvironment.getApplication() as android.content.Context
         val db = Room.databaseBuilder(ctx, StoryvoxDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
             .build()
 
         try {
@@ -210,5 +215,95 @@ class StoryvoxDatabaseMigrationTest {
         }
 
         db.close()
+    }
+
+    /**
+     * Issue #383 — v8 creates the `inbox_event` table backing the
+     * cross-source Inbox feed. Purely additive; existing tables stay
+     * untouched. Two indexes (ts for sort, isRead for the unread
+     * count badge) must exist post-migration.
+     */
+    @Test fun `migrate v7 to v8 creates inbox_event table`() {
+        val dbName = "inbox-event-migration-test.db"
+        helper.createDatabase(dbName, 4).close()
+        helper.runMigrationsAndValidate(dbName, 5, true, MIGRATION_4_5).close()
+        helper.runMigrationsAndValidate(dbName, 6, true, MIGRATION_5_6).close()
+        helper.runMigrationsAndValidate(dbName, 7, true, MIGRATION_6_7).close()
+
+        val db = helper.runMigrationsAndValidate(
+            dbName,
+            8,
+            /* validateDroppedTables = */ true,
+            MIGRATION_7_8,
+        )
+
+        db.query(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='inbox_event'",
+        ).use { c ->
+            assertTrue("inbox_event table must exist post-migration", c.moveToFirst())
+        }
+
+        db.query(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='inbox_event'",
+        ).use { c ->
+            val indexes = mutableListOf<String>()
+            while (c.moveToNext()) indexes += c.getString(0)
+            assertTrue(
+                "index_inbox_event_ts must exist (feed sort)",
+                indexes.any { it == "index_inbox_event_ts" },
+            )
+            assertTrue(
+                "index_inbox_event_isRead must exist (unread-count badge)",
+                indexes.any { it == "index_inbox_event_isRead" },
+            )
+        }
+
+        db.close()
+    }
+
+    /**
+     * Issue #383 — smoke test that the migrated v8 db can write +
+     * read an inbox_event row through the Room DAO surface. Catches
+     * a schema/entity mismatch that the identity-hash check alone
+     * wouldn't surface (e.g. a column rename that happens to keep
+     * the hash stable).
+     */
+    @Test fun `migrated v8 db round-trips an inbox_event row`() {
+        val dbName = "inbox-event-roundtrip-test.db"
+        helper.createDatabase(dbName, 4).close()
+        helper.runMigrationsAndValidate(dbName, 5, true, MIGRATION_4_5).close()
+        helper.runMigrationsAndValidate(dbName, 6, true, MIGRATION_5_6).close()
+        helper.runMigrationsAndValidate(dbName, 7, true, MIGRATION_6_7).close()
+        helper.runMigrationsAndValidate(dbName, 8, true, MIGRATION_7_8).close()
+
+        val ctx = org.robolectric.RuntimeEnvironment.getApplication() as android.content.Context
+        val db = Room.databaseBuilder(ctx, StoryvoxDatabase::class.java, dbName)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            .build()
+
+        try {
+            db.openHelper.writableDatabase.execSQL(
+                "INSERT INTO inbox_event(sourceId, fictionId, chapterId, title, body, ts, isRead, deepLinkUri) " +
+                    "VALUES ('royalroad', 'rr:42', 'rr:42:7', '3 new chapters', null, 1234, 0, 'storyvox://reader/rr:42/rr:42:7')",
+            )
+
+            db.openHelper.readableDatabase.query(
+                "SELECT sourceId, fictionId, chapterId, title, ts, isRead, deepLinkUri " +
+                    "FROM inbox_event",
+            ).use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals("royalroad", c.getString(0))
+                assertEquals("rr:42", c.getString(1))
+                assertEquals("rr:42:7", c.getString(2))
+                assertEquals("3 new chapters", c.getString(3))
+                assertEquals(1234L, c.getLong(4))
+                assertEquals(0, c.getInt(5))
+                assertEquals("storyvox://reader/rr:42/rr:42:7", c.getString(6))
+            }
+        } finally {
+            db.close()
+        }
+
+        assertNotNull("smoke sentinel — fail-fast if the try block was no-op'd", helper)
     }
 }

@@ -383,6 +383,14 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun clearProbeOutcome() { _probe.value = null }
+
+    // ── Issue #383 — Inbox per-source mute toggles ─────────────────
+    fun setInboxNotifyRoyalRoad(enabled: Boolean) =
+        viewModelScope.launch { repo.setInboxNotifyRoyalRoad(enabled) }
+    fun setInboxNotifyKvmr(enabled: Boolean) =
+        viewModelScope.launch { repo.setInboxNotifyKvmr(enabled) }
+    fun setInboxNotifyWikipedia(enabled: Boolean) =
+        viewModelScope.launch { repo.setInboxNotifyWikipedia(enabled) }
 }
 
 /** Map the feature-layer enum to the :core-llm enum. The two are

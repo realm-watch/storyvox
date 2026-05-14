@@ -331,6 +331,16 @@ private object Keys {
      *  before listening, or listen first and only later open the
      *  dialog. */
     val V0500_CONFETTI_SHOWN = booleanPreferencesKey("pref_v0500_confetti_shown")
+
+    // ── Inbox per-source mute toggles (issue #383) ─────────────────
+    // Added at the END of Keys to minimize merge conflicts with the
+    // other agents touching this file (Vertex SA, plugin seam).
+    // Defaults are ON across the board — the Inbox is opt-out
+    // per-source; flipping a toggle OFF stops the backend's update
+    // emitter from writing to the inbox_event table.
+    val INBOX_NOTIFY_ROYALROAD = booleanPreferencesKey("pref_inbox_notify_royalroad")
+    val INBOX_NOTIFY_KVMR = booleanPreferencesKey("pref_inbox_notify_kvmr")
+    val INBOX_NOTIFY_WIKIPEDIA = booleanPreferencesKey("pref_inbox_notify_wikipedia")
 }
 
 /** Issue #195 — flat string codec for `Map<voiceId, Float>` overrides.
@@ -614,6 +624,12 @@ class SettingsRepositoryUiImpl(
                     versionName = it.versionName,
                 )
             },
+            // Issue #383 — Inbox per-source notification toggles.
+            // Default ON across the board on fresh installs; user opts
+            // out from Settings → Library & Sync → Inbox notifications.
+            inboxNotifyRoyalRoad = prefs[Keys.INBOX_NOTIFY_ROYALROAD] ?: true,
+            inboxNotifyKvmr = prefs[Keys.INBOX_NOTIFY_KVMR] ?: true,
+            inboxNotifyWikipedia = prefs[Keys.INBOX_NOTIFY_WIKIPEDIA] ?: true,
         )
     }
 
@@ -1382,6 +1398,19 @@ class SettingsRepositoryUiImpl(
 
     override suspend fun markMilestoneConfettiShown() {
         store.edit { it[Keys.V0500_CONFETTI_SHOWN] = true }
+    }
+
+    // ── Issue #383 — Inbox per-source mute toggles ─────────────────
+    // Added at the END of the class body so the diff stays away from
+    // other agents touching this file (Vertex SA, plugin seam).
+    override suspend fun setInboxNotifyRoyalRoad(enabled: Boolean) {
+        store.edit { it[Keys.INBOX_NOTIFY_ROYALROAD] = enabled }
+    }
+    override suspend fun setInboxNotifyKvmr(enabled: Boolean) {
+        store.edit { it[Keys.INBOX_NOTIFY_KVMR] = enabled }
+    }
+    override suspend fun setInboxNotifyWikipedia(enabled: Boolean) {
+        store.edit { it[Keys.INBOX_NOTIFY_WIKIPEDIA] = enabled }
     }
 }
 
