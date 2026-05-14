@@ -859,6 +859,27 @@ data class UiSettings(
      *  not what a fresh-install user expects in the picker until they
      *  go looking for it. Same opt-in posture as Wikipedia. */
     val sourcePlosEnabled: Boolean = false,
+    /** Discord backend (#403). Default OFF on fresh installs — bot-token
+     *  onboarding is high-friction and Discord is a private workspace,
+     *  not a public catalog. Users flip this on after creating a Discord
+     *  application + inviting their bot to the target server. */
+    val sourceDiscordEnabled: Boolean = false,
+    /** True when a Discord bot token has been stored. The token itself
+     *  is never surfaced to the UI — only this boolean. */
+    val discordTokenConfigured: Boolean = false,
+    /** Selected Discord guild (server) id. Empty until the user picks
+     *  one from the populated server picker (which only appears after
+     *  the bot token is configured and the `users/@me/guilds` lookup
+     *  succeeds). */
+    val discordServerId: String = "",
+    /** Human-readable Discord server name, captured at picker time so
+     *  empty-state copy can name the server without an extra
+     *  `users/@me/guilds` round-trip. */
+    val discordServerName: String = "",
+    /** Issue #403 — same-author coalesce window in minutes. Within
+     *  this window, consecutive messages from the same author collapse
+     *  into one chapter. Default 5 min; slider range 1-30. */
+    val discordCoalesceMinutes: Int = 5,
     /**
      * Plugin-seam Phase 1 (#384) — per-plugin on/off keyed by stable
      * plugin id ("kvmr", "royalroad", "notion", ...). Replaces the
@@ -1361,6 +1382,30 @@ interface SettingsRepositoryUi {
      *  Pass null or empty to clear. Stored encrypted alongside the
      *  Outline / palace tokens in `storyvox.secrets`. */
     suspend fun setNotionApiToken(token: String?)
+
+    /** Issue #403 — Discord backend on/off. Default OFF on fresh
+     *  installs — bot-token onboarding is high-friction. */
+    suspend fun setSourceDiscordEnabled(enabled: Boolean)
+    /** Issue #403 — persist or clear the Discord bot token. Pass
+     *  null or empty to clear. Stored encrypted under
+     *  `pref_source_discord_token` in `storyvox.secrets`. */
+    suspend fun setDiscordApiToken(token: String?)
+    /** Issue #403 — persist the selected Discord server id +
+     *  human-readable name. Both captured at the moment the user
+     *  picks the server from the populated picker. Pass empty
+     *  strings to clear the selection. */
+    suspend fun setDiscordServer(serverId: String, serverName: String)
+    /** Issue #403 — same-author message coalesce window (minutes).
+     *  Slider range 1-30; impl clamps. */
+    suspend fun setDiscordCoalesceMinutes(minutes: Int)
+    /**
+     * Issue #403 — fetch the list of guilds (servers) the configured
+     * bot has been invited to. Drives the Settings server picker
+     * dropdown. Returns an empty list when no token is configured or
+     * the call fails — the UI handles both as "nothing to pick from"
+     * (with a hint that the token is missing for the first case).
+     */
+    suspend fun fetchDiscordGuilds(): List<Pair<String, String>>
 
     /** Issue #236 — manage subscribed feed URLs. */
     suspend fun addRssFeed(url: String)

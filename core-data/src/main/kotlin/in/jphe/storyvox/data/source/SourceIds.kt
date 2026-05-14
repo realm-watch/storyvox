@@ -116,4 +116,18 @@ object SourceIds {
      *  not what a fresh-install user expects in the picker until
      *  they go looking for it). */
     const val PLOS: String = "plos"
+    /** Discord (#403) — first chat-platform backend in the storyvox
+     *  roster. Mapping: server → top-level filter, channel → one
+     *  fiction, message → one chapter (optionally coalescing
+     *  consecutive same-author messages inside a configurable
+     *  time window). Auth model is user-supplied bot token
+     *  (PAT-style) — the user creates a Discord application,
+     *  generates a bot token, invites their bot to the target
+     *  server with `READ_MESSAGE_HISTORY` scope, and pastes the
+     *  token in Settings. No bundled default token, no auto-join,
+     *  no selfbot/user-token paths (banned by Discord ToS).
+     *  Default OFF on fresh installs because bot-token onboarding
+     *  is high-friction and Discord is a private workspace, not a
+     *  public catalog. */
+    const val DISCORD: String = "discord"
 }

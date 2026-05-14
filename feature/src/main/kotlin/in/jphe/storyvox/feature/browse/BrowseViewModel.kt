@@ -121,6 +121,15 @@ enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
      *  extraction same approach as Wikipedia. Default OFF — academic
      *  content is opt-in. */
     Plos(SourceIds.PLOS, "PLOS"),
+    /** Discord (#403) — first chat-platform backend. Mapping: server
+     *  → top-level filter, channel → fiction, message → chapter
+     *  (with optional same-author coalescing). Bot-token PAT auth;
+     *  user creates a Discord application, generates a bot token,
+     *  invites their bot to the target server with
+     *  `READ_MESSAGE_HISTORY` scope, and pastes the token in
+     *  Settings. Default OFF on fresh installs — bot-token
+     *  onboarding is high-friction. */
+    Discord(SourceIds.DISCORD, "Discord"),
 }
 
 /** Tabs that are meaningful for [source]. GitHub registry doesn't
@@ -271,6 +280,16 @@ fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseT
     // with free-form q=. NewReleases collapses to Popular (recency
     // is already the order); BestRated has no analogue.
     BrowseSourceKey.Plos -> listOf(
+        BrowseTab.Popular,
+        BrowseTab.Search,
+    )
+    // Discord (#403): channels-as-fictions catalog. Popular = the
+    // configured server's text+announcement channels in position
+    // order; Search hits Discord's /guilds/{id}/messages/search.
+    // NewReleases / BestRated have no analogue — Discord channels
+    // don't expose recency / popularity orderings without N extra
+    // round-trips per channel.
+    BrowseSourceKey.Discord -> listOf(
         BrowseTab.Popular,
         BrowseTab.Search,
     )
@@ -485,6 +504,9 @@ class BrowseViewModel @Inject constructor(
                     if (s.sourceKvmrEnabled) add(BrowseSourceKey.Kvmr)
                     if (s.sourceNotionEnabled) add(BrowseSourceKey.Notion)
                     if (s.sourceHackerNewsEnabled) add(BrowseSourceKey.HackerNews)
+                    if (s.sourceArxivEnabled) add(BrowseSourceKey.Arxiv)
+                    if (s.sourcePlosEnabled) add(BrowseSourceKey.Plos)
+                    if (s.sourceDiscordEnabled) add(BrowseSourceKey.Discord)
                 }
             }
             .distinctUntilChanged()
@@ -787,6 +809,15 @@ class BrowseViewModel @Inject constructor(
                 _githubFilter.value = GitHubSearchFilter()
                 _palaceFilter.value = MemPalaceFilter()
             }
+            BrowseSourceKey.Discord -> {
+                // Discord (#403) — channels-as-fictions; the server-id
+                // configured in Settings IS the filter scope. No
+                // per-source filter sheet in v1. Same clear-siblings
+                // shape as the other catalog-driven sources.
+                _filter.value = BrowseFilter()
+                _githubFilter.value = GitHubSearchFilter()
+                _palaceFilter.value = MemPalaceFilter()
+            }
         }
     }
 
@@ -1042,6 +1073,14 @@ private fun resolveSource(
     }
     // PLOS (#380): recent-PLOS-ONE landing + free-form Solr search.
     BrowseSourceKey.Plos -> when (tab) {
+        BrowseTab.Popular -> BrowseSource.Popular
+        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
+        else -> null
+    }
+    // Discord (#403): channels-as-fictions catalog + guild-scoped
+    // free-text search. Blank-search-with-blank-filter stays null so
+    // the screen renders the SearchHint empty state.
+    BrowseSourceKey.Discord -> when (tab) {
         BrowseTab.Popular -> BrowseSource.Popular
         BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
         else -> null

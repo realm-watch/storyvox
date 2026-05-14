@@ -185,6 +185,14 @@ object AppBindings {
     @Provides @Singleton
     fun provideNotionConfig(impl: `in`.jphe.storyvox.data.NotionConfigImpl): `in`.jphe.storyvox.source.notion.config.NotionConfig = impl
 
+    /** Bridges source-discord DiscordConfig (#403) to the app-side
+     *  DataStore + EncryptedSharedPreferences impl. Same shape as
+     *  Notion / Outline — server id + coalesce window in plaintext,
+     *  bot token encrypted under `pref_source_discord_token` in the
+     *  shared `storyvox.secrets` store. */
+    @Provides @Singleton
+    fun provideDiscordConfig(impl: `in`.jphe.storyvox.data.DiscordConfigImpl): `in`.jphe.storyvox.source.discord.config.DiscordConfig = impl
+
     /**
      * Same singleton instance as [provideSettingsRepositoryUi], exposed under
      * the [PlaybackBufferConfig] contract so `core-playback`'s [EnginePlayer]

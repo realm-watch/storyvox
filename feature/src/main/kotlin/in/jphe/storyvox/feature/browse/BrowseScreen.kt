@@ -233,6 +233,11 @@ fun BrowseScreen(
                 // #380 — PLOS has no filter sheet in v1; the journal /
                 // subject picker is a v2 surface.
                 BrowseSourceKey.Plos -> false
+                // #403 — Discord has no filter sheet in v1; the
+                // configured server (set in Settings → Library & Sync
+                // → Discord) IS the filter scope. A per-channel filter
+                // sheet is a follow-up.
+                BrowseSourceKey.Discord -> false
             }
             if (filterableSource) {
                 FilterButton(
@@ -258,6 +263,7 @@ fun BrowseScreen(
                         BrowseSourceKey.HackerNews -> 0
                         BrowseSourceKey.Arxiv -> 0
                         BrowseSourceKey.Plos -> 0
+                        BrowseSourceKey.Discord -> 0
                     },
                     onClick = { showFilterSheet = true },
                 )
@@ -548,6 +554,10 @@ fun BrowseScreen(
             BrowseSourceKey.Arxiv -> { showFilterSheet = false }
             // #380 — PLOS has no filter sheet in v1.
             BrowseSourceKey.Plos -> { showFilterSheet = false }
+            // #403 — Discord has no filter sheet in v1; the configured
+            // server is the filter scope (set in Settings → Library &
+            // Sync → Discord).
+            BrowseSourceKey.Discord -> { showFilterSheet = false }
         }
     }
 }
@@ -644,6 +654,7 @@ private fun searchHintForSource(sourceKey: BrowseSourceKey): String = when (sour
     BrowseSourceKey.HackerNews -> "Search Hacker News stories (Algolia-backed full-text)"
     BrowseSourceKey.Arxiv -> "Search arXiv — open-access academic papers"
     BrowseSourceKey.Plos -> "Search PLOS — open-access peer-reviewed science"
+    BrowseSourceKey.Discord -> "Search messages in your selected Discord server"
 }
 
 private val BrowseTab.label: String

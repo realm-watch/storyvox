@@ -203,6 +203,30 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repo.setNotionDatabaseId(id) }
     fun setNotionApiToken(token: String?) =
         viewModelScope.launch { repo.setNotionApiToken(token) }
+    /** Issue #403 — Discord backend on/off + config. */
+    fun setSourceDiscordEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setSourceDiscordEnabled(enabled) }
+    fun setDiscordApiToken(token: String?) =
+        viewModelScope.launch { repo.setDiscordApiToken(token) }
+    fun setDiscordServer(serverId: String, serverName: String) =
+        viewModelScope.launch { repo.setDiscordServer(serverId, serverName) }
+    fun setDiscordCoalesceMinutes(minutes: Int) =
+        viewModelScope.launch { repo.setDiscordCoalesceMinutes(minutes) }
+
+    /** Hot stream of guilds the configured bot has been invited to.
+     *  Refreshed manually via [refreshDiscordGuilds]; the UI calls
+     *  this when the Discord card opens and after a token paste so a
+     *  fresh-installed bot's invite list lands without an app
+     *  restart. Empty list = "no token / fetch failed / nothing
+     *  joined yet". */
+    private val _discordGuilds = kotlinx.coroutines.flow.MutableStateFlow<List<Pair<String, String>>>(emptyList())
+    val discordGuilds: kotlinx.coroutines.flow.StateFlow<List<Pair<String, String>>> = _discordGuilds.asStateFlow()
+
+    fun refreshDiscordGuilds() {
+        viewModelScope.launch {
+            _discordGuilds.value = repo.fetchDiscordGuilds()
+        }
+    }
     fun setOutlineHost(host: String) = viewModelScope.launch { repo.setOutlineHost(host) }
     fun setOutlineApiKey(apiKey: String) = viewModelScope.launch { repo.setOutlineApiKey(apiKey) }
     fun clearOutlineConfig() = viewModelScope.launch { repo.clearOutlineConfig() }
