@@ -78,6 +78,11 @@ open class AnthropicTeamsProvider @Inject constructor(
      *  tool-use shape applies. */
     override val supportsTools: Boolean = true
 
+    /** Issue #215 — same Messages API as Claude direct, so image
+     *  content blocks serialize the same way. The Teams bearer auth
+     *  is the only thing that differs from [ClaudeApiProvider]. */
+    override val supportsImages: Boolean = true
+
     /** Override hook for tests — Messages API endpoint. */
     protected open val endpointUrl: String = ENDPOINT
 
@@ -93,16 +98,37 @@ open class AnthropicTeamsProvider @Inject constructor(
         val cfg = configFlow.first()
         val resolvedModel = (model ?: cfg.claudeModel).resolveAnthropic()
 
-        val body = AnthropicRequest(
-            model = resolvedModel,
-            maxTokens = MAX_TOKENS,
-            messages = messages.map {
-                AnthropicMessage(it.role.name, it.content)
-            },
-            system = systemPrompt,
-            stream = true,
-        )
-        val payload = json.encodeToString(body)
+        // Issue #215 — image-bearing messages serialize to the typed-
+        // block content array; text-only chats keep the lighter
+        // string-content [AnthropicRequest] shape.
+        val payload: String = if (messages.any { it.parts != null }) {
+            val imageBody = AnthropicImageRequest(
+                model = resolvedModel,
+                maxTokens = MAX_TOKENS,
+                messages = messages.map { msg ->
+                    val content = ContentBlocks.anthropic(msg)
+                        ?: listOf(buildJsonObject {
+                            put("type", "text")
+                            put("text", msg.content)
+                        })
+                    AnthropicToolMessage(role = msg.role.name, content = content)
+                },
+                system = systemPrompt,
+                stream = true,
+            )
+            json.encodeToString(imageBody)
+        } else {
+            val body = AnthropicRequest(
+                model = resolvedModel,
+                maxTokens = MAX_TOKENS,
+                messages = messages.map {
+                    AnthropicMessage(it.role.name, it.content)
+                },
+                system = systemPrompt,
+                stream = true,
+            )
+            json.encodeToString(body)
+        }
 
         // Refresh proactively if the persisted expires_at is close.
         ensureFreshToken()
@@ -323,15 +349,17 @@ open class AnthropicTeamsProvider @Inject constructor(
                     inputSchema = spec.toAnthropicInputSchema(),
                 )
             }
+            // Issue #215 — when a message carries image parts the
+            // content array picks them up via [ContentBlocks.anthropic];
+            // otherwise we wrap the plain text in a single text block.
             val conversation = ArrayList<AnthropicToolMessage>(
                 messages.map { msg ->
-                    AnthropicToolMessage(
-                        role = msg.role.name,
-                        content = listOf(buildJsonObject {
+                    val content = ContentBlocks.anthropic(msg)
+                        ?: listOf(buildJsonObject {
                             put("type", "text")
                             put("text", msg.content)
-                        }),
-                    )
+                        })
+                    AnthropicToolMessage(role = msg.role.name, content = content)
                 },
             )
 

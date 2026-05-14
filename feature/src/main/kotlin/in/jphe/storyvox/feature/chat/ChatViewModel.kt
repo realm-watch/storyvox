@@ -18,6 +18,7 @@ import `in`.jphe.storyvox.feature.chat.memory.FictionMemoryExtractor
 import `in`.jphe.storyvox.feature.chat.tools.ChatToolHandlers
 import `in`.jphe.storyvox.llm.FeatureKind
 import `in`.jphe.storyvox.llm.LlmConfig
+import `in`.jphe.storyvox.llm.LlmContentBlock
 import `in`.jphe.storyvox.llm.LlmError
 import `in`.jphe.storyvox.llm.LlmMessage
 import `in`.jphe.storyvox.llm.LlmRepository
@@ -54,9 +55,28 @@ import kotlinx.coroutines.launch
 data class ChatTurn(
     val role: Role,
     val text: String,
+    /** Issue #215 — non-null for user turns sent with an inline image.
+     *  Carries the original content:// URI so the bubble can render
+     *  a thumbnail via Coil. Ephemeral — only set on freshly-sent
+     *  turns; on rehydration from Room (where image bytes don't
+     *  survive) this stays null. */
+    val imageUri: String? = null,
 ) {
     enum class Role { User, Assistant }
 }
+
+/** Issue #215 — image queued by the composer for the next send.
+ *  Holds both the source URI (for thumbnail rendering) and the
+ *  base64-encoded JPEG (for the LLM request). After send, both are
+ *  cleared. */
+@Immutable
+data class ImageAttachment(
+    val uri: String,
+    val base64: String,
+    val mimeType: String,
+    val widthPx: Int,
+    val heightPx: Int,
+)
 
 /** Top-level UI state. Fields are independently observable so a token
  *  arriving doesn't reflow the whole list (Compose only diffs the
@@ -98,6 +118,20 @@ data class ChatUiState(
      *  When false the model's catalog stays empty; the chat behaves
      *  identically to pre-#216. */
     val actionsAvailable: Boolean = false,
+    /** Issue #215 — true iff the active provider accepts inline
+     *  image content. The chat composer hides the attach button when
+     *  false (and the [pendingImage] state stays null too). */
+    val imagesSupported: Boolean = false,
+    /** Issue #215 — image queued by the composer for the next send,
+     *  or null when no image is attached. Cleared on send (success
+     *  or failure) and on explicit detach via [clearPendingImage]. */
+    val pendingImage: ImageAttachment? = null,
+    /** Issue #215 — set when the user attached an image to a send
+     *  that landed on a provider that doesn't accept images. The
+     *  text portion of the message still went through; the image was
+     *  dropped. UI surfaces this as a one-shot info banner that
+     *  dismisses on the next send. */
+    val imageDroppedWarning: Boolean = false,
 )
 
 /** Issue #217 — debug overlay metric for cross-fiction memory. The
@@ -120,11 +154,13 @@ sealed class ChatNavEvent {
     data object OpenVoiceLibrary : ChatNavEvent()
 }
 
-/** Internal helper for combine — pairs together the two provider-
+/** Internal helper for combine — pairs together the three provider-
  *  dependent booleans so the 5-arg combine still fits. */
 private data class ProviderInfo(
     val noProvider: Boolean,
     val actionsAvailable: Boolean,
+    /** Issue #215 — image support gates the composer's attach button. */
+    val imagesSupported: Boolean,
 )
 
 /** UI-side classification of [LlmError] so the screen can pick the
@@ -250,6 +286,25 @@ class ChatViewModel @Inject constructor(
      *  events arrive on the chat-with-tools flow. */
     private val _toolCalls = MutableStateFlow<List<ToolCallEvent>>(emptyList())
 
+    /** Issue #215 — image queued by the composer for the next send.
+     *  See [attachImage] / [clearPendingImage]. Cleared automatically
+     *  on send so the next message doesn't accidentally re-attach. */
+    private val _pendingImage = MutableStateFlow<ImageAttachment?>(null)
+
+    /** Issue #215 — one-shot warning banner when a send dropped its
+     *  attached image because the active provider doesn't support
+     *  images. Cleared on the next send or via [dismissError]. */
+    private val _imageDropped = MutableStateFlow(false)
+
+    /** Issue #215 — map of `sentText -> imageUri` for the user turns
+     *  this session sent with an attached image. Populated on send,
+     *  read at observation time to overlay onto the matching
+     *  [ChatTurn]. Ephemeral — process restart loses the map and the
+     *  turn renders text-only (the bytes don't survive either; this
+     *  matches the v1 "single-image-per-message, single-session"
+     *  scope). */
+    private val _imageUriByText = MutableStateFlow<Map<String, String>>(emptyMap())
+
     /** Issue #216 — one-shot navigation events fired by the
      *  open_voice_library tool handler. ChatScreen collects this
      *  with `lifecycle.repeatOnLifecycle(...)` and navigates on each
@@ -270,8 +325,20 @@ class ChatViewModel @Inject constructor(
      *  + cross-fiction memory + tool-call timeline + actions
      *  availability. */
     val uiState: StateFlow<ChatUiState> = run {
-        val base = combine(
+        val turnsWithImages = combine(
             sessionRepo.observeMessages(sessionId).map { msgs -> msgs.map { it.toTurn() } },
+            _imageUriByText,
+        ) { turns, imageMap ->
+            if (imageMap.isEmpty()) turns
+            else turns.map { turn ->
+                if (turn.role == ChatTurn.Role.User) {
+                    val uri = imageMap[turn.text]
+                    if (uri != null) turn.copy(imageUri = uri) else turn
+                } else turn
+            }
+        }
+        val base = combine(
+            turnsWithImages,
             _streaming,
             _error,
             fictionRepo.fictionById(fictionId).map { it?.title },
@@ -280,6 +347,9 @@ class ChatViewModel @Inject constructor(
                     noProvider = cfg.provider == null,
                     actionsAvailable = cfg.aiActionsEnabled &&
                         cfg.provider?.let { llmRepo?.supportsTools(it) } == true,
+                    imagesSupported = cfg.provider?.let {
+                        llmRepo?.supportsImages(it)
+                    } == true,
                 )
             },
         ) { turns, streaming, error, title, info ->
@@ -290,13 +360,17 @@ class ChatViewModel @Inject constructor(
                 noProvider = info.noProvider,
                 error = error,
                 actionsAvailable = info.actionsAvailable,
+                imagesSupported = info.imagesSupported,
             )
         }
         val withSecondary = combine(base, _readingText, _memoryDebug) { state, reading, memoryDebug ->
             state.copy(readingText = reading, crossFictionMemoryDebug = memoryDebug)
         }
-        combine(withSecondary, _toolCalls) { state, toolCalls ->
+        val withTertiary = combine(withSecondary, _toolCalls) { state, toolCalls ->
             state.copy(toolCalls = toolCalls)
+        }
+        combine(withTertiary, _pendingImage, _imageDropped) { state, image, dropped ->
+            state.copy(pendingImage = image, imageDroppedWarning = dropped)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChatUiState())
     }
 
@@ -328,6 +402,20 @@ class ChatViewModel @Inject constructor(
         playback.stopSpeaking()
     }
 
+    /** Issue #215 — set the composer's queued image. Called by the
+     *  composable after the SAF picker resolves + the bytes are
+     *  resized + encoded. The image stays queued until the user
+     *  sends the next message or removes it via [clearPendingImage]. */
+    fun attachImage(image: ImageAttachment) {
+        _pendingImage.value = image
+    }
+
+    /** Issue #215 — clear the composer's queued image without
+     *  sending. Used by the x affordance on the thumbnail preview. */
+    fun clearPendingImage() {
+        _pendingImage.value = null
+    }
+
     /** Send [text] as a user turn and stream the assistant reply.
      *  Cancels any in-flight stream first — the user-facing input
      *  is supposed to be disabled while streaming, but the cancel
@@ -343,6 +431,17 @@ class ChatViewModel @Inject constructor(
         sendJob?.cancel()
         _error.value = null
         _toolCalls.value = emptyList()
+        // Issue #215 — clear last send's "image dropped" banner so
+        // it doesn't survive into an unrelated turn.
+        _imageDropped.value = false
+
+        // Issue #215 — snapshot the queued image (if any) and clear
+        // the composer state immediately so a slow send doesn't leave
+        // the thumbnail visible while the next message is composed.
+        // We capture the value here so even if the user re-attaches
+        // another image mid-send, this send's payload is stable.
+        val attached = _pendingImage.value
+        _pendingImage.value = null
 
         sendJob = viewModelScope.launch {
             val cfg = configFlow.first()
@@ -355,6 +454,32 @@ class ChatViewModel @Inject constructor(
             }
 
             ensureSession(cfg, provider)
+
+            // Issue #215 — decide whether the provider can take the
+            // attached image. If the repo says "no", drop the image
+            // and surface the warning banner; the text portion still
+            // goes through.
+            //
+            // When [llmRepo] is null (test-injection path) we treat
+            // "unknown" as "allow" — the providers themselves will
+            // silently ignore image parts if their wire format can't
+            // serialize them, so this is safe.
+            val supportsImages = llmRepo?.supportsImages(provider)
+            val providerAcceptsImages = attached != null &&
+                (supportsImages == true || supportsImages == null)
+            val effectiveImage = if (providerAcceptsImages) attached else null
+            if (attached != null && supportsImages == false) {
+                _imageDropped.value = true
+            }
+            // Stash the URI keyed by sent text so the bubble can show
+            // the thumbnail once the user-turn row arrives via
+            // observeMessages. We keep the keys around for the
+            // session's lifetime (process death clears them, which
+            // is fine — image bytes don't persist either).
+            if (effectiveImage != null) {
+                _imageUriByText.value = _imageUriByText.value +
+                    (trimmed to effectiveImage.uri)
+            }
             // Issue #212 — rebuild the system prompt from the live
             // grounding settings before every send. Lets the user
             // flip a toggle and have the next reply use the new
@@ -405,18 +530,41 @@ class ChatViewModel @Inject constructor(
             val buf = StringBuilder()
             _streaming.value = ""
 
+            // Issue #215 — build the multi-modal content blocks the
+            // session repo will attach to the latest user message.
+            // Image first then text mirrors Anthropic's documented
+            // best practice (the model attends to the image while
+            // reading the question).
+            val userParts: List<LlmContentBlock>? = effectiveImage?.let { img ->
+                listOf(
+                    LlmContentBlock.Image(
+                        base64 = img.base64,
+                        mimeType = img.mimeType,
+                    ),
+                    LlmContentBlock.Text(trimmed),
+                )
+            }
+
             if (actionsEnabled) {
-                streamWithTools(trimmed, buf)
+                streamWithTools(trimmed, buf, userParts)
             } else {
-                streamPlainText(trimmed, buf)
+                streamPlainText(trimmed, buf, userParts)
             }
         }
     }
 
     /** Plain-text streaming path — preserved from pre-#216. Used when
-     *  actions are disabled or the provider doesn't support tool use. */
-    private suspend fun streamPlainText(trimmed: String, buf: StringBuilder) {
-        sessionRepo.chat(sessionId, trimmed)
+     *  actions are disabled or the provider doesn't support tool use.
+     *
+     *  Issue #215 — [userParts], when non-null, carries multi-modal
+     *  content blocks attached to the latest user message; passed
+     *  through to the session repo unchanged. */
+    private suspend fun streamPlainText(
+        trimmed: String,
+        buf: StringBuilder,
+        userParts: List<LlmContentBlock>? = null,
+    ) {
+        sessionRepo.chat(sessionId, trimmed, userParts = userParts)
             .catch { e -> _error.value = mapError(e) }
             .onCompletion { cause ->
                 _streaming.value = null
@@ -433,8 +581,15 @@ class ChatViewModel @Inject constructor(
     /** Issue #216 — tool-aware path. Same persistence + memory-extract
      *  contract as [streamPlainText] but consumes [ChatStreamEvent]
      *  emits, routing tool-call events into [_toolCalls] for the UI to
-     *  render alongside the streaming bubble. */
-    private suspend fun streamWithTools(trimmed: String, buf: StringBuilder) {
+     *  render alongside the streaming bubble.
+     *
+     *  Issue #215 — [userParts] threads through the same image
+     *  attachment path as [streamPlainText]. */
+    private suspend fun streamWithTools(
+        trimmed: String,
+        buf: StringBuilder,
+        userParts: List<LlmContentBlock>? = null,
+    ) {
         val handlers = ChatToolHandlers(
             activeFictionId = fictionId,
             shelfRepo = shelfRepo!!,
@@ -446,7 +601,12 @@ class ChatViewModel @Inject constructor(
                 _navEvents.tryEmit(ChatNavEvent.OpenVoiceLibrary)
             },
         )
-        sessionRepo.chatWithTools(sessionId, trimmed, handlers.registry())
+        sessionRepo.chatWithTools(
+            sessionId = sessionId,
+            userMessage = trimmed,
+            tools = handlers.registry(),
+            userParts = userParts,
+        )
             .catch { e -> _error.value = mapError(e) }
             .onCompletion { cause ->
                 _streaming.value = null
@@ -519,6 +679,9 @@ class ChatViewModel @Inject constructor(
 
     /** Dismiss an error banner. Used by the UI's "X" affordance. */
     fun dismissError() { _error.value = null }
+
+    /** Issue #215 — dismiss the "image dropped" info banner. */
+    fun dismissImageDroppedWarning() { _imageDropped.value = false }
 
     /** Cancel an in-flight stream. The repo persists user turns
      *  immediately but only saves the assistant reply on completion

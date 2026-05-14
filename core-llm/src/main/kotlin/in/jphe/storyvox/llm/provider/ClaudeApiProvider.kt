@@ -67,6 +67,13 @@ open class ClaudeApiProvider @Inject constructor(
      *  passed to [chatWithTools]. */
     override val supportsTools: Boolean = true
 
+    /** Issue #215 — Anthropic Messages API supports inline image
+     *  content blocks across the Claude 3+ family (every model we
+     *  ship). The chat layer attaches an image when the composer has
+     *  one queued; we serialize it into a `{type:"image", source:…}`
+     *  block inside the user message's content array. */
+    override val supportsImages: Boolean = true
+
     /** Anthropic Messages endpoint. Open so tests can override to
      *  point at MockWebServer. */
     protected open val endpointUrl: String = ENDPOINT
@@ -81,15 +88,35 @@ open class ClaudeApiProvider @Inject constructor(
             ?: throw LlmError.NotConfigured(ProviderId.Claude)
         val resolvedModel = (model ?: cfg.claudeModel).resolveAnthropic()
 
-        val body = AnthropicRequest(
-            model = resolvedModel,
-            maxTokens = MAX_TOKENS,
-            messages = messages.map {
-                AnthropicMessage(it.role.name, it.content)
-            },
-            system = systemPrompt,
-            stream = true,
-        )
+        // Issue #215 — when any message carries multi-modal parts we
+        // dispatch to the image-request wire shape (content is an
+        // array of typed blocks); otherwise the cheaper string-content
+        // [AnthropicRequest] handles the text-only hot path.
+        val payload: String = if (messages.any { it.parts != null }) {
+            val body = AnthropicImageRequest(
+                model = resolvedModel,
+                maxTokens = MAX_TOKENS,
+                messages = messages.map { msg ->
+                    val content = ContentBlocks.anthropic(msg)
+                        ?: listOf(textBlock(msg.content))
+                    AnthropicToolMessage(role = msg.role.name, content = content)
+                },
+                system = systemPrompt,
+                stream = true,
+            )
+            json.encodeToString(body)
+        } else {
+            val body = AnthropicRequest(
+                model = resolvedModel,
+                maxTokens = MAX_TOKENS,
+                messages = messages.map {
+                    AnthropicMessage(it.role.name, it.content)
+                },
+                system = systemPrompt,
+                stream = true,
+            )
+            json.encodeToString(body)
+        }
 
         val request = Request.Builder()
             .url(endpointUrl)
@@ -97,7 +124,7 @@ open class ClaudeApiProvider @Inject constructor(
             .header("anthropic-version", API_VERSION)
             .header("content-type", "application/json")
             .header("accept", "text/event-stream")
-            .post(json.encodeToString(body).toRequestBody(JSON_MEDIA_TYPE))
+            .post(payload.toRequestBody(JSON_MEDIA_TYPE))
             .build()
 
         val response = try {
@@ -219,12 +246,16 @@ open class ClaudeApiProvider @Inject constructor(
             // Build the seed turns. Each existing LlmMessage carries
             // plain text; wrap it in a single `text` block to match
             // the content-array shape Anthropic requires here.
+            //
+            // Issue #215 — when a message carries [LlmMessage.parts],
+            // serialize those blocks instead of the plain-text content
+            // (the latest user turn typically does, on an image-bearing
+            // send).
             val conversation = ArrayList<AnthropicToolMessage>(
                 messages.map { msg ->
-                    AnthropicToolMessage(
-                        role = msg.role.name,
-                        content = listOf(textBlock(msg.content)),
-                    )
+                    val content = ContentBlocks.anthropic(msg)
+                        ?: listOf(textBlock(msg.content))
+                    AnthropicToolMessage(role = msg.role.name, content = content)
                 },
             )
 

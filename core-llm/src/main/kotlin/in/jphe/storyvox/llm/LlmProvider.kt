@@ -70,6 +70,16 @@ interface LlmProvider {
     val supportsTools: Boolean get() = false
 
     /**
+     * Issue #215 — does this provider's wire format / configured
+     * model accept image content blocks alongside text? v1 enables
+     * this on Anthropic (Claude direct + Teams) and OpenAI (gpt-4o
+     * family). Vertex / Bedrock / Foundry / Ollama leave it false;
+     * the chat layer drops the attached image and surfaces a warning
+     * banner when the user sends an image to an unsupported provider.
+     */
+    val supportsImages: Boolean get() = false
+
+    /**
      * Issue #216 — tool-aware chat. Default impl falls back to
      * [stream] (no tools), wrapping each text emit as a
      * [ChatStreamEvent.TextDelta]. Providers that implement
