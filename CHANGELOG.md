@@ -9,6 +9,11 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.35] — 2026-05-14
+
+### Performance
+- **Cold-launch ~14% faster on low-end Android** (#432, partial fix for #409). Wrapped every `@Inject lateinit var` in `StoryvoxApp` and `MainActivity` in `dagger.Lazy<T>` (except `HiltWorkerFactory` which WorkManager needs eagerly), and punted `workScheduler.ensurePeriodicWorkScheduled()` + `syncCoordinator.initialize()` off the main thread onto a shared `Dispatchers.IO` scope. Measured on Galaxy Tab A7 Lite (Helio P22T, 2.0 GHz Cortex-A53): **6825ms → 5861ms** averaged over 5 cold launches; Choreographer skips dropped from 160 frames → 142 frames. No regression on Z Flip3 (1240ms → 1200ms). The remaining ~5.9s on the tablet is dominated by Compose first-recomposition cost (~2.4s of frame-skip) — needs a Macrobenchmark target to slice further; #409 stays open for that ongoing work.
+
 ## [0.5.34] — 2026-05-14
 
 ### Added
