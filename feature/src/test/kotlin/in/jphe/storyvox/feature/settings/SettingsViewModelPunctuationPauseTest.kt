@@ -214,6 +214,7 @@ class SettingsViewModelPunctuationPauseTest {
         override suspend fun setSourceWikisourceEnabled(enabled: Boolean) = Unit
         override suspend fun setSourceKvmrEnabled(enabled: Boolean) = Unit
         override suspend fun setSourceNotionEnabled(enabled: Boolean) = Unit
+        override suspend fun setSourceHackerNewsEnabled(enabled: Boolean) = Unit
         override suspend fun setSourcePluginEnabled(id: String, enabled: Boolean) = Unit
         override suspend fun setNotionDatabaseId(id: String) = Unit
         override suspend fun setNotionApiToken(token: String?) = Unit

@@ -843,6 +843,11 @@ data class UiSettings(
      *  the source visible in Browse so the empty-state can teach the
      *  user about the one-paste configuration step. */
     val sourceNotionEnabled: Boolean = true,
+    /** Hacker News backend (#379). Default OFF — tech-news / discussion
+     *  is a distinct interest from fiction backends, so the picker
+     *  shouldn't surface it on every fresh install. Users opt in from
+     *  Settings → Library & Sync. */
+    val sourceHackerNewsEnabled: Boolean = false,
     /**
      * Plugin-seam Phase 1 (#384) — per-plugin on/off keyed by stable
      * plugin id ("kvmr", "royalroad", "notion", ...). Replaces the
@@ -1329,6 +1334,8 @@ interface SettingsRepositoryUi {
 
     /** Issue #233 — Notion fiction backend on/off + config. */
     suspend fun setSourceNotionEnabled(enabled: Boolean)
+    /** Issue #379 — Hacker News backend on/off. */
+    suspend fun setSourceHackerNewsEnabled(enabled: Boolean)
     /** Issue #233 — set the Notion database id the source queries.
      *  Both hyphenated UUID and compact 32-hex forms accepted; the
      *  impl normalizes whitespace. Empty falls back to the baked-in
