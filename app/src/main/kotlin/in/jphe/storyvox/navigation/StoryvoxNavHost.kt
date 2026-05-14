@@ -36,8 +36,15 @@ import `in`.jphe.storyvox.feature.fiction.FictionDetailScreen
 import `in`.jphe.storyvox.feature.follows.FollowsScreen
 import `in`.jphe.storyvox.feature.library.LibraryScreen
 import `in`.jphe.storyvox.feature.reader.HybridReaderScreen
+import `in`.jphe.storyvox.feature.settings.AboutSettingsScreen
+import `in`.jphe.storyvox.feature.settings.AccountSettingsScreen
+import `in`.jphe.storyvox.feature.settings.AiSettingsScreen
+import `in`.jphe.storyvox.feature.settings.MemoryPalaceSettingsScreen
+import `in`.jphe.storyvox.feature.settings.PerformanceSettingsScreen
+import `in`.jphe.storyvox.feature.settings.ReadingSettingsScreen
 import `in`.jphe.storyvox.feature.settings.SettingsHubScreen
 import `in`.jphe.storyvox.feature.settings.SettingsScreen
+import `in`.jphe.storyvox.feature.settings.VoiceAndPlaybackSettingsScreen
 import `in`.jphe.storyvox.feature.settings.pronunciation.PronunciationDictScreen
 import `in`.jphe.storyvox.feature.voicelibrary.VoiceLibraryScreen
 import `in`.jphe.storyvox.ui.component.BottomTabBar
@@ -56,9 +63,9 @@ object StoryvoxRoutes {
     /** Issue #440 — Settings hub (section index). The gear-icon
      *  destination as of v0.5.38; previously dumped users into the
      *  flat-scroll [SETTINGS] page with no top-of-page map. Each row
-     *  on the hub routes into a dedicated subscreen or back into
-     *  [SETTINGS] (the legacy long page) for sections that haven't
-     *  been broken out yet. */
+     *  on the hub routes into a dedicated subscreen; the legacy long
+     *  [SETTINGS] page is preserved as an "All settings" escape hatch
+     *  for power users who want everything on one searchable page. */
     const val SETTINGS_HUB = "settings/hub"
     const val SETTINGS = "settings"
     const val SETTINGS_PRONUNCIATION = "settings/pronunciation"
@@ -75,6 +82,29 @@ object StoryvoxRoutes {
      *  driven plugin manager: brass-edged card grid with toggle +
      *  capability chips + tap-for-details. */
     const val SETTINGS_PLUGINS = "settings/plugins"
+    // ─── Follow-up to #440 — dedicated subscreen routes for the seven
+    // hub cards that previously fell through to the legacy long-scroll
+    // [SETTINGS] page. Grouped together so a rebase against a parallel
+    // nav-restructure branch is mechanical. ───────────────────────────
+    /** Settings → Voice & Playback. Voice library link, Speed, Pitch,
+     *  punctuation cadence, HQ pitch interpolation, Pronunciation link. */
+    const val SETTINGS_VOICE_PLAYBACK = "settings/voice-playback"
+    /** Settings → Reading. Theme override, sleep-shake. */
+    const val SETTINGS_READING = "settings/reading"
+    /** Settings → Performance. Catch-up Pause, buffer slider, expert
+     *  expander with warm-up, voice determinism, parallel synth. */
+    const val SETTINGS_PERFORMANCE = "settings/performance"
+    /** Settings → AI. Provider chip strip, per-provider config rows,
+     *  test connection, grounding switches, memory toggle, actions
+     *  toggle, Sessions link. */
+    const val SETTINGS_AI = "settings/ai"
+    /** Settings → Account. Royal Road sign-in, GitHub OAuth + scope. */
+    const val SETTINGS_ACCOUNT = "settings/account"
+    /** Settings → Memory Palace. Daemon host, API key, test probe. */
+    const val SETTINGS_MEMORY_PALACE = "settings/memory-palace"
+    /** Settings → About. Version + sigil name + build hash + the
+     *  v0.5.00 milestone pill. */
+    const val SETTINGS_ABOUT = "settings/about"
     const val AUTH_WEBVIEW = "auth/webview"
     /** Issue #91 — GitHub Device Flow sign-in modal. */
     const val GITHUB_SIGN_IN = "auth/github/signin"
@@ -515,6 +545,13 @@ private fun StoryvoxNavHostContent(
                     onOpenAiSessions = { navController.navigate(StoryvoxRoutes.SETTINGS_AI_SESSIONS) },
                     onOpenPronunciationDict = { navController.navigate(StoryvoxRoutes.SETTINGS_PRONUNCIATION) },
                     onOpenDebug = { navController.navigate(StoryvoxRoutes.SETTINGS_DEBUG) },
+                    onOpenVoicePlayback = { navController.navigate(StoryvoxRoutes.SETTINGS_VOICE_PLAYBACK) },
+                    onOpenReading = { navController.navigate(StoryvoxRoutes.SETTINGS_READING) },
+                    onOpenPerformance = { navController.navigate(StoryvoxRoutes.SETTINGS_PERFORMANCE) },
+                    onOpenAi = { navController.navigate(StoryvoxRoutes.SETTINGS_AI) },
+                    onOpenAccount = { navController.navigate(StoryvoxRoutes.SETTINGS_ACCOUNT) },
+                    onOpenMemoryPalace = { navController.navigate(StoryvoxRoutes.SETTINGS_MEMORY_PALACE) },
+                    onOpenAbout = { navController.navigate(StoryvoxRoutes.SETTINGS_ABOUT) },
                 )
             }
 
@@ -594,6 +631,110 @@ private fun StoryvoxNavHostContent(
                 popExitTransition = popExit,
             ) {
                 PronunciationDictScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            // ─── Follow-up to #440 — dedicated subscreens for the seven
+            // hub cards that previously fell through to the legacy long-
+            // scroll [SETTINGS] page. Each uses push enter/exit because
+            // it's reached from the hub via drill-down, not as a peer
+            // home tab. ───────────────────────────────────────────────
+            composable(
+                StoryvoxRoutes.SETTINGS_VOICE_PLAYBACK,
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+            ) {
+                VoiceAndPlaybackSettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenVoiceLibrary = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
+                    onOpenPronunciationDict = { navController.navigate(StoryvoxRoutes.SETTINGS_PRONUNCIATION) },
+                )
+            }
+            composable(
+                StoryvoxRoutes.SETTINGS_READING,
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+            ) {
+                ReadingSettingsScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
+                StoryvoxRoutes.SETTINGS_PERFORMANCE,
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+            ) {
+                PerformanceSettingsScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
+                StoryvoxRoutes.SETTINGS_AI,
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+            ) {
+                AiSettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenAiSessions = { navController.navigate(StoryvoxRoutes.SETTINGS_AI_SESSIONS) },
+                    onOpenTeamsSignIn = { navController.navigate(StoryvoxRoutes.TEAMS_SIGN_IN) },
+                )
+            }
+            composable(
+                StoryvoxRoutes.SETTINGS_ACCOUNT,
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+            ) {
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                AccountSettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
+                    onOpenGitHubSignIn = { navController.navigate(StoryvoxRoutes.GITHUB_SIGN_IN) },
+                    onOpenGitHubRevoke = {
+                        // Mirrors the SETTINGS legacy page's revoke handler:
+                        // opens github.com/settings/applications in the
+                        // system browser so users can tear down storyvox's
+                        // authorization remotely. Local sign-out alone
+                        // leaves it recorded on GitHub's side. Issue #91.
+                        runCatching {
+                            ctx.startActivity(
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse(GitHubAuthConfig.SETTINGS_APPLICATIONS_URL),
+                                ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) },
+                            )
+                        }
+                    },
+                )
+            }
+            composable(
+                StoryvoxRoutes.SETTINGS_MEMORY_PALACE,
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+            ) {
+                MemoryPalaceSettingsScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
+                StoryvoxRoutes.SETTINGS_ABOUT,
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+            ) {
+                AboutSettingsScreen(
                     onBack = { navController.popBackStack() },
                 )
             }
