@@ -30,6 +30,15 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
 
+    // Plugin-seam Phase 1 (#384) — adds the @SourcePlugin → @IntoSet
+    // SourcePluginDescriptor Hilt module emitted by :core-plugin-ksp.
+    // The legacy @IntoMap binding in di/KvmrModule.kt is intentionally
+    // kept alongside the new descriptor (Phase 1 invariant: registry
+    // is additive over the existing wiring). Phase 2 deletes the
+    // @IntoMap binding once the registry-driven repository routing
+    // lands.
+    ksp(project(":core-plugin-ksp"))
+
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
 }

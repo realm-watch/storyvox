@@ -79,6 +79,10 @@ private val Context.settingsDataStore: DataStore<Preferences> by preferencesData
         listOf(
             PunctuationPauseEnumToMultiplierMigration,
             FirstTimeDefaultVoiceMigration,
+            // Plugin-seam Phase 1 (#384) — seed the per-plugin JSON map
+            // from the legacy per-source keys on first read. Idempotent
+            // once the JSON key exists.
+            SourcePluginsMapMigration,
         )
     },
 )
@@ -158,6 +162,101 @@ internal val FirstTimeDefaultVoiceMigration: DataMigration<Preferences> =
 
         override suspend fun cleanUp() = Unit
     }
+
+/**
+ * Plugin-seam Phase 1 (#384) — one-shot migration from the per-source
+ * `pref_source_xxx_enabled` boolean keys to the JSON map under
+ * `pref_source_plugins_enabled_v1`.
+ *
+ * Runs once when the JSON key is absent. Reads every existing
+ * `SOURCE_*_ENABLED` boolean and emits the equivalent
+ * `{"royalroad": true, "kvmr": true, …}` blob. The per-source
+ * booleans are *kept* (not deleted) for Phase 1 — the existing
+ * Settings screen + BrowseViewModel still read them, so deleting
+ * would regress those surfaces. Phase 2 deletes them once the
+ * registry-driven UI lands and the per-source `setSourceXxxEnabled`
+ * overrides also write into the map (the impl below handles that
+ * dual-write).
+ *
+ * Idempotent: once the JSON key exists, `shouldMigrate` returns false
+ * even if the per-source values change later. Subsequent
+ * `setSourceXxxEnabled` calls update both the legacy key and the map
+ * via the dual-write in [SettingsRepositoryUiImpl].
+ *
+ * Defaults for a plugin that has no persisted per-source key (e.g.
+ * a brand-new install that goes straight through here) come from the
+ * `SOURCE_DEFAULTS` table below — matches the fall-through defaults
+ * used in `UiSettings` assembly. Keeping the defaults in one place
+ * means a fresh install and a Phase-1 migration land on the same
+ * starting state.
+ */
+internal val SourcePluginsMapMigration: DataMigration<Preferences> =
+    object : DataMigration<Preferences> {
+        private val jsonKey = stringPreferencesKey("pref_source_plugins_enabled_v1")
+
+        override suspend fun shouldMigrate(currentData: Preferences): Boolean =
+            currentData[jsonKey] == null
+
+        override suspend fun migrate(currentData: Preferences): Preferences {
+            val mutable = currentData.toMutablePreferences()
+            val map = LinkedHashMap<String, Boolean>()
+            for ((id, legacy) in LegacySourceKeys.ALL) {
+                map[id] = currentData[legacy.key] ?: legacy.defaultValue
+            }
+            mutable[jsonKey] = `in`.jphe.storyvox.data.source.plugin.encodeSourcePluginsEnabledJson(map)
+            return mutable.toPreferences()
+        }
+
+        override suspend fun cleanUp() = Unit
+    }
+
+/**
+ * Plugin-seam Phase 1 (#384) — single-source-of-truth table mapping
+ * each registered plugin id to (legacy `SOURCE_*_ENABLED` key, default
+ * value). Used by the [SourcePluginsMapMigration] above and by the
+ * dual-write in [SettingsRepositoryUiImpl.setSourcePluginEnabled].
+ *
+ * When a backend migrates to a registry-only world (Phase 2), its
+ * entry comes off this table and its row in `UiSettings` collapses.
+ * Until then, every legacy `sourceXxxEnabled` field corresponds to
+ * exactly one row here.
+ */
+internal object LegacySourceKeys {
+    data class Spec(
+        val key: androidx.datastore.preferences.core.Preferences.Key<Boolean>,
+        val defaultValue: Boolean,
+    )
+
+    // Keep in sync with the per-source defaults inlined in
+    // SettingsRepositoryUiImpl.settings (the `prefs[...] ?: <bool>`
+    // expressions). Drift here is a fresh-install behavior bug.
+    val ALL: Map<String, Spec> = linkedMapOf(
+        `in`.jphe.storyvox.data.source.SourceIds.ROYAL_ROAD to
+            Spec(booleanPreferencesKey("pref_source_royalroad_enabled"), defaultValue = true),
+        `in`.jphe.storyvox.data.source.SourceIds.GITHUB to
+            Spec(booleanPreferencesKey("pref_source_github_enabled"), defaultValue = false),
+        `in`.jphe.storyvox.data.source.SourceIds.MEMPALACE to
+            Spec(booleanPreferencesKey("pref_source_mempalace_enabled"), defaultValue = false),
+        `in`.jphe.storyvox.data.source.SourceIds.RSS to
+            Spec(booleanPreferencesKey("pref_source_rss_enabled"), defaultValue = true),
+        `in`.jphe.storyvox.data.source.SourceIds.EPUB to
+            Spec(booleanPreferencesKey("pref_source_epub_enabled"), defaultValue = false),
+        `in`.jphe.storyvox.data.source.SourceIds.OUTLINE to
+            Spec(booleanPreferencesKey("pref_source_outline_enabled"), defaultValue = false),
+        `in`.jphe.storyvox.data.source.SourceIds.GUTENBERG to
+            Spec(booleanPreferencesKey("pref_source_gutenberg_enabled"), defaultValue = true),
+        `in`.jphe.storyvox.data.source.SourceIds.AO3 to
+            Spec(booleanPreferencesKey("pref_source_ao3_enabled"), defaultValue = false),
+        `in`.jphe.storyvox.data.source.SourceIds.STANDARD_EBOOKS to
+            Spec(booleanPreferencesKey("pref_source_standard_ebooks_enabled"), defaultValue = false),
+        `in`.jphe.storyvox.data.source.SourceIds.WIKIPEDIA to
+            Spec(booleanPreferencesKey("pref_source_wikipedia_enabled"), defaultValue = false),
+        `in`.jphe.storyvox.data.source.SourceIds.KVMR to
+            Spec(booleanPreferencesKey("pref_source_kvmr_enabled"), defaultValue = true),
+        `in`.jphe.storyvox.data.source.SourceIds.NOTION to
+            Spec(booleanPreferencesKey("pref_source_notion_enabled"), defaultValue = true),
+    )
+}
 
 private object Keys {
     val DEFAULT_SPEED = floatPreferencesKey("pref_default_speed")
@@ -268,6 +367,23 @@ private object Keys {
      *  AuthRequired on every call until the user pastes an integration
      *  token via Settings → Library & Sync → Notion. */
     val SOURCE_NOTION_ENABLED = booleanPreferencesKey("pref_source_notion_enabled")
+
+    // ── Plugin-seam Phase 1 (#384) ────────────────────────────────
+    /**
+     * JSON-serialized `Map<String, Boolean>` keyed by `@SourcePlugin`
+     * id. Replaces the per-source `SOURCE_*_ENABLED` keys above as
+     * backends migrate to the registry-driven shape. The two views
+     * coexist during the phased rollout: setting the legacy key also
+     * writes the corresponding map entry, and vice-versa, so existing
+     * UI observers keep working.
+     *
+     * The _v1 suffix lets us rev the schema later (e.g. richer
+     * per-plugin state than a bare boolean) without a destructive
+     * migration; an unparseable v1 blob falls back to a
+     * defaults-from-registry map and the per-plugin migration shim
+     * (SourcePluginsMapMigration) re-seeds from the legacy keys.
+     */
+    val SOURCE_PLUGINS_ENABLED_JSON = stringPreferencesKey("pref_source_plugins_enabled_v1")
 
     // ── Sleep timer shake-to-extend (issue #150) ───────────────────
     val SLEEP_SHAKE_TO_EXTEND_ENABLED = booleanPreferencesKey("pref_sleep_shake_to_extend_enabled")
@@ -528,6 +644,23 @@ class SettingsRepositoryUiImpl(
             // until the user pastes an integration token. Existing
             // users with a stored preference keep it.
             sourceNotionEnabled = prefs[Keys.SOURCE_NOTION_ENABLED] ?: true,
+            // Plugin-seam Phase 1 (#384) — derive the per-plugin map
+            // from the JSON blob seeded by SourcePluginsMapMigration.
+            // Empty map (parse error / missing key in a race) falls
+            // through to a defaults-from-LegacySourceKeys snapshot so
+            // observers always see a coherent state.
+            sourcePluginsEnabled = run {
+                val parsed = `in`.jphe.storyvox.data.source.plugin.decodeSourcePluginsEnabledJson(
+                    prefs[Keys.SOURCE_PLUGINS_ENABLED_JSON],
+                )
+                if (parsed.isNotEmpty()) {
+                    parsed
+                } else {
+                    LegacySourceKeys.ALL.mapValues { (_, spec) ->
+                        prefs[spec.key] ?: spec.defaultValue
+                    }
+                }
+            },
             notionDatabaseId = notion.databaseId,
             notionTokenConfigured = notion.apiToken.isNotBlank(),
             // Issue #393 — surface the anonymous-mode posture so the
@@ -1089,18 +1222,22 @@ class SettingsRepositoryUiImpl(
 
     override suspend fun setSourceRoyalRoadEnabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_ROYALROAD_ENABLED] = enabled }
+        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.ROYAL_ROAD, enabled)
     }
 
     override suspend fun setSourceGitHubEnabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_GITHUB_ENABLED] = enabled }
+        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.GITHUB, enabled)
     }
 
     override suspend fun setSourceMemPalaceEnabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_MEMPALACE_ENABLED] = enabled }
+        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.MEMPALACE, enabled)
     }
 
     override suspend fun setSourceRssEnabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_RSS_ENABLED] = enabled }
+        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.RSS, enabled)
     }
 
     override suspend fun addRssFeed(url: String) = rssConfig.addFeed(url)
@@ -1117,6 +1254,7 @@ class SettingsRepositoryUiImpl(
 
     override suspend fun setSourceEpubEnabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_EPUB_ENABLED] = enabled }
+        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.EPUB, enabled)
     }
     override val epubFolderUri: kotlinx.coroutines.flow.Flow<String?> = epubConfig.folderUriString
     override suspend fun setEpubFolderUri(uri: String) = epubConfig.setFolder(uri)
@@ -1124,15 +1262,19 @@ class SettingsRepositoryUiImpl(
 
     override suspend fun setSourceOutlineEnabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_OUTLINE_ENABLED] = enabled }
+        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.OUTLINE, enabled)
     }
     override suspend fun setSourceGutenbergEnabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_GUTENBERG_ENABLED] = enabled }
+        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.GUTENBERG, enabled)
     }
     override suspend fun setSourceAo3Enabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_AO3_ENABLED] = enabled }
+        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.AO3, enabled)
     }
     override suspend fun setSourceStandardEbooksEnabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_STANDARD_EBOOKS_ENABLED] = enabled }
+        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.STANDARD_EBOOKS, enabled)
     }
     override val outlineHost: kotlinx.coroutines.flow.Flow<String> =
         outlineConfig.state.map { it.host }
@@ -1142,16 +1284,59 @@ class SettingsRepositoryUiImpl(
 
     override suspend fun setSourceWikipediaEnabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_WIKIPEDIA_ENABLED] = enabled }
+        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.WIKIPEDIA, enabled)
     }
     override suspend fun setWikipediaLanguageCode(code: String) =
         wikipediaConfig.setLanguageCode(code)
 
     override suspend fun setSourceKvmrEnabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_KVMR_ENABLED] = enabled }
+        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.KVMR, enabled)
     }
 
     override suspend fun setSourceNotionEnabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_NOTION_ENABLED] = enabled }
+        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.NOTION, enabled)
+    }
+
+    /**
+     * Plugin-seam Phase 1 (#384) — registry-driven entry point.
+     * Writes the per-plugin map AND, when the id has a matching
+     * legacy `SOURCE_*_ENABLED` key, the legacy key too. The dual
+     * write keeps the existing per-backend `UiSettings.sourceXxxEnabled`
+     * observers in sync until Phase 2 deletes them.
+     */
+    override suspend fun setSourcePluginEnabled(id: String, enabled: Boolean) {
+        store.edit { prefs ->
+            // Write the map first so a reader observing the JSON key
+            // doesn't see a transiently-inconsistent state where the
+            // legacy boolean has flipped but the map hasn't.
+            val current = `in`.jphe.storyvox.data.source.plugin.decodeSourcePluginsEnabledJson(
+                prefs[Keys.SOURCE_PLUGINS_ENABLED_JSON],
+            ).toMutableMap()
+            current[id] = enabled
+            prefs[Keys.SOURCE_PLUGINS_ENABLED_JSON] =
+                `in`.jphe.storyvox.data.source.plugin.encodeSourcePluginsEnabledJson(current)
+            // Dual-write the legacy boolean so existing UiSettings
+            // observers keep firing.
+            LegacySourceKeys.ALL[id]?.let { spec ->
+                prefs[spec.key] = enabled
+            }
+        }
+    }
+
+    /** Helper invoked by each legacy `setSourceXxxEnabled` to mirror
+     *  the write into the plugin map. Phase 1 dual-write — Phase 2
+     *  removes the legacy setters and this helper. */
+    private suspend fun writePluginEnabledIntoMap(id: String, enabled: Boolean) {
+        store.edit { prefs ->
+            val current = `in`.jphe.storyvox.data.source.plugin.decodeSourcePluginsEnabledJson(
+                prefs[Keys.SOURCE_PLUGINS_ENABLED_JSON],
+            ).toMutableMap()
+            current[id] = enabled
+            prefs[Keys.SOURCE_PLUGINS_ENABLED_JSON] =
+                `in`.jphe.storyvox.data.source.plugin.encodeSourcePluginsEnabledJson(current)
+        }
     }
     override suspend fun setNotionDatabaseId(id: String) {
         notionConfig.setDatabaseId(id)

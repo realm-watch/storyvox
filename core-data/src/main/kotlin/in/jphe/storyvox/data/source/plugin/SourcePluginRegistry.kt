@@ -1,0 +1,76 @@
+package `in`.jphe.storyvox.data.source.plugin
+
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Plugin-seam Phase 1 (#384) — runtime registry of every
+ * `@SourcePlugin`-annotated `FictionSource`.
+ *
+ * Singleton. Hilt injects the multibinding `Set<SourcePluginDescriptor>`
+ * populated by the KSP-generated `@Provides @IntoSet` factories (one
+ * per `@SourcePlugin`-annotated class). The registry exposes a stable
+ * sort order — alphabetical by [SourcePluginDescriptor.displayName]
+ * within each [SourceCategory], categories in their enum-declared
+ * order — so the Browse chip row and Settings auto-section render
+ * deterministically across builds.
+ *
+ * ## Phase 1 invariants
+ *
+ * - Phase 1 ships with `:source-kvmr` as the only `@SourcePlugin`-
+ *   annotated backend, so the set has exactly one descriptor. The
+ *   other 11 backends are still resolved through the legacy
+ *   `Map<String, FictionSource>` and not yet visible here. That's
+ *   intentional — Phase 2 migrates them one-by-one and each
+ *   migration is a small, isolated diff.
+ * - The legacy `SourceIds` constants still apply: an `@SourcePlugin`
+ *   class's `id` and the legacy `SourceIds.KVMR`-style constant are
+ *   the same string by convention. Don't drift them apart.
+ *
+ * ## Test hook
+ *
+ * Tests construct an instance directly with a `Set<SourcePluginDescriptor>`
+ * built from fake `FictionSource` instances — the constructor is
+ * `@Inject` but not `internal`, so a unit test in `:core-data` can
+ * `SourcePluginRegistry(setOf(descriptor))` without Hilt.
+ *
+ * @property all Every registered plugin, in the deterministic display
+ *  order described above. Empty when no `@SourcePlugin`-annotated
+ *  classes exist on the classpath (e.g. instrumentation tests that
+ *  link only `:core-data`).
+ */
+@Singleton
+class SourcePluginRegistry @Inject constructor(
+    descriptors: Set<@JvmSuppressWildcards SourcePluginDescriptor>,
+) {
+
+    /** All registered plugins, sorted by category then displayName.
+     *  Stable across builds — the chip row / Settings list order
+     *  doesn't churn. */
+    val all: List<SourcePluginDescriptor> = descriptors
+        .sortedWith(
+            compareBy<SourcePluginDescriptor> { it.category.ordinal }
+                .thenBy { it.displayName.lowercase() },
+        )
+
+    /** Plugins registered under [category], preserving the
+     *  display-order sort. Returns an empty list when no plugins in
+     *  the category are registered. */
+    fun byCategory(category: SourceCategory): List<SourcePluginDescriptor> =
+        all.filter { it.category == category }
+
+    /** Plugin descriptor for [id], or null when no plugin with that
+     *  id is registered. */
+    fun byId(id: String): SourcePluginDescriptor? = all.firstOrNull { it.id == id }
+
+    /** True when at least one plugin is registered. Phase 1 always
+     *  returns true (KVMR is the worked example); Phase 2's migrations
+     *  monotonically grow the set. */
+    val isNotEmpty: Boolean get() = all.isNotEmpty()
+
+    /** All registered plugin ids, in display order. Convenience for
+     *  the settings migration shim that seeds
+     *  `UiSettings.sourcePluginsEnabled` from each plugin's
+     *  [SourcePluginDescriptor.defaultEnabled]. */
+    val ids: List<String> get() = all.map { it.id }
+}
