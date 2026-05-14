@@ -834,6 +834,12 @@ data class UiSettings(
      *  the source visible in Browse so the empty-state can teach the
      *  user about the one-paste configuration step. */
     val sourceNotionEnabled: Boolean = true,
+    /** arXiv non-fiction backend (#378). Default OFF for fresh
+     *  installs — second non-fiction-shaped source after Wikipedia,
+     *  same opt-in posture. Users discover it from Settings →
+     *  Library & Sync rather than getting a Browse picker pre-
+     *  populated with academic-paper content they didn't ask for. */
+    val sourceArxivEnabled: Boolean = false,
     /**
      * Plugin-seam Phase 1 (#384) — per-plugin on/off keyed by stable
      * plugin id ("kvmr", "royalroad", "notion", ...). Replaces the
@@ -1301,6 +1307,8 @@ interface SettingsRepositoryUi {
     suspend fun setWikipediaLanguageCode(code: String)
     /** Issue #374 — KVMR community radio backend on/off. */
     suspend fun setSourceKvmrEnabled(enabled: Boolean)
+    /** Issue #378 — arXiv backend on/off. */
+    suspend fun setSourceArxivEnabled(enabled: Boolean)
 
     /**
      * Plugin-seam Phase 1 (#384) — toggle a `@SourcePlugin`-registered

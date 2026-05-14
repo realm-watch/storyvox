@@ -56,5 +56,9 @@ include(":source-standard-ebooks")
 include(":source-wikipedia")
 include(":source-kvmr")
 include(":source-notion")
+// Issue #378 — arXiv open-access academic papers backend. Second
+// non-fiction-shaped source after :source-wikipedia (#377); each
+// paper is one fiction, single "Abstract" chapter for v1.
+include(":source-arxiv")
 include(":core-sync")
 include(":feature")

@@ -255,6 +255,9 @@ internal object LegacySourceKeys {
             Spec(booleanPreferencesKey("pref_source_kvmr_enabled"), defaultValue = true),
         `in`.jphe.storyvox.data.source.SourceIds.NOTION to
             Spec(booleanPreferencesKey("pref_source_notion_enabled"), defaultValue = true),
+        // #378 — arXiv: default OFF, same posture as Wikipedia.
+        `in`.jphe.storyvox.data.source.SourceIds.ARXIV to
+            Spec(booleanPreferencesKey("pref_source_arxiv_enabled"), defaultValue = false),
     )
 }
 
@@ -367,6 +370,10 @@ private object Keys {
      *  AuthRequired on every call until the user pastes an integration
      *  token via Settings → Library & Sync → Notion. */
     val SOURCE_NOTION_ENABLED = booleanPreferencesKey("pref_source_notion_enabled")
+    /** Issue #378 — arXiv backend on/off. Default false for fresh
+     *  installs; second non-fiction-shaped source after Wikipedia
+     *  follows the same opt-in posture. */
+    val SOURCE_ARXIV_ENABLED = booleanPreferencesKey("pref_source_arxiv_enabled")
 
     // ── Plugin-seam Phase 1 (#384) ────────────────────────────────
     /**
@@ -644,6 +651,8 @@ class SettingsRepositoryUiImpl(
             // until the user pastes an integration token. Existing
             // users with a stored preference keep it.
             sourceNotionEnabled = prefs[Keys.SOURCE_NOTION_ENABLED] ?: true,
+            // #378 — arXiv: default OFF, same posture as Wikipedia.
+            sourceArxivEnabled = prefs[Keys.SOURCE_ARXIV_ENABLED] ?: false,
             // Plugin-seam Phase 1 (#384) — derive the per-plugin map
             // from the JSON blob seeded by SourcePluginsMapMigration.
             // Empty map (parse error / missing key in a race) falls
@@ -1297,6 +1306,11 @@ class SettingsRepositoryUiImpl(
     override suspend fun setSourceNotionEnabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_NOTION_ENABLED] = enabled }
         writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.NOTION, enabled)
+    }
+
+    override suspend fun setSourceArxivEnabled(enabled: Boolean) {
+        store.edit { it[Keys.SOURCE_ARXIV_ENABLED] = enabled }
+        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.ARXIV, enabled)
     }
 
     /**

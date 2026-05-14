@@ -119,6 +119,10 @@ class SourcePluginRegistryTest {
             SourceIds.WIKIPEDIA,
             SourceIds.KVMR,
             SourceIds.NOTION,
+            // #378 — arXiv: second non-fiction-shaped source after
+            // Wikipedia. Same Text category as the other long-form
+            // backends.
+            SourceIds.ARXIV,
         )
         val descriptors = expectedIds.map { id ->
             descriptor(
@@ -130,7 +134,7 @@ class SourcePluginRegistryTest {
 
         val registry = SourcePluginRegistry(descriptors.toSet())
 
-        assertEquals(12, registry.all.size)
+        assertEquals(13, registry.all.size)
         // Every expected id resolves via byId — order-independent so
         // the assertion stays robust against future sort changes.
         for (id in expectedIds) {

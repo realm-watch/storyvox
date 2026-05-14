@@ -82,4 +82,13 @@ object SourceIds {
      *  surfaces TechEmpower content without configuration once the
      *  user supplies the integration token. */
     const val NOTION: String = "notion"
+    /** arXiv (#378) — open-access academic papers backend. Second non-
+     *  fiction-shaped source after [WIKIPEDIA]. Each arXiv paper is one
+     *  fiction; the v1 chapter shape is a single "Abstract" chapter
+     *  rendered from the paper's `arxiv.org/abs/<id>` HTML page (title
+     *  + author byline + subjects + comments + abstract paragraph).
+     *  Full-PDF text extraction is an explicit follow-up scope cut from
+     *  #378's acceptance criteria. Default category for the browse
+     *  landing is `cs.AI`; a category picker is a v2 surface. */
+    const val ARXIV: String = "arxiv"
 }

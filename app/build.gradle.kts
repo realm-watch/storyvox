@@ -162,6 +162,8 @@ dependencies {
     implementation(project(":source-wikipedia"))
     implementation(project(":source-kvmr"))
     implementation(project(":source-notion"))
+    // Issue #378 — arXiv backend (open-access academic papers).
+    implementation(project(":source-arxiv"))
     implementation(project(":source-azure"))
     implementation(project(":core-sync"))
     implementation(project(":feature"))

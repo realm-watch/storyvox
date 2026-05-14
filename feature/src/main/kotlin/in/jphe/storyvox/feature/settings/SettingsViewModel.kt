@@ -187,6 +187,9 @@ class SettingsViewModel @Inject constructor(
     /** Issue #233 — Notion backend on/off + config. */
     fun setSourceNotionEnabled(enabled: Boolean) =
         viewModelScope.launch { repo.setSourceNotionEnabled(enabled) }
+    /** Issue #378 — arXiv backend on/off. */
+    fun setSourceArxivEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setSourceArxivEnabled(enabled) }
     fun setNotionDatabaseId(id: String) =
         viewModelScope.launch { repo.setNotionDatabaseId(id) }
     fun setNotionApiToken(token: String?) =

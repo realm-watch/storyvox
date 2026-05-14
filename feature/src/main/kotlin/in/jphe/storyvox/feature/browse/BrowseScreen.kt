@@ -215,6 +215,10 @@ fun BrowseScreen(
                 // filter body via /databases/{id}/query is the
                 // follow-up.
                 BrowseSourceKey.Notion -> false
+                // #378 — arXiv has no filter sheet in v1; the default
+                // category (`cs.AI`) is the filter scope. A category
+                // picker UI is a v2 follow-up.
+                BrowseSourceKey.Arxiv -> false
             }
             if (filterableSource) {
                 FilterButton(
@@ -236,6 +240,7 @@ fun BrowseScreen(
                         BrowseSourceKey.Wikipedia -> 0
                         BrowseSourceKey.Kvmr -> 0
                         BrowseSourceKey.Notion -> 0
+                        BrowseSourceKey.Arxiv -> 0
                     },
                     onClick = { showFilterSheet = true },
                 )
@@ -516,6 +521,9 @@ fun BrowseScreen(
             // #233 — Notion v1 has no filter sheet; the configured
             // database id IS the filter scope.
             BrowseSourceKey.Notion -> { showFilterSheet = false }
+            // #378 — arXiv v1 has no filter sheet; the default
+            // category (`cs.AI`) is the filter scope.
+            BrowseSourceKey.Arxiv -> { showFilterSheet = false }
         }
     }
 }
@@ -608,6 +616,10 @@ private fun searchHintForSource(sourceKey: BrowseSourceKey): String = when (sour
     BrowseSourceKey.Wikipedia -> "Search Wikipedia — narrate any article"
     BrowseSourceKey.Kvmr -> "Tune in to KVMR — live community radio from Nevada City"
     BrowseSourceKey.Notion -> "Search your configured Notion database"
+    // #378 — arXiv's `all:<term>` query matches title, abstract,
+    // authors, and comments. The default landing category is cs.AI;
+    // search expands the search across all categories.
+    BrowseSourceKey.Arxiv -> "Search arXiv — open-access academic papers"
 }
 
 private val BrowseTab.label: String

@@ -296,6 +296,7 @@ class RealPlaybackControllerUiTest {
         override suspend fun setWikipediaLanguageCode(code: String) = Unit
         override suspend fun setSourceKvmrEnabled(enabled: Boolean) = Unit
         override suspend fun setSourceNotionEnabled(enabled: Boolean) = Unit
+        override suspend fun setSourceArxivEnabled(enabled: Boolean) = Unit
         override suspend fun setSourcePluginEnabled(id: String, enabled: Boolean) = Unit
         override suspend fun setNotionDatabaseId(id: String) = Unit
         override suspend fun setNotionApiToken(token: String?) = Unit

@@ -97,6 +97,12 @@ enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
      *  content database id as the default — once the user pastes a token
      *  in Settings, Browse → Notion surfaces TechEmpower content. */
     Notion(SourceIds.NOTION, "Notion"),
+    /** arXiv (#378) — open-access academic papers. Second non-fiction-
+     *  shaped source after Wikipedia. Each paper is one fiction; the
+     *  v1 chapter shape is a single "Abstract" chapter (title + author
+     *  byline + abstract). Browse landing is "recent in cs.AI"; full-
+     *  paper PDF body extraction is a follow-up scope cut. */
+    Arxiv(SourceIds.ARXIV, "arXiv"),
 }
 
 /** Tabs that are meaningful for [source]. GitHub registry doesn't
@@ -212,6 +218,15 @@ fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseT
     // NewReleases collapses to Popular because Notion's default
     // ordering is already recency. BestRated has no analogue.
     BrowseSourceKey.Notion -> listOf(
+        BrowseTab.Popular,
+        BrowseTab.Search,
+    )
+    // arXiv (#378): Popular = "recent in cs.AI" (sorted by
+    // submittedDate desc). NewReleases would collapse to the same
+    // surface (arXiv has no distinct "trending" vs "newest"), so we
+    // hide it. BestRated has no analogue. Search hits the public
+    // `all:<term>` query API.
+    BrowseSourceKey.Arxiv -> listOf(
         BrowseTab.Popular,
         BrowseTab.Search,
     )
@@ -424,6 +439,7 @@ class BrowseViewModel @Inject constructor(
                     if (s.sourceWikipediaEnabled) add(BrowseSourceKey.Wikipedia)
                     if (s.sourceKvmrEnabled) add(BrowseSourceKey.Kvmr)
                     if (s.sourceNotionEnabled) add(BrowseSourceKey.Notion)
+                    if (s.sourceArxivEnabled) add(BrowseSourceKey.Arxiv)
                 }
             }
             .distinctUntilChanged()
@@ -697,6 +713,16 @@ class BrowseViewModel @Inject constructor(
                 _githubFilter.value = GitHubSearchFilter()
                 _palaceFilter.value = MemPalaceFilter()
             }
+            BrowseSourceKey.Arxiv -> {
+                // arXiv (#378) — non-fiction long-form. No per-source
+                // filter in v1 (the category default rides on the
+                // Settings side; a category picker is a v2 surface).
+                // Clear sibling filters so switching back to RR/GH
+                // doesn't carry leftover state.
+                _filter.value = BrowseFilter()
+                _githubFilter.value = GitHubSearchFilter()
+                _palaceFilter.value = MemPalaceFilter()
+            }
         }
     }
 
@@ -922,6 +948,16 @@ private fun resolveSource(
     // same first page in v1. Blank-search-with-blank-filter stays
     // null so the screen renders the SearchHint empty state.
     BrowseSourceKey.Notion -> when (tab) {
+        BrowseTab.Popular -> BrowseSource.Popular
+        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
+        else -> null
+    }
+    // arXiv (#378): Popular hits the recent-in-default-category Atom
+    // feed (sorted by submittedDate desc); Search hits the public
+    // `all:<term>` query. Blank Search stays null so the screen
+    // renders the SearchHint empty state. NewReleases / BestRated /
+    // filter sheet hidden via supportedTabs.
+    BrowseSourceKey.Arxiv -> when (tab) {
         BrowseTab.Popular -> BrowseSource.Popular
         BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
         else -> null

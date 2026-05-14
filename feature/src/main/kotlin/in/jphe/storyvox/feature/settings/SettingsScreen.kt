@@ -539,6 +539,17 @@ fun SettingsScreen(
                     onLanguageCodeChange = viewModel::setWikipediaLanguageCode,
                 )
             }
+            // Issue #378 — arXiv: open-access academic papers. Second
+            // non-fiction-shaped source after Wikipedia; default OFF
+            // (opt-in like Wikipedia). v1 chapter shape is a single
+            // "Abstract" chapter per paper — full-PDF text extraction
+            // is a follow-up. Default landing category is cs.AI.
+            SettingsSwitchRow(
+                title = "arXiv",
+                subtitle = "Listen to abstracts of new open-access academic papers (default category: cs.AI).",
+                checked = s.sourceArxivEnabled,
+                onCheckedChange = viewModel::setSourceArxivEnabled,
+            )
             // Issue #374 (closes #373 first piece) — KVMR community
             // radio: first entry in the new audio-stream backend
             // category. Plays the live AAC stream through Media3
