@@ -218,6 +218,76 @@ class VoiceManagerTest {
             progress.last() is VoiceManager.DownloadProgress.Failed)
     }
 
+    /**
+     * Issue #119 — Kitten path mirrors Kokoro's shape (one shared model
+     * underpins all 8 speakers), and so must mirror Kokoro's #28 partial-
+     * cleanup policy: HTTP 500 on the first asset wipes the shared dir
+     * before Failed emits. Pre-seeding `voices.bin` simulates a partially-
+     * completed prior run; if the wipe is skipped that sibling silently
+     * survives the `if (!exists())` check on retry and we'd ship a
+     * half-state to the engine — same failure mode as Kokoro.
+     */
+    @Test
+    fun kitten_realFailure_wipesSharedDir() = runBlocking {
+        val vm = VoiceManager(context, EmptyAzureProvider)
+        vm.http = httpClientReturning500()
+
+        val sharedDir = vm.kittenSharedDir().also { it.mkdirs() }
+        val seeded = File(sharedDir, "voices.bin").apply { writeText("partial-from-prior-run") }
+        assertTrue("precondition: seeded sibling exists", seeded.exists())
+
+        val progress = vm.download("kitten_f1_en_US_0").toList()
+
+        val failed = progress.last()
+        assertTrue("expected Failed terminal, got $failed", failed is VoiceManager.DownloadProgress.Failed)
+
+        assertFalse(
+            "Kitten shared dir must be wiped on real failure (#28 policy carries over from Kokoro)",
+            sharedDir.exists(),
+        )
+    }
+
+    /**
+     * Issue #119 — Kitten download Resolving→…→Done shape with a happy-
+     * path 200. Mirrors Kokoro's shape test. With a 200 OkHttpClient
+     * returning a small body, all three asset fetches (model, voices,
+     * tokens) succeed, the markInstalled call lands, and the terminal
+     * Done emits. Catches regressions like a missing branch in the
+     * `when (engineType)` block silently falling through to a no-op.
+     */
+    @Test
+    fun kitten_happyPath_emitsResolvingDownloadingDone() = runBlocking {
+        val vm = VoiceManager(context, EmptyAzureProvider)
+        // 16 KiB body — small enough to keep the test fast, big enough
+        // that the OkHttp body iterator emits at least one Downloading
+        // tick before EOF.
+        vm.http = httpClientReturningBody(ByteArray(16 * 1024))
+
+        val progress = vm.download("kitten_f1_en_US_0").toList()
+
+        assertTrue(
+            "first emission must be Resolving, got ${progress.firstOrNull()}",
+            progress.first() is VoiceManager.DownloadProgress.Resolving,
+        )
+        assertTrue(
+            "must contain at least one Downloading frame",
+            progress.any { it is VoiceManager.DownloadProgress.Downloading },
+        )
+        assertTrue(
+            "last emission must be Done, got ${progress.lastOrNull()}",
+            progress.last() is VoiceManager.DownloadProgress.Done,
+        )
+
+        // Shared dir + the three asset files exist after Done — the
+        // engine load path will find them in place when EnginePlayer
+        // resolves `kittenSharedDir() / "model.onnx"` etc.
+        val sharedDir = vm.kittenSharedDir()
+        assertTrue("shared dir should exist", sharedDir.exists())
+        assertTrue("model.onnx should land", File(sharedDir, "model.onnx").exists())
+        assertTrue("voices.bin should land", File(sharedDir, "voices.bin").exists())
+        assertTrue("tokens.txt should land", File(sharedDir, "tokens.txt").exists())
+    }
+
     // ----- helpers -----
 
     /**

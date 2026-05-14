@@ -450,23 +450,28 @@ private data class PerVoiceOverrides(
  *  (which lives in core so it can be Hilt-injected without dragging the
  *  feature module). The two enums are kept in lockstep — see
  *  [toCoreId]. */
-enum class VoiceEngine { Piper, Kokoro, Azure }
+enum class VoiceEngine { Piper, Kokoro, Kitten, Azure }
 
 internal fun VoiceEngine.toCoreId(): VoiceEngineId = when (this) {
     VoiceEngine.Piper -> VoiceEngineId.Piper
     VoiceEngine.Kokoro -> VoiceEngineId.Kokoro
+    // Issue #119 — Kitten section discriminator.
+    VoiceEngine.Kitten -> VoiceEngineId.Kitten
     VoiceEngine.Azure -> VoiceEngineId.Azure
 }
 
 internal fun VoiceEngineId.toFeatureEngine(): VoiceEngine = when (this) {
     VoiceEngineId.Piper -> VoiceEngine.Piper
     VoiceEngineId.Kokoro -> VoiceEngine.Kokoro
+    VoiceEngineId.Kitten -> VoiceEngine.Kitten
     VoiceEngineId.Azure -> VoiceEngine.Azure
 }
 
 private fun UiVoiceInfo.voiceEngine(): VoiceEngine = when (engineType) {
     is EngineType.Piper -> VoiceEngine.Piper
     is EngineType.Kokoro -> VoiceEngine.Kokoro
+    // Issue #119 — Kitten branch.
+    is EngineType.Kitten -> VoiceEngine.Kitten
     is EngineType.Azure -> VoiceEngine.Azure
 }
 
@@ -541,17 +546,35 @@ private val AZURE_TIER_ORDER: List<QualityLevel> = listOf(
     QualityLevel.Low,
 )
 
+/** Issue #119 — Tier order **within Kitten**. All Kitten voices ship at
+ *  [QualityLevel.Low] today (the fp16 nano model trades quality for
+ *  size). Listing the higher tiers anyway keeps the sort future-proof
+ *  against a possible Kitten-mini (80 MB, better quality) variant
+ *  landing in a follow-up. */
+private val KITTEN_TIER_ORDER: List<QualityLevel> = listOf(
+    QualityLevel.High,
+    QualityLevel.Medium,
+    QualityLevel.Low,
+)
+
 private fun tierOrderFor(engine: VoiceEngine): List<QualityLevel> = when (engine) {
     VoiceEngine.Piper -> PIPER_TIER_ORDER
     VoiceEngine.Kokoro -> KOKORO_TIER_ORDER
+    // Issue #119 — Kitten tier order.
+    VoiceEngine.Kitten -> KITTEN_TIER_ORDER
     VoiceEngine.Azure -> AZURE_TIER_ORDER
 }
 
-/** Engine display order — Piper section first, Kokoro second, Azure
- *  third. Drives outer iteration order of [groupByEngineThenTier]. */
+/** Engine display order — Piper section first, Kokoro second, Kitten
+ *  third (issue #119 — the smallest local tier sits BELOW Kokoro in the
+ *  list so users see the higher-quality local options first; Kitten
+ *  surfaces last among the local engines as a "lite alternative for slow
+ *  devices" section), Azure last. Drives outer iteration order of
+ *  [groupByEngineThenTier]. */
 private val ENGINE_DISPLAY_ORDER: List<VoiceEngine> = listOf(
     VoiceEngine.Piper,
     VoiceEngine.Kokoro,
+    VoiceEngine.Kitten,
     VoiceEngine.Azure,
 )
 

@@ -5,13 +5,13 @@ import `in`.jphe.storyvox.data.source.AzureVoiceTier
 
 object VoiceCatalog {
     /**
-     * The static catalog — Piper and Kokoro entries that ship in-app.
-     * Azure voices are NOT here anymore; they're populated at runtime
-     * from the live roster (see [azureEntriesFromRoster] and
+     * The static catalog — Piper, Kokoro, and Kitten entries that ship
+     * in-app. Azure voices are NOT here anymore; they're populated at
+     * runtime from the live roster (see [azureEntriesFromRoster] and
      * `AzureVoiceProvider`). Combine via [voicesWithAzure] when you
      * need a unified list.
      */
-    val voices: List<CatalogEntry> = piperEntries() + kokoroEntries()
+    val voices: List<CatalogEntry> = piperEntries() + kokoroEntries() + kittenEntries()
 
     /**
      * Combine the static catalog with the live Azure roster — used by
@@ -736,6 +736,62 @@ object VoiceCatalog {
             kokoro("kokoro_yunxi_zh_CN_50", "Yunxi", "zh_CN", 50, M),
             kokoro("kokoro_yunxia_zh_CN_51", "Yunxia", "zh_CN", 51, M),
             kokoro("kokoro_yunyang_zh_CN_52", "Yunyang", "zh_CN", 52, M),
+        )
+    }
+
+    /** KittenTTS entries — 8 speakers all sharing one ~25 MB fp16 model.
+     *  Issue #119 — the smallest in-process tier, slotted below Piper-low
+     *  as the friendliest "try a neural voice" first-launch onboarding
+     *  path for slow devices (Raspberry Pi, old phones, wearables).
+     *
+     *  Shape mirrors Kokoro's: one shared model on disk (`_kitten_shared`
+     *  dir handled by VoiceManager), 8 speaker indices baked into the
+     *  voice ID. Picking any Kitten voice triggers the shared-model
+     *  download exactly once; subsequent picks just flip the active
+     *  speaker. The `kitten-nano-en-v0_1-fp16` upstream model ships 4
+     *  female + 4 male English voices labelled `expr-voice-2-f`,
+     *  `expr-voice-2-m`, etc. Display names are simplified (F1..F4 /
+     *  M1..M4) so the picker row stays readable.
+     *
+     *  Tier is [QualityLevel.Low] because Kitten produces audibly
+     *  more-compressed audio than Piper-medium and notably less prosody
+     *  variety than Kokoro (it's optimized for size, not quality). The
+     *  Low tier sits naturally below Piper's existing Low entries; the
+     *  picker's group-by-engine ordering will surface Kitten beneath
+     *  Piper / above Kokoro per the VoiceLibraryViewModel engine-sort
+     *  rule. */
+    private fun kittenEntries(): List<CatalogEntry> {
+        fun kitten(id: String, displayName: String, speakerId: Int, gender: VoiceGender): CatalogEntry =
+            CatalogEntry(
+                id = id,
+                displayName = displayName,
+                language = "en_US",
+                // sizeBytes mirrors Kokoro's 0L sentinel — Kitten voices
+                // share one ~25 MB download, so per-voice byte counts
+                // are misleading. The Voice Library suppresses the size
+                // chip when sizeBytes == 0L (same code path as Kokoro).
+                sizeBytes = 0L,
+                qualityLevel = QualityLevel.Low,
+                engineType = EngineType.Kitten(speakerId = speakerId),
+                piper = null,
+                gender = gender,
+            )
+        val F = VoiceGender.Female
+        val M = VoiceGender.Male
+        // Speaker order matches sherpa-onnx's voices.bin layout for
+        // `kitten-nano-en-v0_1-fp16`: 4 female embeddings (indices 0..3)
+        // followed by 4 male embeddings (indices 4..7). Names follow
+        // upstream's `expr-voice-N-{f,m}` convention but rendered as
+        // F1..F4 / M1..M4 for picker readability.
+        return listOf(
+            kitten("kitten_f1_en_US_0", "Kitten F1", 0, F),
+            kitten("kitten_f2_en_US_1", "Kitten F2", 1, F),
+            kitten("kitten_f3_en_US_2", "Kitten F3", 2, F),
+            kitten("kitten_f4_en_US_3", "Kitten F4", 3, F),
+            kitten("kitten_m1_en_US_4", "Kitten M1", 4, M),
+            kitten("kitten_m2_en_US_5", "Kitten M2", 5, M),
+            kitten("kitten_m3_en_US_6", "Kitten M3", 6, M),
+            kitten("kitten_m4_en_US_7", "Kitten M4", 7, M),
         )
     }
 

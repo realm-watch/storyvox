@@ -176,10 +176,15 @@ class VoiceManager @Inject constructor(
         .combine(azureVoiceProvider.voices) { prefs, roster ->
             val installedIds = prefs[VoiceKeys.INSTALLED_IDS].orEmpty().map(::normalizeId).toSet()
             val kokoroReady = isKokoroSharedModelInstalled()
+            // Issue #119 — Kitten parallels Kokoro: shared-model presence
+            // is the single source of truth for "every Kitten voice is
+            // playable." Each speaker is just an index into voices.bin.
+            val kittenReady = isKittenSharedModelInstalled()
             VoiceCatalog.voicesWithAzure(roster)
                 .filter {
                     it.id in installedIds ||
                         (it.engineType is EngineType.Kokoro && kokoroReady) ||
+                        (it.engineType is EngineType.Kitten && kittenReady) ||
                         it.engineType is EngineType.Azure
                 }
                 .map { it.toUiVoiceInfo(installed = true) }
@@ -194,6 +199,7 @@ class VoiceManager @Inject constructor(
             val entry = VoiceCatalog.byIdWithAzure(activeId, roster) ?: return@combine null
             val isInstalled = activeId in installed ||
                 (entry.engineType is EngineType.Kokoro && isKokoroSharedModelInstalled()) ||
+                (entry.engineType is EngineType.Kitten && isKittenSharedModelInstalled()) ||
                 entry.engineType is EngineType.Azure
             entry.toUiVoiceInfo(installed = isInstalled)
         }
@@ -207,6 +213,16 @@ class VoiceManager @Inject constructor(
 
     private fun isKokoroSharedModelInstalled(): Boolean {
         val dir = kokoroSharedDir()
+        return File(dir, "model.onnx").exists() &&
+            File(dir, "voices.bin").exists() &&
+            File(dir, "tokens.txt").exists()
+    }
+
+    /** Issue #119 — Kitten parallels Kokoro: one ~25 MB shared model
+     *  underpins all 8 speakers, so "installed" for any Kitten voice
+     *  means "the shared dir is populated." Mirrors [isKokoroSharedModelInstalled]. */
+    private fun isKittenSharedModelInstalled(): Boolean {
+        val dir = kittenSharedDir()
         return File(dir, "model.onnx").exists() &&
             File(dir, "voices.bin").exists() &&
             File(dir, "tokens.txt").exists()
@@ -250,6 +266,70 @@ class VoiceManager @Inject constructor(
                 // flow.
                 error("Azure voices have no downloadable assets — " +
                     "credential-keyed activation arrives in PR-4. (#85)")
+            }
+            is EngineType.Kitten -> {
+                // Issue #119 — Kitten parallels Kokoro: one shared model
+                // (~25 MB total — fp16 ONNX + voices.bin + tokens.txt)
+                // underpins all 8 speakers, first install lands the model,
+                // subsequent voice picks just flip the active speaker index
+                // with no additional payload.
+                val sharedDir = kittenSharedDir()
+                val onnxFile = File(sharedDir, "model.onnx")
+                val tokensFile = File(sharedDir, "tokens.txt")
+                val voicesFile = File(sharedDir, "voices.bin")
+                if (!onnxFile.exists() || !voicesFile.exists() || !tokensFile.exists()) {
+                    sharedDir.mkdirs()
+                    try {
+                        // kitten-nano-en-v0_1-fp16 sizes (sherpa-onnx
+                        // tts-models release, repackaged onto the
+                        // jphein/VoxSherpa-TTS voices-v2 release for
+                        // flat per-file URLs the OkHttp loop can
+                        // stream — the upstream tar.bz2 would require
+                        // in-app extraction we don't want to add).
+                        // Total ~23 MB on first install, dominated by
+                        // the ONNX. voices.bin is tiny (8 KB — just
+                        // the per-speaker embedding table).
+                        val modelBytes = 23_848_586L
+                        val voicesBytes = 8_192L
+                        val totalBytes = modelBytes + voicesBytes  // tokens is ~1 KB, negligible
+                        downloadFile(
+                            url = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/kitten-nano-en-v0_1-model.onnx",
+                            target = onnxFile,
+                            knownTotalBytes = modelBytes,
+                        ) { read, _ -> emit(DownloadProgress.Downloading(read, totalBytes)) }
+                        downloadFile(
+                            url = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/kitten-nano-en-v0_1-voices.bin",
+                            target = voicesFile,
+                            knownTotalBytes = voicesBytes,
+                        ) { read, _ ->
+                            // Continue progress from where the model
+                            // left off so the bar keeps moving.
+                            emit(DownloadProgress.Downloading(modelBytes + read, totalBytes))
+                        }
+                        downloadFile(
+                            url = "https://github.com/jphein/VoxSherpa-TTS/releases/download/voices-v2/kitten-nano-en-v0_1-tokens.txt",
+                            target = tokensFile,
+                            knownTotalBytes = 0L,
+                        ) { _, _ -> }
+                    } catch (ce: CancellationException) {
+                        // User-driven cancel — re-throw to honour
+                        // structured concurrency. Mirrors the Kokoro
+                        // branch's shape: partial files survive (no
+                        // wipe on cancel) so a sibling that finished
+                        // before the cancel doesn't get re-fetched.
+                        throw ce
+                    } catch (t: Throwable) {
+                        // Real failure: wipe shared dir to keep retries
+                        // deterministic. Trade-off matches Kokoro's
+                        // branch; re-fetch cost on Kitten is tiny
+                        // (~24 MB) so the wipe is essentially free.
+                        sharedDir.deleteRecursively()
+                        emit(DownloadProgress.Failed(t.message ?: t::class.java.simpleName))
+                        return@flow
+                    }
+                }
+                markInstalled(voiceId)
+                emit(DownloadProgress.Done)
             }
             is EngineType.Kokoro -> {
                 // Kokoro speakers all share one ~168MB multi-speaker model
@@ -380,6 +460,12 @@ class VoiceManager @Inject constructor(
 
     /** Shared Kokoro multi-speaker model dir (one install per device, used by all 53 speakers). */
     fun kokoroSharedDir(): File = File(context.filesDir, "voices/_kokoro_shared")
+
+    /** Issue #119 — shared Kitten multi-speaker model dir (one install
+     *  per device, used by all 8 Kitten speakers). Public for the same
+     *  reason as [kokoroSharedDir] — playback paths need the absolute
+     *  paths to hand to `KittenEngine.loadModel`. */
+    fun kittenSharedDir(): File = File(context.filesDir, "voices/_kitten_shared")
 
     // ----- internals -----
 

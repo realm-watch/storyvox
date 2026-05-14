@@ -72,6 +72,8 @@ internal fun UiVoiceInfo.matchesQuery(query: String): Boolean {
     val engineLabel = when (engineType) {
         is EngineType.Piper -> "piper"
         is EngineType.Kokoro -> "kokoro"
+        // Issue #119 — Kitten search label.
+        is EngineType.Kitten -> "kitten"
         is EngineType.Azure -> "azure"
     }
     return engineLabel.contains(needle, ignoreCase = true)

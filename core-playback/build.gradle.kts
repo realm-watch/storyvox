@@ -99,7 +99,14 @@ dependencies {
     // Settings requires the next voice load — Storyvox forces this
     // by calling VoiceEngineQualityBridge.applyLexicon/applyLang
     // BEFORE the engine instantiates for the new voice on switch.
-    implementation("com.github.techempower-org:VoxSherpa-TTS:v2.7.14")
+    // v2.8.0 (storyvox #119) adds KittenEngine — third in-process
+    // voice family wrapping sherpa-onnx's OfflineTtsKittenModelConfig
+    // path. Smallest tier: ~25 MB fp16 nano model, 8 voices, 24 kHz,
+    // Apache-2.0. Structural twin of KokoroEngine (multi-speaker
+    // shared model + speaker index, public no-arg ctor for Tier 3
+    // parallelism, XNNPACK→CPU fallback). Storyvox dispatches via
+    // EngineType.Kitten in this PR.
+    implementation("com.github.techempower-org:VoxSherpa-TTS:v2.8.0")
     implementation("com.github.k2-fsa:sherpa-onnx:1.12.26")
 
     // Media3 — session, player base classes
