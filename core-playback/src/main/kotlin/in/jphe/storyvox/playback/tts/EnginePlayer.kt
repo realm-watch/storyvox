@@ -14,6 +14,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.util.UnstableApi
+import com.CodeBySonu.VoxSherpa.KittenEngine
 import com.CodeBySonu.VoxSherpa.KokoroEngine
 import com.CodeBySonu.VoxSherpa.VoiceEngine
 import com.google.common.collect.ImmutableList
@@ -206,6 +207,15 @@ class EnginePlayer @AssistedInject constructor(
 
     @Volatile
     private var secondaryKokoroEngines: List<com.CodeBySonu.VoxSherpa.KokoroEngine> = emptyList()
+
+    /** Issue #119 — Kitten secondaries for the Tier 3 parallel-synth
+     *  slider. Each loaded Kitten session is small (~60–80 MB resident
+     *  on the fp16 nano model), so an 8-way fan-out fits comfortably
+     *  even on a 2 GB device — Kitten is the friendliest engine for the
+     *  parallel slider on low-end hardware. Owned per-engine-type like
+     *  the other two; voice swap away from Kitten frees this list. */
+    @Volatile
+    private var secondaryKittenEngines: List<com.CodeBySonu.VoxSherpa.KittenEngine> = emptyList()
 
     /**
      * Issue #98 — Mode B (Catch-up Pause) live cache. Gates the consumer
@@ -803,15 +813,20 @@ class EnginePlayer @AssistedInject constructor(
             engineMutex.withLock {
                 when (active.engineType) {
                     EngineType.Piper -> {
-                        // Voice swap AWAY from Kokoro → free its
-                        // secondaries. Tier 3 (#88) honors the slider
-                        // for both engine families now; secondaries
-                        // are owned per-engine-type and torn down on
-                        // type-change.
+                        // Voice swap AWAY from Kokoro/Kitten → free
+                        // their secondaries. Tier 3 (#88) honors the
+                        // slider for all in-process engine families
+                        // now; secondaries are owned per-engine-type
+                        // and torn down on type-change.
                         secondaryKokoroEngines.forEach {
                             runCatching { it.destroy() }
                         }
                         secondaryKokoroEngines = emptyList()
+                        // Issue #119 — Kitten secondaries.
+                        secondaryKittenEngines.forEach {
+                            runCatching { it.destroy() }
+                        }
+                        secondaryKittenEngines = emptyList()
 
                         val voiceDir = voiceManager.voiceDirFor(active.id)
                         val onnx = File(voiceDir, "model.onnx").absolutePath
@@ -888,13 +903,18 @@ class EnginePlayer @AssistedInject constructor(
                         primaryResult ?: "Error: load returned null"
                     }
                     is EngineType.Kokoro -> {
-                        // Voice swap AWAY from Piper → free its
+                        // Voice swap AWAY from Piper/Kitten → free their
                         // secondaries. Tier 3 secondaries are
                         // engine-type-specific.
                         secondaryPiperEngines.forEach {
                             runCatching { it.destroy() }
                         }
                         secondaryPiperEngines = emptyList()
+                        // Issue #119 — Kitten secondaries.
+                        secondaryKittenEngines.forEach {
+                            runCatching { it.destroy() }
+                        }
+                        secondaryKittenEngines = emptyList()
                         // All 53 Kokoro speakers share a single ~325MB fp32
                         // multi-speaker model. Switching speakers reuses the
                         // loaded engine; first load takes 30+s as sherpa-onnx
@@ -959,14 +979,72 @@ class EnginePlayer @AssistedInject constructor(
                         secondaryKokoroEngines = kokoroSecondaries
                         primaryResult ?: "Error: load returned null"
                     }
+                    is EngineType.Kitten -> {
+                        // Issue #119 — Kitten parallels Kokoro: all 8
+                        // Kitten speakers share a single ~25 MB fp16 ONNX
+                        // multi-speaker model. Switching speakers reuses
+                        // the loaded engine via setActiveSpeakerId; first
+                        // load is fast (~2–4 s) because the model is tiny.
+                        secondaryPiperEngines.forEach {
+                            runCatching { it.destroy() }
+                        }
+                        secondaryPiperEngines = emptyList()
+                        secondaryKokoroEngines.forEach {
+                            runCatching { it.destroy() }
+                        }
+                        secondaryKokoroEngines = emptyList()
+                        val sharedDir = voiceManager.kittenSharedDir()
+                        val onnx = File(sharedDir, "model.onnx").absolutePath
+                        val tokens = File(sharedDir, "tokens.txt").absolutePath
+                        val voicesBin = File(sharedDir, "voices.bin").absolutePath
+                        KittenEngine.getInstance().setActiveSpeakerId(
+                            (active.engineType as EngineType.Kitten).speakerId,
+                        )
+                        val parallelState = parallelSynthConfig.currentParallelSynthState()
+                        val nt = parallelState.threadsPerInstance
+                        val primaryResult = KittenEngine.getInstance()
+                            .loadModel(context, onnx, tokens, voicesBin, nt)
+                        // Tier 3 (#88) — Kitten N-instance support.
+                        // Each loaded Kitten session is small (~60–80 MB
+                        // resident on the fp16 nano model), so even an
+                        // 8-way fan-out fits in 1 GB. Kitten is the
+                        // friendliest engine for the parallel slider on
+                        // low-end hardware.
+                        secondaryKittenEngines.forEach { runCatching { it.destroy() } }
+                        secondaryKittenEngines = emptyList()
+                        val kittenSecondaries = mutableListOf<com.CodeBySonu.VoxSherpa.KittenEngine>()
+                        for (i in 1 until parallelState.instances) {
+                            val secondary = com.CodeBySonu.VoxSherpa.KittenEngine()
+                            secondary.setActiveSpeakerId(
+                                (active.engineType as EngineType.Kitten).speakerId,
+                            )
+                            val r = secondary.loadModel(context, onnx, tokens, voicesBin, nt)
+                            if (r == "Success") {
+                                kittenSecondaries += secondary
+                            } else {
+                                runCatching { secondary.destroy() }
+                                android.util.Log.w(
+                                    "EnginePlayer",
+                                    "Tier 3 secondary $i (Kitten) load failed: " +
+                                        "$r — capping at ${kittenSecondaries.size + 1} instances.",
+                                )
+                                break
+                            }
+                        }
+                        secondaryKittenEngines = kittenSecondaries
+                        primaryResult ?: "Error: load returned null"
+                    }
                     is EngineType.Azure -> {
                         // Tier 3 (#88) — voice swap AWAY from local
-                        // engines: free both Piper + Kokoro secondaries
-                        // to recover memory.
+                        // engines: free all local secondaries (Piper,
+                        // Kokoro, Kitten) to recover memory.
                         secondaryPiperEngines.forEach { runCatching { it.destroy() } }
                         secondaryPiperEngines = emptyList()
                         secondaryKokoroEngines.forEach { runCatching { it.destroy() } }
                         secondaryKokoroEngines = emptyList()
+                        // Issue #119 — Kitten secondaries.
+                        secondaryKittenEngines.forEach { runCatching { it.destroy() } }
+                        secondaryKittenEngines = emptyList()
                         // PR-4 (#183) — cloud voice activation. Nothing
                         // to load JNI-side; the "model" is the remote
                         // synthesis endpoint. Credentials gate is the
@@ -1048,6 +1126,9 @@ class EnginePlayer @AssistedInject constructor(
         val engineType = activeEngineType
         val sampleRate = when (engineType) {
             is EngineType.Kokoro -> KokoroEngine.getInstance().sampleRate
+            // Issue #119 — Kitten native sample rate is 24 kHz (same as
+            // Kokoro) but the runtime accessor is the source of truth.
+            is EngineType.Kitten -> KittenEngine.getInstance().sampleRate
             is EngineType.Azure -> azureVoiceEngine.sampleRate
             else -> VoiceEngine.getInstance().sampleRate
         }.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
@@ -1099,6 +1180,24 @@ class EnginePlayer @AssistedInject constructor(
                 }
             }
             is EngineType.Kokoro -> secondaryKokoroEngines.map { eng ->
+                object : EngineStreamingSource.VoiceEngineHandle {
+                    override val sampleRate: Int =
+                        eng.sampleRate.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
+                    override fun generateAudioPCM(
+                        text: String, speed: Float, pitch: Float,
+                    ): ByteArray? {
+                        AndroidProcess.setThreadPriority(
+                            AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO,
+                        )
+                        return eng.generateAudioPCM(text, speed, pitch)
+                    }
+                }
+            }
+            // Issue #119 — Kitten secondaries. Same wrapping shape as
+            // Kokoro because both engines are multi-speaker singletons
+            // with the same `generateAudioPCM(text, speed, pitch)` Java
+            // signature.
+            is EngineType.Kitten -> secondaryKittenEngines.map { eng ->
                 object : EngineStreamingSource.VoiceEngineHandle {
                     override val sampleRate: Int =
                         eng.sampleRate.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
@@ -1407,6 +1506,8 @@ class EnginePlayer @AssistedInject constructor(
             else -> object : EngineStreamingSource.VoiceEngineHandle {
                 override val sampleRate: Int = when (engineType) {
                     is EngineType.Kokoro -> KokoroEngine.getInstance().sampleRate
+                    // Issue #119 — Kitten dispatch.
+                    is EngineType.Kitten -> KittenEngine.getInstance().sampleRate
                     else -> VoiceEngine.getInstance().sampleRate
                 }.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
 
@@ -1414,6 +1515,9 @@ class EnginePlayer @AssistedInject constructor(
                     AndroidProcess.setThreadPriority(AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO)
                     return when (engineType) {
                         is EngineType.Kokoro -> KokoroEngine.getInstance()
+                            .generateAudioPCM(text, speed, pitch)
+                        // Issue #119 — Kitten dispatch.
+                        is EngineType.Kitten -> KittenEngine.getInstance()
                             .generateAudioPCM(text, speed, pitch)
                         else -> VoiceEngine.getInstance()
                             .generateAudioPCM(text, speed, pitch)
@@ -2106,6 +2210,23 @@ class EnginePlayer @AssistedInject constructor(
                         KokoroEngine.getInstance().loadModel(context, onnx, tokens, voicesBin)
                             ?: "Error: load returned null"
                     }
+                    is EngineType.Kitten -> {
+                        // Issue #119 — Kitten recap path. Tier 3
+                        // secondaries are NOT spun up here (recap is a
+                        // one-off short read; the primary engine is
+                        // sufficient). KittenEngine doesn't expose a
+                        // silence-scale knob — it produces cleaner
+                        // punctuation cadence at baseline than Kokoro.
+                        val sharedDir = voiceManager.kittenSharedDir()
+                        val onnx = File(sharedDir, "model.onnx").absolutePath
+                        val tokens = File(sharedDir, "tokens.txt").absolutePath
+                        val voicesBin = File(sharedDir, "voices.bin").absolutePath
+                        KittenEngine.getInstance().setActiveSpeakerId(
+                            (active.engineType as EngineType.Kitten).speakerId,
+                        )
+                        KittenEngine.getInstance().loadModel(context, onnx, tokens, voicesBin)
+                            ?: "Error: load returned null"
+                    }
                     is EngineType.Azure -> return@withContext "Error: Azure unsupported in recap"
                 }
             }
@@ -2128,6 +2249,8 @@ class EnginePlayer @AssistedInject constructor(
         val engineType = activeEngineType
         val sampleRate = when (engineType) {
             is EngineType.Kokoro -> KokoroEngine.getInstance().sampleRate
+            // Issue #119 — Kitten recap sample rate.
+            is EngineType.Kitten -> KittenEngine.getInstance().sampleRate
             else -> VoiceEngine.getInstance().sampleRate
         }.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
         val track = createAudioTrack(sampleRate)

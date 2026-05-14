@@ -611,6 +611,10 @@ private fun EngineSubHeader(
     val label = when (engine) {
         VoiceEngine.Piper -> "Piper"
         VoiceEngine.Kokoro -> "Kokoro"
+        // Issue #119 — third in-process voice family. "Lite" tag set
+        // off the engine name communicates the value proposition (this
+        // is the smallest tier) without making it sound like a beta.
+        VoiceEngine.Kitten -> "Kitten (Lite)"
         // Azure HD voices land in their own sub-header so the cloud
         // round-trip story is one glance away. Catalog labels carry a
         // ☁️ glyph, but the section header restates "Azure" plainly so
@@ -999,6 +1003,9 @@ internal fun voiceSubtitle(voice: UiVoiceInfo): String {
     val engineLabel = when (voice.engineType) {
         is EngineType.Piper -> "Piper"
         is EngineType.Kokoro -> "Kokoro"
+        // Issue #119 — third in-process voice family. Surfaces in the
+        // Voice Library subtitle as "Kitten · Low · Female" etc.
+        is EngineType.Kitten -> "Kitten"
         is EngineType.Azure -> "Azure"
     }
     val tierLabel = when (voice.qualityLevel) {

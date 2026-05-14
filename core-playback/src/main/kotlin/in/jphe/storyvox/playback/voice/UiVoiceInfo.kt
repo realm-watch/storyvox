@@ -68,6 +68,25 @@ sealed interface EngineType {
     data class Kokoro(val speakerId: Int) : EngineType
 
     /**
+     * KittenTTS speaker — shared Kitten model, picks a speaker by index.
+     *
+     * Issue #119 — third in-process voice family, slotted **below**
+     * Piper-low as storyvox's smallest tier. Wraps VoxSherpa-TTS's
+     * `KittenEngine` (v2.8.0+), which in turn wraps sherpa-onnx's
+     * `OfflineTtsKittenModelConfig` path.
+     *
+     * Architecturally a twin of [Kokoro]: a single shared model (~25 MB
+     * fp16 int8 ONNX + voices.bin + tokens.txt) supports 8 speakers
+     * selected at synth time by [speakerId]. Picking any Kitten voice
+     * triggers the shared-model download exactly once; subsequent picks
+     * just flip the active speaker index with no additional payload.
+     * The 25 MB footprint makes it the friendliest "try a neural voice"
+     * first-launch onboarding path — a step beneath the 14 MB Piper-low
+     * voices, but with multi-speaker variety.
+     */
+    data class Kitten(val speakerId: Int) : EngineType
+
+    /**
      * Azure Speech Services HD voice. Cloud-rendered TTS over HTTPS;
      * no local model. [voiceName] is the Azure voice id (e.g.
      * `en-US-AvaDragonHDLatestNeural`, `en-US-AndrewMultilingualNeural`).
