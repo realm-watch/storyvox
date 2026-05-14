@@ -9,6 +9,16 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.36] — 2026-05-14
+
+### Added
+- **AI chat multi-modal image input** (#433, closes #215) — attach button in the chat composer launches SAF `OpenDocument` for `image/*`. Picked image is downscaled to 1280px-long-edge + JPEG q=85 + base64-encoded via a new `ImageResizer` (same pattern as the screenshot-compress hook for the multimodal API safety envelope), then sent as a `LlmContentBlock.Image` alongside the text in the LLM request. Composer shows a 200dp thumbnail above the text input with an x to remove; the user's message bubble renders the image inline via Coil. Last of the three AI heavies in the v0.5.30–v0.5.36 wave (#217 cross-fiction memory ✓, #216 function calling ✓, #215 image input ✓).
+- **Provider coverage v1**: Anthropic (Claude direct + Teams OAuth) and OpenAI return `supportsImages = true` and serialize image content blocks natively. Vertex / Bedrock / Foundry / Ollama silently drop image parts and the chat surface shows a one-shot info banner ("Image input not supported on this provider — sending text only"); per-provider wiring is straightforward follow-up.
+
+### Under the hood
+- New `LlmContentBlock` sealed class in `:core-llm` with `Text(content)` + `Image(base64, mimeType)` variants. `LlmSessionRepository.chat()` and `chatWithTools()` now accept `userParts: List<LlmContentBlock>?` alongside the existing string-text path; DB rows stay text-only (image bytes are in-memory for the send round only — Room storage of base64 blobs is a follow-up if we want full chat-history rendering of past images).
+- 8 new unit tests: `ContentBlocksTest` (sealed-class serialization), `ClaudeImageRequestTest` + `OpenAiImageRequestTest` (provider wire-format snapshots), `ImageResizerTest` (1280px clamp + JPEG q=85 round-trip + base64), two new `ChatViewModelTest` cases for composer state transitions + URI overlay.
+
 ## [0.5.35] — 2026-05-14
 
 ### Performance
