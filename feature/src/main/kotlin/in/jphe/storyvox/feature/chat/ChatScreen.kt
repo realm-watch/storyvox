@@ -8,6 +8,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,11 +28,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material.icons.outlined.VolumeUp
@@ -49,12 +55,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import `in`.jphe.storyvox.llm.tools.ToolCallEvent
 import `in`.jphe.storyvox.llm.tools.ToolResult
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.theme.LocalReducedMotion
@@ -184,6 +193,15 @@ fun ChatScreen(
                 }
             }
 
+            // Issue #215 — info banner shown when the just-sent message
+            // had an image attached but the active provider couldn't
+            // take it. Text-only request still went through; banner
+            // dismisses on next send or on tap-x.
+            if (state.imageDroppedWarning) {
+                ImageDroppedBanner(
+                    onDismiss = viewModel::dismissImageDroppedWarning,
+                )
+            }
             state.error?.let { err ->
                 ErrorBanner(
                     error = err,
@@ -198,6 +216,13 @@ fun ChatScreen(
                     onSend = viewModel::send,
                     prefill = prefill,
                     onPrefillConsumed = viewModel::consumePrefill,
+                    // Issue #215 — image-picker plumbing. The composer
+                    // owns picker launch; the VM owns encoding +
+                    // attach/detach state.
+                    imagesSupported = state.imagesSupported,
+                    pendingImage = state.pendingImage,
+                    onAttachImage = viewModel::attachImage,
+                    onClearImage = viewModel::clearPendingImage,
                 )
             }
         }
@@ -237,11 +262,33 @@ private fun TurnBubble(
                 .background(containerColor, RoundedCornerShape(12.dp))
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
-            Text(
-                text = turn.text,
-                style = MaterialTheme.typography.bodyMedium,
-                color = textColor,
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                // Issue #215 — inline image preview on user turns
+                // that were sent with an attachment. The 200dp max
+                // width sits comfortably inside the 320dp bubble
+                // even on the narrowest phone widths.
+                turn.imageUri?.let { uri ->
+                    coil.compose.AsyncImage(
+                        model = uri,
+                        contentDescription = "Attached image",
+                        modifier = Modifier
+                            .widthIn(max = 200.dp)
+                            .heightIn(max = 200.dp)
+                            .background(
+                                MaterialTheme.colorScheme.surface,
+                                RoundedCornerShape(8.dp),
+                            ),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                    )
+                }
+                if (turn.text.isNotBlank()) {
+                    Text(
+                        text = turn.text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = textColor,
+                    )
+                }
+            }
         }
         // Issue #214 — assistant turns get a Read-aloud / Stop
         // affordance below the bubble. Hidden on user turns (no point
@@ -525,9 +572,24 @@ private fun ChatInput(
      *  [onPrefillConsumed] so the VM clears the latch. */
     prefill: String? = null,
     onPrefillConsumed: () -> Unit = {},
+    /** Issue #215 — true when the active provider accepts image
+     *  content. Gates the attach button's visibility. */
+    imagesSupported: Boolean = false,
+    /** Issue #215 — image queued for the next send, or null. When
+     *  non-null, the thumbnail preview row is shown. */
+    pendingImage: ImageAttachment? = null,
+    /** Issue #215 — called with a freshly-resized + encoded image
+     *  after the user picks a file through the SAF picker. */
+    onAttachImage: (ImageAttachment) -> Unit = {},
+    /** Issue #215 — called when the user taps the x on the
+     *  thumbnail preview to detach without sending. */
+    onClearImage: () -> Unit = {},
 ) {
     val spacing = LocalSpacing.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     var text by remember { mutableStateOf("") }
+    var picking by remember { mutableStateOf(false) }
 
     LaunchedEffect(prefill) {
         if (!prefill.isNullOrBlank()) {
@@ -536,8 +598,48 @@ private fun ChatInput(
         }
     }
 
+    // Issue #215 — SAF picker for image attachment. OpenDocument
+    // returns a content:// URI; we open the InputStream off-main,
+    // hand the bytes to ImageResizer for downscale + JPEG-encode,
+    // and stuff the result onto the composer state. The picking
+    // boolean disables the send/attach affordances while the bytes
+    // are being processed so the user can't fire two encodes at once.
+    val imagePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) {
+            picking = false
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            try {
+                val encoded = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val bytes = context.contentResolver.openInputStream(uri)?.use {
+                        it.readBytes()
+                    } ?: throw IllegalArgumentException("Could not read image")
+                    `in`.jphe.storyvox.llm.imaging.ImageResizer.encodeForUpload(bytes)
+                }
+                onAttachImage(
+                    ImageAttachment(
+                        uri = uri.toString(),
+                        base64 = encoded.base64,
+                        mimeType = encoded.mimeType,
+                        widthPx = encoded.widthPx,
+                        heightPx = encoded.heightPx,
+                    ),
+                )
+            } catch (_: Throwable) {
+                // Encoding failed — best effort, no error banner. The
+                // user can simply pick again. A future PR could
+                // surface this via the existing error banner.
+            } finally {
+                picking = false
+            }
+        }
+    }
+
     androidx.compose.foundation.layout.Column(modifier = Modifier.fillMaxWidth()) {
-        if (enabled && text.isBlank()) {
+        if (enabled && text.isBlank() && pendingImage == null) {
             androidx.compose.foundation.layout.FlowRow(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -553,6 +655,64 @@ private fun ChatInput(
                 }
             }
         }
+        // Issue #215 — thumbnail preview row above the text input.
+        // Compact (64dp) so it leaves room for the composer; tap-the-x
+        // detaches without sending.
+        pendingImage?.let { img ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.md, vertical = spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                ) {
+                    coil.compose.AsyncImage(
+                        model = img.uri,
+                        contentDescription = "Attached image preview",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    )
+                    // x affordance bottom-right of the thumbnail.
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(2.dp)
+                            .size(20.dp)
+                            .background(
+                                MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                CircleShape,
+                            )
+                            .clickable { onClearImage() },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Outlined.Close,
+                            contentDescription = "Remove image",
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Image attached",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "${img.widthPx} × ${img.heightPx}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -560,6 +720,28 @@ private fun ChatInput(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
+            // Issue #215 — attach button. Only rendered when the
+            // active provider can actually use the image; otherwise
+            // the chat composer behaves identically to pre-#215.
+            if (imagesSupported) {
+                IconButton(
+                    onClick = {
+                        picking = true
+                        imagePicker.launch(arrayOf("image/*"))
+                    },
+                    enabled = enabled && !picking && pendingImage == null,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.AddPhotoAlternate,
+                        contentDescription = "Attach image",
+                        tint = if (enabled && !picking && pendingImage == null) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                        },
+                    )
+                }
+            }
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },
@@ -572,23 +754,63 @@ private fun ChatInput(
             IconButton(
                 onClick = {
                     val toSend = text.trim()
-                    if (toSend.isNotEmpty()) {
+                    // Issue #215 — allow a send with an image even if
+                    // the text is empty ("describe this image" UX).
+                    if (toSend.isNotEmpty() || pendingImage != null) {
                         onSend(toSend)
                         text = ""
                     }
                 },
-                enabled = enabled && text.isNotBlank(),
+                enabled = enabled && (text.isNotBlank() || pendingImage != null),
             ) {
+                val sendEnabled = enabled && (text.isNotBlank() || pendingImage != null)
                 Icon(
                     Icons.AutoMirrored.Filled.Send,
                     contentDescription = "Send",
-                    tint = if (enabled && text.isNotBlank()) {
+                    tint = if (sendEnabled) {
                         MaterialTheme.colorScheme.primary
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
                     },
                 )
             }
+        }
+    }
+}
+
+/** Issue #215 — info banner explaining that the image was dropped
+ *  because the active provider doesn't accept images. Uses the
+ *  surfaceVariant colour rather than errorContainer because the
+ *  message did still send — this is a "fyi" not a "fail". */
+@Composable
+private fun ImageDroppedBanner(onDismiss: () -> Unit) {
+    val spacing = LocalSpacing.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = spacing.md, vertical = spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+    ) {
+        Icon(
+            Icons.Outlined.Image,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = "Image input not supported on this provider — " +
+                "ignoring attached image, sending text only.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = onDismiss) {
+            Icon(
+                Icons.Outlined.Close,
+                contentDescription = "Dismiss",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

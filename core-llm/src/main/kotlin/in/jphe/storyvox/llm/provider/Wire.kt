@@ -155,6 +155,41 @@ internal data class OpenAiToolFunction(
     val parameters: kotlinx.serialization.json.JsonObject,
 )
 
+// ── Multi-modal Anthropic (#215) ────────────────────────────────────
+//
+// Anthropic's Messages API accepts image+text content blocks alongside
+// plain-text via a typed content array. We keep the [AnthropicRequest]
+// type (with string-content [AnthropicMessage]) for the text-only
+// streaming hot path (it's slightly cheaper to serialize), and use
+// this image-request type whenever any user message carries
+// [LlmContentBlock.Image] parts.
+
+@Serializable
+internal data class AnthropicImageRequest(
+    val model: String,
+    @SerialName("max_tokens") val maxTokens: Int,
+    val messages: List<AnthropicToolMessage>,
+    val system: String? = null,
+    val stream: Boolean = true,
+)
+
+// ── Multi-modal OpenAI (#215) ───────────────────────────────────────
+//
+// OpenAI's chat-completions API accepts image_url content blocks
+// inside the same `messages[].content` array used for tool-aware
+// chats. We need a wire type with `messages: List<JsonObject>` (so
+// each message's `content` can be either a string or an array). For
+// streaming we still set `stream: true` — image-bearing chats can
+// stream tokens just like text-only ones.
+
+@Serializable
+internal data class OpenAiImageRequest(
+    val model: String,
+    val messages: List<kotlinx.serialization.json.JsonObject>,
+    @SerialName("max_tokens") val maxTokens: Int = 1024,
+    val stream: Boolean = true,
+)
+
 // ── AWS Bedrock converse-stream ────────────────────────────────────
 //
 // Body shape: { modelId, messages:[{role, content:[{text}]}],

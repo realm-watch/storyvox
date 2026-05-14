@@ -63,6 +63,13 @@ open class OpenAiApiProvider @Inject constructor(
      *  calling out of the box. */
     override val supportsTools: Boolean = true
 
+    /** Issue #215 — OpenAI's `gpt-4o` family (and every subsequent
+     *  Chat-Completions model JP has the Settings UI offer) accepts
+     *  `image_url` content blocks. The chat layer attaches an image
+     *  when the composer has one queued; we splice it into the user
+     *  message's content array as `{type:"image_url", image_url:{url:"data:…"}}`. */
+    override val supportsImages: Boolean = true
+
     /** Chat-completions endpoint. Open for tests. */
     protected open val endpointUrl: String = ENDPOINT
     /** /v1/models endpoint for [probe]. Open for tests. */
@@ -78,25 +85,57 @@ open class OpenAiApiProvider @Inject constructor(
             ?: throw LlmError.NotConfigured(ProviderId.OpenAi)
         val resolvedModel = model ?: cfg.openAiModel
 
-        // OpenAI wants system as a regular message at the head of the
-        // array (unlike Anthropic which has a top-level field).
-        val systemMsg = systemPrompt?.takeIf { it.isNotBlank() }
-            ?.let { listOf(OpenAiMessage("system", it)) }
-            .orEmpty()
-        val body = OpenAiRequest(
-            model = resolvedModel,
-            messages = systemMsg + messages.map {
-                OpenAiMessage(it.role.name, it.content)
-            },
-            stream = true,
-        )
+        // Issue #215 — when any message carries multi-modal parts we
+        // serialize each message as a JSON object whose `content` is
+        // a typed-block array. Text-only chats keep the cheaper
+        // string-content [OpenAiRequest] shape.
+        val payload: String = if (messages.any { it.parts != null }) {
+            val list = ArrayList<JsonObject>()
+            systemPrompt?.takeIf { it.isNotBlank() }?.let { sp ->
+                list.add(buildJsonObject {
+                    put("role", "system")
+                    put("content", sp)
+                })
+            }
+            messages.forEach { msg ->
+                val blocks = ContentBlocks.openAi(msg)
+                list.add(buildJsonObject {
+                    put("role", msg.role.name)
+                    if (blocks != null) {
+                        put("content", kotlinx.serialization.json.JsonArray(blocks))
+                    } else {
+                        put("content", msg.content)
+                    }
+                })
+            }
+            val body = OpenAiImageRequest(
+                model = resolvedModel,
+                messages = list,
+                stream = true,
+            )
+            json.encodeToString(body)
+        } else {
+            // OpenAI wants system as a regular message at the head of
+            // the array (unlike Anthropic which has a top-level field).
+            val systemMsg = systemPrompt?.takeIf { it.isNotBlank() }
+                ?.let { listOf(OpenAiMessage("system", it)) }
+                .orEmpty()
+            val body = OpenAiRequest(
+                model = resolvedModel,
+                messages = systemMsg + messages.map {
+                    OpenAiMessage(it.role.name, it.content)
+                },
+                stream = true,
+            )
+            json.encodeToString(body)
+        }
 
         val request = Request.Builder()
             .url(endpointUrl)
             .header("Authorization", "Bearer $apiKey")
             .header("content-type", "application/json")
             .header("accept", "text/event-stream")
-            .post(json.encodeToString(body).toRequestBody(JSON_MEDIA_TYPE))
+            .post(payload.toRequestBody(JSON_MEDIA_TYPE))
             .build()
 
         val response = try {
@@ -203,9 +242,17 @@ open class OpenAiApiProvider @Inject constructor(
                 })
             }
             messages.forEach { msg ->
+                // Issue #215 — image-bearing message → typed-block array;
+                // text-only → string content (cheaper to serialize and
+                // backward-compatible with every OpenAI-compat backend).
+                val blocks = ContentBlocks.openAi(msg)
                 conversation.add(buildJsonObject {
                     put("role", msg.role.name)
-                    put("content", msg.content)
+                    if (blocks != null) {
+                        put("content", kotlinx.serialization.json.JsonArray(blocks))
+                    } else {
+                        put("content", msg.content)
+                    }
                 })
             }
 

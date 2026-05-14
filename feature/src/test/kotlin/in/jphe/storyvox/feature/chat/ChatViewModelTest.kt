@@ -323,6 +323,67 @@ class ChatViewModelTest {
             assertEquals("Vin", recorded.first().name)
             assertTrue(recorded.first().summary.contains("Mistborn"))
         }
+
+    // Issue #215 — multi-modal image input composer state.
+
+    @Test
+    fun `attachImage sets pending image and clearPendingImage removes it`() =
+        runTest(dispatcher) {
+            val (vm, _, _) = makeViewModel()
+            collectUiState(vm)
+            advanceUntilIdle()
+            assertNull(vm.uiState.value.pendingImage)
+
+            val attachment = ImageAttachment(
+                uri = "content://media/picture/123",
+                base64 = "Zm9v",
+                mimeType = "image/jpeg",
+                widthPx = 800,
+                heightPx = 600,
+            )
+            vm.attachImage(attachment)
+            advanceUntilIdle()
+            assertEquals(attachment, vm.uiState.value.pendingImage)
+
+            vm.clearPendingImage()
+            advanceUntilIdle()
+            assertNull(vm.uiState.value.pendingImage)
+        }
+
+    @Test
+    fun `send clears pending image and the next turn carries the URI`() =
+        runTest(dispatcher) {
+            val session = FakeSessionRepo(tokens = listOf("I see a cat."))
+            val (vm, _, _) = makeViewModel(session = session)
+            collectUiState(vm)
+            advanceUntilIdle()
+
+            val attachment = ImageAttachment(
+                uri = "content://media/picture/456",
+                base64 = "Zm9v",
+                mimeType = "image/jpeg",
+                widthPx = 1280,
+                heightPx = 720,
+            )
+            vm.attachImage(attachment)
+            vm.send("what's in this photo?")
+            advanceUntilIdle()
+
+            // The composer state cleared on send.
+            assertNull(vm.uiState.value.pendingImage)
+
+            // The user turn (most-recently appended) picks up the URI
+            // via the in-memory keyed-by-text overlay.
+            val userTurns = vm.uiState.value.turns.filter {
+                it.role == ChatTurn.Role.User
+            }
+            assertEquals(1, userTurns.size)
+            assertEquals("what's in this photo?", userTurns.first().text)
+            assertEquals(
+                "content://media/picture/456",
+                userTurns.first().imageUri,
+            )
+        }
 }
 
 // ── Fakes ──────────────────────────────────────────────────────────
@@ -370,7 +431,11 @@ private class FakeSessionRepo(
         lastSystemPrompt = systemPrompt
     }
 
-    override fun chat(sessionId: String, userMessage: String): Flow<String> = flow {
+    override fun chat(
+        sessionId: String,
+        userMessage: String,
+        userParts: List<`in`.jphe.storyvox.llm.LlmContentBlock>?,
+    ): Flow<String> = flow {
         chatCalls += sessionId to userMessage
         // Persist the user turn synchronously, mirroring real repo
         // behaviour ("user msg saved before stream begins").

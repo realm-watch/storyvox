@@ -99,7 +99,17 @@ open class LlmSessionRepository @Inject constructor(
      * completion (success path only — partial replies on cancel are
      * NOT saved, consistent with how chat surfaces typically behave).
      */
-    open fun chat(sessionId: String, userMessage: String): Flow<String> = flow {
+    open fun chat(
+        sessionId: String,
+        userMessage: String,
+        /** Issue #215 — optional multi-modal content blocks. When
+         *  non-null, the latest (user) message in [history] gets
+         *  these parts attached so the provider can serialize them
+         *  onto the wire alongside the text. The persistence layer
+         *  stores only [userMessage] — image bytes don't survive a
+         *  process restart in v1, see [LlmMessage.parts] kdoc. */
+        userParts: List<LlmContentBlock>? = null,
+    ): Flow<String> = flow {
         val session = sessionDao.get(sessionId)
             ?: throw IllegalStateException("Session $sessionId not found")
         val provider = ProviderId.valueOf(session.provider)
@@ -113,7 +123,9 @@ open class LlmSessionRepository @Inject constructor(
                 createdAt = System.currentTimeMillis(),
             ),
         )
-        val history = messageDao.getBySession(sessionId).mapNotNull { it.toWire() }
+        val history = messageDao.getBySession(sessionId)
+            .mapNotNull { it.toWire() }
+            .let { attachPartsToLastUser(it, userParts) }
 
         val replyBuf = StringBuilder()
         val replyFlow = llm.streamWith(
@@ -161,6 +173,9 @@ open class LlmSessionRepository @Inject constructor(
         sessionId: String,
         userMessage: String,
         tools: ToolRegistry,
+        /** Issue #215 — see [chat]. Same shape, same persistence
+         *  trade-off (text-only DB row, image parts in-memory only). */
+        userParts: List<LlmContentBlock>? = null,
     ): Flow<ChatStreamEvent> = flow {
         val session = sessionDao.get(sessionId)
             ?: throw IllegalStateException("Session $sessionId not found")
@@ -174,7 +189,9 @@ open class LlmSessionRepository @Inject constructor(
                 createdAt = System.currentTimeMillis(),
             ),
         )
-        val history = messageDao.getBySession(sessionId).mapNotNull { it.toWire() }
+        val history = messageDao.getBySession(sessionId)
+            .mapNotNull { it.toWire() }
+            .let { attachPartsToLastUser(it, userParts) }
 
         val replyBuf = StringBuilder()
         val replyFlow = llm.chatWithToolsOn(
@@ -206,6 +223,22 @@ open class LlmSessionRepository @Inject constructor(
                 }
             }
         emitAll(replyFlow)
+    }
+
+    /** Issue #215 — attach the given content-block list to the last
+     *  user message in [history], leaving the rest untouched. The
+     *  returned list is what gets handed to the provider on the wire;
+     *  the persisted Room rows stay text-only. */
+    private fun attachPartsToLastUser(
+        history: List<LlmMessage>,
+        parts: List<LlmContentBlock>?,
+    ): List<LlmMessage> {
+        if (parts.isNullOrEmpty()) return history
+        val idx = history.indexOfLast { it.role == LlmMessage.Role.user }
+        if (idx < 0) return history
+        return history.toMutableList().apply {
+            this[idx] = this[idx].copy(parts = parts)
+        }
     }
 
     open suspend fun deleteSession(sessionId: String) {

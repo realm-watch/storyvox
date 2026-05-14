@@ -96,6 +96,13 @@ class LlmRepository @Inject constructor(
     fun supportsTools(provider: ProviderId): Boolean =
         provider.implemented && providerFor(provider).supportsTools
 
+    /** Issue #215 — quick "does this provider accept image content?"
+     *  check for UI gating. When false the chat composer drops the
+     *  attached image at send time and surfaces a "image input not
+     *  supported on this provider" warning. */
+    fun supportsImages(provider: ProviderId): Boolean =
+        provider.implemented && providerFor(provider).supportsImages
+
     /** Run a probe on the named provider. Returns
      *  [ProbeResult.Misconfigured] for spec-only providers since they
      *  have no implementation yet. */
