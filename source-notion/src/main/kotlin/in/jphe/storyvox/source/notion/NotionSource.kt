@@ -245,10 +245,25 @@ internal fun notionFictionId(pageId: String): String =
 internal fun chapterIdFor(fictionId: String, sectionIndex: Int): String =
     "${fictionId}::section-$sectionIndex"
 
+/** Compose a chapter id by binding a Notion page id to a parent fiction
+ *  id. Used by anonymous-mode delegate where each chapter corresponds
+ *  to one underlying Notion page (a curated guide, a database row, an
+ *  About/Donate page) rather than a section-index offset. */
+internal fun chapterIdFor(fictionId: String, pageId: String): String =
+    "${fictionId}::${pageId.replace("-", "")}"
+
 /** Strip the `notion:` prefix and return the canonical page id (with
  *  hyphens removed). Returns null on ids that don't carry the prefix. */
 internal fun String.toPageId(): String? =
     if (startsWith("notion:")) removePrefix("notion:").substringBefore("::").replace("-", "")
+    else null
+
+/** Strip the `notion:` prefix and return the raw fiction id portion —
+ *  for anonymous-mode fictions this is a section name ("guides",
+ *  "resources", "about", "donate") rather than a Notion page id.
+ *  Returns null on ids that don't carry the prefix. */
+internal fun decodeFictionId(fictionId: String): String? =
+    if (fictionId.startsWith("notion:")) fictionId.removePrefix("notion:")
     else null
 
 /**

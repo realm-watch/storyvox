@@ -97,41 +97,70 @@ object NotionDefaults {
         "storyvox-notion/1.0 (+https://github.com/techempower-org/storyvox)"
 
     /**
-     * Issue #393 — chapter list for the single TechEmpower fiction in
-     * anonymous mode. Browse → Notion surfaces one tile
-     * ("TechEmpower.org"); this list defines its chapter spine.
+     * Issue #393 / v0.5.26 — four-fiction layout for TechEmpower in
+     * anonymous mode. Browse → Notion surfaces **four tiles** (one per
+     * top-level section of the techempower.org navigation):
      *
-     * Order matches `site.config.ts` `navigationLinks`: Guides
-     * (the root page itself), Resources (the database), About, Donate.
-     * Each entry resolves to either a Notion page (rendered via the
-     * page's own block content) or a Notion collection (rendered as
-     * an overview list of row titles).
+     *  1. **Guides** — has 8 chapters, one per individual guide page
+     *     (How to use TechEmpower, Free internet, EV incentives, EBT
+     *     balance, EBT spending, Findhelp, Password manager, Free cell
+     *     service). Each chapter's body is the rendered Notion page of
+     *     that guide. Chapter list is hand-curated from
+     *     `techempower/site.config.ts` `pageUrlOverrides` so the order
+     *     matches the website.
+     *  2. **Resources** — has N chapters (~80), one per row in the
+     *     TechEmpower Resources database. Each chapter's body is the
+     *     resource page's content (resolved by `loadPageChunk` on the
+     *     row's block id).
+     *  3. **About** — single-chapter fiction with the About page content.
+     *  4. **Donate** — single-chapter fiction with the Donate page content.
      *
-     * Adding a new chapter — e.g. the non-discrimination policy at
-     * `cdbe9906ae2441a1a9bb3aec601a5a6c` — is a one-line append. The
-     * delegate doesn't hardcode chapter count anywhere; this list IS
-     * the schema.
+     * Each fiction's stable id ("guides", "resources", "about", "donate")
+     * is encoded into the FictionSummary id and parsed back at
+     * fictionDetail/chapter call time. Adding a new fiction is a one-line
+     * append to [techempowerFictions]; the delegate has no hardcoded
+     * count.
+     *
+     * Why hand-curated guide list (instead of walking the root page's
+     * children at runtime): the root page contains *both* navigation
+     * scaffolding (the 8 guides) and bridge text. We want the chapter
+     * list to be exactly the 8 user-facing guides, in the website's
+     * order — not "whatever child blocks show up." A static list also
+     * keeps a cold Browse load fast (no second loadPageChunk to
+     * discover children).
      */
-    internal val techempowerChapters: List<`in`.jphe.storyvox.source.notion.ChapterSpec> = listOf(
-        `in`.jphe.storyvox.source.notion.ChapterSpec.Page(
+    internal val techempowerFictions: List<`in`.jphe.storyvox.source.notion.TechEmpowerFiction> = listOf(
+        `in`.jphe.storyvox.source.notion.TechEmpowerFiction.PageList(
+            id = "guides",
             title = "Guides",
-            // The root page itself — its block content includes the
-            // intro paragraphs, the 8 guide sub-page references, and
-            // the link to Resources. Internal `header` blocks render
-            // as `<h1>` inline so the chapter reader sees them as
-            // sub-headings within "Guides".
-            pageId = TECHEMPOWER_ROOT_PAGE_ID,
+            description = "Step-by-step guides for free tech, EBT support, and digital safety.",
+            chapters = listOf(
+                "How to use TechEmpower.org" to "6c979ba4e43f48d7a4836e0027ea4178",
+                "Free internet" to "bb5e537b083a417eb90ed9e984128c71",
+                "EV incentives" to "758054e1a2ec4c1aa077202ffedec710",
+                "EBT balance" to "272a4ee69520804fa68ad8c110af49f6",
+                "EBT spending" to "16f7018ad93542652b2b16c44464b1c3",
+                "Findhelp" to "992742a61e2e472b9b4a149f7aa74539",
+                "Password manager" to "99b0ab9c7cce428e8c86e3143752aa1c",
+                "Free cell service" to "7519ef16d7b74519acd9b8262a7beb84",
+            ),
         ),
-        `in`.jphe.storyvox.source.notion.ChapterSpec.Collection(
+        `in`.jphe.storyvox.source.notion.TechEmpowerFiction.CollectionRows(
+            id = "resources",
             title = "Resources",
-            blockId = TECHEMPOWER_DATABASE_ID,
+            description = "Searchable database of free tech resources for individuals with low income, their families, and nonprofit organizations.",
+            collectionBlockId = TECHEMPOWER_DATABASE_ID,
         ),
-        `in`.jphe.storyvox.source.notion.ChapterSpec.Page(
+        `in`.jphe.storyvox.source.notion.TechEmpowerFiction.SinglePage(
+            id = "about",
             title = "About",
+            description = "About TechEmpower.org.",
             pageId = "dbf0ddece2ce468fb2bf9049e6322e8a",
         ),
-        `in`.jphe.storyvox.source.notion.ChapterSpec.Page(
+        `in`.jphe.storyvox.source.notion.TechEmpowerFiction.SinglePage(
+            id = "donate",
             title = "Donate",
+            description = "Support TechEmpower's mission.",
             pageId = "59d8a4dab0cc484f8b044d33f240ce1d",
         ),
     )

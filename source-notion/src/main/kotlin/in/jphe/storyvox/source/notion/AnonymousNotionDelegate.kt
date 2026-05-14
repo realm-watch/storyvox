@@ -24,39 +24,29 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Issue #393 — anonymous-mode read path.
+ * Issue #393 / v0.5.25 — anonymous-mode read path with **four fictions**
+ * for TechEmpower.
  *
- * **Design (v0.5.25)**: Browse → Notion surfaces a **single tile** for
- * the configured root page (TechEmpower.org by default). The fiction's
- * chapter list is a structural overview of the top-level sections —
- * one chapter per logical area of the site, not one fiction per page.
+ * Browse → Notion shows one tile per top-level section of the
+ * techempower.org navigation:
  *
- * For TechEmpower the chapters are:
- *  1. **Guides** — content of the root page itself ("Welcome to
- *     TechEmpower.org" + the bridge text linking to each individual
- *     guide). Internal headings inside the root page split into
- *     sub-headings within the chapter body, preserved as `<h2>`/`<h3>`
- *     in the HTML view; TTS narrates them inline. The 8 individual
- *     guide pages stay reachable through their authored links inside
- *     the body, but they aren't *separate fictions* — keeping them as
- *     one chapter matches JP's "single fiction, multi-chapter" call.
- *  2. **Resources** — overview of the Resources database. Renders as
- *     a flat HTML list of row titles + brief descriptions (queried via
- *     `queryCollection` once per fictionDetail). The full database has
- *     ~80 rows; rendering all of them keeps the chapter narratable
- *     without forcing the user to drill into each row.
- *  3. **About** — content of the About page.
- *  4. **Donate** — content of the Donate page.
+ *  1. **Guides** ([TechEmpowerFiction.PageList]) — 8 chapters, one per
+ *     guide page (How to use, Free internet, EV incentives, EBT
+ *     balance, EBT spending, Findhelp, Password manager, Free cell
+ *     service). Each chapter renders the linked guide's Notion page.
+ *  2. **Resources** ([TechEmpowerFiction.CollectionRows]) — N chapters
+ *     (~80), one per row in the Resources database. Each chapter
+ *     renders the row's underlying Notion page content.
+ *  3. **About** ([TechEmpowerFiction.SinglePage]) — single chapter, the
+ *     About page content.
+ *  4. **Donate** ([TechEmpowerFiction.SinglePage]) — single chapter, the
+ *     Donate page content.
  *
- * Each chapter's body is built by walking the underlying Notion page's
- * blocks through [renderPageBody], which respects `alive:false`
- * tombstones, projects `header`/`sub_header`/`text`/`bulleted_list`
- * to HTML, and skips embeds.
- *
- * The chapter map is keyed by section name (stable across rebuilds);
- * configurable in [NotionDefaults.techempowerChapters] so a future
- * iteration can extend the surface (Non-discrimination policy, etc.)
- * without rewriting the delegate.
+ * Fiction ids are stable strings ("guides", "resources", "about",
+ * "donate") encoded into the FictionSummary id via [notionFictionId].
+ * Generic (non-TechEmpower) public Notion pages still fall back to the
+ * single-tile single-chapter "Contents" rendering so arbitrary
+ * notion.site URLs remain readable.
  */
 @Singleton
 internal class AnonymousNotionDelegate @Inject constructor(
@@ -64,10 +54,14 @@ internal class AnonymousNotionDelegate @Inject constructor(
 ) {
 
     /**
-     * The single Browse tile. Returns one [FictionSummary] for the
-     * configured root page; page > 1 returns empty (no pagination).
-     * The tile is built from the root page's loadPageChunk response
-     * (title + cover image come from the page block itself).
+     * Browse listing. For TechEmpower's root: returns four tiles, one
+     * per [NotionDefaults.techempowerFictions] entry. For any other
+     * root page: returns the single-tile fallback that v0.5.25 shipped
+     * (the configured root page becomes the one fiction).
+     *
+     * page > 1 returns empty — none of the fictions paginate at the
+     * Browse layer; pagination happens inside the chapter list for
+     * CollectionRows fictions instead.
      */
     suspend fun popular(
         state: NotionConfigState,
@@ -76,12 +70,143 @@ internal class AnonymousNotionDelegate @Inject constructor(
         if (page > 1) {
             return FictionResult.Success(ListPage(items = emptyList(), page = page, hasNext = false))
         }
+        val compactRoot = state.rootPageId.replace("-", "")
+        return if (compactRoot == NotionDefaults.TECHEMPOWER_ROOT_PAGE_ID) {
+            FictionResult.Success(
+                ListPage(items = buildTechEmpowerTiles(), page = 1, hasNext = false),
+            )
+        } else {
+            buildGenericRootTile(state)
+        }
+    }
+
+    /**
+     * Fiction detail — chapter list for one of the four TechEmpower
+     * fictions (or the generic single-fiction fallback). For
+     * CollectionRows fictions (Resources) the chapter list comes from
+     * a queryCollection call. For PageList fictions (Guides) the
+     * chapter list is the hand-curated `chapters` field — no extra
+     * HTTP round-trip needed. For SinglePage fictions (About, Donate)
+     * the chapter list is a one-element list pointing at the page.
+     */
+    suspend fun fictionDetail(
+        state: NotionConfigState,
+        fictionId: String,
+    ): FictionResult<FictionDetail> {
+        val sectionId = decodeFictionId(fictionId)
+            ?: return FictionResult.NotFound("Notion fiction id not recognized: $fictionId")
+        val compactRoot = state.rootPageId.replace("-", "")
+        if (compactRoot != NotionDefaults.TECHEMPOWER_ROOT_PAGE_ID) {
+            // Generic root: only one fiction exists, and its sectionId
+            // is the compact root page id itself.
+            if (sectionId != compactRoot) {
+                return FictionResult.NotFound("Notion fiction $fictionId is not the configured root")
+            }
+            return genericRootFictionDetail(state, fictionId)
+        }
+        val fiction = NotionDefaults.techempowerFictions.firstOrNull { it.id == sectionId }
+            ?: return FictionResult.NotFound("TechEmpower section $sectionId not configured")
+        return when (fiction) {
+            is TechEmpowerFiction.PageList -> pageListDetail(fictionId, fiction)
+            is TechEmpowerFiction.CollectionRows -> collectionDetail(fictionId, fiction)
+            is TechEmpowerFiction.SinglePage -> singlePageDetail(fictionId, fiction)
+        }
+    }
+
+    /**
+     * Render one chapter. Each chapter's body comes from a single Notion
+     * page — for PageList chapters the page is the curated guide id, for
+     * CollectionRows chapters the page is the row id (Notion treats each
+     * database row as a page), for SinglePage chapters the page is the
+     * About / Donate page. So chapter rendering is uniform: resolve the
+     * chapter id back to its Notion page id, loadPageChunk, render
+     * body.
+     */
+    suspend fun chapter(
+        state: NotionConfigState,
+        fictionId: String,
+        chapterId: String,
+    ): FictionResult<ChapterContent> {
+        val sectionId = decodeFictionId(fictionId)
+            ?: return FictionResult.NotFound("Notion fiction id not recognized: $fictionId")
+        val sourceChapterId = chapterId.substringAfter("::")
+            .takeIf { it.isNotBlank() }
+            ?: return FictionResult.NotFound("Notion chapter id not recognized: $chapterId")
+        val compactRoot = state.rootPageId.replace("-", "")
+        val resolution = if (compactRoot == NotionDefaults.TECHEMPOWER_ROOT_PAGE_ID) {
+            resolveTechempowerChapter(sectionId, sourceChapterId)
+        } else {
+            ChapterResolution(title = "Contents", pageId = sectionId)
+        }
+        resolution ?: return FictionResult.NotFound(
+            "Chapter $chapterId not found in fiction $fictionId",
+        )
+        val info = ChapterInfo(
+            id = chapterId,
+            sourceChapterId = sourceChapterId,
+            index = 0,
+            title = resolution.title,
+        )
+        return renderPageChapter(info, resolution.pageId)
+    }
+
+    /**
+     * Search — anonymous tiles aren't a paged, queryable surface, so we
+     * do an in-memory filter over the tiles we already built. Keeps the
+     * source consistent with the FictionSource contract (returns
+     * ListPage even on empty match).
+     */
+    suspend fun search(
+        state: NotionConfigState,
+        term: String,
+    ): FictionResult<ListPage<FictionSummary>> {
+        val popularResult = popular(state, page = 1)
+        val all = when (popularResult) {
+            is FictionResult.Success -> popularResult.value.items
+            is FictionResult.Failure -> return popularResult
+        }
+        val termLc = term.trim().lowercase()
+        val matches = if (termLc.isEmpty()) all else all.filter {
+            it.title.lowercase().contains(termLc) ||
+                it.description?.lowercase()?.contains(termLc) == true
+        }
+        return FictionResult.Success(
+            ListPage(items = matches, page = 1, hasNext = false),
+        )
+    }
+
+    // ─── tile builders ────────────────────────────────────────────────
+
+    /** Build the four TechEmpower tiles from [NotionDefaults]. The
+     *  fictions are stable + hand-curated, so no HTTP traffic is needed
+     *  to assemble the Browse listing — Browse loads instantly. */
+    private fun buildTechEmpowerTiles(): List<FictionSummary> =
+        NotionDefaults.techempowerFictions.map { fiction ->
+            FictionSummary(
+                id = notionFictionId(fiction.id),
+                sourceId = SourceIds.NOTION,
+                title = fiction.title,
+                author = "TechEmpower",
+                description = fiction.description,
+                coverUrl = null,
+                tags = emptyList(),
+                status = FictionStatus.ONGOING,
+            )
+        }
+
+    /** Generic-root single-fiction listing. Used when the user has
+     *  pointed `:source-notion` at a non-TechEmpower public page (any
+     *  notion.site URL). Returns a one-element ListPage built from the
+     *  root page's own title + cover. */
+    private suspend fun buildGenericRootTile(
+        state: NotionConfigState,
+    ): FictionResult<ListPage<FictionSummary>> {
         val rootResult = api.loadPageChunk(state.rootPageId)
         val root = when (rootResult) {
             is FictionResult.Success -> rootResult.value
             is FictionResult.Failure -> return rootResult
         }
-        val tile = buildRootSummary(state, root)
+        val tile = buildSummaryForGenericRoot(state, root)
             ?: return FictionResult.NotFound(
                 "Notion root page has no readable title: ${state.rootPageId}",
             )
@@ -90,136 +215,19 @@ internal class AnonymousNotionDelegate @Inject constructor(
         )
     }
 
-    /**
-     * Fiction detail for the single Browse tile. Builds the chapter
-     * list from [NotionDefaults.techempowerChapters] (or a derived
-     * generic chapter list for non-TechEmpower root pages — out of
-     * scope for v0.5.25; for now we treat any root as TechEmpower-
-     * shaped). We do *not* fetch each chapter's body here — only the
-     * titles and chapter ids. The body fetch happens lazily in
-     * [chapter] when the user taps a chapter.
-     */
-    suspend fun fictionDetail(
-        state: NotionConfigState,
-        fictionId: String,
-    ): FictionResult<FictionDetail> {
-        val pageId = fictionId.toPageId()
-            ?: return FictionResult.NotFound("Notion fiction id not recognized: $fictionId")
-        // Validate that the fiction id matches the configured root —
-        // anonymous mode only exposes one fiction at a time.
-        val rootResult = api.loadPageChunk(state.rootPageId)
-        val root = when (rootResult) {
-            is FictionResult.Success -> rootResult.value
-            is FictionResult.Failure -> return rootResult
-        }
-        val tile = buildRootSummary(state, root) ?: FictionSummary(
-            id = fictionId,
-            sourceId = SourceIds.NOTION,
-            title = "TechEmpower.org",
-            author = "TechEmpower",
-            description = null,
-            status = FictionStatus.ONGOING,
-        )
-        val chapterSpecs = chapterSpecsFor(state.rootPageId, pageId)
-        val chapters = chapterSpecs.mapIndexed { idx, spec ->
-            ChapterInfo(
-                id = chapterIdFor(fictionId, idx),
-                sourceChapterId = "section-$idx",
-                index = idx,
-                title = spec.title,
-                publishedAt = null,
-            )
-        }
-        return FictionResult.Success(
-            FictionDetail(
-                summary = tile.copy(chapterCount = chapters.size),
-                chapters = chapters,
-            ),
-        )
-    }
-
-    /**
-     * Render one chapter's body. Looks up the chapter's source page id
-     * in [chapterSpecsFor], loads its blocks, and projects them to
-     * HTML + plain text. The "Resources" chapter has special handling
-     * because its underlying block is a collection (not a page) — we
-     * call queryCollection and render the row titles as a list.
-     */
-    suspend fun chapter(
-        state: NotionConfigState,
-        fictionId: String,
-        chapterId: String,
-    ): FictionResult<ChapterContent> {
-        val pageId = fictionId.toPageId()
-            ?: return FictionResult.NotFound("Notion fiction id not recognized: $fictionId")
-        val sectionIndex = chapterId.substringAfterLast("::section-", "")
-            .toIntOrNull()
-            ?: return FictionResult.NotFound("Notion chapter id not recognized: $chapterId")
-        val specs = chapterSpecsFor(state.rootPageId, pageId)
-        val spec = specs.getOrNull(sectionIndex)
-            ?: return FictionResult.NotFound(
-                "Section $sectionIndex not found for Notion fiction $pageId",
-            )
-        val info = ChapterInfo(
-            id = chapterId,
-            sourceChapterId = "section-$sectionIndex",
-            index = sectionIndex,
-            title = spec.title,
-        )
-        return when (spec) {
-            is ChapterSpec.Page -> renderPageChapter(info, spec.pageId)
-            is ChapterSpec.Collection -> renderCollectionChapter(info, spec)
-        }
-    }
-
-    /**
-     * Search — the anonymous-mode tile is single-fiction, so search
-     * either matches the one tile's title/description or returns
-     * nothing. Keeps the source consistent with the rest of Browse
-     * (search returns a ListPage; the empty case is fine).
-     */
-    suspend fun search(
-        state: NotionConfigState,
-        term: String,
-    ): FictionResult<ListPage<FictionSummary>> {
-        val rootResult = api.loadPageChunk(state.rootPageId)
-        val root = when (rootResult) {
-            is FictionResult.Success -> rootResult.value
-            is FictionResult.Failure -> return rootResult
-        }
-        val tile = buildRootSummary(state, root)
-            ?: return FictionResult.Success(ListPage(items = emptyList(), page = 1, hasNext = false))
-        val termLc = term.trim().lowercase()
-        val matches = termLc.isEmpty() ||
-            tile.title.lowercase().contains(termLc) ||
-            tile.description?.lowercase()?.contains(termLc) == true
-        return FictionResult.Success(
-            ListPage(
-                items = if (matches) listOf(tile) else emptyList(),
-                page = 1,
-                hasNext = false,
-            ),
-        )
-    }
-
-    // ─── internals ────────────────────────────────────────────────────
-
-    /** Build the FictionSummary for the configured root page. Used in
-     *  both [popular] and [fictionDetail]. Null when the recordMap
-     *  doesn't contain a usable title (signals "this page isn't shared
-     *  publicly" or "Notion returned an empty chunk"). */
-    private fun buildRootSummary(
+    private fun buildSummaryForGenericRoot(
         state: NotionConfigState,
         root: NotionChunkResponse,
     ): FictionSummary? {
+        val compactRoot = state.rootPageId.replace("-", "")
         val block = root.recordMap.findBlock(state.rootPageId) ?: return null
         val title = readTitle(block) ?: return null
         val description = readDescriptionFromBlocks(root.recordMap, block)
         return FictionSummary(
-            id = notionFictionId(state.rootPageId),
+            id = notionFictionId(compactRoot),
             sourceId = SourceIds.NOTION,
             title = title,
-            author = "TechEmpower",
+            author = "Notion",
             description = description,
             coverUrl = readCoverUrl(block),
             tags = emptyList(),
@@ -227,7 +235,171 @@ internal class AnonymousNotionDelegate @Inject constructor(
         )
     }
 
-    /** Render a chapter that points at a Notion page block. */
+    // ─── fiction detail per variant ───────────────────────────────────
+
+    private fun pageListDetail(
+        fictionId: String,
+        fiction: TechEmpowerFiction.PageList,
+    ): FictionResult<FictionDetail> {
+        val chapters = fiction.chapters.mapIndexed { idx, (title, pageId) ->
+            ChapterInfo(
+                id = chapterIdFor(fictionId, pageId),
+                sourceChapterId = pageId,
+                index = idx,
+                title = title,
+                publishedAt = null,
+            )
+        }
+        val summary = FictionSummary(
+            id = fictionId,
+            sourceId = SourceIds.NOTION,
+            title = fiction.title,
+            author = "TechEmpower",
+            description = fiction.description,
+            chapterCount = chapters.size,
+            status = FictionStatus.ONGOING,
+        )
+        return FictionResult.Success(FictionDetail(summary = summary, chapters = chapters))
+    }
+
+    private suspend fun collectionDetail(
+        fictionId: String,
+        fiction: TechEmpowerFiction.CollectionRows,
+    ): FictionResult<FictionDetail> {
+        // Step 1: discover collection_id + view_id from the configured
+        // block id.
+        val chunkResult = api.loadPageChunk(fiction.collectionBlockId)
+        val chunk = when (chunkResult) {
+            is FictionResult.Success -> chunkResult.value
+            is FictionResult.Failure -> return chunkResult
+        }
+        val viewBlock = chunk.recordMap.findBlock(fiction.collectionBlockId)
+            ?: return FictionResult.NotFound(
+                "Collection block ${fiction.collectionBlockId} not in recordMap",
+            )
+        val collectionId = viewBlock.collectionId()
+            ?: return FictionResult.NotFound("Collection has no collection_id")
+        val viewId = viewBlock.firstViewId()
+            ?: return FictionResult.NotFound("Collection has no view_ids")
+
+        // Step 2: query the rows.
+        val rowsResult = api.queryCollection(collectionId, viewId, limit = 200)
+        val rowsResp = when (rowsResult) {
+            is FictionResult.Success -> rowsResult.value
+            is FictionResult.Failure -> return rowsResult
+        }
+        val rows = collectRows(rowsResp.recordMap)
+        val chapters = rows.mapIndexed { idx, (rowId, title) ->
+            ChapterInfo(
+                id = chapterIdFor(fictionId, rowId),
+                sourceChapterId = rowId,
+                index = idx,
+                title = title,
+                publishedAt = null,
+            )
+        }
+        val summary = FictionSummary(
+            id = fictionId,
+            sourceId = SourceIds.NOTION,
+            title = fiction.title,
+            author = "TechEmpower",
+            description = fiction.description,
+            chapterCount = chapters.size,
+            status = FictionStatus.ONGOING,
+        )
+        return FictionResult.Success(FictionDetail(summary = summary, chapters = chapters))
+    }
+
+    private fun singlePageDetail(
+        fictionId: String,
+        fiction: TechEmpowerFiction.SinglePage,
+    ): FictionResult<FictionDetail> {
+        val chapters = listOf(
+            ChapterInfo(
+                id = chapterIdFor(fictionId, fiction.pageId),
+                sourceChapterId = fiction.pageId,
+                index = 0,
+                title = fiction.title,
+                publishedAt = null,
+            ),
+        )
+        val summary = FictionSummary(
+            id = fictionId,
+            sourceId = SourceIds.NOTION,
+            title = fiction.title,
+            author = "TechEmpower",
+            description = fiction.description,
+            chapterCount = 1,
+            status = FictionStatus.ONGOING,
+        )
+        return FictionResult.Success(FictionDetail(summary = summary, chapters = chapters))
+    }
+
+    private suspend fun genericRootFictionDetail(
+        state: NotionConfigState,
+        fictionId: String,
+    ): FictionResult<FictionDetail> {
+        val rootResult = api.loadPageChunk(state.rootPageId)
+        val root = when (rootResult) {
+            is FictionResult.Success -> rootResult.value
+            is FictionResult.Failure -> return rootResult
+        }
+        val tile = buildSummaryForGenericRoot(state, root)
+            ?: return FictionResult.NotFound(
+                "Notion root page has no readable title: ${state.rootPageId}",
+            )
+        val compactRoot = state.rootPageId.replace("-", "")
+        val chapters = listOf(
+            ChapterInfo(
+                id = chapterIdFor(fictionId, compactRoot),
+                sourceChapterId = compactRoot,
+                index = 0,
+                title = "Contents",
+                publishedAt = null,
+            ),
+        )
+        return FictionResult.Success(
+            FictionDetail(summary = tile.copy(chapterCount = 1), chapters = chapters),
+        )
+    }
+
+    // ─── chapter resolution ───────────────────────────────────────────
+
+    /** Look up the (title, pageId) for a chapter inside a TechEmpower
+     *  fiction. Returns null when the sectionId/sourceChapterId pair
+     *  doesn't match any configured chapter. For CollectionRows the
+     *  title is just the row's source id — we re-resolve the human
+     *  title from the page block during rendering. */
+    private fun resolveTechempowerChapter(
+        sectionId: String,
+        sourceChapterId: String,
+    ): ChapterResolution? {
+        val fiction = NotionDefaults.techempowerFictions.firstOrNull { it.id == sectionId }
+            ?: return null
+        return when (fiction) {
+            is TechEmpowerFiction.PageList -> {
+                val match = fiction.chapters.firstOrNull { it.second == sourceChapterId }
+                    ?: return null
+                ChapterResolution(title = match.first, pageId = match.second)
+            }
+            is TechEmpowerFiction.CollectionRows -> {
+                // The chapter title comes from the row page itself; we
+                // pass a placeholder here and let renderPageChapter
+                // refine it (the ChapterInfo carries the placeholder
+                // through, but the rendered HTML's <h1> uses the page's
+                // real title).
+                ChapterResolution(title = sourceChapterId, pageId = sourceChapterId)
+            }
+            is TechEmpowerFiction.SinglePage -> {
+                if (sourceChapterId != fiction.pageId) return null
+                ChapterResolution(title = fiction.title, pageId = fiction.pageId)
+            }
+        }
+    }
+
+    /** Render a chapter that points at a Notion page block. Uniform for
+     *  all four fiction variants — each chapter's body is one Notion
+     *  page's content. */
     private suspend fun renderPageChapter(
         info: ChapterInfo,
         pageId: String,
@@ -239,95 +411,67 @@ internal class AnonymousNotionDelegate @Inject constructor(
         }
         val pageBlock = chunk.recordMap.findBlock(pageId)
             ?: return FictionResult.NotFound("Notion page $pageId not in recordMap")
+        // Refine the chapter title from the page block — important for
+        // CollectionRows chapters where the placeholder was the row id.
+        val refinedTitle = readTitle(pageBlock)?.takeIf { it.isNotBlank() } ?: info.title
+        val refinedInfo = info.copy(title = refinedTitle)
         val (html, plain) = renderPageBody(chunk.recordMap, pageBlock)
         return FictionResult.Success(
             ChapterContent(
-                info = info,
+                info = refinedInfo,
                 htmlBody = html,
                 plainBody = plain,
             ),
         )
     }
-
-    /** Render a chapter that points at a Notion collection (database).
-     *  Queries the collection's first view and emits an HTML list of
-     *  row titles. */
-    private suspend fun renderCollectionChapter(
-        info: ChapterInfo,
-        spec: ChapterSpec.Collection,
-    ): FictionResult<ChapterContent> {
-        // Step 1: load the collection_view block to discover its
-        // collection_id + view_ids. (Required because the unofficial
-        // queryCollection needs both ids; the configured spec only has
-        // the block id.)
-        val chunkResult = api.loadPageChunk(spec.blockId)
-        val chunk = when (chunkResult) {
-            is FictionResult.Success -> chunkResult.value
-            is FictionResult.Failure -> return chunkResult
-        }
-        val viewBlock = chunk.recordMap.findBlock(spec.blockId)
-            ?: return FictionResult.NotFound("Collection block ${spec.blockId} not in recordMap")
-        val collectionId = viewBlock.collectionId()
-            ?: return FictionResult.NotFound("Collection ${spec.blockId} has no collection_id")
-        val viewId = viewBlock.firstViewId()
-            ?: return FictionResult.NotFound("Collection ${spec.blockId} has no view_ids")
-
-        // Step 2: query the rows.
-        val rowsResult = api.queryCollection(collectionId, viewId, limit = 200)
-        val rowsResp = when (rowsResult) {
-            is FictionResult.Success -> rowsResult.value
-            is FictionResult.Failure -> return rowsResult
-        }
-        val rowTitles = collectRowTitles(rowsResp.recordMap)
-        return FictionResult.Success(
-            ChapterContent(
-                info = info,
-                htmlBody = renderRowsAsHtml(spec.title, rowTitles),
-                plainBody = renderRowsAsPlain(spec.title, rowTitles),
-            ),
-        )
-    }
 }
 
-// ─── chapter spec ─────────────────────────────────────────────────────
+/** One chapter's resolved (title, pageId) — used internally by
+ *  AnonymousNotionDelegate's chapter() flow. */
+private data class ChapterResolution(val title: String, val pageId: String)
+
+// ─── fiction spec ─────────────────────────────────────────────────────
 
 /**
- * One chapter's structural description. Either backed by a single
- * Notion page or by a collection (database) — chapter rendering
- * branches on the variant.
+ * Structural description of one TechEmpower fiction. Each variant maps
+ * to a chapter-list strategy:
+ *  - [PageList]: chapter list is the hand-curated `(title, pageId)`
+ *    pairs (Guides — 8 of them).
+ *  - [CollectionRows]: chapter list comes from a `queryCollection` call
+ *    against the named block (Resources — N rows, each chapter is one
+ *    row's page).
+ *  - [SinglePage]: chapter list is one element pointing at the page
+ *    (About, Donate).
  */
-internal sealed class ChapterSpec {
+internal sealed class TechEmpowerFiction {
+    abstract val id: String
     abstract val title: String
+    abstract val description: String
 
-    data class Page(override val title: String, val pageId: String) : ChapterSpec()
-    data class Collection(override val title: String, val blockId: String) : ChapterSpec()
-}
+    data class PageList(
+        override val id: String,
+        override val title: String,
+        override val description: String,
+        /** Ordered list of (chapter title, Notion page id) for the
+         *  curated chapter spine. Page ids are compact 32-hex. */
+        val chapters: List<Pair<String, String>>,
+    ) : TechEmpowerFiction()
 
-/**
- * Resolve the chapter list for a given (rootPageId, fictionId) pair.
- *
- * Today we only know one root page — TechEmpower — so any fiction id
- * whose page id matches the TechEmpower root uses the hand-curated
- * chapter list from [NotionDefaults]. A future iteration can support
- * arbitrary roots by walking the root page's content[] and projecting
- * each child page/collection into a chapter automatically.
- *
- * Returns an empty list when the fiction id doesn't match the root —
- * which then surfaces as "Section N not found" at the chapter call
- * site, the right shape for "this fiction doesn't exist anymore".
- */
-internal fun chapterSpecsFor(rootPageId: String, fictionPageId: String): List<ChapterSpec> {
-    val compactRoot = rootPageId.replace("-", "")
-    val compactFiction = fictionPageId.replace("-", "")
-    if (compactFiction != compactRoot) return emptyList()
-    return if (compactRoot == NotionDefaults.TECHEMPOWER_ROOT_PAGE_ID) {
-        NotionDefaults.techempowerChapters
-    } else {
-        // Generic root: one chapter that renders the whole root page.
-        // Reasonable fallback for arbitrary public Notion pages; the
-        // chapter title falls back to the page's own title.
-        listOf(ChapterSpec.Page(title = "Contents", pageId = compactRoot))
-    }
+    data class CollectionRows(
+        override val id: String,
+        override val title: String,
+        override val description: String,
+        /** Block id of the collection_view that wraps the database. */
+        val collectionBlockId: String,
+    ) : TechEmpowerFiction()
+
+    data class SinglePage(
+        override val id: String,
+        override val title: String,
+        override val description: String,
+        /** Compact 32-hex Notion page id. */
+        val pageId: String,
+    ) : TechEmpowerFiction()
 }
 
 // ─── recordMap helpers ────────────────────────────────────────────────
@@ -422,18 +566,18 @@ internal fun plainTextOfBlock(block: JsonObject): String {
  *  toHtml() but maps the v3 block types (`header`, `sub_header`,
  *  `sub_sub_header`, `text`, `bulleted_list`, `numbered_list`, ...).
  *
- *  Unlike the old per-chapter split, here we emit `<h1>` for `header`
- *  too — the single-fiction model preserves internal heading_1s as
- *  inline section headers in the chapter body. */
+ *  Internal heading_1s render as `<h2>` instead of `<h1>` — the chapter
+ *  reader already shows the chapter title as `<h1>`, so demoting inline
+ *  headings keeps the document outline tidy. */
 internal fun blockToHtml(rm: NotionRecordMap, block: JsonObject): String {
     val type = block.blockType() ?: return ""
     val raw = plainTextOfBlock(block)
     val text = htmlEscape(raw)
     return when (type) {
-        "header" -> if (text.isBlank()) "" else "<h1>$text</h1>"
-        "sub_header" -> if (text.isBlank()) "" else "<h2>$text</h2>"
-        "sub_sub_header" -> if (text.isBlank()) "" else "<h3>$text</h3>"
-        "header_4" -> if (text.isBlank()) "" else "<h4>$text</h4>"
+        "header" -> if (text.isBlank()) "" else "<h2>$text</h2>"
+        "sub_header" -> if (text.isBlank()) "" else "<h3>$text</h3>"
+        "sub_sub_header" -> if (text.isBlank()) "" else "<h4>$text</h4>"
+        "header_4" -> if (text.isBlank()) "" else "<h5>$text</h5>"
         "text" -> if (text.isBlank()) "" else "<p>$text</p>"
         "bulleted_list" -> if (text.isBlank()) "" else "<li>$text</li>"
         "numbered_list" -> if (text.isBlank()) "" else "<li>$text</li>"
@@ -499,45 +643,25 @@ internal fun renderPageBody(
 }
 
 /**
- * Pull row titles out of a queryCollection recordMap. Every `page`
- * block in the recordMap is a row; we project to (id, title) and
- * filter to titled rows.
+ * Pull (rowId, title) pairs out of a queryCollection recordMap. Every
+ * `page` block in the recordMap is a row; we project to (id, title)
+ * and filter to titled, non-tombstoned rows. Returned in id-sorted
+ * order so the chapter list is stable across calls.
  */
-internal fun collectRowTitles(rm: NotionRecordMap): List<String> {
-    val out = mutableListOf<String>()
-    for ((_, env) in rm.block) {
+internal fun collectRows(rm: NotionRecordMap): List<Pair<String, String>> {
+    val out = mutableListOf<Pair<String, String>>()
+    for ((id, env) in rm.block) {
         val block = env.block() ?: continue
         if (block.blockType() != "page") continue
         val alive = (block["alive"] as? JsonPrimitive)?.booleanOrNull
         if (alive == false) continue
         val title = readTitle(block) ?: continue
-        out.add(title)
+        // Compact the id (strip hyphens) so chapter ids match the
+        // storage convention used elsewhere in :source-notion.
+        val compact = id.replace("-", "")
+        out.add(compact to title)
     }
-    out.sort()
+    // Sort by title for a predictable, alphabetical chapter list.
+    out.sortBy { it.second.lowercase() }
     return out
-}
-
-/** HTML rendering of a collection chapter — header + ordered list of
- *  row titles. */
-internal fun renderRowsAsHtml(chapterTitle: String, titles: List<String>): String {
-    if (titles.isEmpty()) {
-        return "<p>${htmlEscape(chapterTitle)} is empty.</p>"
-    }
-    val sb = StringBuilder()
-    sb.append("<p>")
-    sb.append(htmlEscape("TechEmpower's $chapterTitle database has ${titles.size} entries:"))
-    sb.append("</p>\n<ul>\n")
-    for (title in titles) {
-        sb.append("<li>").append(htmlEscape(title)).append("</li>\n")
-    }
-    sb.append("</ul>")
-    return sb.toString()
-}
-
-/** Plain-text rendering of a collection chapter — short intro + a
- *  newline-separated list of titles. Reads aloud as a clean list. */
-internal fun renderRowsAsPlain(chapterTitle: String, titles: List<String>): String {
-    if (titles.isEmpty()) return "$chapterTitle is empty."
-    val intro = "TechEmpower's $chapterTitle database has ${titles.size} entries."
-    return intro + "\n\n" + titles.joinToString("\n")
 }

@@ -126,51 +126,69 @@ class AnonymousNotionDelegateTest {
         assertNull(block.firstViewId())
     }
 
-    // ─── chapter spec resolution ──────────────────────────────────────
+    // ─── techempower fiction layout (v0.5.25 4-fiction model) ──────────
 
     @Test
-    fun `chapterSpecsFor returns TechEmpower chapters when root matches`() {
-        val specs = chapterSpecsFor(
-            rootPageId = NotionDefaults.TECHEMPOWER_ROOT_PAGE_ID,
-            fictionPageId = NotionDefaults.TECHEMPOWER_ROOT_PAGE_ID,
-        )
-        assertEquals(4, specs.size)
-        assertEquals("Guides", specs[0].title)
-        assertTrue(specs[0] is ChapterSpec.Page)
-        assertEquals("Resources", specs[1].title)
-        assertTrue(specs[1] is ChapterSpec.Collection)
-        assertEquals("About", specs[2].title)
-        assertEquals("Donate", specs[3].title)
+    fun `techempowerFictions defines four top-level sections in nav order`() {
+        val fictions = NotionDefaults.techempowerFictions
+        assertEquals(4, fictions.size)
+        assertEquals("guides", fictions[0].id)
+        assertEquals("resources", fictions[1].id)
+        assertEquals("about", fictions[2].id)
+        assertEquals("donate", fictions[3].id)
     }
 
     @Test
-    fun `chapterSpecsFor tolerates hyphenated and compact id forms`() {
-        val hyphenatedRoot = "0959e445-9998-4143-acab-c80187305001"
-        val specs = chapterSpecsFor(
-            rootPageId = hyphenatedRoot,
-            fictionPageId = NotionDefaults.TECHEMPOWER_ROOT_PAGE_ID,
-        )
-        assertEquals(4, specs.size)
+    fun `Guides fiction lists the 8 curated guide pages`() {
+        val guides = NotionDefaults.techempowerFictions
+            .first { it.id == "guides" } as TechEmpowerFiction.PageList
+        assertEquals(8, guides.chapters.size)
+        // Order matches site.config.ts pageUrlOverrides — the website's
+        // own navigation order is the contract.
+        assertEquals("How to use TechEmpower.org", guides.chapters[0].first)
+        assertEquals("6c979ba4e43f48d7a4836e0027ea4178", guides.chapters[0].second)
+        assertEquals("Free internet", guides.chapters[1].first)
+        assertEquals("Free cell service", guides.chapters[7].first)
     }
 
     @Test
-    fun `chapterSpecsFor returns generic chapter for non-TechEmpower roots`() {
-        val specs = chapterSpecsFor(
-            rootPageId = "deadbeefdeadbeefdeadbeefdeadbeef",
-            fictionPageId = "deadbeefdeadbeefdeadbeefdeadbeef",
-        )
-        assertEquals(1, specs.size)
-        assertEquals("Contents", specs[0].title)
-        assertTrue(specs[0] is ChapterSpec.Page)
+    fun `Resources fiction points at the TechEmpower database`() {
+        val resources = NotionDefaults.techempowerFictions
+            .first { it.id == "resources" } as TechEmpowerFiction.CollectionRows
+        assertEquals(NotionDefaults.TECHEMPOWER_DATABASE_ID, resources.collectionBlockId)
     }
 
     @Test
-    fun `chapterSpecsFor returns empty when fiction id doesn't match root`() {
-        val specs = chapterSpecsFor(
-            rootPageId = NotionDefaults.TECHEMPOWER_ROOT_PAGE_ID,
-            fictionPageId = "deadbeefdeadbeefdeadbeefdeadbeef",
+    fun `About and Donate are SinglePage fictions`() {
+        val about = NotionDefaults.techempowerFictions
+            .first { it.id == "about" } as TechEmpowerFiction.SinglePage
+        val donate = NotionDefaults.techempowerFictions
+            .first { it.id == "donate" } as TechEmpowerFiction.SinglePage
+        assertEquals("dbf0ddece2ce468fb2bf9049e6322e8a", about.pageId)
+        assertEquals("59d8a4dab0cc484f8b044d33f240ce1d", donate.pageId)
+    }
+
+    @Test
+    fun `decodeFictionId strips notion prefix and returns section id`() {
+        assertEquals("guides", decodeFictionId("notion:guides"))
+        assertEquals("resources", decodeFictionId("notion:resources"))
+        assertNull(decodeFictionId("royalroad:12345"))
+        assertNull(decodeFictionId("plain-string"))
+    }
+
+    @Test
+    fun `chapterIdFor pageId overload binds page id under fiction id`() {
+        val id = chapterIdFor("notion:guides", "6c979ba4e43f48d7a4836e0027ea4178")
+        assertEquals("notion:guides::6c979ba4e43f48d7a4836e0027ea4178", id)
+    }
+
+    @Test
+    fun `chapterIdFor strips hyphens from page id input`() {
+        val id = chapterIdFor(
+            "notion:guides",
+            "6c979ba4-e43f-48d7-a483-6e0027ea4178",
         )
-        assertTrue(specs.isEmpty())
+        assertEquals("notion:guides::6c979ba4e43f48d7a4836e0027ea4178", id)
     }
 
     // ─── page body rendering ──────────────────────────────────────────
@@ -187,7 +205,8 @@ class AnonymousNotionDelegateTest {
         val root = rm.findBlock("root")!!
         val (html, plain) = renderPageBody(rm, root)
         assertTrue(html.contains("<p>Lead paragraph.</p>"))
-        assertTrue(html.contains("<h1>Section heading</h1>"))
+        // header → h2 (v0.5.25 — see blockToHtml kdoc).
+        assertTrue(html.contains("<h2>Section heading</h2>"))
         assertTrue(html.contains("<p>Second paragraph.</p>"))
         assertFalse(html.contains("Tombstone"))
         assertTrue(plain.contains("Lead paragraph."))
@@ -210,42 +229,34 @@ class AnonymousNotionDelegateTest {
         assertTrue(plain.contains("How to use TechEmpower"))
     }
 
-    // ─── collection rendering ────────────────────────────────────────
+    // ─── collection row extraction (v0.5.25 — each row = chapter) ─────
 
     @Test
-    fun `collectRowTitles pulls titled pages out of a recordMap and sorts them`() {
+    fun `collectRows pulls (rowId, title) pairs out of a recordMap`() {
         val rm = recordMapWith(
             "row1" to envelope("""{"type":"page","properties":{"title":[["Cursor for Students"]]}}"""),
             "row2" to envelope("""{"type":"page","properties":{"title":[["1yr Google AI Pro free"]]}}"""),
             "rowdead" to envelope("""{"type":"page","alive":false,"properties":{"title":[["Expired offer"]]}}"""),
             "rownotitle" to envelope("""{"type":"page","properties":{}}"""),
         )
-        val titles = collectRowTitles(rm)
-        assertEquals(listOf("1yr Google AI Pro free", "Cursor for Students"), titles)
+        val rows = collectRows(rm)
+        // Sorted alphabetically by title; tombstoned + titleless rows
+        // are filtered out.
+        assertEquals(2, rows.size)
+        assertEquals("1yr Google AI Pro free", rows[0].second)
+        assertEquals("Cursor for Students", rows[1].second)
+        // The id is the recordMap key, with hyphens stripped.
+        assertEquals("row2", rows[0].first)
     }
 
     @Test
-    fun `renderRowsAsHtml emits an unordered list`() {
-        val html = renderRowsAsHtml("Resources", listOf("Alpha", "Bravo", "Charlie"))
-        assertTrue(html.contains("<ul>"))
-        assertTrue(html.contains("<li>Alpha</li>"))
-        assertTrue(html.contains("<li>Bravo</li>"))
-        assertTrue(html.contains("3 entries"))
-    }
-
-    @Test
-    fun `renderRowsAsHtml handles empty collection`() {
-        val html = renderRowsAsHtml("Resources", emptyList())
-        assertTrue(html.contains("is empty"))
-        assertFalse(html.contains("<ul>"))
-    }
-
-    @Test
-    fun `renderRowsAsPlain emits readable text for TTS`() {
-        val plain = renderRowsAsPlain("Resources", listOf("Alpha", "Bravo"))
-        assertTrue(plain.contains("2 entries"))
-        assertTrue(plain.contains("Alpha"))
-        assertTrue(plain.contains("Bravo"))
+    fun `collectRows compacts hyphenated ids`() {
+        val rm = recordMapWith(
+            "abc-def" to envelope("""{"type":"page","properties":{"title":[["Hyphenated"]]}}"""),
+        )
+        val rows = collectRows(rm)
+        assertEquals(1, rows.size)
+        assertEquals("abcdef", rows[0].first)
     }
 
     // ─── block-type → HTML projection ─────────────────────────────────
@@ -257,16 +268,19 @@ class AnonymousNotionDelegateTest {
             "<p>Hello.</p>",
             blockToHtml(rm, parseBlock("""{"type":"text","properties":{"title":[["Hello."]]}}""")),
         )
+        // header demotes to h2 in v0.5.25 — chapter title is already
+        // the h1, so internal heading_1s render as h2 to keep the
+        // chapter's outline tidy.
         assertEquals(
-            "<h1>Top heading</h1>",
+            "<h2>Top heading</h2>",
             blockToHtml(rm, parseBlock("""{"type":"header","properties":{"title":[["Top heading"]]}}""")),
         )
         assertEquals(
-            "<h2>Subhead</h2>",
+            "<h3>Subhead</h3>",
             blockToHtml(rm, parseBlock("""{"type":"sub_header","properties":{"title":[["Subhead"]]}}""")),
         )
         assertEquals(
-            "<h3>Sub-sub</h3>",
+            "<h4>Sub-sub</h4>",
             blockToHtml(rm, parseBlock("""{"type":"sub_sub_header","properties":{"title":[["Sub-sub"]]}}""")),
         )
         assertEquals(

@@ -13,7 +13,12 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ### Added
 - **Anonymous Notion-site reader mode** (#393, closes the v0.5.24 known limitation) — `:source-notion` now reads public-shared Notion pages via the *unofficial* `www.notion.so/api/v3` surface (`loadPageChunk`, `queryCollection`, `syncRecordValuesMain`, `getPublicPageData` — the same set [react-notion-x](https://github.com/NotionX/react-notion-x)'s `notion-client` package uses). Zero setup: a fresh install opens Browse → Notion and immediately surfaces TechEmpower's content as narratable audio, with no integration token required.
-- **Single-fiction, multi-chapter TechEmpower** — Browse → Notion shows one tile, "Welcome to TechEmpower.org" by TechEmpower, with four chapters mapped to the site's top-level navigation: **Guides** (the root page's own content, with internal `header` blocks preserved as inline sub-headings), **Resources** (an HTML list of the Resources database's ~80 row titles, queried via `queryCollection`), **About**, and **Donate**. Internal sub-page links (the 8 individual guide pages) render as bridge paragraphs inside the Guides chapter so the listener hears their titles without the chapter mid-jumping.
+- **Four-fiction TechEmpower layout (revised mid-cycle)** — Browse → Notion shows **four tiles**, one per top-level section of the techempower.org navigation. Each section is its own fiction, and each article inside it is its own chapter:
+  - **Guides** — 8 chapters, one per curated guide page (How to use TechEmpower, Free internet, EV incentives, EBT balance, EBT spending, Findhelp, Password manager, Free cell service). Chapter order matches `techempower/site.config.ts` `pageUrlOverrides`.
+  - **Resources** — N chapters (~80), one per row in the TechEmpower Resources database (queried via `queryCollection`). Each chapter renders the row's underlying Notion page content.
+  - **About** — single-chapter fiction with the About page content.
+  - **Donate** — single-chapter fiction with the Donate page content.
+  This is a course correction from the v0.5.25-rc design that landed in PR #394 as a single-fiction-multi-chapter layout — JP redirected to "four books, each article a chapter" mid-cycle. The delegate, NotionDefaults, and AnonymousNotionDelegateTest were rewritten before tagging v0.5.25 so the released APK has the new shape.
 - **`NotionConfig` mode enum** — new `NotionMode { ANONYMOUS_PUBLIC, OFFICIAL_PAT }` selects the read path. Anonymous mode reads any public-shared root page id; PAT mode keeps the original integration-token + database-id flow for private workspaces. The mode is implicit: blank token → anonymous, non-blank token → PAT. Existing users with a stored PAT keep their current experience unchanged.
 
 ### Fixed
