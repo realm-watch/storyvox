@@ -26,6 +26,7 @@ import `in`.jphe.storyvox.sync.domain.PassphraseProvider
 import `in`.jphe.storyvox.sync.domain.PlaybackPositionSyncer
 import `in`.jphe.storyvox.sync.domain.PronunciationDictSyncer
 import `in`.jphe.storyvox.sync.domain.SecretsSyncer
+import `in`.jphe.storyvox.sync.domain.SettingsSyncer
 import javax.inject.Named
 import javax.inject.Singleton
 
@@ -114,6 +115,13 @@ object SyncModule {
     @Provides @IntoSet
     fun provideSecretsSyncer(impl: SecretsSyncer): Syncer = impl
 
+    /** Tier 1 (this PR) — non-sensitive preferences as a single LWW
+     *  JSON blob per user. Settings push happens on every sync round;
+     *  the `:app` impl of [SettingsSnapshotSource] owns which keys
+     *  are in scope. */
+    @Provides @IntoSet
+    fun provideSettingsSyncer(impl: SettingsSyncer): Syncer = impl
+
     /**
      * Default passphrase provider — returns null, i.e. "secrets sync is
      * a no-op." The real provider lives in `:app` once the Settings →
@@ -127,3 +135,11 @@ object SyncModule {
     @Named(SecretsSyncer.PASSPHRASE_PROVIDER)
     fun provideDefaultPassphraseProvider(): PassphraseProvider = PassphraseProvider { null }
 }
+
+// [SettingsSnapshotSource] and [SecretsSnapshotSource] bindings live
+// in `:app`'s SettingsRepositoryUiImpl + its Hilt @Binds module — the
+// snapshot interfaces are owned by `:core-data`, but the
+// implementations live in `:app` (file-private DataStore). `:core-sync`
+// provides no defaults here on purpose: forcing the wiring to live in
+// `:app` makes "the sync layer can read settings" an explicit
+// integration step, not an accidental no-op.

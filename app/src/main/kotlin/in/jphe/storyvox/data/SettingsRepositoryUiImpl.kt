@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -684,7 +685,8 @@ class SettingsRepositoryUiImpl(
     PlaybackResumePolicyConfig,
     PronunciationDictRepository,
     LlmConfigProvider,
-    GitHubScopePreferences {
+    GitHubScopePreferences,
+    `in`.jphe.storyvox.data.repository.sync.SettingsSnapshotSource {
 
     /** Hilt entry point — pulls the production DataStore from the app context.
      *  The primary constructor takes the store directly so tests can swap in
@@ -1792,13 +1794,342 @@ class SettingsRepositoryUiImpl(
     // other agents touching this file (Vertex SA, plugin seam).
     override suspend fun setInboxNotifyRoyalRoad(enabled: Boolean) {
         store.edit { it[Keys.INBOX_NOTIFY_ROYALROAD] = enabled }
+        stampSyncedWrite()
     }
     override suspend fun setInboxNotifyKvmr(enabled: Boolean) {
         store.edit { it[Keys.INBOX_NOTIFY_KVMR] = enabled }
+        stampSyncedWrite()
     }
     override suspend fun setInboxNotifyWikipedia(enabled: Boolean) {
         store.edit { it[Keys.INBOX_NOTIFY_WIKIPEDIA] = enabled }
+        stampSyncedWrite()
     }
+
+    // ── InstantDB settings sync (this PR) ──────────────────────────
+    /**
+     * Snapshot/apply seam consumed by `:core-sync`'s `SettingsSyncer`.
+     * Round-trips every key in [SYNC_ALLOWLIST] through a flat
+     * `Map<String, String>` JSON blob plus the per-backend
+     * non-secret config keys (Wikipedia / Notion / Discord /
+     * Outline / Memory Palace hosts and ids). See the kdoc on
+     * [SettingsSnapshotSource] and the PR description for the
+     * design.
+     *
+     * The wire format keys are namespaced so a Wikipedia language
+     * code never collides with a main-store preference key:
+     *  - `settings.<key>` — main `storyvox_settings` DataStore
+     *  - `notion.<key>`   — `storyvox_notion` DataStore (id +
+     *                       root-page id; NOT the integration
+     *                       token, that's in the encrypted bundle)
+     *  - `discord.<key>`  — `storyvox_discord` DataStore (server id
+     *                       + name + coalesce minutes; NOT the bot
+     *                       token)
+     *  - `outline.<key>`  — `storyvox_outline` DataStore (host;
+     *                       NOT the API key)
+     *  - `wikipedia.<key>` — `storyvox_wikipedia` DataStore
+     *                        (language code)
+     *  - `palace.<key>`    — `storyvox_palace` DataStore (host;
+     *                        NOT the API key)
+     */
+    override suspend fun snapshot(): Map<String, String> {
+        val out = mutableMapOf<String, String>()
+        // 1. Main settings DataStore — only allowlisted keys.
+        val prefs = store.data.first()
+        for ((key, value) in prefs.asMap()) {
+            val keyName = key.name
+            if (keyName !in SYNC_ALLOWLIST) continue
+            // `asMap()` values are non-null by contract — DataStore
+            // doesn't store null values — so a direct toString() is
+            // safe.
+            out["settings.$keyName"] = value.toString()
+        }
+        // 2. Per-backend non-secret config. Read via each impl's
+        //    `current()` — pulls the latest committed state without
+        //    needing to know each impl's internal DataStore keys.
+        val notion = notionConfig.current()
+        if (notion.databaseId.isNotEmpty()) out["notion.pref_notion_database_id"] = notion.databaseId
+        if (notion.rootPageId.isNotEmpty()) out["notion.pref_notion_root_page_id"] = notion.rootPageId
+
+        val discord = discordConfig.current()
+        if (discord.serverId.isNotEmpty()) out["discord.pref_discord_server_id"] = discord.serverId
+        if (discord.serverName.isNotEmpty()) out["discord.pref_discord_server_name"] = discord.serverName
+        out["discord.pref_discord_coalesce_minutes"] = discord.coalesceMinutes.toString()
+
+        val outline = outlineConfig.current()
+        if (outline.host.isNotEmpty()) out["outline.pref_outline_host"] = outline.host
+
+        val wiki = wikipediaConfig.current()
+        if (wiki.languageCode.isNotEmpty()) out["wikipedia.pref_wikipedia_language_code"] = wiki.languageCode
+
+        val palace = palaceConfig.current()
+        if (palace.host.isNotEmpty()) out["palace.pref_palace_host"] = palace.host
+
+        return out
+    }
+
+    override suspend fun apply(snapshot: Map<String, String>) {
+        // 1. Main settings DataStore.
+        val mainSlice = snapshot.filterKeys { it.startsWith("settings.") }
+            .mapKeys { (k, _) -> k.removePrefix("settings.") }
+        if (mainSlice.isNotEmpty()) {
+            applyToMainStore(mainSlice)
+        }
+        // 2. Per-backend stores. Each block tolerates absent keys —
+        //    a remote that only set one field doesn't blow away the
+        //    others on this device.
+        snapshot["notion.pref_notion_database_id"]?.let { notionConfig.setDatabaseId(it) }
+        snapshot["notion.pref_notion_root_page_id"]?.let { notionConfig.setRootPageId(it) }
+        // Discord's setServer is paired (id + name); call only when both present.
+        val dServerId = snapshot["discord.pref_discord_server_id"]
+        val dServerName = snapshot["discord.pref_discord_server_name"]
+        if (dServerId != null && dServerName != null) {
+            discordConfig.setServer(dServerId, dServerName)
+        }
+        snapshot["discord.pref_discord_coalesce_minutes"]?.toIntOrNull()?.let {
+            discordConfig.setCoalesceMinutes(it)
+        }
+        snapshot["outline.pref_outline_host"]?.let { outlineConfig.setHost(it) }
+        snapshot["wikipedia.pref_wikipedia_language_code"]?.let { wikipediaConfig.setLanguageCode(it) }
+        snapshot["palace.pref_palace_host"]?.let { palaceConfig.setHost(it) }
+        // After applying, mark this as a fresh local write so the
+        // next sync round push carries the merged-blob timestamp.
+        stampSyncedWrite()
+    }
+
+    /**
+     * Apply the main-store slice. Each key's preferred type is
+     * inferred from [Keys] via [parseAndPut]; ill-typed values are
+     * dropped (tolerate forward-compat).
+     */
+    private suspend fun applyToMainStore(slice: Map<String, String>) {
+        store.edit { editor ->
+            for ((keyName, value) in slice) {
+                parseAndPut(editor, keyName, value)
+            }
+        }
+    }
+
+    /**
+     * Type-aware put: looks up [keyName] in the static
+     * [SYNC_KEY_TYPES] table and applies the corresponding
+     * `*PreferencesKey` write. Unknown keys are silently dropped
+     * (forward-compat); type-coercion failures (e.g. "not a float")
+     * are dropped (don't crash on a malformed remote).
+     */
+    private fun parseAndPut(editor: androidx.datastore.preferences.core.MutablePreferences, keyName: String, value: String) {
+        val type = SYNC_KEY_TYPES[keyName] ?: return
+        runCatching {
+            when (type) {
+                SyncedType.BOOLEAN -> editor[booleanPreferencesKey(keyName)] = value.toBooleanStrict()
+                SyncedType.INT -> editor[intPreferencesKey(keyName)] = value.toInt()
+                SyncedType.FLOAT -> editor[floatPreferencesKey(keyName)] = value.toFloat()
+                SyncedType.STRING -> editor[stringPreferencesKey(keyName)] = value
+            }
+        }
+    }
+
+    override suspend fun lastLocalWriteAt(): Long =
+        store.data.first()[SYNC_LAST_WRITE_KEY] ?: 0L
+
+    override suspend fun stampLocalWrite(at: Long) {
+        store.edit { it[SYNC_LAST_WRITE_KEY] = at }
+    }
+
+    /** Convenience used by every setter on this class so writes to a
+     *  synced key automatically advance the sync timestamp. Settings UI
+     *  that calls one of the existing `set*` mutators will get its
+     *  change uploaded on the next sync round without any additional
+     *  wiring. */
+    private suspend fun stampSyncedWrite() {
+        stampLocalWrite(System.currentTimeMillis())
+    }
+
+    companion object {
+        /** Synced-keys timestamp — internal to this file, not in
+         *  [SYNC_ALLOWLIST] (we never sync the sync timestamp itself
+         *  — that'd be a loop). */
+        private val SYNC_LAST_WRITE_KEY = longPreferencesKey("instantdb.settings_synced_at")
+
+        /**
+         * Names of every DataStore key in the main `storyvox_settings`
+         * store that round-trips through InstantDB settings sync.
+         *
+         * Explicit allowlist — adding a key here AND a type entry in
+         * [SYNC_KEY_TYPES] is what gates a preference for sync. The
+         * two tables must stay in lockstep; see
+         * `SettingsRepositoryUiImplSnapshotTest` in `:app` for the
+         * test that enforces it.
+         *
+         * Excluded by design (see PR description / design-decisions.md):
+         *  - `pref_signed_in`, `pref_last_was_playing` — device-local
+         *    auth/playback state
+         *  - `pref_v0500_milestone_seen`, `pref_v0500_confetti_shown`
+         *    — one-time device-local dialog gates
+         *  - `pref_pronunciation_dict_v1` — handled by
+         *    `PronunciationDictSyncer`
+         */
+        internal val SYNC_ALLOWLIST: Set<String> = setOf(
+            // Theme / playback knobs.
+            "pref_theme_override",
+            "pref_default_speed",
+            "pref_default_pitch",
+            "pref_default_voice_id",
+            "pref_voice_speed_overrides",
+            "pref_voice_pitch_overrides",
+            "pref_voice_lexicon_overrides",
+            "pref_voice_phonemizer_lang_overrides",
+            "pref_punctuation_pause_multiplier_v2",
+            "pref_pitch_interp_high_quality",
+            "pref_voice_steady_v1",
+            "pref_warmup_wait_v1",
+            "pref_catchup_pause_v1",
+            "pref_playback_buffer_chunks_v1",
+            // Parallel synth.
+            "pref_experimental_parallel_synth",
+            "pref_parallel_synth_instances",
+            "pref_synth_threads_per_instance",
+            // Download / poll.
+            "pref_download_wifi_only",
+            "pref_poll_interval_hours",
+            // AI / LLM (config — secrets live in the encrypted bundle).
+            "pref_ai_provider",
+            "pref_ai_claude_model",
+            "pref_ai_openai_model",
+            "pref_ai_ollama_base_url",
+            "pref_ai_ollama_model",
+            "pref_ai_vertex_model",
+            "pref_ai_foundry_endpoint",
+            "pref_ai_foundry_deployment",
+            "pref_ai_foundry_serverless",
+            "pref_ai_privacy_ack",
+            "pref_ai_send_chapter_text",
+            "pref_ai_bedrock_region",
+            "pref_ai_bedrock_model",
+            "pref_ai_chat_ground_chapter_title",
+            "pref_ai_chat_ground_current_sentence",
+            "pref_ai_chat_ground_entire_chapter",
+            "pref_ai_chat_ground_entire_book",
+            "pref_ai_carry_memory_across_fictions",
+            "pref_ai_actions_enabled",
+            // GitHub scope.
+            "pref_github_private_repos_enabled_v1",
+            // Per-source enabled toggles (legacy boolean keys + the
+            // collapsed JSON map). Both shapes are synced because the
+            // plugin-seam Phase 3 rollout keeps them coexisting.
+            "pref_source_royalroad_enabled",
+            "pref_source_github_enabled",
+            "pref_source_mempalace_enabled",
+            "pref_source_rss_enabled",
+            "pref_source_epub_enabled",
+            "pref_source_outline_enabled",
+            "pref_source_gutenberg_enabled",
+            "pref_source_ao3_enabled",
+            "pref_source_standard_ebooks_enabled",
+            "pref_source_wikipedia_enabled",
+            "pref_source_wikisource_enabled",
+            "pref_source_radio_enabled",
+            "pref_source_kvmr_enabled",
+            "pref_source_notion_enabled",
+            "pref_source_hackernews_enabled",
+            "pref_source_arxiv_enabled",
+            "pref_source_plos_enabled",
+            "pref_source_discord_enabled",
+            "pref_source_plugins_enabled_v1",
+            // Sleep timer.
+            "pref_sleep_shake_to_extend_enabled",
+            // Azure fallback.
+            "pref_azure_fallback_enabled",
+            "pref_azure_fallback_voice_id",
+            // Debug overlay.
+            "pref_show_debug_overlay",
+            // Inbox mute toggles.
+            "pref_inbox_notify_royalroad",
+            "pref_inbox_notify_kvmr",
+            "pref_inbox_notify_wikipedia",
+        )
+
+        /**
+         * Per-key type table for [parseAndPut]. Must contain every
+         * entry in [SYNC_ALLOWLIST]; the
+         * `SettingsRepositoryUiImplSnapshotTest` in `:app` asserts
+         * this invariant so a future contributor can't add a key to
+         * the allowlist without also declaring its type.
+         */
+        internal val SYNC_KEY_TYPES: Map<String, SyncedType> = mapOf(
+            // String keys.
+            "pref_theme_override" to SyncedType.STRING,
+            "pref_default_voice_id" to SyncedType.STRING,
+            "pref_voice_speed_overrides" to SyncedType.STRING,
+            "pref_voice_pitch_overrides" to SyncedType.STRING,
+            "pref_voice_lexicon_overrides" to SyncedType.STRING,
+            "pref_voice_phonemizer_lang_overrides" to SyncedType.STRING,
+            "pref_ai_provider" to SyncedType.STRING,
+            "pref_ai_claude_model" to SyncedType.STRING,
+            "pref_ai_openai_model" to SyncedType.STRING,
+            "pref_ai_ollama_base_url" to SyncedType.STRING,
+            "pref_ai_ollama_model" to SyncedType.STRING,
+            "pref_ai_vertex_model" to SyncedType.STRING,
+            "pref_ai_foundry_endpoint" to SyncedType.STRING,
+            "pref_ai_foundry_deployment" to SyncedType.STRING,
+            "pref_ai_bedrock_region" to SyncedType.STRING,
+            "pref_ai_bedrock_model" to SyncedType.STRING,
+            "pref_source_plugins_enabled_v1" to SyncedType.STRING,
+            "pref_azure_fallback_voice_id" to SyncedType.STRING,
+            // Float keys.
+            "pref_default_speed" to SyncedType.FLOAT,
+            "pref_default_pitch" to SyncedType.FLOAT,
+            "pref_punctuation_pause_multiplier_v2" to SyncedType.FLOAT,
+            // Int keys.
+            "pref_playback_buffer_chunks_v1" to SyncedType.INT,
+            "pref_parallel_synth_instances" to SyncedType.INT,
+            "pref_synth_threads_per_instance" to SyncedType.INT,
+            "pref_poll_interval_hours" to SyncedType.INT,
+            // Boolean keys — everything else.
+            "pref_pitch_interp_high_quality" to SyncedType.BOOLEAN,
+            "pref_voice_steady_v1" to SyncedType.BOOLEAN,
+            "pref_warmup_wait_v1" to SyncedType.BOOLEAN,
+            "pref_catchup_pause_v1" to SyncedType.BOOLEAN,
+            "pref_experimental_parallel_synth" to SyncedType.BOOLEAN,
+            "pref_download_wifi_only" to SyncedType.BOOLEAN,
+            "pref_ai_foundry_serverless" to SyncedType.BOOLEAN,
+            "pref_ai_privacy_ack" to SyncedType.BOOLEAN,
+            "pref_ai_send_chapter_text" to SyncedType.BOOLEAN,
+            "pref_ai_chat_ground_chapter_title" to SyncedType.BOOLEAN,
+            "pref_ai_chat_ground_current_sentence" to SyncedType.BOOLEAN,
+            "pref_ai_chat_ground_entire_chapter" to SyncedType.BOOLEAN,
+            "pref_ai_chat_ground_entire_book" to SyncedType.BOOLEAN,
+            "pref_ai_carry_memory_across_fictions" to SyncedType.BOOLEAN,
+            "pref_ai_actions_enabled" to SyncedType.BOOLEAN,
+            "pref_github_private_repos_enabled_v1" to SyncedType.BOOLEAN,
+            "pref_source_royalroad_enabled" to SyncedType.BOOLEAN,
+            "pref_source_github_enabled" to SyncedType.BOOLEAN,
+            "pref_source_mempalace_enabled" to SyncedType.BOOLEAN,
+            "pref_source_rss_enabled" to SyncedType.BOOLEAN,
+            "pref_source_epub_enabled" to SyncedType.BOOLEAN,
+            "pref_source_outline_enabled" to SyncedType.BOOLEAN,
+            "pref_source_gutenberg_enabled" to SyncedType.BOOLEAN,
+            "pref_source_ao3_enabled" to SyncedType.BOOLEAN,
+            "pref_source_standard_ebooks_enabled" to SyncedType.BOOLEAN,
+            "pref_source_wikipedia_enabled" to SyncedType.BOOLEAN,
+            "pref_source_wikisource_enabled" to SyncedType.BOOLEAN,
+            "pref_source_radio_enabled" to SyncedType.BOOLEAN,
+            "pref_source_kvmr_enabled" to SyncedType.BOOLEAN,
+            "pref_source_notion_enabled" to SyncedType.BOOLEAN,
+            "pref_source_hackernews_enabled" to SyncedType.BOOLEAN,
+            "pref_source_arxiv_enabled" to SyncedType.BOOLEAN,
+            "pref_source_plos_enabled" to SyncedType.BOOLEAN,
+            "pref_source_discord_enabled" to SyncedType.BOOLEAN,
+            "pref_sleep_shake_to_extend_enabled" to SyncedType.BOOLEAN,
+            "pref_azure_fallback_enabled" to SyncedType.BOOLEAN,
+            "pref_show_debug_overlay" to SyncedType.BOOLEAN,
+            "pref_inbox_notify_royalroad" to SyncedType.BOOLEAN,
+            "pref_inbox_notify_kvmr" to SyncedType.BOOLEAN,
+            "pref_inbox_notify_wikipedia" to SyncedType.BOOLEAN,
+        )
+    }
+
+    /** Synced-preference value type tag for [parseAndPut]. */
+    internal enum class SyncedType { BOOLEAN, INT, FLOAT, STRING }
 }
 
 /**
