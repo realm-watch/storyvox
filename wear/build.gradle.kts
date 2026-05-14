@@ -75,6 +75,13 @@ dependencies {
     // Compose
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.bundles.compose)
+    // Library Nocturne theme on Wear pulls EB Garamond + Inter from Google Fonts
+    // via GMS, same provider configured in :core-ui font_certs.xml.
+    implementation(libs.androidx.compose.ui.text.google.fonts)
+    // Coil — loads PlaybackState.coverUri inside the circular scrubber. Same
+    // version as the phone/tablet so a cover image already cached on the phone
+    // doesn't need a fresh decode on the watch.
+    implementation(libs.coil.compose)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     // Wear Compose

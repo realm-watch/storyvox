@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import `in`.jphe.storyvox.wear.playback.WearPlaybackBridge
 import `in`.jphe.storyvox.wear.screens.NowPlayingScreen
+import `in`.jphe.storyvox.wear.theme.WearLibraryNocturneTheme
 
 class WearMainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -25,5 +26,7 @@ fun WearAppRoot() {
         bridge.start()
         onDispose { bridge.stop() }
     }
-    NowPlayingScreen(bridge = bridge)
+    WearLibraryNocturneTheme {
+        NowPlayingScreen(bridge = bridge)
+    }
 }
