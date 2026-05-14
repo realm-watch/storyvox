@@ -40,6 +40,7 @@ class StoryvoxApp : Application(), Configuration.Provider {
         workScheduler.ensurePeriodicWorkScheduled()
         rehydrateRoyalRoadCookies()
         applyPitchQualityFromSettings()
+        applyPerVoiceEngineKnobsFromSettings()
         // InstantDB sync — if a refresh token is stored, validate it and
         // pull every per-domain syncer. No-op when no one is signed in.
         // Fire-and-forget: the coordinator launches its own coroutines.
@@ -57,6 +58,28 @@ class StoryvoxApp : Application(), Configuration.Provider {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             val highQuality = settingsRepo.settings.first().pitchInterpolationHighQuality
             VoiceEngineQualityBridge.applyPitchQuality(highQuality)
+        }
+    }
+
+    /**
+     * Issues #197 + #198 — seed the VoxSherpa engine static fields
+     * `voiceLexicon` and `phonemizerLang` from the *active voice's*
+     * persisted overrides on cold start. Without this, the first
+     * chapter render after process restart uses the engine's built-in
+     * lexicon and the voice's native language even if the user had
+     * set per-voice overrides in a prior session.
+     *
+     * Mirrors [applyPitchQualityFromSettings] — fire-and-forget, on
+     * IO, no need to await before onCreate() returns because the
+     * VoiceManager's first loadModel() always comes after the user
+     * interacts with the UI, well after this short flow.first()
+     * completes.
+     */
+    private fun applyPerVoiceEngineKnobsFromSettings() {
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            val settings = settingsRepo.settings.first()
+            VoiceEngineQualityBridge.applyLexicon(settings.effectiveLexicon)
+            VoiceEngineQualityBridge.applyPhonemizerLang(settings.effectivePhonemizerLang)
         }
     }
 

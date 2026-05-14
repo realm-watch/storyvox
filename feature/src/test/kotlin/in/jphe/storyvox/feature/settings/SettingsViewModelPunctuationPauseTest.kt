@@ -142,6 +142,8 @@ class SettingsViewModelPunctuationPauseTest {
             state.value = state.value.copy(punctuationPauseMultiplier = multiplier)
         }
         override suspend fun setPitchInterpolationHighQuality(enabled: Boolean) = Unit
+        override suspend fun setVoiceLexicon(voiceId: String, path: String?) = Unit
+        override suspend fun setVoicePhonemizerLang(voiceId: String, langCode: String?) = Unit
         override suspend fun setPlaybackBufferChunks(chunks: Int) {
             state.value = state.value.copy(playbackBufferChunks = chunks)
         }

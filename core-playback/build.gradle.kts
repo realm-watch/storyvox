@@ -85,7 +85,21 @@ dependencies {
     // Settings toggle that writes both fields via
     // [VoiceEngineQualityBridge]. Pre-rendered PCM (post-#97) means
     // the ~20% CPU hit lands once per chapter, not per playback.
-    implementation("com.github.techempower-org:VoxSherpa-TTS:v2.7.13")
+    // v2.7.14 (storyvox #197 + #198) adds two more static knobs:
+    // - VoiceEngine.voiceLexicon / KokoroEngine.voiceLexicon —
+    //   comma-separated `.lexicon` paths passed to
+    //   OfflineTts{Vits,Kokoro}ModelConfig.setLexicon() for IPA
+    //   phoneme overrides on specific tokens (#197).
+    // - KokoroEngine.phonemizerLang — language code forcing the
+    //   Kokoro phonemizer to a non-default language, useful for
+    //   English voices reading embedded Spanish/Japanese/etc.
+    //   dialogue (#198). Ignored by VoiceEngine (Piper auto-derives
+    //   language from voice metadata).
+    // Both are read at engine construction time, so a flip from
+    // Settings requires the next voice load — Storyvox forces this
+    // by calling VoiceEngineQualityBridge.applyLexicon/applyLang
+    // BEFORE the engine instantiates for the new voice on switch.
+    implementation("com.github.techempower-org:VoxSherpa-TTS:v2.7.14")
     implementation("com.github.k2-fsa:sherpa-onnx:1.12.26")
 
     // Media3 — session, player base classes

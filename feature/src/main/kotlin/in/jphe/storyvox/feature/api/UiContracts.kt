@@ -937,6 +937,48 @@ data class UiSettings(
     val voiceSpeedOverrides: Map<String, Float> = emptyMap(),
     val voicePitchOverrides: Map<String, Float> = emptyMap(),
     /**
+     * Issue #197 — per-voice lexicon override map. Keys are voice IDs
+     * (same shape as [voiceSpeedOverrides]); values are absolute file
+     * paths to user-provided `.lexicon` files (sherpa-onnx-format IPA /
+     * X-SAMPA phoneme dictionaries). Empty / missing voiceId = the
+     * engine falls back to its built-in lexicon.
+     *
+     * Multiple lexicons per voice are supported by comma-joining the
+     * paths in a single map value (sherpa-onnx
+     * `OfflineTts*ModelConfig.setLexicon()` accepts comma-separated
+     * paths and merges them in order). The Settings UI today wires
+     * just one picker per voice; the map shape is forward-compatible
+     * for a multi-file UI later.
+     *
+     * Storage: encoded as `voiceId=path;voiceId=path` in DataStore,
+     * same flat-string codec as [voiceSpeedOverrides]. The `=` and
+     * `;` delimiters require the paths NOT to contain those bytes;
+     * SAF-resolved paths from `getExternalFilesDir()` and the per-voice
+     * `${filesDir}/lexicons/<voiceId>/` directory both satisfy this
+     * (Android FS paths use `/` and alphanumerics).
+     *
+     * The engine reads at construction time via the static
+     * [`in.jphe.storyvox.playback.VoiceEngineQualityBridge.applyLexicon`]
+     * field write, so a flip requires the next voice load — Settings
+     * forces this by re-applying on active-voice change.
+     */
+    val voiceLexiconOverrides: Map<String, String> = emptyMap(),
+    /**
+     * Issue #198 — per-voice Kokoro phonemizer language override map.
+     * Keys are voice IDs; values are language codes from
+     * [KOKORO_PHONEMIZER_LANGS] (`en`, `es`, `fr`, ...). Empty /
+     * missing voiceId = the engine uses the voice's native language.
+     *
+     * Only Kokoro voices honor this override (Piper voices are
+     * per-language, no phonemizer-language indirection). Settings UI
+     * only surfaces the picker on Kokoro voice rows; the map can
+     * contain entries for Piper voiceIds without effect.
+     *
+     * Storage: encoded as `voiceId=langCode;voiceId=langCode` in
+     * DataStore, same codec as [voiceLexiconOverrides].
+     */
+    val voicePhonemizerLangOverrides: Map<String, String> = emptyMap(),
+    /**
      * Azure Speech Services BYOK config (#182). Empty key = source not
      * yet configured; the picker shows Azure rows greyed-out with a
      * "Configure Azure key →" CTA until [UiAzureConfig.isConfigured]
@@ -1044,6 +1086,24 @@ data class UiSettings(
      *  voice's override if set, otherwise the global default (#195). */
     val effectivePitch: Float
         get() = defaultVoiceId?.let { voicePitchOverrides[it] } ?: defaultPitch
+
+    /**
+     * Lexicon override the engine should use right now (#197). Empty
+     * string = no override (engine uses its built-in lexicon). The
+     * VoxSherpa bridge reads this on the *next* engine construction,
+     * so a flip requires a voice reload to take effect — Settings
+     * forces this by re-applying on active-voice change.
+     */
+    val effectiveLexicon: String
+        get() = defaultVoiceId?.let { voiceLexiconOverrides[it] }.orEmpty()
+
+    /**
+     * Kokoro phonemizer language override active right now (#198).
+     * Empty string = no override (Kokoro uses the voice's native
+     * language). Piper voices ignore this entirely.
+     */
+    val effectivePhonemizerLang: String
+        get() = defaultVoiceId?.let { voicePhonemizerLangOverrides[it] }.orEmpty()
 }
 
 /**
@@ -1224,6 +1284,34 @@ interface SettingsRepositoryUi {
      *  (quality=1 vs upstream default 0). See
      *  [UiSettings.pitchInterpolationHighQuality]. */
     suspend fun setPitchInterpolationHighQuality(enabled: Boolean)
+
+    /**
+     * Issue #197 — set or clear the lexicon override for a specific
+     * voice. [path] is an absolute file path (or comma-separated paths)
+     * to a `.lexicon` file; null or empty clears the override and the
+     * engine falls back to its built-in lexicon.
+     *
+     * The override takes effect on the next voice load. If [voiceId]
+     * matches the currently active voice the impl re-applies the
+     * static bridge field immediately so the next chapter render uses
+     * the new path; the active engine instance keeps its old lexicon
+     * until the next loadModel().
+     */
+    suspend fun setVoiceLexicon(voiceId: String, path: String?)
+
+    /**
+     * Issue #198 — set or clear the Kokoro phonemizer language
+     * override for a specific voice. [langCode] should be one of
+     * [`KOKORO_PHONEMIZER_LANGS`]; null or empty clears the override
+     * and the engine uses the voice's native language.
+     *
+     * No-op on Piper voices at the engine layer (the static field
+     * exists only on KokoroEngine), but the map persists per-voice
+     * regardless so the UI can surface and clear values uniformly.
+     * Caller is responsible for only writing for Kokoro voices —
+     * the Settings UI hides the picker on non-Kokoro rows.
+     */
+    suspend fun setVoicePhonemizerLang(voiceId: String, langCode: String?)
     suspend fun setPlaybackBufferChunks(chunks: Int)
     /** Issue #98 — Mode A toggle. See [UiSettings.warmupWait]. */
     suspend fun setWarmupWait(enabled: Boolean)
