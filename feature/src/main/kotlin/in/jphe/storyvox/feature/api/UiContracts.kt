@@ -392,6 +392,16 @@ data class UiPlaybackState(
     val voiceLabel: String,
     /** Null when no sleep timer is active; otherwise milliseconds until it fires. */
     val sleepTimerRemainingMs: Long? = null,
+    /**
+     * Issue #373 — true when the currently-loaded chapter routes
+     * through Media3 / ExoPlayer (audio-stream backend: KVMR community
+     * radio, future LibriVox MP3, etc.) rather than the TTS pipeline.
+     * Gates the pitch slider in [AudiobookView] — Sonic pitch-shifting
+     * applies to engine-rendered PCM and has no equivalent on a live
+     * stream the player can't decode-re-encode in real time. UI hides
+     * the slider when this flag is true.
+     */
+    val isLiveAudioChapter: Boolean = false,
 )
 
 /** Mirrors core-playback's SleepTimerMode without leaking the playback module to feature. */
@@ -789,6 +799,16 @@ data class UiSettings(
      *  `<lang>.wikipedia.org`. Default `en`. Empty falls back to the
      *  default so a malformed prefs value doesn't brick the source. */
     val wikipediaLanguageCode: String = "en",
+    /** KVMR community radio backend (#374, closes #373 first piece).
+     *  Default ON — KVMR is JP's local station, the inaugural audio-
+     *  stream backend, and there's nothing controversial about
+     *  community-radio content surfacing in the picker. Audio sources
+     *  carry a distinct legal posture from text backends (publicly
+     *  documented stream URL, explicit third-party listening
+     *  intent); enabling by default makes the new pipeline
+     *  discoverable without forcing every fresh-install user to opt in
+     *  from Settings before they see what the audio pipeline does. */
+    val sourceKvmrEnabled: Boolean = true,
     /** Issue #150 — when ON, a shake during the sleep timer's fade
      *  tail re-arms the timer. Default ON; users with bumpy commutes
      *  can disable to avoid accidental extensions. */
@@ -1185,6 +1205,8 @@ interface SettingsRepositoryUi {
      *  `ja`, `simple`, ...). Trimmed + lowercased before persistence;
      *  empty falls back to the default. */
     suspend fun setWikipediaLanguageCode(code: String)
+    /** Issue #374 — KVMR community radio backend on/off. */
+    suspend fun setSourceKvmrEnabled(enabled: Boolean)
 
     /** Issue #236 — manage subscribed feed URLs. */
     suspend fun addRssFeed(url: String)

@@ -6,6 +6,7 @@ import androidx.room.testing.MigrationTestHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import `in`.jphe.storyvox.data.db.migration.MIGRATION_4_5
 import `in`.jphe.storyvox.data.db.migration.MIGRATION_5_6
+import `in`.jphe.storyvox.data.db.migration.MIGRATION_6_7
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -108,10 +109,17 @@ class StoryvoxDatabaseMigrationTest {
         helper.createDatabase(dbName, 4).close()
         helper.runMigrationsAndValidate(dbName, 5, true, MIGRATION_4_5).close()
         helper.runMigrationsAndValidate(dbName, 6, true, MIGRATION_5_6).close()
+        // #373 — bump through v7 so the test's Room.databaseBuilder
+        // (which now targets v7 per the DB-level version bump) doesn't
+        // throw "migration from 6 to 7 was required but not found"
+        // when it opens the file. The history-row assertion below
+        // doesn't touch the new audioUrl column; it stays purely a
+        // chapter_history smoke test.
+        helper.runMigrationsAndValidate(dbName, 7, true, MIGRATION_6_7).close()
 
         val ctx = org.robolectric.RuntimeEnvironment.getApplication() as android.content.Context
         val db = Room.databaseBuilder(ctx, StoryvoxDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .build()
 
         try {
@@ -163,5 +171,44 @@ class StoryvoxDatabaseMigrationTest {
         }
 
         assertNotNull("smoke-only sentinel — kept to fail-fast if the try block was no-op'd", helper)
+    }
+
+    /**
+     * Issues #373 + #374 — v7 adds the `audioUrl` column to the
+     * chapter table so audio-stream backends (KVMR community radio +
+     * future LibriVox / Internet Archive) can persist a Media3-routable
+     * URL through the same download/persist pipeline that text
+     * chapters use. Purely additive; existing rows get NULL.
+     */
+    @Test fun `migrate v6 to v7 adds chapter audioUrl column`() {
+        val dbName = "audio-url-migration-test.db"
+        helper.createDatabase(dbName, 4).close()
+        helper.runMigrationsAndValidate(dbName, 5, true, MIGRATION_4_5).close()
+        helper.runMigrationsAndValidate(dbName, 6, true, MIGRATION_5_6).close()
+
+        val db = helper.runMigrationsAndValidate(
+            dbName,
+            7,
+            /* validateDroppedTables = */ true,
+            MIGRATION_6_7,
+        )
+
+        // Verify the column exists with the expected default (NULL).
+        db.query("PRAGMA table_info('chapter')").use { c ->
+            var sawAudioUrl = false
+            while (c.moveToNext()) {
+                val name = c.getString(c.getColumnIndexOrThrow("name"))
+                if (name == "audioUrl") {
+                    sawAudioUrl = true
+                    val type = c.getString(c.getColumnIndexOrThrow("type"))
+                    assertEquals("TEXT", type)
+                    val notnull = c.getInt(c.getColumnIndexOrThrow("notnull"))
+                    assertEquals("audioUrl must be nullable", 0, notnull)
+                }
+            }
+            assertTrue("chapter.audioUrl column must exist post-migration", sawAudioUrl)
+        }
+
+        db.close()
     }
 }

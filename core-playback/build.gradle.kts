@@ -91,6 +91,11 @@ dependencies {
     // Media3 — session, player base classes
     implementation(libs.androidx.media3.session)
     implementation(libs.androidx.media3.common)
+    // Issue #373 — audio-stream backend category. ExoPlayer handles
+    // HTTP audio URLs (KVMR's AAC stream, future LibriVox MP3s, etc.)
+    // that the TTS path can't (and shouldn't) touch. Lives alongside
+    // EnginePlayer; EnginePlayer.loadAndPlay routes by ChapterContent.audioUrl.
+    implementation(libs.androidx.media3.exoplayer)
 
     // Auto support — MediaBrowserServiceCompat lives here
     implementation(libs.androidx.media)

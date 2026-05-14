@@ -207,6 +207,9 @@ fun BrowseScreen(
                 BrowseSourceKey.Ao3 -> false
                 BrowseSourceKey.StandardEbooks -> false
                 BrowseSourceKey.Wikipedia -> false
+                // #374 — KVMR is a single-fiction audio backend; no
+                // filter surface (you either tune in or you don't).
+                BrowseSourceKey.Kvmr -> false
             }
             if (filterableSource) {
                 FilterButton(
@@ -226,6 +229,7 @@ fun BrowseScreen(
                         BrowseSourceKey.Ao3 -> 0
                         BrowseSourceKey.StandardEbooks -> 0
                         BrowseSourceKey.Wikipedia -> 0
+                        BrowseSourceKey.Kvmr -> 0
                     },
                     onClick = { showFilterSheet = true },
                 )
@@ -500,6 +504,9 @@ fun BrowseScreen(
             // lives in Settings and topic-search via opensearch covers
             // discovery.
             BrowseSourceKey.Wikipedia -> { showFilterSheet = false }
+            // #374 — KVMR is a single-fiction audio backend; no filter
+            // sheet (the station is the station).
+            BrowseSourceKey.Kvmr -> { showFilterSheet = false }
         }
     }
 }
@@ -590,6 +597,7 @@ private fun searchHintForSource(sourceKey: BrowseSourceKey): String = when (sour
     BrowseSourceKey.Ao3 -> "Search AO3 by tag, fandom, or character"
     BrowseSourceKey.StandardEbooks -> "Search Standard Ebooks' hand-curated public-domain classics"
     BrowseSourceKey.Wikipedia -> "Search Wikipedia — narrate any article"
+    BrowseSourceKey.Kvmr -> "Tune in to KVMR — live community radio from Nevada City"
 }
 
 private val BrowseTab.label: String

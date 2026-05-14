@@ -142,6 +142,7 @@ class ChapterRepositoryImplTest {
             notesAuthor: String?,
             notesAuthorPosition: String?,
             now: Long,
+            audioUrl: String?,
         ) {
             // Repository never calls this directly — the worker does — but
             // the DAO interface still requires an impl.
@@ -152,6 +153,7 @@ class ChapterRepositoryImplTest {
                 bodyChecksum = checksum,
                 bodyFetchedAt = now,
                 downloadState = ChapterDownloadState.DOWNLOADED,
+                audioUrl = audioUrl,
             )
             publishRow(id)
         }
@@ -476,6 +478,7 @@ class ChapterRepositoryImplTest {
         dao.playbackChapterResult = PlaybackChapterRow(
             id = "c0", fictionId = "f1", text = "",
             title = "Ch 0", bookTitle = "Book", coverUrl = null,
+            audioUrl = null,
         )
         assertNull(r.getChapter("c0"))
     }
@@ -485,6 +488,7 @@ class ChapterRepositoryImplTest {
         dao.playbackChapterResult = PlaybackChapterRow(
             id = "c0", fictionId = "f1", text = "real chapter text",
             title = "Ch 0", bookTitle = "Book of Ages", coverUrl = "https://cover",
+            audioUrl = null,
         )
 
         val pb = r.getChapter("c0")

@@ -710,6 +710,26 @@ class EnginePlayer @AssistedInject constructor(
             return
         }
 
+        // Issue #373 — audio-stream backend (KVMR community radio + future
+        // LibriVox / Internet Archive). When the chapter carries a
+        // Media3-routable URL, fork off to the ExoPlayer-backed code path
+        // and bypass TTS entirely. The TTS pipeline below assumes a voice
+        // model + text body; neither applies to a live stream.
+        if (chapter.audioUrl != null) {
+            loadAndPlayAudioStream(fictionId, chapterId, chapter)
+            return
+        }
+
+        // Issue #373 — coming back to a text chapter from an audio
+        // chapter (KVMR → Royal Road) needs to tear down the sibling
+        // ExoPlayer so it doesn't keep streaming under the TTS
+        // playback. The clear-isLiveAudioChapter flag re-enables the
+        // pitch slider UI in the same emit.
+        if (_observableState.value.isLiveAudioChapter) {
+            stopAudioStreamPlayer()
+            _observableState.update { it.copy(isLiveAudioChapter = false) }
+        }
+
         val active = voiceManager.activeVoice.first()
         if (active == null) {
             _observableState.update {
@@ -1779,13 +1799,36 @@ class EnginePlayer @AssistedInject constructor(
     // ----- SimpleBasePlayer command handlers -----
 
     override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
+        // Issue #373 — audio-stream mode (KVMR live + future LibriVox
+        // tracks) routes play/pause through the sibling ExoPlayer, not
+        // the TTS pipeline. The TTS pause/resume path tears down the
+        // PCM producer + AudioTrack; doing that to a live-stream
+        // chapter would silently lose the stream connection.
+        if (_observableState.value.isLiveAudioChapter) {
+            val p = audioStreamPlayer
+            if (p != null) {
+                p.playWhenReady = playWhenReady
+                _observableState.update { it.copy(isPlaying = playWhenReady) }
+                invalidateState()
+            }
+            return Futures.immediateVoidFuture()
+        }
         if (playWhenReady) resume() else pauseTts()
         return Futures.immediateVoidFuture()
     }
 
     override fun handleStop(): ListenableFuture<*> {
+        // Issue #373 — stop both pipelines defensively; whichever was
+        // running drops, the other is a cheap no-op.
         stopPlaybackPipeline()
-        _observableState.update { it.copy(isPlaying = false, currentSentenceRange = null) }
+        stopAudioStreamPlayer()
+        _observableState.update {
+            it.copy(
+                isPlaying = false,
+                currentSentenceRange = null,
+                isLiveAudioChapter = false,
+            )
+        }
         return Futures.immediateVoidFuture()
     }
 
@@ -1804,7 +1847,146 @@ class EnginePlayer @AssistedInject constructor(
         kotlinx.coroutines.runBlocking { persistPosition() }
         stopRecapPipeline()
         stopPlaybackPipeline()
+        stopAudioStreamPlayer()
         scope.cancel()
+    }
+
+    // ─── audio-stream playback (#373) ─────────────────────────────────
+
+    /**
+     * Issue #373 — sibling Media3 [androidx.media3.exoplayer.ExoPlayer]
+     * for audio-stream chapters (KVMR community radio + future
+     * LibriVox / Internet Archive). Lazily constructed on first
+     * audio-routed `loadAndPlay` and reused across chapter swaps; torn
+     * down on [handleRelease] / [handleStop].
+     *
+     * Lives alongside the TTS pipeline rather than replacing it because
+     * the bulk of EnginePlayer's machinery (sentence chunker, VoxSherpa
+     * engines, Sonic pitch shifting, AudioTrack lifecycle) is purely
+     * text-narration concerns that don't apply to a pre-rendered audio
+     * stream. The two paths are mutually exclusive on a single chapter
+     * load — guarded by [PlaybackState.isLiveAudioChapter] on every
+     * branch in [handleSetPlayWhenReady] / [handleStop] / playback
+     * controllers that share this player instance.
+     */
+    private var audioStreamPlayer: androidx.media3.exoplayer.ExoPlayer? = null
+
+    /** Listener attached to [audioStreamPlayer] so isPlaying flips on
+     *  the MediaSession surface follow real player events (buffer →
+     *  ready → playing). Held so [stopAudioStreamPlayer] can detach
+     *  before releasing the player and avoid the leaked-callback
+     *  warning on a fresh chapter load. */
+    private var audioStreamListener: androidx.media3.common.Player.Listener? = null
+
+    /**
+     * Issue #373 — load and play an audio-stream chapter through
+     * Media3's [androidx.media3.exoplayer.ExoPlayer]. Bypasses the TTS
+     * pipeline entirely; the URL goes straight to ExoPlayer's
+     * MediaItem builder, which handles AAC / MP3 / OGG / streaming
+     * containers natively. Caller has already verified
+     * `chapter.audioUrl != null`.
+     *
+     * No sentence chunker / charOffset semantics — a live stream has
+     * no positional addressing the user can scrub against. The
+     * `charOffset` argument from [loadAndPlay] is ignored for audio
+     * chapters; resume after pause restarts the stream from "now".
+     */
+    private suspend fun loadAndPlayAudioStream(
+        fictionId: String,
+        chapterId: String,
+        chapter: PlaybackChapter,
+    ) {
+        val url = chapter.audioUrl
+            ?: return // shouldn't happen — caller guards on non-null
+        // Tear down any in-flight TTS pipeline; the two paths can't
+        // coexist on a single MediaSession.
+        stopPlaybackPipeline()
+        sentences = emptyList()
+        currentSentenceIndex = 0
+
+        historyRepo.logOpen(fictionId, chapterId)
+
+        _observableState.update {
+            it.copy(
+                currentFictionId = fictionId,
+                currentChapterId = chapterId,
+                charOffset = 0,
+                isPlaying = true,
+                bookTitle = chapter.bookTitle,
+                chapterTitle = chapter.title,
+                coverUri = chapter.coverUrl,
+                // Live streams have unknown duration — surface a
+                // 0-length so the UI renders "live" / "—:—" instead
+                // of a misleading scrub bar.
+                durationEstimateMs = 0L,
+                currentSentenceRange = null,
+                error = null,
+                isLiveAudioChapter = true,
+            )
+        }
+        invalidateState()
+
+        ensureAudioStreamPlayer().run {
+            setMediaItem(androidx.media3.common.MediaItem.fromUri(url))
+            prepare()
+            playWhenReady = true
+        }
+    }
+
+    /** Construct the ExoPlayer lazily; subsequent calls reuse the
+     *  existing instance. Attaches a listener that bridges ExoPlayer's
+     *  playback state into the storyvox [PlaybackState] flow so
+     *  MediaSession / notification / lockscreen see the right
+     *  isPlaying value when the stream buffers or stalls. */
+    private fun ensureAudioStreamPlayer(): androidx.media3.exoplayer.ExoPlayer {
+        audioStreamPlayer?.let { return it }
+        val player = androidx.media3.exoplayer.ExoPlayer.Builder(context)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                    .build(),
+                /* handleAudioFocus = */ true,
+            )
+            .build()
+        val listener = object : androidx.media3.common.Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                _observableState.update { it.copy(isPlaying = isPlaying) }
+                invalidateState()
+            }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                _observableState.update {
+                    it.copy(
+                        isPlaying = false,
+                        error = PlaybackError.ChapterFetchFailed(
+                            "Audio stream error: ${error.message ?: "unknown"}",
+                        ),
+                    )
+                }
+                invalidateState()
+            }
+            override fun onPlaybackStateChanged(state: Int) {
+                val buffering = state == androidx.media3.common.Player.STATE_BUFFERING
+                _observableState.update { it.copy(isBuffering = buffering) }
+                invalidateState()
+            }
+        }
+        player.addListener(listener)
+        audioStreamListener = listener
+        audioStreamPlayer = player
+        return player
+    }
+
+    /** Idempotent teardown — called from [handleStop] / [releaseEngine]
+     *  and on every fresh TTS chapter load to make sure the ExoPlayer
+     *  doesn't keep streaming audio under a text chapter. */
+    private fun stopAudioStreamPlayer() {
+        val p = audioStreamPlayer ?: return
+        audioStreamListener?.let { p.removeListener(it) }
+        audioStreamListener = null
+        runCatching { p.stop() }
+        runCatching { p.release() }
+        audioStreamPlayer = null
     }
 
     // ----- Issue #189: one-shot recap-aloud TTS -----

@@ -292,6 +292,7 @@ class FictionRepositoryImplTest {
             notesAuthor: String?,
             notesAuthorPosition: String?,
             now: Long,
+            audioUrl: String?,
         ) {}
 
         override suspend fun upsert(chapter: Chapter) {

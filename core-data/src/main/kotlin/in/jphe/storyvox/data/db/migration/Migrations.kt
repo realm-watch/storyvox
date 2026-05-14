@@ -161,10 +161,30 @@ val MIGRATION_5_6: Migration = object : Migration(5, 6) {
     }
 }
 
+/**
+ * v7 — issues #373 + #374: audio-stream backend category. Adds
+ * `audioUrl` column to the chapter table so chapters returned by
+ * audio-source backends (KVMR community radio, future LibriVox /
+ * Internet Archive) can carry a Media3-routable URL through the same
+ * download/persist pipeline that text chapters use.
+ *
+ * Purely additive — existing chapter rows keep their `htmlBody` /
+ * `plainBody` and the new column defaults to NULL, preserving the
+ * TTS pipeline for every backend that doesn't surface audio. The
+ * playback layer reads `audioUrl IS NOT NULL` to decide whether to
+ * route through TTS or hand the URL to a Media3 ExoPlayer instance.
+ */
+val MIGRATION_6_7: Migration = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE chapter ADD COLUMN audioUrl TEXT")
+    }
+}
+
 val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
     MIGRATION_3_4,
     MIGRATION_4_5,
     MIGRATION_5_6,
+    MIGRATION_6_7,
 )

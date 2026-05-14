@@ -65,4 +65,13 @@ object SourceIds {
      *  code is user-configurable so the same module serves all
      *  language Wikipedias. */
     const val WIKIPEDIA: String = "wikipedia"
+    /** KVMR (#374, closes #373 first piece) — Nevada City community
+     *  radio (kvmr.org). First concrete entry in the audio-stream
+     *  backend category (#373). The source surfaces a single live
+     *  fiction whose one chapter carries [ChapterContent.audioUrl]
+     *  pointing at KVMR's public AAC stream; playback bypasses TTS
+     *  and routes the URL through Media3. KVMR is JP's local station;
+     *  the same source-shape generalizes to any other community-radio
+     *  / college-radio stream that publishes a stable URL. */
+    const val KVMR: String = "kvmr"
 }

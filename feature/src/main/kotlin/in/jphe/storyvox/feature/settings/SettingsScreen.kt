@@ -536,6 +536,19 @@ fun SettingsScreen(
                     onLanguageCodeChange = viewModel::setWikipediaLanguageCode,
                 )
             }
+            // Issue #374 (closes #373 first piece) — KVMR community
+            // radio: first entry in the new audio-stream backend
+            // category. Plays the live AAC stream through Media3
+            // instead of the TTS pipeline. Defaults ON — JP's local
+            // station, low-controversy content, surfaces the new
+            // pipeline so fresh-install users see what an audio
+            // backend looks like next to the text backends.
+            SettingsSwitchRow(
+                title = "KVMR Community Radio",
+                subtitle = "Live stream from Nevada City. First audio-stream backend — pitch slider hides on live audio.",
+                checked = s.sourceKvmrEnabled,
+                onCheckedChange = viewModel::setSourceKvmrEnabled,
+            )
         }
 
         // ── Sync sub-card ─────────────────────────────────────────

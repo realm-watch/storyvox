@@ -581,23 +581,30 @@ private fun PlayerOptionsSheet(
             },
         )
 
-        SheetHeader("Pitch", "${"%.2f".format(state.pitch)}×")
-        Slider(
-            value = state.pitch,
-            onValueChange = onSetPitch,
-            onValueChangeFinished = { onPersistPitch(state.pitch) },
-            // Narration-friendly band — matches Settings → Reading. Widened
-            // from 0.85..1.15 (Thalia's VoxSherpa P0 #1, 2026-05-08) for
-            // narrator-baritone headroom. Hard floor at 0.6 — below ~0.7
-            // Sonic introduces audible artifacts on Piper-medium voices.
-            valueRange = 0.6f..1.4f,
-            // TalkBack #160 — neutral pitch is 1.0 (no shift); semantics
-            // calls that out so users know what the number references.
-            modifier = Modifier.semantics {
-                contentDescription = "Pitch"
-                stateDescription = "%.2f, neutral at one".format(state.pitch)
-            },
-        )
+        // Issue #373 — Sonic pitch-shifting applies to engine-rendered
+        // PCM; on a Media3-routed live stream (KVMR + future audio
+        // backends) there's no PCM to shift, so the slider is a noop.
+        // Hiding rather than disabling keeps the sheet visually clean —
+        // a greyed-out slider next to a live-radio chip reads as "broken".
+        if (!state.isLiveAudioChapter) {
+            SheetHeader("Pitch", "${"%.2f".format(state.pitch)}×")
+            Slider(
+                value = state.pitch,
+                onValueChange = onSetPitch,
+                onValueChangeFinished = { onPersistPitch(state.pitch) },
+                // Narration-friendly band — matches Settings → Reading. Widened
+                // from 0.85..1.15 (Thalia's VoxSherpa P0 #1, 2026-05-08) for
+                // narrator-baritone headroom. Hard floor at 0.6 — below ~0.7
+                // Sonic introduces audible artifacts on Piper-medium voices.
+                valueRange = 0.6f..1.4f,
+                // TalkBack #160 — neutral pitch is 1.0 (no shift); semantics
+                // calls that out so users know what the number references.
+                modifier = Modifier.semantics {
+                    contentDescription = "Pitch"
+                    stateDescription = "%.2f, neutral at one".format(state.pitch)
+                },
+            )
+        }
 
         // #120 — sentence-step transport. The main bottom-bar buttons
         // do ±30 s (consistent with audiobook-player muscle memory);

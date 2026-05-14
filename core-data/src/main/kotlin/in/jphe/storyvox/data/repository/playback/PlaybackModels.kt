@@ -22,6 +22,13 @@ data class PlaybackChapter(
     val title: String,
     val bookTitle: String,
     val coverUrl: String?,
+    /**
+     * Issue #373 — Media3-routable audio source URL. When non-null the
+     * player skips the TTS pipeline entirely and hands [audioUrl] to a
+     * Media3 ExoPlayer (live stream / pre-recorded audiobook track).
+     * Null preserves the existing text→TTS path.
+     */
+    val audioUrl: String? = null,
 )
 
 /** Persisted resume point — what the player saves on pause/track-end. */

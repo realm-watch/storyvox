@@ -256,6 +256,10 @@ private object Keys {
     /** Issue #377 — Wikipedia backend on/off. Default false for fresh
      *  installs; first non-fiction-shaped source is opt-in. */
     val SOURCE_WIKIPEDIA_ENABLED = booleanPreferencesKey("pref_source_wikipedia_enabled")
+    /** Issue #374 — KVMR community radio backend on/off. Default TRUE
+     *  on fresh installs (JP's local station + the new audio-stream
+     *  pipeline should be discoverable without an opt-in step). */
+    val SOURCE_KVMR_ENABLED = booleanPreferencesKey("pref_source_kvmr_enabled")
 
     // ── Sleep timer shake-to-extend (issue #150) ───────────────────
     val SLEEP_SHAKE_TO_EXTEND_ENABLED = booleanPreferencesKey("pref_sleep_shake_to_extend_enabled")
@@ -477,6 +481,9 @@ class SettingsRepositoryUiImpl(
             sourceStandardEbooksEnabled = prefs[Keys.SOURCE_STANDARD_EBOOKS_ENABLED] ?: false,
             sourceWikipediaEnabled = prefs[Keys.SOURCE_WIKIPEDIA_ENABLED] ?: false,
             wikipediaLanguageCode = wikipedia.languageCode,
+            // #374 — KVMR defaults ON on fresh installs (first audio-stream
+            // backend, JP's local station, low-controversy content).
+            sourceKvmrEnabled = prefs[Keys.SOURCE_KVMR_ENABLED] ?: true,
             sleepShakeToExtendEnabled = prefs[Keys.SLEEP_SHAKE_TO_EXTEND_ENABLED] ?: true,
             showDebugOverlay = prefs[Keys.SHOW_DEBUG_OVERLAY] ?: false,
             azure = run {
@@ -1039,6 +1046,10 @@ class SettingsRepositoryUiImpl(
     }
     override suspend fun setWikipediaLanguageCode(code: String) =
         wikipediaConfig.setLanguageCode(code)
+
+    override suspend fun setSourceKvmrEnabled(enabled: Boolean) {
+        store.edit { it[Keys.SOURCE_KVMR_ENABLED] = enabled }
+    }
 
     /** #246 — bridge to SuggestedFeedsRegistry. The fallback list
      *  passed in is the baked-in seed; the registry emits it
