@@ -1,0 +1,12 @@
+{
+  "type": "service_account",
+  "project_id": "storyvox-test",
+  "private_key_id": "abc123testkeyid",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDXvSrq8Re/ez2k\n2YPBWXyvwdQp6q8iOEzFYJMaTG8iH0wKUE8OIhC1iNPIfxDSSl6NFtFZZdz/ba0Y\nw4L2erqbZXbrnxZTtmjCLnlApBRcKL9l5AHBmHNq41bJfYGzSwyiEZcrG60B8ai0\nBEubtJ8rFhlckNYFobVQ0DFQ+Elw/3ZoLhZH5jsWvAEEas2dpvd9n6d3bnZfNpXA\nvT29nMVLmQBJQ7A879XH5eYHkrNRV2jPOzHp1begiLluphxKpisf2uGuzMF+OWnQ\nbWaYlC+8iNRSIUCN9lFaFA4pfG1DaxdHMckKXNY9vdTeFNCiq6nqYMRK66xRPDn6\nJMXTaxDTAgMBAAECggEANfjFwWQSYF2JFPIzw43LIz83AEuNh96U2jYoZwZjMSKq\nR9RCitMb4gZ6kSi0wR9I2zwvoJFawe4ixVS4MUiP4at3Hkg88jFqsNWmkPTbgRjS\nlT9+7vtgOIfqYNsMtRmb7fm/m1G/rQJThcGjVq9PuJw9OQqk+GC1tyN2iv6qhOF2\nmPyZ2ygq08UfpRm4p3sVzCuBlLfxNo4TJfS4uzu2grmSzU/veoawoA/Q+6zR5zfl\n3qai93/qUmuXRfUEe6++lLAiz+bq4TZ1ePqa+d6YuwILEWrZcB+1cKY2MMCO7t0X\ns/RW3KA47w7g7nDELggCQ9ZUOUFCWSxKR/87BndZHQKBgQDucQpVYh26efj72vs9\nRv3Yu+oy4KagQXo3XpEXvVGbzjrELtOEYhQuucIublI0mppBmXrk1UpszA6io4Jk\nc65fvgVXNEW17uviX6c4MWBU+AqUPt7Pnn408STczVEwZd+NqxtVOxgRJXbqH+32\n/Q16eSUCtwFlx8F5MGvDEvb1bwKBgQDnoCaXBEbt9V1Lx9miQqHC9y6hz8GBhvJP\n4KfxAf8UL3Hmdki3x95j9TBvIk6n2zFl+EdSWQ10J7V7WOEWDTkikm/wvABcojbG\nyaPmvi3vblyhz9riHzzwyVdDTRbzxP3YzatfyQGO7uMauEEechCxrnJhhNcNk/xP\nsOVsrqHQ3QKBgGvt7RCDDhPXnDVchPbSyJqvTK5k8+d8W/buLl0BjAwriHw++e1l\ne98+pD/iHgHDrWleMLueNEcVAtbpjl8r4dVirQYxGhDlKg7Y31dXOlSbxiYeYzq1\ncklCkj4EDekLY+q7de7ZheZVAAOwGkX/e3dhmLgm4FIS3med3Fl7nx+vAoGBAMiP\nMLr01iH3ongarUTFo2G5PKSZyzlHywsFQQX7r44f4uUmKKMRqmwtA2pHb4oCzww3\nZjJUr8STGZ6bgBLjEkTwPYNalomfYATS1lvW8tluW0E1RJcla1QnUqsQ1j3vpcoT\nlD+VQgcsrHMXdjNRm0ju/1WXe8rjB8dNKerob271AoGAbv0bn1cgm3m5Vjx+ydkb\nJwDbi9Lo2q7K0K/cDlNVgZeT1f2vAyEyi/WNzLEqTWVbhYUtiyBPtn6H+2AFfUv5\n6szRWQ1QYjcKByte0H18sV/jwzqFHhT9DuPfpkInKiq65rX+yfUSYgvmhXhjQXjO\nn+TJqP3idJPtPnoYkwEdYqg=\n-----END PRIVATE KEY-----\n",
+  "client_email": "storyvox-test-sa@storyvox-test.iam.gserviceaccount.com",
+  "client_id": "123456789012345678901",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/storyvox-test-sa%40storyvox-test.iam.gserviceaccount.com"
+}

@@ -7,6 +7,8 @@ import `in`.jphe.storyvox.llm.LlmMessage
 import `in`.jphe.storyvox.llm.LlmProvider
 import `in`.jphe.storyvox.llm.ProbeResult
 import `in`.jphe.storyvox.llm.ProviderId
+import `in`.jphe.storyvox.llm.auth.GoogleOAuthTokenSource
+import `in`.jphe.storyvox.llm.auth.GoogleServiceAccount
 import `in`.jphe.storyvox.llm.di.LlmHttp
 import `in`.jphe.storyvox.llm.sse.SseLineParser
 import javax.inject.Inject
@@ -29,14 +31,25 @@ import java.io.IOException
  * here:
  *   https://ai.google.dev/api/rest/v1beta/models/streamGenerateContent
  *
- * BYOK auth via API key in the URL query string (`?key=…`). Direct
- * port of `cloud-chat-assistant/llm_stream.py`'s `google` branch —
- * the `generativelanguage.googleapis.com` endpoint accepts the same
- * key format that an end-user generates from
- * https://aistudio.google.com/app/apikey, so we don't pull in the
- * Google Cloud auth library or implement OAuth token refresh. If a
- * future spec wants service-account JSON / Vertex Enterprise auth,
- * that's a separate provider class.
+ * Two auth modes, both BYOK:
+ *
+ *  1. **API key** (`?key=…` query string) — the original mode. The
+ *     key is what `aistudio.google.com/app/apikey` issues.
+ *  2. **Service-account JSON** (#219) — the user uploads a GCP IAM
+ *     SA key file via Settings. We sign a JWT with the embedded
+ *     RSA private key, exchange it at `oauth2.googleapis.com/token`
+ *     for an access token (RFC 7523), and inject it as
+ *     `Authorization: Bearer …`. Token caching lives in
+ *     [GoogleOAuthTokenSource]. The `?key=` query string is omitted
+ *     in this mode — Google's API accepts either header-or-query
+ *     auth, never both.
+ *
+ * The two modes are mutually exclusive at the credentials-store
+ * level (setting one clears the other in
+ * [SettingsRepositoryUi.setVertexApiKey] / `setVertexServiceAccountJson`).
+ * If a misconfiguration leaves both populated we prefer the SA path
+ * — it's the stronger credential and the one the user actively
+ * uploaded most recently.
  *
  * The endpoint emits true SSE when called with `?alt=sse`, so we
  * reuse [SseLineParser]'s `vertex` branch — the JSON body inside the
@@ -48,6 +61,7 @@ open class VertexProvider @Inject constructor(
     private val store: LlmCredentialsStore,
     private val configFlow: Flow<LlmConfig>,
     private val json: Json,
+    private val tokenSource: GoogleOAuthTokenSource,
 ) : LlmProvider {
 
     override val id: ProviderId = ProviderId.Vertex
@@ -62,7 +76,7 @@ open class VertexProvider @Inject constructor(
         model: String?,
     ): Flow<String> = flow {
         val cfg = configFlow.first()
-        val apiKey = store.vertexApiKey()
+        val auth = resolveAuth()
             ?: throw LlmError.NotConfigured(ProviderId.Vertex)
         val resolvedModel = model ?: cfg.vertexModel
 
@@ -84,12 +98,17 @@ open class VertexProvider @Inject constructor(
             generationConfig = VertexGenerationConfig(maxOutputTokens = MAX_OUTPUT_TOKENS),
         )
 
-        val request = Request.Builder()
-            .url(streamUrl(resolvedModel, apiKey))
+        val builder = Request.Builder()
+            .url(streamUrl(resolvedModel, auth))
             .header("content-type", "application/json")
             .header("accept", "text/event-stream")
             .post(json.encodeToString(body).toRequestBody(JSON_MEDIA_TYPE))
-            .build()
+        if (auth is VertexAuth.ServiceAccount) {
+            // OAuth-bearer path (#219). Header auth — the key= query
+            // string is intentionally absent on this branch.
+            builder.header("Authorization", "Bearer ${auth.accessToken}")
+        }
+        val request = builder.build()
 
         val response = try {
             http.newCall(request).executeAsync()
@@ -127,21 +146,42 @@ open class VertexProvider @Inject constructor(
     }.flowOn(Dispatchers.IO)
 
     override suspend fun probe(): ProbeResult {
-        val apiKey = store.vertexApiKey()
-            ?: return ProbeResult.Misconfigured("No Vertex API key")
+        val auth = try {
+            resolveAuth() ?: return ProbeResult.Misconfigured(
+                "No Vertex credentials — paste an API key or upload a " +
+                    "service-account JSON in Settings.",
+            )
+        } catch (e: LlmError.AuthFailed) {
+            return ProbeResult.AuthError(e.message ?: "Auth failed")
+        } catch (e: IllegalArgumentException) {
+            // SA JSON failed to parse — surfaced as a misconfig, not a
+            // network failure. The uploaded blob is malformed.
+            return ProbeResult.Misconfigured(
+                "Service-account JSON is malformed: ${e.message}",
+            )
+        }
         // GET /v1beta/models — instant, free, doesn't burn token
         // budget. Same trick OpenAI's probe uses.
-        val url = baseUrl.toHttpUrl().newBuilder()
+        val urlBuilder = baseUrl.toHttpUrl().newBuilder()
             .addPathSegments("v1beta/models")
-            .addQueryParameter("key", apiKey)
-            .build()
-        val request = Request.Builder().url(url).get().build()
+        if (auth is VertexAuth.ApiKey) {
+            urlBuilder.addQueryParameter("key", auth.key)
+        }
+        val requestBuilder = Request.Builder().url(urlBuilder.build()).get()
+        if (auth is VertexAuth.ServiceAccount) {
+            requestBuilder.header("Authorization", "Bearer ${auth.accessToken}")
+        }
         return try {
-            http.newCall(request).executeAsync().use { resp ->
+            http.newCall(requestBuilder.build()).executeAsync().use { resp ->
                 when {
                     resp.isSuccessful -> ProbeResult.Ok
                     resp.code == 401 || resp.code == 403 ->
-                        ProbeResult.AuthError("Invalid Vertex API key")
+                        ProbeResult.AuthError(
+                            if (auth is VertexAuth.ServiceAccount)
+                                "Service account rejected — check IAM roles " +
+                                    "(needs Vertex AI User or equivalent)."
+                            else "Invalid Vertex API key",
+                        )
                     else -> ProbeResult.NotReachable(
                         "Vertex returned ${resp.code}",
                     )
@@ -152,16 +192,39 @@ open class VertexProvider @Inject constructor(
         }
     }
 
-    private fun streamUrl(model: String, apiKey: String): okhttp3.HttpUrl =
-        baseUrl.toHttpUrl().newBuilder()
+    /** Resolve which auth mode is configured. SA wins if both happen
+     *  to be set — see class kdoc. */
+    private suspend fun resolveAuth(): VertexAuth? {
+        val saJson = store.vertexServiceAccountJson()
+        if (saJson != null) {
+            val sa = GoogleServiceAccount.parse(saJson)
+            return VertexAuth.ServiceAccount(tokenSource.accessToken(sa))
+        }
+        val apiKey = store.vertexApiKey() ?: return null
+        return VertexAuth.ApiKey(apiKey)
+    }
+
+    private fun streamUrl(model: String, auth: VertexAuth): okhttp3.HttpUrl {
+        val builder = baseUrl.toHttpUrl().newBuilder()
             // Path is `v1beta/models/{model}:streamGenerateContent` —
             // the colon-suffix is part of the path segment per
             // Google's protobuf-derived URL convention. addPathSegment
             // url-encodes the colon, which Vertex accepts.
             .addPathSegments("v1beta/models/$model:streamGenerateContent")
             .addQueryParameter("alt", "sse")
-            .addQueryParameter("key", apiKey)
-            .build()
+        if (auth is VertexAuth.ApiKey) {
+            builder.addQueryParameter("key", auth.key)
+        }
+        return builder.build()
+    }
+
+    /** Internal sum type — keeps the API-key vs OAuth-bearer choice
+     *  in one place (per-call resolution) rather than threading two
+     *  nullable strings through stream/probe/URL helpers. */
+    private sealed class VertexAuth {
+        data class ApiKey(val key: String) : VertexAuth()
+        data class ServiceAccount(val accessToken: String) : VertexAuth()
+    }
 
     private companion object {
         const val BASE_URL = "https://generativelanguage.googleapis.com/"

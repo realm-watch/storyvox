@@ -363,6 +363,7 @@ private fun unreachableVertex(): `in`.jphe.storyvox.llm.provider.VertexProvider 
         store = NullStore,
         configFlow = flowOf(LlmConfig()),
         json = kotlinx.serialization.json.Json,
+        tokenSource = `in`.jphe.storyvox.llm.auth.GoogleOAuthTokenSource(okhttp3.OkHttpClient()),
     ) {
         override fun stream(messages: List<LlmMessage>, systemPrompt: String?, model: String?) =
             error("unreachable")
@@ -545,6 +546,7 @@ private class FakeSettingsRepo(
     override suspend fun setOllamaModel(model: String) = Unit
     override suspend fun setVertexApiKey(key: String?) = Unit
     override suspend fun setVertexModel(model: String) = Unit
+    override suspend fun setVertexServiceAccountJson(json: String?) = Unit
     override suspend fun setFoundryApiKey(key: String?) = Unit
     override suspend fun setFoundryEndpoint(url: String) = Unit
     override suspend fun setFoundryDeployment(deployment: String) = Unit

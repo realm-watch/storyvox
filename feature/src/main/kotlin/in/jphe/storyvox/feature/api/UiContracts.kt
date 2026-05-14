@@ -568,6 +568,22 @@ data class UiAiSettings(
     val ollamaModel: String = "llama3.3",
     val vertexModel: String = "gemini-2.5-flash",
     val vertexKeyConfigured: Boolean = false,
+    /**
+     * Issue #219 — alternative Vertex auth via uploaded service-account
+     * JSON. Mutually exclusive with [vertexKeyConfigured] at the
+     * repository level (setting either side clears the other). The UI
+     * surfaces a single "Vertex auth" section with both rows visible
+     * so the user can switch between modes without digging.
+     *
+     * Whether the SA was rejected by Google IAM (revoked, missing
+     * roles, etc.) is surfaced separately via the probe path —
+     * "configured" here only means a JSON blob is on disk.
+     */
+    val vertexServiceAccountConfigured: Boolean = false,
+    /** SA's `client_email` if one is uploaded; shown read-only as a
+     *  reminder of *which* SA is wired. Never persists outside the
+     *  encrypted-prefs blob — this field is derived on each read. */
+    val vertexServiceAccountEmail: String? = null,
     /** Azure Foundry endpoint URL the user pasted (e.g.
      *  `https://my-resource.openai.azure.com`). Empty = not set. */
     val foundryEndpoint: String = "",
@@ -1159,6 +1175,16 @@ interface SettingsRepositoryUi {
     suspend fun setOllamaModel(model: String)
     suspend fun setVertexApiKey(key: String?)   // null = clear
     suspend fun setVertexModel(model: String)
+    /**
+     * Issue #219 — install a Google service-account JSON for Vertex
+     * auth. The argument is the raw JSON text; the repo validates +
+     * encrypts-at-rest. Pass `null` to clear. Setting a non-null JSON
+     * also clears any existing API key (the two modes are mutually
+     * exclusive). Throws [IllegalArgumentException] from the parse
+     * path if the JSON is malformed or not a service-account key —
+     * the UI catches and toasts the message.
+     */
+    suspend fun setVertexServiceAccountJson(json: String?)
     /** Azure Foundry mutators. [setFoundryApiKey] with `null` clears
      *  the encrypted key. [setFoundryServerless] flips the URL template
      *  + body shape — see `AzureFoundryProvider.buildUrl`. */

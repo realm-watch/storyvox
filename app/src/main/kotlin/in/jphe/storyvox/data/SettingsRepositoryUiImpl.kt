@@ -58,6 +58,8 @@ import `in`.jphe.storyvox.source.github.auth.GitHubSession
 import `in`.jphe.storyvox.llm.LlmConfig
 import `in`.jphe.storyvox.llm.LlmConfigProvider
 import `in`.jphe.storyvox.llm.auth.AnthropicTeamsAuthRepository
+import `in`.jphe.storyvox.llm.auth.GoogleOAuthTokenSource
+import `in`.jphe.storyvox.llm.auth.GoogleServiceAccount
 import `in`.jphe.storyvox.llm.auth.TeamsSession
 import `in`.jphe.storyvox.llm.LlmCredentialsStore
 import `in`.jphe.storyvox.llm.ProviderId
@@ -371,6 +373,11 @@ class SettingsRepositoryUiImpl(
     private val azureCreds: AzureCredentials,
     private val azureClient: AzureSpeechClient,
     private val azureRoster: AzureVoiceRoster,
+    /** Issue #219 — injected so clearing/replacing the SA JSON also
+     *  evicts the in-process access-token cache. Without this, a user
+     *  who swaps their SA in Settings would keep using the old token
+     *  until process restart. */
+    private val googleTokenSource: GoogleOAuthTokenSource,
 ) : SettingsRepositoryUi,
     PlaybackBufferConfig,
     PlaybackModeConfig,
@@ -404,10 +411,12 @@ class SettingsRepositoryUiImpl(
         azureCreds: AzureCredentials,
         azureClient: AzureSpeechClient,
         azureRoster: AzureVoiceRoster,
+        googleTokenSource: GoogleOAuthTokenSource,
     ) : this(
         context.settingsDataStore, auth, hydrator,
         palaceConfig, palaceApi, llmCreds, githubAuth, teamsAuth, rssConfig, epubConfig,
         outlineConfig, wikipediaConfig, notionConfig, suggestedFeedsRegistry, azureCreds, azureClient, azureRoster,
+        googleTokenSource,
     )
 
     /**
@@ -561,6 +570,9 @@ class SettingsRepositoryUiImpl(
                 ollamaModel = prefs[Keys.AI_OLLAMA_MODEL] ?: "llama3.2:3b",
                 vertexModel = prefs[Keys.AI_VERTEX_MODEL] ?: "gemini-2.5-flash",
                 vertexKeyConfigured = llmCreds.hasVertexKey,
+                vertexServiceAccountConfigured = llmCreds.hasVertexServiceAccount,
+                vertexServiceAccountEmail = llmCreds.vertexServiceAccountJson()
+                    ?.let { runCatching { GoogleServiceAccount.parse(it).clientEmail }.getOrNull() },
                 foundryEndpoint = prefs[Keys.AI_FOUNDRY_ENDPOINT] ?: "",
                 foundryDeployment = prefs[Keys.AI_FOUNDRY_DEPLOYMENT] ?: "",
                 foundryServerless = prefs[Keys.AI_FOUNDRY_SERVERLESS] ?: false,
@@ -870,12 +882,47 @@ class SettingsRepositoryUiImpl(
     }
 
     override suspend fun setVertexApiKey(key: String?) {
-        if (key == null) llmCreds.clearVertexApiKey()
-        else llmCreds.setVertexApiKey(key)
+        if (key == null) {
+            llmCreds.clearVertexApiKey()
+        } else {
+            // Issue #219 — the API-key and SA-JSON modes are mutually
+            // exclusive at the storage layer; setting one drops the
+            // other so VertexProvider's dispatch never sees ambiguous
+            // state. The SA-side invalidation also flushes the OAuth
+            // token cache so an old token can't keep being used.
+            llmCreds.setVertexApiKey(key)
+            if (llmCreds.hasVertexServiceAccount) {
+                llmCreds.clearVertexServiceAccountJson()
+                googleTokenSource.invalidate()
+            }
+        }
     }
 
     override suspend fun setVertexModel(model: String) {
         store.edit { it[Keys.AI_VERTEX_MODEL] = model }
+    }
+
+    override suspend fun setVertexServiceAccountJson(json: String?) {
+        // Validate-then-persist. Parsing throws IllegalArgumentException
+        // with a human-readable cause on bad input; we let it propagate
+        // so the SAF-picker callback can toast the message rather than
+        // silently writing garbage to the encrypted prefs.
+        if (json == null) {
+            llmCreds.clearVertexServiceAccountJson()
+            googleTokenSource.invalidate()
+        } else {
+            GoogleServiceAccount.parse(json)
+            llmCreds.setVertexServiceAccountJson(json)
+            // Mutual-exclusion: if an API key was set, drop it. Same
+            // rationale as setVertexApiKey above.
+            if (llmCreds.hasVertexKey) {
+                llmCreds.clearVertexApiKey()
+            }
+            // New SA installed → old cached token is stale (matches a
+            // different SA identity). Belt-and-braces; the cache also
+            // self-invalidates on identity mismatch.
+            googleTokenSource.invalidate()
+        }
     }
 
     override suspend fun setFoundryApiKey(key: String?) {
@@ -1004,6 +1051,9 @@ class SettingsRepositoryUiImpl(
         // refresh the in-memory session flow so the UI flips to
         // SignedOut without waiting for a separate emission.
         teamsAuth.refreshFromStore()
+        // Same logic for the Google OAuth access-token cache (#219) —
+        // the SA JSON it was minted from no longer exists on disk.
+        googleTokenSource.invalidate()
     }
 
     // ── GitHub OAuth (#91) ─────────────────────────────────────────

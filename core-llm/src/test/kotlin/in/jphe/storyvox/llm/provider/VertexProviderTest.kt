@@ -42,13 +42,19 @@ class VertexProviderTest {
 
     @After fun tearDown() { server.shutdown() }
 
-    private fun providerWith(key: String?): VertexProvider {
+    private fun providerWith(
+        key: String? = null,
+        serviceAccountJson: String? = null,
+        tokenSource: `in`.jphe.storyvox.llm.auth.GoogleOAuthTokenSource =
+            `in`.jphe.storyvox.llm.auth.GoogleOAuthTokenSource(http),
+    ): VertexProvider {
         val mockBase = server.url("/").toString()
         return object : VertexProvider(
             http = http,
-            store = FakeStore(vertex = key),
+            store = FakeStore(vertex = key, vertexSaJson = serviceAccountJson),
             configFlow = flowOf(LlmConfig(vertexModel = "gemini-2.5-flash")),
             json = json,
+            tokenSource = tokenSource,
         ) {
             override val baseUrl: String = mockBase
         }

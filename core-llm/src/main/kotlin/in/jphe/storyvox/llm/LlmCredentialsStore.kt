@@ -64,6 +64,23 @@ open class LlmCredentialsStore @Inject constructor(
     open fun clearVertexApiKey() = prefs.edit { remove(KEY_VERTEX) }
     open val hasVertexKey: Boolean get() = vertexApiKey() != null
 
+    // Issue #219 — alternative Vertex auth via service-account JSON.
+    // The whole JSON blob is encrypted-at-rest (Tink-AES-256-GCM, same
+    // store as the API key); the embedded RSA private key never leaves
+    // EncryptedSharedPreferences, and the parsed in-memory
+    // [GoogleServiceAccount] is short-lived (re-parsed on each token
+    // refresh). API key + SA JSON are MUTUALLY exclusive at the UI
+    // level — setting one clears the other so the dispatch in
+    // VertexProvider has an unambiguous choice. ───────────────────────
+    open fun vertexServiceAccountJson(): String? =
+        prefs.getString(KEY_VERTEX_SA_JSON, null)
+    open fun setVertexServiceAccountJson(json: String) =
+        prefs.edit { putString(KEY_VERTEX_SA_JSON, json) }
+    open fun clearVertexServiceAccountJson() =
+        prefs.edit { remove(KEY_VERTEX_SA_JSON) }
+    open val hasVertexServiceAccount: Boolean
+        get() = vertexServiceAccountJson() != null
+
     open fun foundryApiKey(): String? = prefs.getString(KEY_FOUNDRY, null)
     open fun setFoundryApiKey(key: String) =
         prefs.edit { putString(KEY_FOUNDRY, key) }
@@ -125,7 +142,7 @@ open class LlmCredentialsStore @Inject constructor(
         remove(KEY_CLAUDE)
         remove(KEY_OPENAI)
         remove(KEY_BEDROCK_ACCESS); remove(KEY_BEDROCK_SECRET)
-        remove(KEY_VERTEX); remove(KEY_FOUNDRY)
+        remove(KEY_VERTEX); remove(KEY_VERTEX_SA_JSON); remove(KEY_FOUNDRY)
         remove(KEY_TEAMS); remove(KEY_TEAMS_REFRESH)
         remove(KEY_TEAMS_EXPIRES_AT); remove(KEY_TEAMS_SCOPES)
     }
@@ -152,6 +169,8 @@ open class LlmCredentialsStore @Inject constructor(
         internal const val KEY_BEDROCK_ACCESS = "llm_api_key:bedrock_access"
         internal const val KEY_BEDROCK_SECRET = "llm_api_key:bedrock_secret"
         internal const val KEY_VERTEX = "llm_api_key:vertex"
+        /** Issue #219 — full service-account JSON blob (encrypted). */
+        internal const val KEY_VERTEX_SA_JSON = "llm_api_key:vertex:sa_json"
         internal const val KEY_FOUNDRY = "llm_api_key:foundry"
         internal const val KEY_TEAMS = "llm_api_key:teams"
         internal const val KEY_TEAMS_REFRESH = "llm_api_key:teams:refresh"

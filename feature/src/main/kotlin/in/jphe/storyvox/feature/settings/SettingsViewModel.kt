@@ -316,6 +316,29 @@ class SettingsViewModel @Inject constructor(
     fun setOllamaModel(model: String) = viewModelScope.launch { repo.setOllamaModel(model) }
     fun setVertexApiKey(key: String?) = viewModelScope.launch { repo.setVertexApiKey(key) }
     fun setVertexModel(model: String) = viewModelScope.launch { repo.setVertexModel(model) }
+
+    /**
+     * Issue #219 — install or clear a Vertex service-account JSON.
+     * The repository call is allowed to throw [IllegalArgumentException]
+     * on a malformed blob; we surface the message via [vertexSaError]
+     * so the Settings UI can show a transient red inline message
+     * under the file-picker row. Success clears the error.
+     */
+    fun setVertexServiceAccountJson(json: String?) = viewModelScope.launch {
+        try {
+            repo.setVertexServiceAccountJson(json)
+            _vertexSaError.value = null
+        } catch (e: IllegalArgumentException) {
+            _vertexSaError.value = e.message ?: "Invalid service-account JSON"
+        }
+    }
+
+    fun clearVertexSaError() { _vertexSaError.value = null }
+    private val _vertexSaError = MutableStateFlow<String?>(null)
+    /** Last SA-JSON parse/save failure, or null after a successful
+     *  install or once the user dismisses it. Settings UI binds this
+     *  to a transient inline error row. */
+    val vertexSaError: StateFlow<String?> = _vertexSaError.asStateFlow()
     fun setFoundryApiKey(key: String?) = viewModelScope.launch { repo.setFoundryApiKey(key) }
     fun setFoundryEndpoint(url: String) = viewModelScope.launch { repo.setFoundryEndpoint(url) }
     fun setFoundryDeployment(deployment: String) =
