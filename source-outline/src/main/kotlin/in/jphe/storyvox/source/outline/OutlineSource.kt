@@ -34,7 +34,10 @@ import javax.inject.Singleton
 @SourcePlugin(
     id = SourceIds.OUTLINE,
     displayName = "Outline wiki",
-    defaultEnabled = false,
+    // #436 — fresh-install discoverability: chip on by default; the
+    // backend stays inert until the user configures a host in Settings,
+    // but the chip teaches users this surface exists.
+    defaultEnabled = true,
     category = SourceCategory.Text,
     supportsFollow = false,
     supportsSearch = false,

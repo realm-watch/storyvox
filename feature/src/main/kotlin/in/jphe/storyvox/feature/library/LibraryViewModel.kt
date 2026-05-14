@@ -44,13 +44,30 @@ import kotlinx.coroutines.launch
  *    swaps without the chip row needing to show.
  *  - [History] is the chronological chapter-open feed.
  */
+/**
+ * Issue #158 — top-level Library sub-tabs.
+ *
+ * **#438 collapse** — v0.5.36 shipped four tabs (`All / Reading / Inbox /
+ * History`) stacked directly above a four-chip shelf row (`All / Reading
+ * / Read / Wishlist`), so the same strings (`All`, `Reading`) appeared in
+ * two adjacent nested navigation surfaces — a Material 3 anti-pattern
+ * that retrained users to ignore navigation. Collapsed to three tabs:
+ *
+ *  - [Library] — the previous `All` tab renamed. Hosts the four-chip
+ *    shelf strip below, so `Reading` lives there as a one-tap chip
+ *    rather than competing for the same word with the tab row.
+ *  - [Inbox] — chronological cross-source notification feed (#383).
+ *  - [History] — chronological chapter-open feed (#158).
+ *
+ * The pre-#438 `Reading` tab is reached in one tap via the shelf chip
+ * row, so no functionality is lost; only the visual conflict is.
+ */
 enum class LibraryTab(val label: String) {
-    All("All"),
-    Reading("Reading"),
+    Library("Library"),
     /**
      * Issue #383 — chronological cross-source notification feed.
-     * Sits between Reading and History so the user finds it next to
-     * Reading (the "what's current" surface) rather than buried after
+     * Sits between Library and History so the user finds it next to
+     * Library (the "what's current" surface) rather than buried after
      * History. Carries a numeric badge driven by unread events.
      */
     Inbox("Inbox"),
@@ -60,9 +77,10 @@ enum class LibraryTab(val label: String) {
 /**
  * Issue #116 — which row of the chip-filter strip is selected. `All` is
  * the default (current behaviour pre-shelves); the three [Shelf] options
- * filter the grid to fictions that sit on that shelf. Coexists with
- * [LibraryTab]: [LibraryTab.Reading] coerces this to `OneShelf(Reading)`
- * internally so the same filtering machinery serves both surfaces.
+ * filter the grid to fictions that sit on that shelf. Surfaced as a
+ * chip row under the [LibraryTab.Library] tab — #438 dropped the
+ * pre-existing `LibraryTab.Reading` shortcut tab so this chip row is
+ * the canonical "Reading shelf" affordance.
  */
 @Immutable
 sealed interface ShelfFilter {
@@ -82,7 +100,7 @@ data class LibraryUiState(
     /** Issue #383 — unread-event count driving the Inbox tab badge. */
     val inboxUnreadCount: Int = 0,
     /** Selected sub-tab (#158). */
-    val tab: LibraryTab = LibraryTab.All,
+    val tab: LibraryTab = LibraryTab.Library,
     /** Active chip filter (#116) — only meaningful while tab == All. */
     val filter: ShelfFilter = ShelfFilter.All,
     val isLoading: Boolean = true,
@@ -160,7 +178,7 @@ class LibraryViewModel @Inject constructor(
      * tab-switch doesn't have to wait for the library/resume/history
      * flows to all emit — pressing the tab feels instant.
      */
-    private val _tab = MutableStateFlow(LibraryTab.All)
+    private val _tab = MutableStateFlow(LibraryTab.Library)
 
     private val _manageShelves = MutableStateFlow<ManageShelvesSheetState>(ManageShelvesSheetState.Hidden)
     val manageShelvesState: StateFlow<ManageShelvesSheetState> = _manageShelves.asStateFlow()
@@ -223,15 +241,15 @@ class LibraryViewModel @Inject constructor(
     // ─── sub-tabs (#158) ──────────────────────────────────────────────────
 
     /**
-     * Tab.Reading coerces the chip filter so the same shelf-scoped flow
-     * machinery serves both surfaces. Tab.All restores filter to All so
-     * leaving Reading doesn't strand the user on a hidden filter.
+     * Tab switch. #438 collapsed the four-tab strip to three; the shelf
+     * filter is the chip row under [LibraryTab.Library] now. We don't
+     * touch [_filter] on tab switch — the user's last chip choice stays
+     * remembered when they bounce out to Inbox/History and back.
      */
     fun selectTab(tab: LibraryTab) {
         _tab.value = tab
         when (tab) {
-            LibraryTab.Reading -> _filter.value = ShelfFilter.OneShelf(Shelf.Reading)
-            LibraryTab.All -> _filter.value = ShelfFilter.All
+            LibraryTab.Library -> { /* chip-row filter persists across tab switches */ }
             LibraryTab.History -> { /* history feed renders from state.history */ }
             LibraryTab.Inbox -> { /* inbox feed renders from state.inbox */ }
         }

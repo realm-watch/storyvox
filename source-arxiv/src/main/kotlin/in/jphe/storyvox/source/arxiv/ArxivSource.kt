@@ -64,7 +64,8 @@ import javax.inject.Singleton
 @SourcePlugin(
     id = SourceIds.ARXIV,
     displayName = "arXiv",
-    defaultEnabled = false,
+    // #436 — fresh-install discoverability: chip on by default.
+    defaultEnabled = true,
     category = SourceCategory.Text,
     supportsFollow = false,
     supportsSearch = true,

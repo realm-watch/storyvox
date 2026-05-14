@@ -172,6 +172,68 @@ class SettingsRepositorySourcePluginsTest {
     }
 
     @Test
+    fun `fresh install seeds every plugin id to ON for chip-strip discoverability`() = runTest {
+        // #436 — fresh-install regression: v0.5.31..v0.5.36 shipped 12
+        // of the 17 backends with `defaultEnabled = false`, so the
+        // Browse chip strip only listed 5/17 backends. The product
+        // invariant is the opposite: every registered backend gets a
+        // chip on first launch — the chip strip is the *only* place a
+        // new user learns these backends exist. Users still prune via
+        // Settings → Plugins.
+        //
+        // First read on a clean store runs SourcePluginsMapMigration
+        // with no legacy keys present; the migration seeds each id
+        // from LegacySourceKeys.ALL[id].defaultValue. Asserting on
+        // that snapshot pins the fresh-install behaviour without
+        // depending on the registry (the registry lives in :core-data
+        // and isn't wired through this test's repo construction).
+        val expectedIds = listOf(
+            SourceIds.ROYAL_ROAD, SourceIds.GITHUB, SourceIds.MEMPALACE,
+            SourceIds.RSS, SourceIds.EPUB, SourceIds.OUTLINE,
+            SourceIds.GUTENBERG, SourceIds.AO3, SourceIds.STANDARD_EBOOKS,
+            SourceIds.WIKIPEDIA, SourceIds.WIKISOURCE,
+            SourceIds.RADIO, SourceIds.KVMR, SourceIds.NOTION,
+            SourceIds.HACKERNEWS, SourceIds.ARXIV, SourceIds.PLOS,
+            SourceIds.DISCORD,
+        )
+
+        val snapshot = repo.settings.first().sourcePluginsEnabled
+        for (id in expectedIds) {
+            assertEquals(
+                "Fresh install should enable $id by default (see #436)",
+                true,
+                snapshot[id],
+            )
+        }
+    }
+
+    @Test
+    fun `legacy explicit OFF survives the fresh-install default flip`() = runTest {
+        // #436 sibling check — an upgrading user who disabled a source
+        // in v0.5.31..v0.5.36 must NOT see that source re-enabled by
+        // the new default. The migration reads each legacy boolean key
+        // (when present) and only falls back to the new `defaultValue`
+        // when the key was never written. Pre-seed GITHUB=false to
+        // simulate "user disabled GitHub before upgrading"; verify the
+        // post-migration snapshot keeps GITHUB=false even though the
+        // new default for fresh installs is now true.
+        val legacyGitHub = booleanPreferencesKey("pref_source_github_enabled")
+        store.edit { prefs ->
+            prefs[legacyGitHub] = false
+        }
+
+        val snapshot = repo.settings.first().sourcePluginsEnabled
+        assertEquals(
+            "Upgrading user's explicit GitHub=false must not be clobbered by the #436 default flip",
+            false,
+            snapshot[SourceIds.GITHUB],
+        )
+        // And sources with no legacy key still take the new default.
+        assertEquals(true, snapshot[SourceIds.WIKIPEDIA])
+        assertEquals(true, snapshot[SourceIds.HACKERNEWS])
+    }
+
+    @Test
     fun `independent toggles do not affect each other`() = runTest {
         repo.setSourcePluginEnabled(SourceIds.NOTION, enabled = false)
         repo.setSourcePluginEnabled(SourceIds.WIKIPEDIA, enabled = true)

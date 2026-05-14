@@ -36,6 +36,7 @@ import `in`.jphe.storyvox.feature.fiction.FictionDetailScreen
 import `in`.jphe.storyvox.feature.follows.FollowsScreen
 import `in`.jphe.storyvox.feature.library.LibraryScreen
 import `in`.jphe.storyvox.feature.reader.HybridReaderScreen
+import `in`.jphe.storyvox.feature.settings.SettingsHubScreen
 import `in`.jphe.storyvox.feature.settings.SettingsScreen
 import `in`.jphe.storyvox.feature.settings.pronunciation.PronunciationDictScreen
 import `in`.jphe.storyvox.feature.voicelibrary.VoiceLibraryScreen
@@ -52,6 +53,13 @@ object StoryvoxRoutes {
     const val FICTION_DETAIL = "fiction/{fictionId}"
     const val READER = "reader/{fictionId}/{chapterId}"
     const val AUDIOBOOK = "audiobook/{fictionId}/{chapterId}"
+    /** Issue #440 — Settings hub (section index). The gear-icon
+     *  destination as of v0.5.38; previously dumped users into the
+     *  flat-scroll [SETTINGS] page with no top-of-page map. Each row
+     *  on the hub routes into a dedicated subscreen or back into
+     *  [SETTINGS] (the legacy long page) for sections that haven't
+     *  been broken out yet. */
+    const val SETTINGS_HUB = "settings/hub"
     const val SETTINGS = "settings"
     const val SETTINGS_PRONUNCIATION = "settings/pronunciation"
     const val VOICE_LIBRARY = "settings/voices"
@@ -306,7 +314,7 @@ private fun StoryvoxNavHostContent(
                 HybridReaderScreen(
                     onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
                     onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
-                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
+                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS_HUB) },
                     onOpenChat = { fId, prefill -> navController.navigate(StoryvoxRoutes.chat(fId, prefill)) },
                     // ResumeEmptyPrompt's "Browse the realms" CTA — only
                     // matters when the user has no continue-listening
@@ -334,7 +342,7 @@ private fun StoryvoxNavHostContent(
                 LibraryScreen(
                     onOpenFiction = { id -> navController.navigate(StoryvoxRoutes.fictionDetail(id)) },
                     onOpenReader = { f, c -> navController.navigate(StoryvoxRoutes.reader(f, c)) },
-                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
+                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS_HUB) },
                     // Issue #383 — Inbox row tap deep-link. The URI is a
                     // pre-resolved `storyvox://reader/<fid>/<cid>` or
                     // `storyvox://fiction/<fid>` string. Decode here and
@@ -381,7 +389,7 @@ private fun StoryvoxNavHostContent(
                 FollowsScreen(
                     onOpenFiction = { id -> navController.navigate(StoryvoxRoutes.fictionDetail(id)) },
                     onOpenSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
-                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
+                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS_HUB) },
                 )
             }
             composable(
@@ -397,7 +405,7 @@ private fun StoryvoxNavHostContent(
                     // (anonymous-listing CTA) and FictionDetail (Follow
                     // button) and Settings → Royal Road.
                     onOpenRoyalRoadSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
-                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
+                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS_HUB) },
                 )
             }
 
@@ -432,7 +440,7 @@ private fun StoryvoxNavHostContent(
                 HybridReaderScreen(
                     onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
                     onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
-                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
+                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS_HUB) },
                     onOpenChat = { fId, prefill -> navController.navigate(StoryvoxRoutes.chat(fId, prefill)) },
                 )
             }
@@ -451,7 +459,7 @@ private fun StoryvoxNavHostContent(
                 HybridReaderScreen(
                     onPickVoice = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
                     onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
-                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
+                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS_HUB) },
                     onOpenChat = { fId, prefill -> navController.navigate(StoryvoxRoutes.chat(fId, prefill)) },
                 )
             }
@@ -481,6 +489,32 @@ private fun StoryvoxNavHostContent(
                     onBack = { navController.popBackStack() },
                     onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
                     onOpenVoiceLibrary = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
+                )
+            }
+
+            // Issue #440 — Settings hub. New gear-icon destination as of
+            // v0.5.38. The hub presents an ordered list of section cards;
+            // each row routes either to a dedicated subscreen (Voice
+            // library, Plugins, AI sessions, Pronunciation, Debug) or to
+            // [SETTINGS] (the legacy long-scroll page) for sections that
+            // haven't been broken out yet. Uses homeEnter/Exit (same as
+            // SETTINGS) so the hub feels like a peer of the bottom-tab
+            // surfaces, not a deep stack push.
+            composable(
+                StoryvoxRoutes.SETTINGS_HUB,
+                enterTransition = homeEnter,
+                exitTransition = homeExit,
+                popEnterTransition = homeEnter,
+                popExitTransition = homeExit,
+            ) {
+                SettingsHubScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onOpenAllSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
+                    onOpenVoiceLibrary = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
+                    onOpenPluginManager = { navController.navigate(StoryvoxRoutes.SETTINGS_PLUGINS) },
+                    onOpenAiSessions = { navController.navigate(StoryvoxRoutes.SETTINGS_AI_SESSIONS) },
+                    onOpenPronunciationDict = { navController.navigate(StoryvoxRoutes.SETTINGS_PRONUNCIATION) },
+                    onOpenDebug = { navController.navigate(StoryvoxRoutes.SETTINGS_DEBUG) },
                 )
             }
 
@@ -571,7 +605,7 @@ private fun StoryvoxNavHostContent(
                 popExitTransition = homeExit,
             ) {
                 VoiceLibraryScreen(
-                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
+                    onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS_HUB) },
                 )
             }
             composable(

@@ -196,27 +196,17 @@ fun LibraryScreen(
             }
 
             when (state.tab) {
-                LibraryTab.All -> Column(modifier = Modifier.fillMaxSize().padding(top = spacing.md)) {
-                    // #116 — chip strip lives above the grid (and above
-                    // the Resume card) so it's always reachable regardless of
-                    // scroll. Only shown on Tab.All — Reading shelf has its
-                    // own tab now.
+                LibraryTab.Library -> Column(modifier = Modifier.fillMaxSize().padding(top = spacing.md)) {
+                    // #116 — chip strip above the grid (and above the
+                    // Resume card) so it's always reachable regardless of
+                    // scroll. #438 collapsed the old `Reading` tab into a
+                    // chip in this row, so this strip is the *only* nested
+                    // navigation surface for shelves now — no more
+                    // duplicate-label tab/chip pair.
                     ShelfChipRow(
                         selected = state.filter,
                         onSelect = viewModel::selectFilter,
                     )
-                    LibraryGridBody(
-                        state = state,
-                        dedupedFictions = dedupedFictions,
-                        onResume = viewModel::resume,
-                        onOpenFiction = viewModel::openFiction,
-                        onLongPress = viewModel::openManageShelves,
-                    )
-                }
-
-                LibraryTab.Reading -> Box(modifier = Modifier.fillMaxSize().padding(top = spacing.md)) {
-                    // Reading tab: filter is auto-coerced to Reading shelf
-                    // in the VM. No chip row — the tab is the filter.
                     LibraryGridBody(
                         state = state,
                         dedupedFictions = dedupedFictions,
@@ -421,8 +411,9 @@ private fun ContinueListeningEntry.progressFraction(): Float? {
  * Resume hero (only on filter == All, so it doesn't surface inside a
  * Wishlist scope), and the cascading grid with long-press → manage-shelves.
  *
- * Shared between [LibraryTab.All] (chips visible above) and
- * [LibraryTab.Reading] (chips hidden — tab is the filter).
+ * Rendered under [LibraryTab.Library] with the shelf chip row visible
+ * above. #438 dropped the old [LibraryTab]`.Reading` shortcut tab; the
+ * shelf filter now lives entirely in the chip row.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
