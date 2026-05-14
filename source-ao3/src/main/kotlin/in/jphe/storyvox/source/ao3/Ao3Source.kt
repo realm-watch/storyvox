@@ -425,8 +425,72 @@ private fun Ao3FeedEntry.toSummary(): FictionSummary =
 
 /** Cheap HTML→plaintext for the AO3 summary blocks. The feed
  *  wraps summaries in `<p>` and sometimes inline `<a>`/`<em>`;
- *  the engine receives the visible text without the tag noise. */
+ *  the engine receives the visible text without the tag noise.
+ *
+ *  Issue #444 — the XmlPullParser decodes XML entities once (so the
+ *  feed's `&amp;` lands as `&`), but AO3's summary *content* itself
+ *  contains HTML entities (`&amp;` for `&`, `&lt;` for `<`, etc.)
+ *  because the summary body is HTML stored inside the Atom payload.
+ *  After XML decoding we still have a layer of HTML entities to
+ *  unescape, or the user sees `&amp;` literal in the description (and
+ *  TTS narrates "amp"). The `decodeHtmlEntities()` pass below handles
+ *  the common named entities plus numeric `&#NN;` / `&#xNN;` forms.
+ *  Same shape the AO3 Atom feed actually emits — verified against the
+ *  "The Snap Decides Differently" summary in the issue repro
+ *  ("Clint Barton &amp;amp; Kate Bishop" → "Clint Barton & Kate Bishop"
+ *  end-to-end). */
 private fun String.stripTags(): String =
     Regex("<[^>]+>").replace(this, " ")
         .replace(Regex("\\s+"), " ")
         .trim()
+        .decodeHtmlEntities()
+
+/** Decode the common HTML named entities + numeric character references.
+ *  Conservative — only handles the entities AO3 actually emits in
+ *  summaries: `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;`, `&nbsp;`,
+ *  plus numeric `&#NN;` (decimal) and `&#xNN;` (hex). Anything else
+ *  (rare named entities like `&hellip;`) passes through unchanged
+ *  rather than crashing — Android's android.text.Html.fromHtml would
+ *  decode them all but pulls in the platform's full HTML parser.
+ *
+ *  Iterates until the output stops shrinking so double-encoded inputs
+ *  like `&amp;amp;` (the literal sequence AO3's summary HTML contains
+ *  when the source text has a `&` character) round-trip cleanly to a
+ *  single `&`. The fixed-point loop is bounded by string length and
+ *  terminates within 2-3 iterations on every payload we've seen.
+ *  Caveat: pathological inputs like `&amp;` → `&` → `&` (no further
+ *  decode possible) terminate on the second pass; arbitrarily-deep
+ *  nesting would also terminate because each iteration must consume
+ *  at least one `;`. */
+internal fun String.decodeHtmlEntities(): String {
+    if (indexOf('&') < 0) return this
+    val entityPattern = Regex("""&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z][a-zA-Z0-9]+);""")
+    var current = this
+    while (true) {
+        val next = entityPattern.replace(current) { m ->
+            val body = m.groupValues[1]
+            when {
+                body.startsWith("#x") || body.startsWith("#X") ->
+                    body.drop(2).toIntOrNull(16)?.toChar()?.toString() ?: m.value
+                body.startsWith("#") ->
+                    body.drop(1).toIntOrNull()?.toChar()?.toString() ?: m.value
+                else -> when (body.lowercase()) {
+                    "amp" -> "&"
+                    "lt" -> "<"
+                    "gt" -> ">"
+                    "quot" -> "\""
+                    "apos" -> "'"
+                    "nbsp" -> " "
+                    "hellip" -> "…"
+                    "mdash" -> "—"
+                    "ndash" -> "–"
+                    "rsquo", "lsquo" -> "'"
+                    "rdquo", "ldquo" -> "\""
+                    else -> m.value
+                }
+            }
+        }
+        if (next == current) return current
+        current = next
+    }
+}
