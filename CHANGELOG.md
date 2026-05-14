@@ -9,6 +9,12 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.34] — 2026-05-14
+
+### Added
+- **KittenTTS as the third in-process voice family** (#431, closes #119) — smallest tier alongside Piper (compact) and Kokoro (multi-speaker). The fp16 nano model is ~24 MB across 3 flat files (model + sentencepiece config + voices), shared across all 8 speakers (F1–F4 / M1–M4, en_US). Lives between Kokoro and Azure in the Voice Library as a "Kitten (Lite)" section. Designed for slow devices where even Piper struggles. Cross-repo: upstream `techempower-org/VoxSherpa-TTS` v2.8.0 ships `KittenEngine` mirroring `KokoroEngine`'s multi-speaker shape via sherpa-onnx's existing `OfflineTtsKittenModelConfig`. JitPack coordinate bumped from v2.7.14 → v2.8.0.
+- `VoiceManager.kittenSharedDir()` + a download branch for the shared-model sentinel pattern (single download → 8 speakers); EnginePlayer dispatcher routes `EngineType.Kitten(speakerId)` at four sites including Tier 3 parallel-synth via a new `secondaryKittenEngines` pool. 10 new unit tests covering catalog contract (8 voices, en_US, Low tier), engine-dispatcher routing (Kitten vs Piper vs Kokoro), and VoiceManager download branch.
+
 ## [0.5.33] — 2026-05-14
 
 ### Added
