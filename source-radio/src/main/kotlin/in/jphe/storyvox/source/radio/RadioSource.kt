@@ -73,10 +73,33 @@ import javax.inject.Singleton
 internal class RadioSource @Inject constructor(
     private val api: RadioBrowserApi,
     private val config: RadioConfig,
-) : FictionSource {
+) : FictionSource, `in`.jphe.storyvox.data.source.UrlMatcher {
 
     override val id: String = SourceIds.RADIO
     override val displayName: String = "Radio"
+
+    /** Issue #472 — direct audio-stream URLs (`.mp3`, `.m4a`, `.aac`,
+     *  `.ogg`, `.m3u`, `.m3u8` extensions). The radio backend wraps
+     *  these as ad-hoc "Custom Station" fictions. Audio MIME-type
+     *  sniffing would require a HEAD request; v1 relies on extension
+     *  alone for the matcher's synchronous contract. */
+    override fun matchUrl(url: String): `in`.jphe.storyvox.data.source.RouteMatch? {
+        val m = Regex(
+            """^https?://[^?#]+\.(mp3|m4a|aac|ogg|opus|m3u8?|pls)(?:[?#].*)?$""",
+            RegexOption.IGNORE_CASE,
+        ).matchEntire(url.trim()) ?: return null
+        // Hash the URL so the fictionId is stable across re-paste.
+        val hash = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(url.trim().toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+            .take(16)
+        return `in`.jphe.storyvox.data.source.RouteMatch(
+            sourceId = SourceIds.RADIO,
+            fictionId = "${SourceIds.RADIO}:custom:$hash",
+            confidence = 0.85f,
+            label = "Audio stream",
+        )
+    }
 
     // ─── browse ────────────────────────────────────────────────────────
 
