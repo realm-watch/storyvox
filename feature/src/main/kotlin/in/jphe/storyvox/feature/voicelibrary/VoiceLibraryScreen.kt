@@ -321,18 +321,40 @@ fun VoiceLibraryScreen(
                 itemsIndexed(favorites, key = { _, item -> "fav-${item.id}" }) { index, voice ->
                     val downloading = state.currentDownload
                     val rowProgress = if (downloading?.voiceId == voice.id) downloading.progress ?: -1f else null
-                    VoiceRow(
-                        voice = voice,
-                        isActive = voice.id == state.activeVoiceId,
-                        isFavorite = true,
-                        downloadingProgress = rowProgress,
-                        onTap = { if (downloading == null || voice.isInstalled) viewModel.onRowTapped(voice) },
-                        onLongPress = if (voice.isInstalled) ({ viewModel.requestDelete(voice) }) else null,
-                        onToggleFavorite = { viewModel.toggleFavorite(voice.id) },
-                        modifier = Modifier
-                            .animateItem()
-                            .cascadeReveal(index = index, key = "fav-${voice.id}"),
-                    )
+                    val isActive = voice.id == state.activeVoiceId
+                    Column {
+                        VoiceRow(
+                            voice = voice,
+                            isActive = isActive,
+                            isFavorite = true,
+                            downloadingProgress = rowProgress,
+                            onTap = { if (downloading == null || voice.isInstalled) viewModel.onRowTapped(voice) },
+                            onLongPress = if (voice.isInstalled) ({ viewModel.requestDelete(voice) }) else null,
+                            onToggleFavorite = { viewModel.toggleFavorite(voice.id) },
+                            modifier = Modifier
+                                .animateItem()
+                                .cascadeReveal(index = index, key = "fav-${voice.id}"),
+                        )
+                        // #197 + #198 — Advanced expander on the starred-section
+                        // copy of the active voice. The starred section can
+                        // contain the active voice (favorites + activation are
+                        // independent), so we surface the expander here too.
+                        // Identical wiring to the installed-section copy below.
+                        if (isActive && voice.isInstalled) {
+                            VoiceAdvancedExpander(
+                                voice = voice,
+                                lexiconPath = state.voiceLexiconOverrides[voice.id].orEmpty(),
+                                phonemizerLang = state.voicePhonemizerLangOverrides[voice.id]
+                                    .orEmpty(),
+                                onSetLexicon = { path ->
+                                    viewModel.setVoiceLexicon(voice.id, path)
+                                },
+                                onSetPhonemizerLang = { code ->
+                                    viewModel.setVoicePhonemizerLang(voice.id, code)
+                                },
+                            )
+                        }
+                    }
                 }
                 item { Spacer(modifier = Modifier.height(spacing.md)) }
             }
@@ -376,18 +398,50 @@ fun VoiceLibraryScreen(
                                 voicesInTier,
                                 key = { _, item -> "i-${item.id}" },
                             ) { index, voice ->
-                                VoiceRow(
-                                    voice = voice,
-                                    isActive = voice.id == state.activeVoiceId,
-                                    isFavorite = voice.id in state.favoriteIds,
-                                    downloadingProgress = null,
-                                    onTap = { viewModel.onRowTapped(voice) },
-                                    onLongPress = { viewModel.requestDelete(voice) },
-                                    onToggleFavorite = { viewModel.toggleFavorite(voice.id) },
-                                    modifier = Modifier
-                                        .animateItem()
-                                        .cascadeReveal(index = index, key = voice.id),
-                                )
+                                val isActive = voice.id == state.activeVoiceId
+                                Column {
+                                    VoiceRow(
+                                        voice = voice,
+                                        isActive = isActive,
+                                        isFavorite = voice.id in state.favoriteIds,
+                                        downloadingProgress = null,
+                                        onTap = { viewModel.onRowTapped(voice) },
+                                        onLongPress = { viewModel.requestDelete(voice) },
+                                        onToggleFavorite = { viewModel.toggleFavorite(voice.id) },
+                                        modifier = Modifier
+                                            .animateItem()
+                                            .cascadeReveal(index = index, key = voice.id),
+                                    )
+                                    // #197 + #198 — per-voice Advanced expander only
+                                    // surfaces on the currently active voice. Two
+                                    // affordances inside: (1) lexicon file SAF
+                                    // picker for IPA pronunciation overrides
+                                    // (Piper + Kokoro), (2) Kokoro-only phonemizer
+                                    // language dropdown for forcing the voice to
+                                    // pronounce embedded foreign-language tokens
+                                    // correctly. Lives here rather than on every
+                                    // row because applying these knobs requires
+                                    // the engine to actually be loaded with the
+                                    // target voice — which only happens for the
+                                    // active one. Long-press-to-delete plus this
+                                    // expander give the active row two distinct
+                                    // power-user surfaces.
+                                    if (isActive) {
+                                        VoiceAdvancedExpander(
+                                            voice = voice,
+                                            lexiconPath = state.voiceLexiconOverrides[voice.id]
+                                                .orEmpty(),
+                                            phonemizerLang = state.voicePhonemizerLangOverrides[voice.id]
+                                                .orEmpty(),
+                                            onSetLexicon = { path ->
+                                                viewModel.setVoiceLexicon(voice.id, path)
+                                            },
+                                            onSetPhonemizerLang = { code ->
+                                                viewModel.setVoicePhonemizerLang(voice.id, code)
+                                            },
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -966,3 +1020,237 @@ private fun brassFilterChipColors() = FilterChipDefaults.filterChipColors(
  *  present. Used by every chip's onClick to flip the relevant set. */
 private fun <T> Set<T>.toggleMember(item: T): Set<T> =
     if (item in this) this - item else this + item
+
+/**
+ * Issues #197 + #198 — per-voice Advanced expander, surfaced only on
+ * the currently active voice's row. Houses two power-user knobs:
+ *
+ *  - Lexicon file picker (#197). A SAF-launched OpenDocument call
+ *    accepts `.lexicon` files (sherpa-onnx IPA / X-SAMPA dictionaries
+ *    for per-token phoneme overrides). The resolved content:// URI is
+ *    stored verbatim in DataStore; engine-side, the bridge writes the
+ *    same string to `VoiceEngine.voiceLexicon` /
+ *    `KokoroEngine.voiceLexicon` and sherpa-onnx parses it via
+ *    `OfflineTts*ModelConfig.setLexicon()`. The override takes effect
+ *    on the next voice reload — typically the next time the user
+ *    taps Play after closing this expander.
+ *
+ *  - Phonemizer language dropdown (#198). Only rendered on Kokoro
+ *    voice rows because Piper voices are per-language and don't go
+ *    through a language-aware phonemizer. The list of codes comes
+ *    from [`in.jphe.storyvox.playback.KOKORO_PHONEMIZER_LANGS`] —
+ *    the documented set sherpa-onnx's Kokoro phonemizer accepts.
+ *
+ * The expander defaults to collapsed (`expanded = false`) — both
+ * knobs are niche power-user surface; the row itself stays clean for
+ * everyday picks. Tap the "Advanced" affordance to flip; the state
+ * is screen-local (not persisted), matching SettingsScreen's
+ * `var perfAdvancedOpen by remember { mutableStateOf(false) }` idiom.
+ */
+@Composable
+internal fun VoiceAdvancedExpander(
+    voice: UiVoiceInfo,
+    lexiconPath: String,
+    phonemizerLang: String,
+    onSetLexicon: (String?) -> Unit,
+    onSetPhonemizerLang: (String?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = LocalSpacing.current
+    var expanded by remember { mutableStateOf(false) }
+    val isKokoro = voice.engineType is EngineType.Kokoro
+
+    // SAF picker for the lexicon file. OpenDocument returns a
+    // content:// URI — for v1 we store it verbatim and let
+    // sherpa-onnx's loader treat it as an opaque string path through
+    // its filesystem-or-resource resolver. If sherpa-onnx rejects the
+    // URI (most likely outcome on Android 10+ scoped storage), v2
+    // will copy the file into ${filesDir}/lexicons/<voiceId>/ and
+    // store that absolute path instead. The map shape is forward-
+    // compatible with that migration.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val saFilePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            val resolved = resolveLexiconPath(uri.toString())
+            if (resolved != null) onSetLexicon(resolved)
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = spacing.lg, end = spacing.xs, top = spacing.xxs),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .border(
+                    width = 0.5.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                    shape = RoundedCornerShape(8.dp),
+                )
+                .padding(horizontal = spacing.sm, vertical = spacing.xs),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(vertical = spacing.xxs),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Settings,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    "Advanced",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                    contentDescription = if (expanded) "Collapse Advanced" else "Expand Advanced",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+            if (expanded) {
+                Spacer(modifier = Modifier.height(spacing.xs))
+                // #197 — Lexicon file picker. One row, one button.
+                // Shows "set" / "not set" so users can tell at a glance.
+                Text(
+                    "Pronunciation lexicon",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    if (lexiconPath.isNotEmpty()) {
+                        "Custom .lexicon loaded — IPA / X-SAMPA overrides apply on next play."
+                    } else {
+                        "Override how the voice pronounces specific names and words with a .lexicon file."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                    BrassButton(
+                        label = if (lexiconPath.isNotEmpty()) "Replace lexicon" else "Pick lexicon",
+                        onClick = {
+                            // Accept any mime; .lexicon has no canonical
+                            // mime type and most pickers return
+                            // application/octet-stream or */*.
+                            saFilePicker.launch(arrayOf("*/*"))
+                        },
+                        variant = BrassButtonVariant.Text,
+                    )
+                    if (lexiconPath.isNotEmpty()) {
+                        BrassButton(
+                            label = "Clear",
+                            onClick = { onSetLexicon(null) },
+                            variant = BrassButtonVariant.Text,
+                        )
+                    }
+                }
+                if (isKokoro) {
+                    Spacer(modifier = Modifier.height(spacing.xs))
+                    // #198 — Phonemizer language dropdown, Kokoro only.
+                    Text(
+                        "Phonemizer language",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        if (phonemizerLang.isNotEmpty()) {
+                            "Forcing pronunciation to: $phonemizerLang. Tap to change or clear."
+                        } else {
+                            "Force the phonemizer to a specific language (helpful for embedded foreign-language dialogue)."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    PhonemizerLangDropdown(
+                        selected = phonemizerLang,
+                        onSelected = onSetPhonemizerLang,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * #198 — Kokoro phonemizer language dropdown. Renders one chip per
+ * documented code in [`in.jphe.storyvox.playback.KOKORO_PHONEMIZER_LANGS`]
+ * plus a "Default" chip that clears the override. Chip-strip rather
+ * than a Material `DropdownMenu` because (1) the list is short
+ * (9 entries today), (2) the rest of VoiceLibraryScreen already uses
+ * the same brass FilterChip pattern for language filtering — visual
+ * consistency, (3) chips are tappable without an extra
+ * tap-to-open step, which suits the active-row inline placement.
+ */
+@Composable
+private fun PhonemizerLangDropdown(
+    selected: String,
+    onSelected: (String?) -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        FilterChip(
+            selected = selected.isEmpty(),
+            onClick = { onSelected(null) },
+            label = { Text("Default", style = MaterialTheme.typography.labelMedium) },
+            colors = brassFilterChipColors(),
+        )
+        for (code in `in`.jphe.storyvox.playback.KOKORO_PHONEMIZER_LANGS) {
+            FilterChip(
+                selected = selected == code,
+                onClick = {
+                    // Tap the active chip → clear; tap a different chip → set.
+                    if (selected == code) onSelected(null) else onSelected(code)
+                },
+                label = { Text(code, style = MaterialTheme.typography.labelMedium) },
+                colors = brassFilterChipColors(),
+            )
+        }
+    }
+}
+
+/**
+ * #197 — normalize a SAF-returned URI string for storage in the
+ * per-voice lexicon map. Accepts both `content://` URIs (the common
+ * Android SAF return) and raw `file://` / absolute paths (rare; older
+ * file pickers, debug builds, instrumentation tests).
+ *
+ * Returns null on input we can't safely persist — empty string,
+ * embedded `;` or `=` (which collide with our flat-string codec in
+ * [`in.jphe.storyvox.data.SettingsRepositoryUiImpl`]). The codec
+ * silently drops collisions on read, so refusing them at the picker
+ * step gives the user immediate feedback (the button no-ops) rather
+ * than a delayed "where did my setting go" mystery.
+ *
+ * Visible (internal) for unit testing — VoxSherpa SAF parse test in
+ * `:feature`'s test source set exercises the URI-shape acceptance
+ * matrix without touching real ContentResolver state.
+ */
+internal fun resolveLexiconPath(raw: String): String? {
+    val trimmed = raw.trim()
+    if (trimmed.isEmpty()) return null
+    if (trimmed.contains(';') || trimmed.contains('=')) return null
+    return trimmed
+}

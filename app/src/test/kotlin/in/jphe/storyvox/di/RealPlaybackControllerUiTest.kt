@@ -227,6 +227,8 @@ class RealPlaybackControllerUiTest {
         override suspend fun setPollIntervalHours(hours: Int) = Unit
         override suspend fun setPunctuationPauseMultiplier(multiplier: Float) = Unit
         override suspend fun setPitchInterpolationHighQuality(enabled: Boolean) = Unit
+        override suspend fun setVoiceLexicon(voiceId: String, path: String?) = Unit
+        override suspend fun setVoicePhonemizerLang(voiceId: String, langCode: String?) = Unit
         override suspend fun setPlaybackBufferChunks(chunks: Int) = Unit
         override suspend fun setWarmupWait(enabled: Boolean) = Unit
         override suspend fun setCatchupPause(enabled: Boolean) = Unit

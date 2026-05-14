@@ -282,6 +282,16 @@ private object Keys {
     // is the migration default for pre-#195 installs.
     val VOICE_SPEED_OVERRIDES = stringPreferencesKey("pref_voice_speed_overrides")
     val VOICE_PITCH_OVERRIDES = stringPreferencesKey("pref_voice_pitch_overrides")
+    /** Issue #197 — per-voice lexicon override map. Same flat
+     *  `voiceId=path;voiceId=path` codec as the speed/pitch maps.
+     *  Empty for fresh installs; engine falls back to its built-in
+     *  lexicon. */
+    val VOICE_LEXICON_OVERRIDES = stringPreferencesKey("pref_voice_lexicon_overrides")
+    /** Issue #198 — per-voice Kokoro phonemizer language override map.
+     *  `voiceId=lang;voiceId=lang` (e.g. `kokoro_af_bella=es`). Only
+     *  honored by KokoroEngine; Piper entries are inert at the engine
+     *  layer but persisted so the UI surface stays consistent. */
+    val VOICE_PHONEMIZER_LANG_OVERRIDES = stringPreferencesKey("pref_voice_phonemizer_lang_overrides")
     val THEME_OVERRIDE = stringPreferencesKey("pref_theme_override")
     val DOWNLOAD_WIFI_ONLY = booleanPreferencesKey("pref_download_wifi_only")
     val POLL_INTERVAL_HOURS = intPreferencesKey("pref_poll_interval_hours")
@@ -508,6 +518,34 @@ private fun decodeVoiceFloatMap(raw: String?): Map<String, Float> {
     }.toMap()
 }
 
+/** Issue #197 / #198 — same flat-string codec as
+ *  [encodeVoiceFloatMap] but for string values (lexicon paths,
+ *  language codes). Voice IDs from the catalog are alphanumeric +
+ *  underscores so neither `=` nor `;` collide. Values:
+ *   - lexicon paths: Android FS paths use `/` + alphanumerics; SAF
+ *     content:// URIs use `://` and `%2F` but not raw `;` (RFC 3986
+ *     reserves it, and SAF percent-encodes). Documented expectation
+ *     is alphanumerics + `/`, `.`, `_`, `-`, `:`, `%` — no codec
+ *     collisions in practice.
+ *   - language codes: 2-letter ISO codes from
+ *     [KOKORO_PHONEMIZER_LANGS], no special chars.
+ *  Bad / corrupt entries are dropped silently — these maps are
+ *  non-critical state and the engine falls back cleanly. */
+private fun encodeVoiceStringMap(map: Map<String, String>): String =
+    map.entries.joinToString(";") { (k, v) -> "$k=$v" }
+
+private fun decodeVoiceStringMap(raw: String?): Map<String, String> {
+    if (raw.isNullOrBlank()) return emptyMap()
+    return raw.split(';').mapNotNull { entry ->
+        val eq = entry.indexOf('=')
+        if (eq <= 0) return@mapNotNull null
+        val k = entry.substring(0, eq)
+        val v = entry.substring(eq + 1)
+        if (v.isEmpty()) return@mapNotNull null
+        k to v
+    }.toMap()
+}
+
 
 @Singleton
 class SettingsRepositoryUiImpl(
@@ -621,6 +659,9 @@ class SettingsRepositoryUiImpl(
             defaultPitch = prefs[Keys.DEFAULT_PITCH] ?: 1.0f,
             voiceSpeedOverrides = decodeVoiceFloatMap(prefs[Keys.VOICE_SPEED_OVERRIDES]),
             voicePitchOverrides = decodeVoiceFloatMap(prefs[Keys.VOICE_PITCH_OVERRIDES]),
+            voiceLexiconOverrides = decodeVoiceStringMap(prefs[Keys.VOICE_LEXICON_OVERRIDES]),
+            voicePhonemizerLangOverrides =
+                decodeVoiceStringMap(prefs[Keys.VOICE_PHONEMIZER_LANG_OVERRIDES]),
             themeOverride = prefs[Keys.THEME_OVERRIDE]?.let { runCatching { ThemeOverride.valueOf(it) }.getOrNull() }
                 ?: ThemeOverride.System,
             downloadOnWifiOnly = prefs[Keys.DOWNLOAD_WIFI_ONLY] ?: true,
@@ -849,9 +890,72 @@ class SettingsRepositoryUiImpl(
     }
 
     override suspend fun setDefaultVoice(voiceId: String?) {
-        store.edit {
-            if (voiceId == null) it.remove(Keys.DEFAULT_VOICE_ID)
-            else it[Keys.DEFAULT_VOICE_ID] = voiceId
+        // #197 + #198 — switching voices means the per-voice lexicon
+        // and (Kokoro) phonemizer-lang overrides change too. Read the
+        // new voice's stored values inside the same edit() block and
+        // push them to the bridge BEFORE returning so VoiceManager's
+        // reload picks up the right knobs. If voiceId is null (user
+        // cleared the default) we wipe the bridge fields back to
+        // empty so any later engine instantiation uses defaults.
+        var lexicon = ""
+        var lang = ""
+        store.edit { prefs ->
+            if (voiceId == null) {
+                prefs.remove(Keys.DEFAULT_VOICE_ID)
+            } else {
+                prefs[Keys.DEFAULT_VOICE_ID] = voiceId
+                lexicon = decodeVoiceStringMap(prefs[Keys.VOICE_LEXICON_OVERRIDES])[voiceId]
+                    .orEmpty()
+                lang = decodeVoiceStringMap(prefs[Keys.VOICE_PHONEMIZER_LANG_OVERRIDES])[voiceId]
+                    .orEmpty()
+            }
+        }
+        `in`.jphe.storyvox.playback.VoiceEngineQualityBridge.applyLexicon(lexicon)
+        `in`.jphe.storyvox.playback.VoiceEngineQualityBridge.applyPhonemizerLang(lang)
+    }
+
+    override suspend fun setVoiceLexicon(voiceId: String, path: String?) {
+        // #197 — write the per-voice path map. null / blank clears
+        // the entry entirely so the engine falls back to its
+        // built-in lexicon on next load. We push to the bridge
+        // immediately when voiceId matches the active voice so the
+        // *next* chapter pre-render reads the new path; the
+        // in-flight engine instance keeps its old lexicon until the
+        // next loadModel().
+        var isActive = false
+        store.edit { prefs ->
+            val map = decodeVoiceStringMap(prefs[Keys.VOICE_LEXICON_OVERRIDES]).toMutableMap()
+            if (path.isNullOrBlank()) map.remove(voiceId)
+            else map[voiceId] = path
+            prefs[Keys.VOICE_LEXICON_OVERRIDES] = encodeVoiceStringMap(map)
+            isActive = prefs[Keys.DEFAULT_VOICE_ID] == voiceId
+        }
+        if (isActive) {
+            `in`.jphe.storyvox.playback.VoiceEngineQualityBridge
+                .applyLexicon(path.orEmpty())
+        }
+    }
+
+    override suspend fun setVoicePhonemizerLang(voiceId: String, langCode: String?) {
+        // #198 — write the per-voice Kokoro phonemizer-lang map.
+        // null / blank clears the entry. We don't validate against
+        // KOKORO_PHONEMIZER_LANGS here — the UI dropdown only offers
+        // recognized codes, and a stray unrecognized value falls back
+        // cleanly at the engine layer (Kokoro uses the voice's
+        // native language for unknown codes).
+        var isActive = false
+        store.edit { prefs ->
+            val map = decodeVoiceStringMap(
+                prefs[Keys.VOICE_PHONEMIZER_LANG_OVERRIDES]
+            ).toMutableMap()
+            if (langCode.isNullOrBlank()) map.remove(voiceId)
+            else map[voiceId] = langCode
+            prefs[Keys.VOICE_PHONEMIZER_LANG_OVERRIDES] = encodeVoiceStringMap(map)
+            isActive = prefs[Keys.DEFAULT_VOICE_ID] == voiceId
+        }
+        if (isActive) {
+            `in`.jphe.storyvox.playback.VoiceEngineQualityBridge
+                .applyPhonemizerLang(langCode.orEmpty())
         }
     }
 

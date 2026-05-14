@@ -79,6 +79,16 @@ data class VoiceLibraryUiState(
      *  JP's catalog and matches how the rest of the app surfaces locale
      *  pickers — English-first, alphabetical otherwise). */
     val availableLanguageCodes: List<String> = emptyList(),
+    /** Issue #197 — per-voice lexicon-path override map. Keys are
+     *  voice IDs; values are absolute paths (or comma-joined paths)
+     *  to user-provided `.lexicon` files. Surfaced via the active
+     *  row's Advanced expander; empty for voices with no override. */
+    val voiceLexiconOverrides: Map<String, String> = emptyMap(),
+    /** Issue #198 — per-voice Kokoro phonemizer language override
+     *  map. Keys are voice IDs; values are 2-letter language codes
+     *  from [`in.jphe.storyvox.playback.KOKORO_PHONEMIZER_LANGS`].
+     *  Surfaced only on Kokoro voice rows. */
+    val voicePhonemizerLangOverrides: Map<String, String> = emptyMap(),
 )
 
 @Immutable
@@ -129,6 +139,20 @@ class VoiceLibraryViewModel @Inject constructor(
     val voiceFilterLanguage: StateFlow<String?> = _selectedLanguage.asStateFlow()
 
     private val azureKeyConfigured = settingsRepo.settings.map { it.azure.isConfigured }
+
+    /** Issue #197 / #198 — observe just the two per-voice override maps
+     *  so a flip surfaces in the Voice Library's Advanced expander
+     *  without a screen relaunch. Pulled out as its own projection
+     *  rather than collapsed into the unfiltered-state combine because
+     *  the rest of the screen doesn't depend on these values; isolating
+     *  the flow keeps Compose's recomposition scope tight on rows that
+     *  AREN'T the active voice. */
+    private val perVoiceOverrides = settingsRepo.settings.map { s ->
+        PerVoiceOverrides(
+            lexicon = s.voiceLexiconOverrides,
+            phonemizerLang = s.voicePhonemizerLangOverrides,
+        )
+    }
 
     /** Debounced query for the filter pipeline. 200 ms matches the
      *  spec from #264 — long enough to swallow burst-typing on Flip3
@@ -246,13 +270,18 @@ class VoiceLibraryViewModel @Inject constructor(
         unfilteredUiState,
         debouncedQuery,
         _selectedLanguage.asStateFlow(),
-    ) { state, q, lang ->
-        if (q.isBlank() && lang == null) return@combine state
+        perVoiceOverrides,
+    ) { state, q, lang, overrides ->
+        val withOverrides = state.copy(
+            voiceLexiconOverrides = overrides.lexicon,
+            voicePhonemizerLangOverrides = overrides.phonemizerLang,
+        )
+        if (q.isBlank() && lang == null) return@combine withOverrides
         val crit = VoiceFilterCriteria(query = q, language = lang)
-        state.copy(
-            favorites = state.favorites.filter { it.matchesCriteria(crit) },
-            installedByEngine = state.installedByEngine.filterBy(crit),
-            availableByEngine = state.availableByEngine.filterBy(crit),
+        withOverrides.copy(
+            favorites = withOverrides.favorites.filter { it.matchesCriteria(crit) },
+            installedByEngine = withOverrides.installedByEngine.filterBy(crit),
+            availableByEngine = withOverrides.availableByEngine.filterBy(crit),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), VoiceLibraryUiState())
 
@@ -377,7 +406,34 @@ class VoiceLibraryViewModel @Inject constructor(
     fun dismissError() {
         _error.value = null
     }
+
+    /** Issue #197 — persist a lexicon-file path for a specific voice.
+     *  Pass null or empty to clear the override (engine falls back to
+     *  its built-in lexicon). The settings impl writes through to the
+     *  VoxSherpa bridge static field when [voiceId] matches the
+     *  currently active voice. */
+    fun setVoiceLexicon(voiceId: String, path: String?) {
+        viewModelScope.launch { settingsRepo.setVoiceLexicon(voiceId, path) }
+    }
+
+    /** Issue #198 — persist a Kokoro phonemizer language override for
+     *  a specific voice. Pass null or empty to clear. The screen
+     *  guards visibility on Kokoro voice rows, but the underlying map
+     *  accepts any voiceId for symmetry with the lexicon setter. */
+    fun setVoicePhonemizerLang(voiceId: String, langCode: String?) {
+        viewModelScope.launch { settingsRepo.setVoicePhonemizerLang(voiceId, langCode) }
+    }
 }
+
+/** Tuple holding just the two per-voice override maps observed off
+ *  the settings flow (#197 / #198). Isolated from CollapsedAndLocal
+ *  so the unfiltered-uiState combine stays at 5 outer slots — adding
+ *  these maps as a 6th would push past kotlinx.coroutines's typed
+ *  combine ceiling. */
+private data class PerVoiceOverrides(
+    val lexicon: Map<String, String>,
+    val phonemizerLang: Map<String, String>,
+)
 
 /** Engine grouping discriminator used by the voice library UI. The
  *  underlying [EngineType] is sealed and Kokoro carries a speakerId we
