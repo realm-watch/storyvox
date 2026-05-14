@@ -6,7 +6,7 @@
 [![Built by dream-team](https://img.shields.io/badge/built%20by-dream--team-7d5fff.svg)](#how-it-was-built)
 
 **A neural-voice audiobook player for any text you have.**
-Stream chapters from [Royal Road](https://royalroad.com), [GitHub](https://github.com/), an [Outline](https://www.getoutline.com) wiki, an RSS / Atom feed, a [Memory Palace](https://github.com/techempower-org/mempalace) you host yourself, or a folder of EPUB files on your device — read aloud by an offline neural TTS engine. A hybrid reader/audiobook view highlights the spoken sentence in brass as you listen. Built for Android phones, tablets, and Wear OS.
+Stream chapters from seventeen fiction backends — [Royal Road](https://royalroad.com), [GitHub](https://github.com/), an [Outline](https://www.getoutline.com) wiki, RSS / Atom feeds, a [Memory Palace](https://github.com/techempower-org/mempalace) you host yourself, local EPUB files, [Project Gutenberg](https://www.gutenberg.org/), [Archive of Our Own](https://archiveofourown.org/), [Standard Ebooks](https://standardebooks.org/), [Wikipedia](https://en.wikipedia.org/), [Wikisource](https://en.wikisource.org/), Radio (with [Radio Browser](https://www.radio-browser.info/) search across 30k+ stations), [Notion](https://notion.so/) databases, [Hacker News](https://news.ycombinator.com/), [arXiv](https://arxiv.org/), [PLOS](https://plos.org/), and [Discord](https://discord.com/) channels. Read aloud by an in-process neural TTS engine. A hybrid reader/audiobook view highlights the spoken sentence in brass as you listen. Built for Android phones, tablets, and Wear OS.
 
 <div align="center">
   <picture>
@@ -16,19 +16,22 @@ Stream chapters from [Royal Road](https://royalroad.com), [GitHub](https://githu
   </picture>
 </div>
 
-> **v0.5.31** — twelve fiction sources (Royal Road, GitHub, RSS, EPUB, Outline, Memory Palace, Project Gutenberg, AO3, Standard Ebooks, Wikipedia, KVMR live audio, Notion), Azure HD voices as an optional cloud TTS backend (BYOK), Tier 3 multi-engine parallel synthesis (1–8 engines × N threads each), smart-resume CTA, AI chat per fiction across seven LLM providers, GitHub OAuth, Settings redesign (8 sections), shake-to-extend sleep timer. GPL-3.0 (downstream of the engine, not a posture choice — see [License](#license)).
+> **v0.5.38** — **seventeen fiction backends**, a **plugin-seam architecture** that makes new backends ~4 touchpoints (`@SourcePlugin` annotation + KSP-generated Hilt registration); **three in-process neural voice families** (Piper compact, Kokoro multi-speaker, KittenTTS lightest tier) plus Azure HD as optional BYOK cloud backend; the **AI chat heavies** — cross-fiction memory + function calling (5 tools) + multi-modal image input — all live; a **magical brass voice-settings icon** on the play screen replacing the old `⋮` overflow; a **Plugin manager** Settings hub iterating the registry; **Radio Browser API search** unlocking 30k+ stations; **Wear OS Library Nocturne** theme + circular scrubber on round watches; cold-launch -14% on low-end Android. GPL-3.0 (downstream of the engine, not a posture choice — see [License](#license)).
 
 ---
 
 ## What it does
 
-- **Twelve fiction sources, side by side.** Browse [Royal Road](https://royalroad.com) with the full filter set (tags include/exclude, status, type, length, rating, content warnings, sort); browse fiction repos on GitHub via the curated [storyvox-registry](https://github.com/techempower-org/storyvox-registry) plus live `/search/repositories` results; subscribe to any **RSS / Atom feed** with a managed suggested-feeds list from [storyvox-feeds](https://github.com/techempower-org/storyvox-feeds); pull articles from a self-hosted **[Outline](https://www.getoutline.com)** wiki; mount a **[Memory Palace](https://github.com/techempower-org/mempalace)** you host yourself; open **local EPUB files** from any folder via the system file picker; browse **Project Gutenberg's** 70,000+ public-domain books; pull fanfic from **Archive of Our Own** (per-tag feeds + official EPUBs); read **Standard Ebooks'** hand-curated typographically-polished classics; narrate any **Wikipedia** article (heading-split chapters); listen to **KVMR Community Radio** live; or read a **Notion** database (defaults to the techempower.org content DB — paste an integration token and you're in). Each backend has its own on/off toggle in Settings.
-- **Plays chapters as audiobooks** through an in-process neural TTS engine. Two voice families ship: [Piper](https://github.com/rhasspy/piper) (compact, ~14–30 MB) and [Kokoro](https://github.com/hexgrad/kokoro) (multi-speaker, ~330 MB). Voice models download on demand from `voices-v2`; nothing is bundled in the APK. No cloud, no API keys, no per-character billing.
+- **Seventeen fiction backends, side by side.** Browse [Royal Road](https://royalroad.com) with the full filter set (tags include/exclude, status, type, length, rating, content warnings, sort); browse fiction repos on GitHub via the curated [storyvox-registry](https://github.com/techempower-org/storyvox-registry) plus live `/search/repositories` results; subscribe to any **RSS / Atom feed** with a managed suggested-feeds list from [storyvox-feeds](https://github.com/techempower-org/storyvox-feeds); pull articles from a self-hosted **[Outline](https://www.getoutline.com)** wiki; mount a **[Memory Palace](https://github.com/techempower-org/mempalace)** you host yourself; open **local EPUB files** from any folder via the system file picker; browse **Project Gutenberg's** 70,000+ public-domain books; pull fanfic from **Archive of Our Own** (per-tag feeds + official EPUBs); read **Standard Ebooks'** hand-curated typographically-polished classics; narrate any **Wikipedia** or **Wikisource** article (heading-split chapters; Wikisource walks multi-part works as `/Subpage` chapters); listen to **Radio** with 5 curated stations (KVMR 89.3, Capital Public Radio, KQED 88.5, KCSB 91.9, SomaFM Groove Salad) plus **Radio Browser API** search across 30,000+ stations worldwide; read a **Notion** database (defaults to the techempower.org content DB — paste an integration token and you're in); narrate **Hacker News** top stories + Ask HN / Show HN threads with comments; listen to **arXiv** abstracts in cs.AI and other categories; read **PLOS** open-access peer-reviewed science papers; or pull serialized fiction from **Discord** channels (channels = fictions, messages = chapters, bot-token auth). Each backend has its own on/off toggle in **Settings → Plugins** (the plugin manager iterates the registry, so adding a new backend is automatic).
+- **Plays chapters as audiobooks** through an in-process neural TTS engine. **Three voice families ship**: [Piper](https://github.com/rhasspy/piper) (compact, ~14–30 MB per voice), [Kokoro](https://github.com/hexgrad/kokoro) (multi-speaker, ~330 MB total), and **KittenTTS** (lightest tier, ~24 MB shared across 8 en_US speakers — designed for slow devices where Piper struggles). Voice models download on demand from `voices-v2`; nothing is bundled in the APK. No cloud, no API keys, no per-character billing.
 - **Optional cloud voices** — bring-your-own-key [Azure Cognitive Services HD voices](https://learn.microsoft.com/azure/ai-services/speech-service/text-to-speech) for studio-grade narration on slow devices. Offline fallback to the local engine if your key fails or the network drops. Azure is opt-in, never required, never billed by storyvox.
 - **Tier 3 multi-engine parallel synthesis.** Run 1–8 VoxSherpa engine instances side-by-side, each with its own thread pool, so a single sentence's chunks render in parallel and the next sentence is already queued before the current one finishes. Twin sliders in **Settings → Performance** (Engines, Threads/engine) let you tune for your CPU. The producer pins to a dedicated `URGENT_AUDIO` thread to keep audio scheduling honest under load.
 - **Highlights the current sentence** in brass as the engine speaks. Swipe between audiobook view (cover, scrubber, transport) and reader view (chapter text). The highlight glides between sentences to match the read-aloud rhythm.
 - **Auto-advances** between chapters. Eager-downloads ahead so the next chapter is ready when the current ends. PCM cache buffering keeps playback smooth when synthesis falls behind — the player pauses, refills, resumes without a glitch.
-- **AI chat per fiction.** Per-book chat sessions across seven LLM providers (Claude direct, Anthropic Teams via OAuth, OpenAI, Vertex, Bedrock, Foundry, Ollama) with grounding controls — feed the AI the current sentence, the entire chapter, or the entire book so far. Long-press a word to ask "Who is X?". AI-generated chapter recaps you can read aloud through the same TTS pipeline.
+- **AI chat per fiction, that actually does things.** Per-book chat sessions across seven LLM providers (Claude direct, Anthropic Teams via OAuth, OpenAI, Vertex, Bedrock, Foundry, Ollama) with grounding controls — feed the AI the current sentence, the entire chapter, or the entire book so far. Long-press a word to ask "Who is X?". AI-generated chapter recaps you can read aloud through the same TTS pipeline. **Cross-fiction memory** ([#217](https://github.com/techempower-org/storyvox/issues/217)) — the AI remembers character / place / concept entities across books in your library; per-book **Notebook** tab on Fiction Detail surfaces the entries with manual edit. **Function calling** ([#216](https://github.com/techempower-org/storyvox/issues/216)) — say "Add this book to my Reading shelf", "Queue chapter 5", "Mark this chapter read", "Slow it down to 1.2x", or "Open Voice Library" and the AI invokes the tool; a brass-edged card in the chat stream shows in-flight / success / error state. **Multi-modal image input** ([#215](https://github.com/techempower-org/storyvox/issues/215)) — paste cover art / fanart / scene refs into the chat; the AI sees them (Anthropic + OpenAI native; auto-downscale to 1280px / JPEG q=85 to stay under the API's image-processing ceiling).
+- **Plugin manager Settings tab** — a brass-edged card grid in Settings → Plugins, one card per `@SourcePlugin`-annotated backend. Search input, On / Off / All chips, tap-for-details modal. Three category sections: Fiction sources (17 in-tree), Audio streams (Radio), Voice bundles (v2 placeholder). Adding a new backend automatically surfaces a card — no edit to the screen file needed.
+- **Magical voice settings icon on the play screen.** Brass soundwave-with-sparkle replaces the buried `⋮` overflow's voice section. Tap → Material 3 bottom sheet with five live-applying rows (Speed / Pitch / Voice picker chip / Sentence silence / Sonic high-quality) + an Advanced expander for per-voice lexicon + Kokoro phonemizer-lang. Long-press → Voice Library.
+- **Wear OS Library Nocturne.** Brass-on-warm-dark theme on the watch; round watches get a circular brass scrubber wrapping the chapter cover, square watches a brass-tinted linear scrubber.
 - **GitHub sign-in via OAuth Device Flow** (no API key paste). Lifts the anon 60 req/hr cap to 5,000, unlocks "My Repos" / "Starred" / "Gists" tabs in Browse, and (opt-in) private-repo access for treating private repos as your personal book library.
 - **Voice library with tiers and favorites.** Engine-grouped picker, star toggles for the voices you keep coming back to, and a Starred surface that floats them to the top.
 - **Sleep timer** with 15/30/45/60-minute presets, an "end of chapter" mode, a countdown pulse as time runs out, and shake-to-extend during the fade-out tail (#150).
@@ -37,7 +40,7 @@ Stream chapters from [Royal Road](https://royalroad.com), [GitHub](https://githu
 - **Infinite-scroll Browse** across every tab.
 - **Cheap polling for new chapters.** GitHub-sourced fictions watch the repo's HEAD SHA; the manifest is only re-scanned when something changes — one HTTP request per fiction per check.
 - **MediaSession-aware** — lock-screen art, transport from Bluetooth headsets, headphone media buttons, notification shade.
-- **Settings redesign** — 8 sections in touch-frequency order (Voice & Playback, Reading, Performance, AI, Library & Sync, Account, Memory Palace, About) with brass section icons and a unified component vocabulary.
+- **Settings redesign** — section hub of brass-edged cards (Voice & Playback, Reading, Performance, AI, Plugins, Account, Memory Palace, About) with brass section icons and a unified component vocabulary. New plugin-manager landing replaces the old long-scroll Library & Sync section.
 - **Library Nocturne theme** — brass on warm dark, EB Garamond chapter body, Inter UI. Light mode is parchment cream.
 - **Adaptive layouts** — fills the screen on phones (2 columns), tablets (5), foldables (more).
 
@@ -135,35 +138,53 @@ The CI workflow (`.github/workflows/android.yml`) shows the canonical build step
 │ :core-data │ │ :core-      │ │  :core-llm    │ │  :core-ui     │
 │  Room +    │ │  playback   │ │  Provider     │ │  Library      │
 │  repos +   │ │  EnginePlyr │ │  matrix       │ │  Nocturne     │
-│  Fiction   │ │  + PcmCache │ │  (Claude /    │ │  theme +      │
-│  Source    │ │  + Voice    │ │   Teams /     │ │  components   │
-│  Map       │ │  Manager +  │ │   OpenAI /    │ │               │
-│            │ │  Sentence   │ │   Vertex /    │ │               │
-│            │ │  Tracker    │ │   Bedrock /   │ │               │
-│            │ │  (in-proc + │ │   Foundry /   │ │               │
+│  @Source-  │ │  + PcmCache │ │  (Claude /    │ │  theme +      │
+│  Plugin    │ │  + Voice    │ │   Teams /     │ │  components   │
+│  registry  │ │  Manager +  │ │   OpenAI /    │ │               │
+│  + plugin  │ │  Sentence   │ │   Vertex /    │ │               │
+│  manager   │ │  Tracker    │ │   Bedrock /   │ │               │
+│  state     │ │  (in-proc + │ │   Foundry /   │ │               │
 │            │ │   Azure)    │ │   Ollama)     │ │               │
-└─────┬──────┘ └──────┬──────┘ └───────────────┘ └───────────────┘
-      │               │
-      ▼               │ JitPack: VoxSherpa-TTS :engine-lib
-┌──────────────────────┐  (Piper + Kokoro + sherpa-onnx, in-process)
-│ Fiction sources      │
-│ ──────────────────── │
-│ :source-royalroad    │  Cloudflare-aware fetch, login WebView
-│ :source-github       │  GitHub API + book.toml + commonmark
-│ :source-rss          │  RSS / Atom + storyvox-feeds registry
-│ :source-epub         │  SAF folder picker + OPF parser
-│ :source-outline      │  Outline wiki API
-│ :source-mempalace    │  LAN-only MemPalace daemon
-│                      │
-│ TTS backends         │
-│ ──────────────────── │
-│ :source-azure        │  Azure Cognitive Services HD (BYOK, remote)
-└──────────────────────┘
+└─────┬──────┘ └──────┬──────┘ └───────┬───────┘ └───────────────┘
+      │               │                │
+      │               │ JitPack:       │ ChatStreamEvent +
+      │               │ VoxSherpa-TTS  │ ToolCatalog (function
+      │               │ :engine-lib    │ calling, v0.5.33)
+      │               │ (Piper /       │ + ImageContentBlock
+      │               │  Kokoro /      │ (multi-modal, v0.5.36)
+      │               │  KittenTTS,    │
+      │               │  in-process)   │
+      ▼               │                ▼
+┌─────────────────────────────┐  ┌──────────────────────┐
+│ Fiction sources (17)        │  │ :core-sync           │
+│ ─────────────────────────── │  │ InstantDB sync —     │
+│ :source-royalroad           │  │ library / follows /  │
+│ :source-github              │  │ positions / books-   │
+│ :source-rss                 │  │ marks / pronuncia-   │
+│ :source-epub                │  │ tion / secrets       │
+│ :source-outline             │  │ (#360 v0.5.12)       │
+│ :source-mempalace           │  └──────────────────────┘
+│ :source-gutenberg           │
+│ :source-ao3                 │  ┌──────────────────────┐
+│ :source-standard-ebooks     │  │ :core-plugin-ksp     │
+│ :source-wikipedia           │  │ KSP processor —      │
+│ :source-wikisource          │  │ @SourcePlugin →      │
+│ :source-radio (KVMR/etc.)   │  │ Hilt @IntoSet        │
+│ :source-notion              │  │ factory (v0.5.27)    │
+│ :source-hackernews          │  └──────────────────────┘
+│ :source-arxiv               │
+│ :source-plos                │
+│ :source-discord             │
+│                             │
+│ TTS backends                │
+│ ─────────────────────────── │
+│ :source-azure (cloud BYOK)  │
+└─────────────────────────────┘
                          ▼
                    (audio out)
 ```
 
-Thirteen Gradle modules. Fiction sources and TTS backends both implement small interfaces declared in `:core-data` / `:core-playback` and bind into `Map<String, …>` registries via Hilt `@IntoMap @StringKey`. The playback layer is independent of the UI; the local engine library is a single transitive dep on `:core-playback`. AI chat lives in its own `:core-llm` module so the TTS app doesn't drag in HTTP clients for providers it isn't using at runtime.
+29 Gradle modules now (was 13 at v0.4.x). Fiction sources implement `FictionSource` from `:core-data` and self-register via the `@SourcePlugin` annotation; the `:core-plugin-ksp` KSP processor emits a Hilt `@IntoSet` factory per annotated class, so `SourcePluginRegistry` discovers them at startup. Adding a new backend is ~4 touchpoints today (was ~17 pre-Phase-2). The playback layer is independent of the UI; the local engine library is a single transitive dep on `:core-playback`. AI chat lives in its own `:core-llm` module — the seven-provider matrix shares one `ChatStreamEvent` flow type that carries text deltas + tool-call events + tool-result events end-to-end. Cross-device sync lives in `:core-sync` against InstantDB.
 
 Design specs (each shipped or in flight) read as a thread:
 
