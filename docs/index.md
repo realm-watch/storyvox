@@ -135,12 +135,12 @@ description: Offline neural TTS, optional Azure HD cloud voices. Twelve sources 
 <section class="recent">
   <h2>What just shipped</h2>
   <p>
-    <strong>v0.5.31</strong> — Library Nocturne UX milestone. Full brass-on-warm-dark
+    <strong>v0.5.36</strong> — Library Nocturne UX milestone. Full brass-on-warm-dark
     polish pass across player, library, settings, and browse: TopAppBar nav across
     detail screens, single back-nav pattern, chapter rows tappable with played
     indicators, infinite-scroll Browse across every tab, brass spinners and progress
     bars everywhere, deliberate first-time defaults, and a confetti milestone dialog.
-    <a href="https://github.com/techempower-org/storyvox/releases/tag/v0.5.31">Full release notes →</a>
+    <a href="https://github.com/techempower-org/storyvox/releases/tag/v0.5.36">Full release notes →</a>
   </p>
   <p>
     <strong>Earlier in v0.4:</strong> Tier 3 multi-engine parallel synthesis with twin
