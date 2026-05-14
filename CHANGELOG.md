@@ -9,6 +9,23 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.30] — 2026-05-14
+
+### Added
+- **Discord as the 17th fiction backend** (#416, closes #403) — first chat-platform backend. Server → top-level filter, channel → one fiction, message → one chapter (optionally coalescing consecutive same-author messages within a configurable 1-30 min window, default 5). Auth is user-supplied bot token: user creates a Discord app, generates a bot token, invites their bot with `READ_MESSAGE_HISTORY` scope, pastes in Settings. No bundled token, no auto-join, no selfbot. OkHttp wrapper over 4 endpoints with structured 429 + `Retry-After` handling. 6 new unit tests covering coalesce edge cases + JSON-parse fixtures. Default OFF on fresh installs.
+- **Cross-fiction AI memory + per-book Notebook tab** (#414, closes #217) — `FictionMemoryEntry` Room entity + `FictionMemoryRepository`, prompt-builder appends a "Cross-fiction context" block listing entries from OTHER fictions where detected names match in the current chat turn (capped ~500 tokens, oldest dropped). Per-fiction "Notebook" sub-tab on `FictionDetailScreen` shows recorded entities (characters / places / concepts) with manual-add / delete; Settings → AI → "Carry memory across fictions" toggle (default ON). Population is regex-based name detection on AI replies for v1 — approximate but cheap; follow-ups for structured LLM-call extraction, InstantDB sync, per-author/world partitioning, confidence scoring documented in the PR. Room schema v8 → v9 (additive). 25 net new tests.
+- **Per-voice lexicon + Kokoro phonemizer language overrides** (#415, closes #197 #198) — Settings → Voice → per-active-voice Advanced expander gains SAF `.lexicon` file picker (#197 — IPA pronunciation overrides for hard-to-pronounce names; great for Royal Road's "Wei Wuxian" / "Lianhua" / "Aelindra" pain) and Kokoro phonemizer-lang chip strip (#198, 9 documented Kokoro codes). Per-voice (not global): each voice carries its own overrides; switching active voice re-applies the bridge static fields before the next chapter renders. **Cross-repo work**: upstream `techempower-org/VoxSherpa-TTS` v2.7.14 ships `voiceLexicon` + `phonemizerLang` static volatile fields; JitPack coordinate bumped from v2.7.13. 24 new tests across `VoiceEngineQualityBridgeTest` + `SettingsRepositoryVoiceLexiconLangTest` + `LexiconPathSafParseTest`.
+
+### Fixed
+- **`NetworkOnMainThreadException` on Wikipedia + Wikisource first chip tap** (#421, closes #419) — both backends' `getRaw` were non-suspend, doing blocking `client.newCall(req).execute()` without a `withContext(Dispatchers.IO)` wrapper. Same class of bug as the earlier Gutenberg fix. Crash caught by the QA-rerespawn agent on tablet + Flip3; logcat stacks captured on #419. **High-pri regression that affected two of the 16 backends.**
+
+### Build state
+- Four-PR bundle merged in order: #421 (smallest fix, no overlap) → #416 (Discord, new module + chip) → #415 (VoxSherpa knobs, voice picker) → #414 (cross-fiction memory + Room v8 → v9 migration). Each PR was independently CI-green before the wave landed; GitHub's mergeStateStatus recomputed BEHIND between each merge and the next merge fast-forwarded cleanly with no manual rebase needed.
+- **17 fiction backends** total now: Royal Road, GitHub, Memory Palace, RSS, EPUB, Outline, Gutenberg, AO3, Standard Ebooks, Wikipedia, Wikisource, KVMR (audio-stream), Notion, Hacker News, arXiv, PLOS, Discord (new).
+
+### Infrastructure (this session, not a release feature but worth recording)
+- New global PostToolUse Bash hook at `~/.claude/hooks/screenshot-compress.sh` — auto-downscales any fresh PNG in `~/.claude/projects/` scratch dirs to JPEG q=80 / max 1280px on the long edge. Avoids the "400 Could not process image" multimodal API failure that killed the first QA agent. Verified end-to-end via `hook-tester` subagent. Lives outside storyvox but unblocks future tablet/phone QA passes.
+
 ## [0.5.29] — 2026-05-14
 
 ### Added
