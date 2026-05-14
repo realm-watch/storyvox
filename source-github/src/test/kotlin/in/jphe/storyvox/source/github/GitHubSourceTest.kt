@@ -211,6 +211,47 @@ class GitHubSourceTest {
         assertTrue(d.chapters.isEmpty())
     }
 
+    @Test fun `fictionDetail falls back to root SUMMARY md when src-relative one is missing`() {
+        // Issue #460 — jphein/example-fiction (the GitHub plugin's
+        // canonical demo fiction) declares `src = "src"` in book.toml
+        // so mdbook compiles chapter bodies from `src/*.md`, but keeps
+        // SUMMARY.md at the repo root, not under `src/`. The previous
+        // fetch order (`src/SUMMARY.md` only) 404'd → 0 chapters →
+        // "0 ch · Completed" on FictionDetail. Try root SUMMARY.md as
+        // a fallback so mixed-convention repos resolve.
+        val api = FakeGitHubApi(
+            repos = mapOf(
+                Pair("jphein", "example-fiction") to ghRepo(
+                    owner = "jphein",
+                    name = "example-fiction",
+                    defaultBranch = "main",
+                ),
+            ),
+            files = mapOf(
+                Triple("jphein", "example-fiction", "book.toml") to ghFile(
+                    """
+                        [book]
+                        title = "The Cartographer's Lantern"
+                        authors = ["A Library Nocturne Test"]
+                        src = "src"
+                    """.trimIndent(),
+                ),
+                // Root SUMMARY.md, NOT src/SUMMARY.md — same shape as
+                // jphein/example-fiction on github.com today.
+                Triple("jphein", "example-fiction", "SUMMARY.md") to ghFile(
+                    "- [The Letter at Dusk](src/chapter-01.md)\n" +
+                        "- [The Lantern's Edge](src/chapter-02.md)\n" +
+                        "- [What the Map Held](src/chapter-03.md)",
+                ),
+            ),
+        )
+        val src = source(api = api)
+        val r = runBlocking { src.fictionDetail("github:jphein/example-fiction") } as FictionResult.Success
+        assertEquals("got ${r.value.chapters.size} chapters; expected 3", 3, r.value.chapters.size)
+        assertEquals("The Letter at Dusk", r.value.chapters[0].title)
+        assertEquals("src/chapter-01.md", r.value.chapters[0].sourceChapterId)
+    }
+
     @Test fun `fictionDetail uses bare-repo dir listing when no SUMMARY md`() {
         val api = FakeGitHubApi(
             repos = mapOf(Pair("o", "bare") to ghRepo("o", "bare")),
