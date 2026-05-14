@@ -42,11 +42,19 @@ import javax.inject.Singleton
  *
  * AO3 doesn't expose a unified catalog — discovery is fundamentally
  * per-tag. v1 ships a curated handful of fandoms in the Browse
- * picker (see [CURATED_TAGS]); when no genre is selected the source
- * defaults to a broad "Original Work" feed so the picker has
- * something to render on first open. Users wanting other fandoms
- * use Search (deferred — AO3's search is HTML-only and we don't
- * want any scraping in v1) or a future tag-picker UI.
+ * picker (see [FANDOM_TAGS]); when no genre is selected the source
+ * defaults to the Marvel Cinematic Universe feed (the curated list's
+ * largest fandom) so the picker has something to render on first
+ * open. Users wanting other fandoms use Search (deferred — AO3's
+ * search is HTML-only and we don't want any scraping in v1) or a
+ * future tag-picker UI.
+ *
+ * #408 — the Atom feed URL is built from each tag's numeric AO3 id
+ * rather than its slug. AO3 dropped the slug→numeric redirect
+ * sometime in early 2026; `GET /tags/<slug>/feed.atom` now returns
+ * 404 outright. The numeric form (`/tags/<id>/feed.atom`) returns
+ * the same Atom XML it always has. See [FANDOM_TAGS] for the
+ * resolved (name, id) pairs.
  *
  * Legal posture: AO3 is run by the Organization for Transformative
  * Works, a 501(c)(3). Their ToS draws a hard line at commercial
@@ -93,12 +101,13 @@ internal class Ao3Source @Inject constructor(
 
     /**
      * No global "popular" surface on AO3 — works are popular *within*
-     * tags. v1 maps Popular = the default-tag feed (Original Work).
-     * The genre row picks specific fandoms; when the user has selected
-     * a fandom via [byGenre], that takes over and this never fires.
+     * tags. v1 maps Popular = the default-tag feed (MCU; see
+     * [DEFAULT_TAG_ID]). The genre row picks specific fandoms; when
+     * the user has selected a fandom via [byGenre], that takes over
+     * and this never fires.
      */
     override suspend fun popular(page: Int): FictionResult<ListPage<FictionSummary>> =
-        feedAsListPage(DEFAULT_TAG, page)
+        feedAsListPage(DEFAULT_TAG_ID, page)
 
     /**
      * Same surface as [popular] — the Atom feed is sorted by recency,
@@ -109,13 +118,20 @@ internal class Ao3Source @Inject constructor(
      * pretending we have a popularity signal we don't.
      */
     override suspend fun latestUpdates(page: Int): FictionResult<ListPage<FictionSummary>> =
-        feedAsListPage(DEFAULT_TAG, page)
+        feedAsListPage(DEFAULT_TAG_ID, page)
 
     override suspend fun byGenre(
         genre: String,
         page: Int,
-    ): FictionResult<ListPage<FictionSummary>> =
-        feedAsListPage(genre, page)
+    ): FictionResult<ListPage<FictionSummary>> {
+        // #408 — the genre string is the display name from [genres()];
+        // map it back to the canonical AO3 numeric tag id baked into
+        // [FANDOM_TAGS]. Unknown names fall back to the default tag
+        // rather than 404'ing, mirroring the same conservative
+        // posture [popular] uses.
+        val tagId = tagIdFor(genre) ?: DEFAULT_TAG_ID
+        return feedAsListPage(tagId, page)
+    }
 
     /**
      * Search is deferred per the issue spec — AO3's `/works/search`
@@ -129,14 +145,15 @@ internal class Ao3Source @Inject constructor(
         FictionResult.Success(ListPage(items = emptyList(), page = 1, hasNext = false))
 
     /**
-     * Curated tag list for the Browse genre picker. Six fandoms hand-
-     * picked for breadth — the v1 surface intentionally avoids the
-     * full AO3 tag taxonomy (a million-plus tags don't fit in a
+     * Curated tag list for the Browse genre picker. Three fandoms
+     * hand-picked for breadth — the v1 surface intentionally avoids
+     * the full AO3 tag taxonomy (a million-plus tags don't fit in a
      * picker). A follow-up issue will let the user add their own
-     * tags; until then this list is the surface.
+     * tags; until then this list is the surface. See [FANDOM_TAGS]
+     * for the (name, numeric-tag-id) pairs.
      */
     override suspend fun genres(): FictionResult<List<String>> =
-        FictionResult.Success(CURATED_TAGS)
+        FictionResult.Success(FANDOM_TAGS.map { it.first })
 
     // ─── detail ────────────────────────────────────────────────────────
 
@@ -234,10 +251,10 @@ internal class Ao3Source @Inject constructor(
     // ─── helpers ───────────────────────────────────────────────────────
 
     private suspend fun feedAsListPage(
-        tag: String,
+        tagId: Long,
         page: Int,
     ): FictionResult<ListPage<FictionSummary>> {
-        return when (val r = api.tagFeed(tag, page)) {
+        return when (val r = api.tagFeed(tagId, page)) {
             is FictionResult.Success -> FictionResult.Success(r.value.toListPage(page))
             is FictionResult.Failure -> r
         }
@@ -295,39 +312,60 @@ internal class Ao3Source @Inject constructor(
         return File(cacheDir, "$id.epub")
     }
 
+    /** Map a user-visible fandom name back to its AO3 numeric tag
+     *  id. Lookup is case-sensitive against the canonical names in
+     *  [FANDOM_TAGS]. Returns null when the user picked something
+     *  outside the curated list — callers (just [byGenre] today)
+     *  fall back to the default tag rather than 404'ing. */
+    private fun tagIdFor(name: String): Long? =
+        FANDOM_TAGS.firstOrNull { it.first == name }?.second
+
     companion object {
         /**
-         * Curated fandom tags for the v1 Browse picker. Six picks
-         * chosen for breadth — heavyweight commercial fandoms
-         * (Marvel, Star Wars, HP) plus the catch-all "Original Work"
-         * and a long-form genre canon (Sherlock Holmes). Keep the
+         * Curated fandom tags for the v1 Browse picker. Chosen for
+         * breadth — heavyweight commercial fandoms (Marvel, Star
+         * Wars) plus a long-form genre canon (Good Omens). Keep the
          * list short on purpose: AO3 has a million-plus tags and a
          * picker has to make a choice. Users wanting more
          * specificity get the tag-picker follow-up.
          *
-         * Strings here are the AO3 tag canonicals (URL-encoded by
-         * the API layer). Hyphens and ampersands are preserved
-         * verbatim — those are part of the tag, not punctuation.
+         * #408 — these are now `(displayName, numericTagId)` pairs.
+         * AO3 dropped the slug→tag-id redirect that used to back
+         * `/tags/<slug>/feed.atom` (now returns 404), so the Atom
+         * feed URL has to be built from the numeric tag id
+         * directly. The numeric ids below were resolved by parsing
+         * the `<link rel="alternate" type="application/atom+xml">`
+         * out of each tag's `/tags/<slug>/works` HTML page; that
+         * page still serves under the slug form and exposes the
+         * canonical feed URL, e.g. `/tags/414093/feed.atom` for
+         * Marvel Cinematic Universe.
+         *
+         * IDs are baked at build time — there's no per-app
+         * autocomplete resolver in v1 (a future tag-picker UI is
+         * tracked in the #408 follow-up). If AO3 ever renumbers a
+         * canonical tag (extremely rare — the id is a primary key)
+         * the corresponding genre tab will start returning empty
+         * Atom feeds and the line below needs an update.
          */
-        val CURATED_TAGS: List<String> = listOf(
-            "Marvel Cinematic Universe",
-            "Harry Potter - J. K. Rowling",
-            "Star Wars - All Media Types",
-            "Original Work",
-            "Sherlock Holmes & Related Fandoms - All Media Types",
-            "Good Omens (TV)",
+        val FANDOM_TAGS: List<Pair<String, Long>> = listOf(
+            "Marvel Cinematic Universe" to 414093L,
+            "Star Wars - All Media Types" to 101375L,
+            "Good Omens (TV)" to 27251507L,
         )
 
         /**
-         * Default tag for the Popular / NewReleases tabs when the
-         * user hasn't picked a fandom from the genre row. "Original
-         * Work" is the broadest fandom-neutral tag — works tagged
-         * here are mostly long-form prose written for AO3 directly
-         * rather than fanfic of a specific media property, which
-         * pairs well with the audiobook use case and avoids
-         * pre-picking a fandom on the user's behalf.
+         * Default tag id for the Popular / NewReleases tabs when the
+         * user hasn't picked a fandom from the genre row. Points at
+         * "Marvel Cinematic Universe" (id 414093) — the broadest of
+         * the curated fandoms, with the highest steady-state work
+         * count, so the Popular tab always has something to render
+         * on first open. Previously this was "Original Work" by
+         * slug, but resolving its numeric id requires a Cloudflare-
+         * fronted HTML fetch that's been flaky at build time; the
+         * follow-up tag-picker (#408 referenced issue) will let the
+         * user pick their own default.
          */
-        const val DEFAULT_TAG: String = "Original Work"
+        const val DEFAULT_TAG_ID: Long = 414093L
     }
 }
 
