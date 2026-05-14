@@ -443,6 +443,200 @@ section:first-of-type { margin-top: 0; }
 .sigil-mark a:hover { color: var(--brass-300); text-decoration: none; }
 .sigil-mark em { font-style: normal; color: var(--brass-300); }
 
+/* --- CTAs extended --- */
+.cta-tertiary {
+  display: inline-block;
+  align-self: center;
+  color: var(--brass-300);
+  text-decoration: none;
+  font-size: 0.98em;
+  padding: 0.5em 0.2em;
+}
+.cta-tertiary:hover { color: var(--brass-400); text-decoration: underline; }
+
+.cta-primary .cta-version {
+  font-weight: 500;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
+.cta-fineprint {
+  margin-top: 0.7em !important;
+  font-size: 0.88em;
+}
+
+/* --- Sources grid (17 fiction backends) --- */
+.sources-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.9em;
+  margin: 1.5em 0 1em;
+}
+
+.source-card {
+  display: block;
+  background: var(--warm-bg-card);
+  border: 1px solid var(--warm-rule);
+  border-radius: var(--radius-md);
+  padding: 1.05em 1.1em 1em;
+  color: var(--warm-fg);
+  text-decoration: none;
+  transition: border-color 0.15s ease, transform 0.08s ease, box-shadow 0.15s ease;
+  position: relative;
+  overflow: hidden;
+}
+.source-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--brass-400), var(--brass-600));
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
+.source-card:hover {
+  border-color: var(--brass-500);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35), 0 0 0 1px var(--brass-600);
+  text-decoration: none;
+  color: var(--warm-fg);
+}
+.source-card:hover::before { opacity: 1; }
+
+.source-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.4em;
+  height: 1.7em;
+  padding: 0 0.55em;
+  background: var(--warm-bg-elev);
+  border: 1px solid var(--brass-600);
+  border-radius: 6px;
+  color: var(--brass-300);
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: 0.78em;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.55em;
+}
+
+.source-card h3 {
+  margin: 0 0 0.3em;
+  font-size: 1.08em;
+  color: var(--brass-300);
+}
+
+.source-card p {
+  margin: 0;
+  font-size: 0.92em;
+  line-height: 1.5;
+  color: var(--warm-fg-muted);
+}
+
+.source-card p a {
+  color: var(--brass-300);
+}
+
+/* --- Voice family grid --- */
+.voice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.1em;
+  margin: 1.6em 0 1em;
+}
+
+.voice-card {
+  background: var(--warm-bg-card);
+  border: 1px solid var(--warm-rule);
+  border-radius: var(--radius-lg);
+  padding: 1.3em 1.4em 1.2em;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.voice-card-flagship {
+  border-color: var(--brass-600);
+  background: linear-gradient(180deg, var(--warm-bg-card), var(--warm-bg-elev));
+  box-shadow: 0 10px 28px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(184, 134, 42, 0.08);
+}
+
+.voice-tier {
+  font-family: var(--sans);
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brass-300);
+  margin-bottom: 0.35em;
+}
+
+.voice-card h3 {
+  margin: 0 0 0.2em;
+  color: var(--brass-300);
+  font-size: 1.4em;
+}
+
+.voice-size {
+  font-family: var(--serif);
+  font-style: italic;
+  color: var(--warm-fg);
+  margin: 0 0 0.6em !important;
+  font-size: 0.98em;
+}
+
+.voice-meta {
+  margin-top: auto !important;
+  font-size: 0.85em !important;
+  padding-top: 0.4em;
+}
+
+.voices-cloud {
+  background: var(--warm-bg-elev);
+  border: 1px dashed var(--brass-600);
+  border-radius: var(--radius-md);
+  padding: 0.9em 1.2em;
+  margin: 1.4em 0 0 !important;
+  font-size: 0.95em;
+}
+
+/* --- Open / virtues grid --- */
+.open-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1em;
+  margin: 1.4em 0 0.5em;
+}
+
+.open-card {
+  background: var(--warm-bg-card);
+  border: 1px solid var(--warm-rule);
+  border-left: 3px solid var(--brass-500);
+  border-radius: var(--radius-md);
+  padding: 1em 1.2em 0.9em;
+}
+
+.open-card h3 {
+  margin: 0 0 0.35em;
+  color: var(--brass-300);
+  font-size: 1.1em;
+}
+
+.open-card p {
+  margin: 0;
+  font-size: 0.93em;
+  line-height: 1.55;
+  color: var(--warm-fg-muted);
+}
+
+/* Section headings: soften the underline on the new sections for visual rhythm */
+section.sources > h2,
+section.voices > h2,
+section.open > h2 {
+  border-bottom-color: var(--brass-600);
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
