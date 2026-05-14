@@ -219,11 +219,25 @@ fun VoiceLibraryScreen(
             // Secondary chip row — gender / tier / multilingual. These
             // pre-date JP's #264 primary-knob spec but stay useful, so
             // they hang below the language strip on their own scroll.
+            //
+            // Issue #420 — asymmetric end-padding (spacing.xl = 32dp vs
+            // start spacing.md = 16dp) so the rightmost chip
+            // ("Multilingual") lands as an obviously-partial chip on
+            // narrow viewports (e.g. the 800dp tablet portrait) rather
+            // than a 9-pixel sliver right at the screen edge. A clearly
+            // partial chip reads as "scroll for more →"; a 9-pixel
+            // sliver reads as a rendering glitch. Discovery fix only —
+            // the scroll itself was already wired up.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = spacing.md, vertical = spacing.xxs),
+                    .padding(
+                        start = spacing.md,
+                        end = spacing.xl,
+                        top = spacing.xxs,
+                        bottom = spacing.xxs,
+                    ),
                 horizontalArrangement = Arrangement.spacedBy(spacing.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
