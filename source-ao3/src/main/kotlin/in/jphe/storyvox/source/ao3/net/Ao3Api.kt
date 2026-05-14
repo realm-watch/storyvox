@@ -6,7 +6,6 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
-import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -44,26 +43,22 @@ internal class Ao3Api @Inject constructor(
     private val client: OkHttpClient,
 ) {
     /**
-     * `GET /tags/<tag>/feed.atom` — the listing surface. Returns the
-     * raw XML body for [Ao3AtomFeed.parse] to turn into typed
+     * `GET /tags/<tagId>/feed.atom` — the listing surface. Returns
+     * the raw XML body for [Ao3AtomFeed.parse] to turn into typed
      * entries. AO3 paginates this feed via a `?page=N` query param;
      * the feed itself is fixed at ~20 entries per page.
+     *
+     * #408 — the URL now keys on AO3's internal numeric tag id, not
+     * the slug. AO3 dropped the slug→numeric redirect that used to
+     * back `GET /tags/<slug>/feed.atom`; that URL now returns 404
+     * outright. The numeric form has always worked and returns
+     * byte-identical Atom XML, so this is the minimum-surface fix.
+     * No slug encoding is needed — numeric ids are URL-safe by
+     * construction. See [Ao3Source.FANDOM_TAGS] for the resolved
+     * (name, id) pairs the [Ao3Source] passes in.
      */
-    suspend fun tagFeed(tag: String, page: Int = 1): FictionResult<Ao3AtomFeed> {
-        // AO3 tags are URL-encoded with spaces → `%20` and `/` → `*s*`
-        // (AO3's own escape token). We support the slash-form because
-        // many fandoms include slashes ("Sherlock Holmes & Related
-        // Fandoms - All Media Types" doesn't, but ship/relationship
-        // tags use them frequently). Curated v1 tags don't include
-        // slashes so the simple form works; the more complex escapes
-        // are deferred until the user-tag-picker lands.
-        val safeTag = URLEncoder.encode(tag, Charsets.UTF_8)
-            .replace("+", "%20")
-        val path = if (page <= 1) {
-            "/tags/$safeTag/feed.atom"
-        } else {
-            "/tags/$safeTag/feed.atom?page=$page"
-        }
+    suspend fun tagFeed(tagId: Long, page: Int = 1): FictionResult<Ao3AtomFeed> {
+        val path = tagFeedPath(tagId, page)
         return withContext(Dispatchers.IO) {
             requestText(path).let { res ->
                 when (res) {
@@ -72,7 +67,7 @@ internal class Ao3Api @Inject constructor(
                             FictionResult.Success(Ao3AtomFeed.parse(res.value))
                         } catch (e: Exception) {
                             FictionResult.NetworkError(
-                                "AO3 Atom feed for tag '$tag' unparseable: ${e.message}",
+                                "AO3 Atom feed for tag id $tagId unparseable: ${e.message}",
                                 e,
                             )
                         }
@@ -178,6 +173,19 @@ internal class Ao3Api @Inject constructor(
 
     companion object {
         const val BASE_URL = "https://archiveofourown.org"
+
+        /**
+         * Build the per-tag Atom feed path for `tagId` at `page`.
+         * Exposed package-private so the unit tests can pin the URL
+         * shape without exercising the OkHttp client. See
+         * [tagFeed] for the call site.
+         */
+        internal fun tagFeedPath(tagId: Long, page: Int = 1): String =
+            if (page <= 1) {
+                "/tags/$tagId/feed.atom"
+            } else {
+                "/tags/$tagId/feed.atom?page=$page"
+            }
 
         /**
          * Identifies storyvox in the User-Agent. AO3's Terms of Service
