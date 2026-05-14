@@ -12,12 +12,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -29,6 +31,8 @@ import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,9 +41,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SecondaryScrollableTabRow
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -128,7 +129,10 @@ fun BrowseScreen(
             selected = state.sourceKey,
             onSelect = viewModel::selectSource,
             enabledKeys = state.enabledSources,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.md),
+            // Picker now handles its own horizontal padding via LazyRow's
+            // contentPadding so off-screen chips can pan into view without
+            // an outer padding clipping them at the edges.
+            modifier = Modifier.fillMaxWidth(),
         )
 
         val supportedTabs = remember(state.sourceKey, state.githubSignedIn) {
@@ -654,11 +658,25 @@ private val BrowseTab.label: String
     }
 
 /**
- * Two-segment source picker pinned above the tab row. Material 3
- * `SingleChoiceSegmentedButtonRow` with brass-tinted selection so it
- * reads as part of the realm aesthetic and not a generic Material
- * widget. Adding a new source is one more `forEach` entry once
- * `BrowseSourceKey` grows.
+ * Horizontally scrollable backend-picker strip pinned above the tab row.
+ *
+ * Each enabled backend gets its own [FilterChip] at its natural label
+ * width inside a [LazyRow]. The previous implementation used Material 3
+ * `SingleChoiceSegmentedButtonRow`, which divides the parent's width
+ * evenly between every segment — fine for 2-3 backends, but with 11+
+ * enabled it forces the label to wrap mid-word inside ~50dp segments
+ * and clips the off-screen backends entirely (no horizontal scroll on
+ * segmented rows). See #407.
+ *
+ * Filter chips:
+ *  - keep each label on one line (`softWrap = false`, `maxLines = 1`,
+ *    overflow = ellipsis for paranoia on very narrow tablets),
+ *  - allow the strip to grow as long as needed and pan freely on a
+ *    one-finger horizontal swipe (LazyRow handles fling + clipping),
+ *  - keep the brass-primary selection treatment so the strip still
+ *    reads as part of the realm aesthetic.
+ *
+ * Adding a new backend stays one entry in `BrowseSourceKey.entries`.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -668,6 +686,7 @@ private fun BrowseSourcePicker(
     enabledKeys: Set<BrowseSourceKey>,
     modifier: Modifier = Modifier,
 ) {
+    val spacing = LocalSpacing.current
     // Filter to user-enabled sources (#221) — when a backend is toggled
     // off in Settings, drop it from the picker entirely so Browse stops
     // trying to talk to it. If the user disables their currently-selected
@@ -676,22 +695,29 @@ private fun BrowseSourcePicker(
         BrowseSourceKey.entries.filter { it in enabledKeys }
     }
     if (keys.isEmpty()) return
-    SingleChoiceSegmentedButtonRow(modifier = modifier) {
-        keys.forEachIndexed { index, key ->
-            SegmentedButton(
+    LazyRow(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        contentPadding = PaddingValues(horizontal = spacing.md),
+    ) {
+        items(keys, key = { it.name }) { key ->
+            FilterChip(
                 selected = key == selected,
                 onClick = { onSelect(key) },
-                shape = SegmentedButtonDefaults.itemShape(
-                    index = index,
-                    count = keys.size,
+                label = {
+                    Text(
+                        text = key.displayName,
+                        style = MaterialTheme.typography.labelLarge,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 ),
-                colors = SegmentedButtonDefaults.colors(
-                    activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                    activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ),
-            ) {
-                Text(key.displayName, style = MaterialTheme.typography.labelLarge)
-            }
+            )
         }
     }
 }
