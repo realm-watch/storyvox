@@ -9,6 +9,22 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.29] — 2026-05-14
+
+### Added
+- **Wear OS Library Nocturne theme + circular scrubber** (#406, closes #192) — `:wear` module gets a brass-on-warm-dark theme matching the phone/tablet. `NowPlayingScreen` now wraps a Coil-loaded cover with a brass `CircularScrubber` on round watches (square form factor falls back to a brass-tinted linear scrubber). 3-button transport row wired to the existing `PhoneWearBridge`. Five `@Preview` entries cover round/playing, round/paused, round/buffering, small-round, and square so the visual diff is reviewable from the preview pane.
+- **Voice library search + language filter** (#413, closes #264) — sticky search bar + horizontally-scrolling language filter chips at the top of the voice picker. Type-to-filter on voice display name (200ms debounce); chips derived dynamically from installed-voice languages (English-first, then alphabetical). Filters apply via `combine(installedVoices, query, language)` in the ViewModel; the existing favorites star + Starred surface still pin voices on top. Closes the "1188 voices, no search, unusable on Flip3" pain. 15 new `VoiceFilterTest` cases.
+- **Room+Robolectric DAO test layer** (#410, closes #48) — 43 new DAO tests covering `FictionDao`, `ChapterDao`, `PlaybackDao` with slim-projection regression coverage, `@Transaction` boundaries, and `CASCADE` behavior. Tests run on a real in-memory Room database under Robolectric so SQL fidelity is preserved across the dependency graph. Pure additive — no production code touched.
+
+### Changed
+- **Browse source picker is now a scrollable `LazyRow` of `FilterChip`s** (#411, closes QA-found #407) — replaces the previous segmented-button row which mid-word-wrapped on tablet and silently hid the rightmost chips (arXiv / PLOS / Notion couldn't be reached on narrow viewports). Active chip carries the brass active-state coloring; the row pans horizontally so every backend stays reachable regardless of viewport width.
+
+### Refactored
+- **`AuthRepositoryImpl` now uses `@ApplicationScope CoroutineScope`** (#405, closes #30) — replaces the bare-`CoroutineScope` `init { ... }` block flagged as deferred-to-v1.0-hardening. Injected scope uses `SupervisorJob` for structured concurrency and is trivially swappable with `TestScope` in unit tests. No behavior change at runtime; auth init is structurally identical from the user's perspective.
+
+### Build state
+- All five PRs (#405 / #406 / #410 / #411 / #413) shipped as a bundle merge with no inter-PR conflict — each PR was independently CI-green before the wave landed, and the wave merged in dependency order (refactor → tests → small fix → voice picker → Wear) so cross-touching files (`BrowseScreen.kt`, voice picker) re-rebased cleanly between merges.
+
 ## [0.5.28] — 2026-05-13
 
 ### Added — four new backends, all using the v0.5.27 `@SourcePlugin` pattern from day one
