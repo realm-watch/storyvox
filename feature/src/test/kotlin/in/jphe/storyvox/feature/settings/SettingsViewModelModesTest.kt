@@ -273,6 +273,9 @@ class SettingsViewModelModesTest {
         override suspend fun setSourceWikipediaEnabled(enabled: Boolean) = Unit
         override suspend fun setWikipediaLanguageCode(code: String) = Unit
         override suspend fun setSourceKvmrEnabled(enabled: Boolean) = Unit
+        override suspend fun setSourceNotionEnabled(enabled: Boolean) = Unit
+        override suspend fun setNotionDatabaseId(id: String) = Unit
+        override suspend fun setNotionApiToken(token: String?) = Unit
         override val outlineHost: kotlinx.coroutines.flow.Flow<String> = kotlinx.coroutines.flow.flowOf("")
         override suspend fun setOutlineHost(host: String) = Unit
         override suspend fun setOutlineApiKey(apiKey: String) = Unit

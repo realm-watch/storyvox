@@ -158,6 +158,20 @@ internal fun makeFakeWikipediaConfig(
     return WikipediaConfigImpl(wikipediaStore)
 }
 
+/** Real [NotionConfigImpl] over a temp DataStore + fake secrets (#233).
+ *  Settings tests don't exercise Notion state — the signature requires
+ *  the dep, this satisfies it. */
+internal fun makeFakeNotionConfig(
+    dir: File,
+    scope: CoroutineScope,
+): NotionConfigImpl {
+    val notionStore = PreferenceDataStoreFactory.create(
+        scope = scope,
+        produceFile = { File(dir, "storyvox_notion.preferences_pb") },
+    )
+    return NotionConfigImpl(notionStore, FakeSecrets())
+}
+
 /**
  * Real [PalaceDaemonApi] over an OkHttpClient + a fake config that emits
  * an empty [PalaceConfigState]. No HTTP is exercised by the settings

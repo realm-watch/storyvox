@@ -1,7 +1,7 @@
 ---
 layout: default
 title: storyvox — neural-voice audiobook player for any text you have
-description: Offline neural TTS, optional Azure HD cloud voices. Six sources — Royal Road, GitHub, RSS / Atom feeds, local EPUB files, Outline wikis, Memory Palace. AI chat per fiction across seven LLM providers. Brass-on-warm-dark Library Nocturne aesthetic. Free, GPL-3.0, no per-character billing.
+description: Offline neural TTS, optional Azure HD cloud voices. Twelve sources — Royal Road, GitHub, RSS / Atom feeds, local EPUB files, Outline wikis, Memory Palace, Project Gutenberg, Archive of Our Own, Standard Ebooks, Wikipedia, KVMR live radio, Notion. AI chat per fiction across seven LLM providers. Brass-on-warm-dark Library Nocturne aesthetic. Free, GPL-3.0, no per-character billing.
 ---
 
 <section class="hero">
@@ -51,14 +51,19 @@ description: Offline neural TTS, optional Azure HD cloud voices. Six sources —
       </p>
     </div>
     <div class="card">
-      <h3>Six fiction sources</h3>
+      <h3>Twelve fiction sources</h3>
       <p>
         Royal Road with the full filter set, GitHub fiction repos via the curated
         <a href="https://github.com/techempower-org/storyvox-registry">storyvox-registry</a>,
         any RSS / Atom feed (with a managed suggested-feeds list), a self-hosted
         <a href="https://www.getoutline.com">Outline</a> wiki, your own
-        <a href="https://github.com/techempower-org/mempalace">Memory Palace</a>, or a folder of
-        EPUB files on your device. Each backend has its own on/off toggle.
+        <a href="https://github.com/techempower-org/mempalace">Memory Palace</a>, a folder of
+        EPUB files on your device, <strong>Project Gutenberg's</strong> 70,000+
+        public-domain books, <strong>Archive of Our Own</strong> per-tag feeds,
+        <strong>Standard Ebooks'</strong> hand-curated classics, any <strong>Wikipedia</strong>
+        article (heading-split chapters), <strong>KVMR Community Radio</strong> live audio, and a
+        <strong>Notion</strong> database (defaults to the techempower.org content DB).
+        Each backend has its own on/off toggle.
       </p>
     </div>
     <div class="card">
@@ -89,7 +94,7 @@ description: Offline neural TTS, optional Azure HD cloud voices. Six sources —
       <h3>Free and open</h3>
       <p>
         GPL-3.0. Inheritable from the TTS engine, but also a posture: no telemetry, no analytics,
-        no upsell. Sideload the APK from <a href="https://github.com/jphein/storyvox/releases">Releases</a>
+        no upsell. Sideload the APK from <a href="https://github.com/techempower-org/storyvox/releases">Releases</a>
         and you're done.
       </p>
     </div>
@@ -135,27 +140,27 @@ description: Offline neural TTS, optional Azure HD cloud voices. Six sources —
     detail screens, single back-nav pattern, chapter rows tappable with played
     indicators, infinite-scroll Browse across every tab, brass spinners and progress
     bars everywhere, deliberate first-time defaults, and a confetti milestone dialog.
-    <a href="https://github.com/jphein/storyvox/releases/tag/v0.5.09">Full release notes →</a>
+    <a href="https://github.com/techempower-org/storyvox/releases/tag/v0.5.09">Full release notes →</a>
   </p>
   <p>
     <strong>Earlier in v0.4:</strong> Tier 3 multi-engine parallel synthesis with twin
     Engines/Threads sliders (v0.4.78); smart-resume CTA (v0.4.83); Azure Cognitive Services HD voices as
     an optional remote TTS backend (BYOK, with offline fallback, error retries, full roster
-    and cache eviction priority — <a href="https://github.com/jphein/storyvox/issues/182">#182</a>–<a href="https://github.com/jphein/storyvox/issues/186">#186</a>);
-    EPUB import (<a href="https://github.com/jphein/storyvox/issues/235">#235</a>) via the
+    and cache eviction priority — <a href="https://github.com/techempower-org/storyvox/issues/182">#182</a>–<a href="https://github.com/techempower-org/storyvox/issues/186">#186</a>);
+    EPUB import (<a href="https://github.com/techempower-org/storyvox/issues/235">#235</a>) via the
     Storage Access Framework + an OPF parser; RSS / Atom feeds
-    (<a href="https://github.com/jphein/storyvox/issues/236">#236</a>) with a managed
-    suggested-feeds list from <a href="https://github.com/jphein/storyvox-feeds">storyvox-feeds</a>;
+    (<a href="https://github.com/techempower-org/storyvox/issues/236">#236</a>) with a managed
+    suggested-feeds list from <a href="https://github.com/techempower-org/storyvox-feeds">storyvox-feeds</a>;
     self-hosted Outline wikis as a backend
-    (<a href="https://github.com/jphein/storyvox/issues/245">#245</a>); AI Sessions surface
-    (<a href="https://github.com/jphein/storyvox/issues/218">#218</a>); read-aloud per AI
-    assistant turn (<a href="https://github.com/jphein/storyvox/issues/214">#214</a>);
+    (<a href="https://github.com/techempower-org/storyvox/issues/245">#245</a>); AI Sessions surface
+    (<a href="https://github.com/techempower-org/storyvox/issues/218">#218</a>); read-aloud per AI
+    assistant turn (<a href="https://github.com/techempower-org/storyvox/issues/214">#214</a>);
     per-voice speed and pitch defaults
-    (<a href="https://github.com/jphein/storyvox/issues/195">#195</a>); and stable debug
+    (<a href="https://github.com/techempower-org/storyvox/issues/195">#195</a>); and stable debug
     keystore for clean upgrades over older debug builds.
   </p>
   <p class="muted">
-    See the <a href="https://github.com/jphein/storyvox/wiki">wiki</a> for build, voice catalog,
+    See the <a href="https://github.com/techempower-org/storyvox/wiki">wiki</a> for build, voice catalog,
     and troubleshooting reference, or <a href="architecture/">how the modules fit together</a>.
   </p>
 </section>
@@ -163,8 +168,8 @@ description: Offline neural TTS, optional Azure HD cloud voices. Six sources —
 <footer class="site-footer">
   <p>
     storyvox is licensed under the
-    <a href="https://github.com/jphein/storyvox/blob/main/LICENSE">GNU General Public License v3.0</a>.
-    Built by <a href="https://github.com/jphein">JP Hein</a>
+    <a href="https://github.com/techempower-org/storyvox/blob/main/LICENSE">GNU General Public License v3.0</a>.
+    Built by <a href="https://github.com/techempower-org">JP Hein</a>
     with teams of <a href="https://www.anthropic.com/claude-code">Claude Code</a> agents.
   </p>
 </footer>

@@ -73,6 +73,7 @@ class SettingsRepositoryPunctuationPauseTest {
             epubConfig = makeFakeEpubConfig(tempFolder.newFolder("epub_ds"), scope),
             outlineConfig = makeFakeOutlineConfig(tempFolder.newFolder("outline_ds"), scope),
             wikipediaConfig = makeFakeWikipediaConfig(tempFolder.newFolder("wiki_ds"), scope),
+            notionConfig = makeFakeNotionConfig(tempFolder.newFolder("notion_ds"), scope),
             suggestedFeedsRegistry = SuggestedFeedsRegistry(),
             azureCreds = makeFakeAzureCredentials(),
             azureClient = makeFakeAzureClient(),

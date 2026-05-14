@@ -809,6 +809,26 @@ data class UiSettings(
      *  discoverable without forcing every fresh-install user to opt in
      *  from Settings before they see what the audio pipeline does. */
     val sourceKvmrEnabled: Boolean = true,
+    /** Notion fiction backend (#233). Default ON for fresh installs
+     *  per #390 — the bundled database id points at the techempower.org
+     *  content database, so a fresh install on a colleague's phone
+     *  surfaces TechEmpower content immediately as narratable audio
+     *  (after they paste an integration token). The pipeline is gated
+     *  by token presence at runtime; defaulting the toggle ON makes
+     *  the source visible in Browse so the empty-state can teach the
+     *  user about the one-paste configuration step. */
+    val sourceNotionEnabled: Boolean = true,
+    /** Notion database id (#233 + #390). Defaults to the baked-in
+     *  techempower.org placeholder from `NotionDefaults`; existing
+     *  users with a different stored value keep it. Notion accepts
+     *  both hyphenated UUID and compact 32-hex forms. */
+    val notionDatabaseId: String = "",
+    /** True when a Notion Internal Integration Token has been stored.
+     *  The token itself is never surfaced to the UI — only this
+     *  boolean. Empty token = source returns AuthRequired on every
+     *  call (Notion has no anonymous tier), but the toggle stays
+     *  visible so the user can paste a token via the Settings row. */
+    val notionTokenConfigured: Boolean = false,
     /** Issue #150 — when ON, a shake during the sleep timer's fade
      *  tail re-arms the timer. Default ON; users with bumpy commutes
      *  can disable to avoid accidental extensions. */
@@ -1207,6 +1227,18 @@ interface SettingsRepositoryUi {
     suspend fun setWikipediaLanguageCode(code: String)
     /** Issue #374 — KVMR community radio backend on/off. */
     suspend fun setSourceKvmrEnabled(enabled: Boolean)
+
+    /** Issue #233 — Notion fiction backend on/off + config. */
+    suspend fun setSourceNotionEnabled(enabled: Boolean)
+    /** Issue #233 — set the Notion database id the source queries.
+     *  Both hyphenated UUID and compact 32-hex forms accepted; the
+     *  impl normalizes whitespace. Empty falls back to the baked-in
+     *  techempower.org default (#390). */
+    suspend fun setNotionDatabaseId(id: String)
+    /** Issue #233 — persist or clear the Notion integration token.
+     *  Pass null or empty to clear. Stored encrypted alongside the
+     *  Outline / palace tokens in `storyvox.secrets`. */
+    suspend fun setNotionApiToken(token: String?)
 
     /** Issue #236 — manage subscribed feed URLs. */
     suspend fun addRssFeed(url: String)

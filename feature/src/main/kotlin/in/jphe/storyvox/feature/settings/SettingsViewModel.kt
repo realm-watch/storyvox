@@ -184,6 +184,13 @@ class SettingsViewModel @Inject constructor(
     /** Issue #374 — KVMR community radio backend on/off. */
     fun setSourceKvmrEnabled(enabled: Boolean) =
         viewModelScope.launch { repo.setSourceKvmrEnabled(enabled) }
+    /** Issue #233 — Notion backend on/off + config. */
+    fun setSourceNotionEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setSourceNotionEnabled(enabled) }
+    fun setNotionDatabaseId(id: String) =
+        viewModelScope.launch { repo.setNotionDatabaseId(id) }
+    fun setNotionApiToken(token: String?) =
+        viewModelScope.launch { repo.setNotionApiToken(token) }
     fun setOutlineHost(host: String) = viewModelScope.launch { repo.setOutlineHost(host) }
     fun setOutlineApiKey(apiKey: String) = viewModelScope.launch { repo.setOutlineApiKey(apiKey) }
     fun clearOutlineConfig() = viewModelScope.launch { repo.clearOutlineConfig() }

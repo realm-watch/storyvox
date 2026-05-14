@@ -12,7 +12,7 @@ storyvox ships **two local voice families**, with an **optional cloud backend** 
 - **[Kokoro](https://github.com/hexgrad/kokoro)** *(local, in-process)* — multi-speaker, ~330 MB single download, ships dozens of voice profiles in one model. Higher quality, slower to synthesize.
 - **[Azure Cognitive Services HD voices](https://learn.microsoft.com/azure/ai-services/speech-service/text-to-speech)** *(cloud, BYOK)* — opt-in, paid by you to Microsoft, never by storyvox. Studio-grade narration with offline fallback to a local voice if your key fails or the network drops. See [Cloud voices](#cloud-voices-azure-hd-byok) below.
 
-Local voices run **in-process** via the [VoxSherpa-TTS](https://github.com/jphein/VoxSherpa-TTS) `:engine-lib` AAR, which wraps [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) for inference. No second APK, no system-TTS handoff, no per-character billing.
+Local voices run **in-process** via the [VoxSherpa-TTS](https://github.com/techempower-org/VoxSherpa-TTS) `:engine-lib` AAR, which wraps [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) for inference. No second APK, no system-TTS handoff, no per-character billing.
 
 ## Quality tiers (Piper)
 
@@ -29,8 +29,8 @@ Voice tiers are independent of speaker — pick the speaker first, then the tier
 ## Where voices live
 
 Model weights are **not bundled in the APK** (they'd add 1+ GB). They download on demand from the
-[`voices-v2`](https://github.com/jphein/VoxSherpa-TTS/releases/tag/voices-v2) GitHub release on
-`jphein/VoxSherpa-TTS`. Each Piper voice ships as `{lang}-{voice}-{quality}.onnx` plus a
+[`voices-v2`](https://github.com/techempower-org/VoxSherpa-TTS/releases/tag/voices-v2) GitHub release on
+`techempower-org/VoxSherpa-TTS`. Each Piper voice ships as `{lang}-{voice}-{quality}.onnx` plus a
 `.tokens.txt` sidecar. Kokoro ships as `kokoro-model.onnx` + `kokoro-voices.bin` + `kokoro-tokens.txt`.
 
 `voices-v2` is a re-hosting of the upstream k2-fsa tarballs as flat single-file downloads — extracting `.tar.bz2` archives on Tab A7 Lite-class hardware is slow enough to delay the first chapter for tens of seconds. Doing it once server-side moves that cost off the device.
@@ -73,7 +73,7 @@ The current selection is highlighted in brass. Tapping a voice that isn't instal
 ./scripts/voices/refresh-voices-v2.sh --check-only
 
 # Pull new tarballs, extract, upload (needs gh CLI auth with write
-# access to jphein/VoxSherpa-TTS; uses ~5 GB temp space)
+# access to techempower-org/VoxSherpa-TTS; uses ~5 GB temp space)
 ./scripts/voices/refresh-voices-v2.sh
 ```
 
@@ -94,7 +94,7 @@ When you add a new upstream voice, also add a `CatalogEntry` to
 `.github/workflows/voice-catalog-check.yml` runs on the 1st of every month (and on manual
 dispatch). It performs the same diff as `--check-only` and, if there's drift, files a GitHub
 issue listing new upstream voices. It does **not** auto-publish — refreshing `voices-v2` requires
-write access to `jphein/VoxSherpa-TTS`, which the default `GITHUB_TOKEN` doesn't have.
+write access to `techempower-org/VoxSherpa-TTS`, which the default `GITHUB_TOKEN` doesn't have.
 
 ## Why we don't auto-update the in-app catalog
 
@@ -124,10 +124,10 @@ Storyvox uses SSML to drive the same per-voice **speed**, **pitch**, and **punct
 
 Cache eviction priority weights Azure renders higher than local renders since they cost real money: the chapter PCM cache evicts local-engine outputs first when it needs space.
 
-Originally tracked in [#85](https://github.com/jphein/storyvox/issues/85); shipped across [#182](https://github.com/jphein/storyvox/issues/182)–[#186](https://github.com/jphein/storyvox/issues/186).
+Originally tracked in [#85](https://github.com/techempower-org/storyvox/issues/85); shipped across [#182](https://github.com/techempower-org/storyvox/issues/182)–[#186](https://github.com/techempower-org/storyvox/issues/186).
 
 ## Coming soon
 
-- **VoxSherpa-TTS knob exposure** ([research draft](https://github.com/jphein/storyvox/blob/main/docs/superpowers/specs/2026-05-08-voxsherpa-knobs-research.md)) — loudness normalization, breath pause, pitch envelope as user-tunable settings.
-- **Per-voice lexicon override** ([#197](https://github.com/jphein/storyvox/issues/197)) — IPA pronunciation dictionaries per voice for the names that always come out wrong.
-- **KittenTTS** ([#119](https://github.com/jphein/storyvox/issues/119)) — a third in-process voice family at the smallest tier, for the slowest of slow devices.
+- **VoxSherpa-TTS knob exposure** ([research draft](https://github.com/techempower-org/storyvox/blob/main/docs/superpowers/specs/2026-05-08-voxsherpa-knobs-research.md)) — loudness normalization, breath pause, pitch envelope as user-tunable settings.
+- **Per-voice lexicon override** ([#197](https://github.com/techempower-org/storyvox/issues/197)) — IPA pronunciation dictionaries per voice for the names that always come out wrong.
+- **KittenTTS** ([#119](https://github.com/techempower-org/storyvox/issues/119)) — a third in-process voice family at the smallest tier, for the slowest of slow devices.
