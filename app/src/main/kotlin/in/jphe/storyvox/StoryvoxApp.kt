@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import dagger.Lazy
 import dagger.hilt.android.HiltAndroidApp
 import `in`.jphe.storyvox.BuildConfig
 import `in`.jphe.storyvox.data.auth.SessionHydrator
@@ -22,12 +23,36 @@ import kotlinx.coroutines.launch
 @HiltAndroidApp
 class StoryvoxApp : Application(), Configuration.Provider {
 
+    /**
+     * Issue #409 — cold launch on the Tab A7 Lite (Helio P22T) was 6.8s
+     * vs 1.2s on the Z Flip3 (SD888). Logcat traced ~3.3s of that to the
+     * synchronous `super.onCreate()` block below: `@Inject lateinit var`
+     * fields are materialized eagerly when Hilt's
+     * [HiltAndroidApp]-generated subclass calls `inject(this)` from
+     * `attachBaseContext` / `onCreate`, and on a low-end SoC, building a
+     * 6-field graph that transitively constructs ~25 [Singleton]s (esp.
+     * the 20-arg [SettingsRepositoryUiImpl] and the 16-syncer
+     * [SyncCoordinator] set-binding) before the first frame budget even
+     * starts is a meaningful percentage of the cold-launch wall-clock.
+     *
+     * Switching to `Lazy<T>` defers actual construction to the moment of
+     * `.get()`, which we punt to a background coroutine in [onCreate].
+     * The Hilt graph is still fully wired (still type-safe, still
+     * @Singleton-scoped); we just stop *materialising* it on the main
+     * thread before the splash screen disappears.
+     *
+     * Only [workerFactory] stays eager — Android's `WorkManager`
+     * initializer queries [Configuration.Provider.workManagerConfiguration]
+     * the first time `WorkManager.getInstance(context)` is called, and
+     * that getter reads [workerFactory]. We need it ready before any
+     * worker is enqueued.
+     */
     @Inject lateinit var workerFactory: HiltWorkerFactory
-    @Inject lateinit var workScheduler: WorkScheduler
-    @Inject lateinit var authRepository: AuthRepository
-    @Inject lateinit var sessionHydrator: SessionHydrator
-    @Inject lateinit var syncCoordinator: SyncCoordinator
-    @Inject lateinit var settingsRepo: SettingsRepositoryUi
+    @Inject lateinit var workScheduler: Lazy<WorkScheduler>
+    @Inject lateinit var authRepository: Lazy<AuthRepository>
+    @Inject lateinit var sessionHydrator: Lazy<SessionHydrator>
+    @Inject lateinit var syncCoordinator: Lazy<SyncCoordinator>
+    @Inject lateinit var settingsRepo: Lazy<SettingsRepositoryUi>
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -35,16 +60,36 @@ class StoryvoxApp : Application(), Configuration.Provider {
             .setMinimumLoggingLevel(if (BuildConfig.DEBUG) Log.DEBUG else Log.INFO)
             .build()
 
+    /**
+     * Long-lived scope for the deferred init coroutines. Survives the
+     * Application lifetime; uses a [SupervisorJob] so a failure in one
+     * init step doesn't poison the others.
+     */
+    private val initScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onCreate() {
         super.onCreate()
-        workScheduler.ensurePeriodicWorkScheduled()
+        // Issue #409 — every previous-eager step is now scheduled on
+        // [Dispatchers.IO] via the [Lazy] accessors. The main thread
+        // returns from onCreate as fast as the Hilt component-injection
+        // boilerplate allows, so the splash screen → first-frame budget
+        // is dominated by Compose work, not Application init.
+        initScope.launch {
+            // ensurePeriodicWorkScheduled hits SQLite via WorkManager's
+            // internal database; on the Helio P22T that's ~150-300ms of
+            // disk I/O. Off the main thread → invisible to cold launch.
+            workScheduler.get().ensurePeriodicWorkScheduled()
+        }
         rehydrateRoyalRoadCookies()
         applyPitchQualityFromSettings()
         applyPerVoiceEngineKnobsFromSettings()
         // InstantDB sync — if a refresh token is stored, validate it and
         // pull every per-domain syncer. No-op when no one is signed in.
-        // Fire-and-forget: the coordinator launches its own coroutines.
-        syncCoordinator.initialize()
+        // Fire-and-forget: the coordinator launches its own coroutines
+        // once [Lazy.get] materialises it on IO.
+        initScope.launch {
+            syncCoordinator.get().initialize()
+        }
     }
 
     /**
@@ -55,8 +100,8 @@ class StoryvoxApp : Application(), Configuration.Provider {
      * re-applied on cold start, before the first chapter renders.
      */
     private fun applyPitchQualityFromSettings() {
-        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            val highQuality = settingsRepo.settings.first().pitchInterpolationHighQuality
+        initScope.launch {
+            val highQuality = settingsRepo.get().settings.first().pitchInterpolationHighQuality
             VoiceEngineQualityBridge.applyPitchQuality(highQuality)
         }
     }
@@ -76,8 +121,8 @@ class StoryvoxApp : Application(), Configuration.Provider {
      * completes.
      */
     private fun applyPerVoiceEngineKnobsFromSettings() {
-        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            val settings = settingsRepo.settings.first()
+        initScope.launch {
+            val settings = settingsRepo.get().settings.first()
             VoiceEngineQualityBridge.applyLexicon(settings.effectiveLexicon)
             VoiceEngineQualityBridge.applyPhonemizerLang(settings.effectivePhonemizerLang)
         }
@@ -90,8 +135,8 @@ class StoryvoxApp : Application(), Configuration.Provider {
      * / chapter / follows fetch is authed without making the user re-sign-in.
      */
     private fun rehydrateRoyalRoadCookies() {
-        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            val header = authRepository.cookieHeader() ?: return@launch
+        initScope.launch {
+            val header = authRepository.get().cookieHeader() ?: return@launch
             // Cookie header is "name1=value1; name2=value2; ..." — parse back
             // into the Map<String,String> shape SessionHydrator expects.
             val cookies = header.split("; ")
@@ -100,7 +145,7 @@ class StoryvoxApp : Application(), Configuration.Provider {
                     if (eq <= 0) null else pair.substring(0, eq) to pair.substring(eq + 1)
                 }
                 .toMap()
-            if (cookies.isNotEmpty()) sessionHydrator.hydrate(cookies)
+            if (cookies.isNotEmpty()) sessionHydrator.get().hydrate(cookies)
         }
     }
 }

@@ -13,11 +13,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.rememberNavController
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.runtime.getValue
+import dagger.Lazy
 import dagger.hilt.android.AndroidEntryPoint
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.ThemeOverride
@@ -26,7 +27,9 @@ import `in`.jphe.storyvox.navigation.DeepLinkResolver
 import `in`.jphe.storyvox.navigation.StoryvoxNavHost
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -46,8 +49,16 @@ class MainActivity : ComponentActivity() {
      * theme wrapper defaulted to `isSystemInDarkTheme()` and the saved
      * preference was purely cosmetic (showed checked in Settings, never
      * applied).
+     *
+     * Issue #409 — wrapped in [Lazy] so the 20-arg [SettingsRepositoryUi]
+     * graph isn't materialised inside `@AndroidEntryPoint` activity
+     * injection (which runs on the main thread during `super.onCreate`).
+     * We resolve it inside [setContent]'s lambda, which Compose already
+     * runs after the first measure pass and on a frame that's allowed
+     * to take its time. On the Helio P22T tablet that lift was a
+     * material chunk of cold-launch wall-clock.
      */
-    @Inject lateinit var settingsRepo: SettingsRepositoryUi
+    @Inject lateinit var settingsRepo: Lazy<SettingsRepositoryUi>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -67,7 +78,16 @@ class MainActivity : ComponentActivity() {
             // force the corresponding palette regardless of device
             // setting. Without this, the Settings → Reading → Theme
             // picker was cosmetic-only.
-            val settings by settingsRepo.settings.collectAsState(initial = null)
+            //
+            // #409 — wrap the [Lazy] resolution in a flow so the actual
+            // graph construction happens once, lazily, off the
+            // composition-creation hot path. The initial `null` keeps
+            // first-frame rendering on the system-theme fallback while
+            // the real preference loads.
+            val settingsFlow = remember {
+                flow { emitAll(settingsRepo.get().settings) }
+            }
+            val settings by settingsFlow.collectAsState(initial = null)
             val systemDark = isSystemInDarkTheme()
             val darkTheme = when (settings?.themeOverride ?: ThemeOverride.System) {
                 ThemeOverride.System -> systemDark
