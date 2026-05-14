@@ -33,8 +33,8 @@ android {
         applicationId = "in.jphe.storyvox"
         minSdk = 26
         targetSdk = 35
-        versionCode = 130
-        versionName = "0.5.19"
+        versionCode = 131
+        versionName = "0.5.20"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -49,7 +49,7 @@ android {
         buildConfigField(
             "String",
             "SIGIL_REPO",
-            "\"https://github.com/jphein/storyvox\"",
+            "\"https://github.com/realm-watch/storyvox\"",
         )
     }
 

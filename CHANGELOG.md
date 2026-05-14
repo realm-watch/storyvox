@@ -9,22 +9,45 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.20] — 2026-05-13
+
 ### Added
-- **Audio-stream backend category** (closes #373) — `ChapterContent`
-  gains an optional `audioUrl: String?` field. When non-null the
-  playback engine bypasses the TTS pipeline and routes the URL through
-  a sibling Media3 ExoPlayer instance; when null (every existing
-  backend) the existing TTS path is unchanged. Schema migration v6→v7
-  adds the `audioUrl` column to the chapter table so live-stream URLs
-  persist across reboots. Pitch slider hides on live audio (Sonic
+- **Audio-stream backend category** (#389, closes #373) —
+  `ChapterContent` gains optional `audioUrl: String?`. When non-null
+  the playback engine bypasses the TTS pipeline and routes the URL
+  through a sibling Media3 ExoPlayer instance; when null (every
+  existing backend) the TTS path is unchanged. Schema migration
+  v6→v7 adds the `audioUrl` column so live-stream URLs persist
+  across reboots. Pitch slider hides on live audio (Sonic
   pitch-shifting applies to engine-rendered PCM, not network audio).
-- **KVMR community radio** (closes #374) — first concrete entry in
-  the audio-stream category. Single live fiction whose one chapter
-  (`Live`) carries the AAC stream URL from KVMR's public listen-live
-  page. Defaults ON on fresh installs — JP's local station, the
-  inaugural audio backend, low-controversy content. Available in
-  Browse → KVMR → Live; lockscreen MediaSession surfaces "KVMR
-  Community Radio" with transport controls.
+- **KVMR community radio** (#389, closes #374) — first concrete
+  entry in the audio-stream category. JP's local station; single
+  live fiction whose one chapter (`Live`) carries the AAC stream
+  URL from KVMR's public listen-live page. Defaults ON. Browse →
+  KVMR → Live; lockscreen MediaSession surfaces "KVMR Community
+  Radio" with transport controls.
+
+### Changed
+- **FictionDetail Follow button generalized** (#388, closes #382) —
+  the hardcoded `sourceId == "royalroad"` check becomes
+  `FictionSource.supportsFollow: Boolean` (default false), plumbed
+  through `FictionSummary.supportsFollow` and
+  `UiFiction.sourceSupportsFollow`. RoyalRoadSource opts in;
+  future AO3 / GitHub-watch / Wikipedia-watchlist / etc backends
+  opt in with one line of override.
+
+### Infrastructure
+- **Repo transferred from `jphein` to the `realm-watch` org** —
+  storyvox + storyvox-feeds + VoxSherpa-TTS all moved. Public on
+  the free tier. Branch protection on `main` requires CODEOWNERS
+  review + green CI; no force-push, no deletion. Three teams
+  (Owners / Maintainers / Contributors) wired with admin / maintain
+  / push permissions. CODEOWNERS routes sensitive paths
+  (`storyvox-debug.keystore`, `.github/workflows/`, `CLAUDE.md`) to
+  Owners and build/release-affecting files to Maintainers. Org-level
+  Projects v2 board "storyvox roadmap" with Priority + Area fields.
+  VoxSherpa-TTS JitPack coordinate updated to
+  `com.github.realm-watch:VoxSherpa-TTS:v2.7.13`.
 
 ## [0.5.19] — 2026-05-13
 
