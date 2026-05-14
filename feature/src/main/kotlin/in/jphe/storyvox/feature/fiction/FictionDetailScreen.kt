@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -46,7 +48,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -551,6 +558,20 @@ private fun Hero(fiction: UiFiction) {
 }
 
 /**
+ * Issue #450 — structural marker for [NotebookFocusContractTest]. Set
+ * to `true` when the per-fiction Notebook "Add note" dialog wires
+ * explicit `FocusRequester`s + `ImeAction.Next` on the first field so
+ * that taps on the second field always shift focus there (and the
+ * keyboard's Next key works as a fallback). The regressed shape from
+ * v0.5.36 used bare `OutlinedTextField`s with no IME action and no
+ * focus requesters; on the Z Flip3 with the IME up, taps on the
+ * second field were consumed by the first field's
+ * `bringIntoViewRequester` and typed text concatenated into the wrong
+ * field.
+ */
+internal const val notebookAddNoteUsesExplicitFocus: Boolean = true
+
+/**
  * Issue #217 — per-fiction Notebook section. Renders the AI-extracted
  * + user-curated entities the cross-fiction memory layer has recorded
  * for this book. Empty list collapses the section entirely; the
@@ -587,6 +608,18 @@ private fun NotebookSection(
     var draftKind by remember {
         mutableStateOf(`in`.jphe.storyvox.data.db.entity.FictionMemoryEntry.Kind.CHARACTER)
     }
+    // Issue #450 — explicit focus plumbing for the two-field "Add note"
+    // form. Without these, a tap on the Description field while the
+    // Name field has focus + IME-up would route the keypress to the
+    // first field (Compose's `bringIntoViewRequester` was winning the
+    // pointer-event race in this scrolled-inside-LazyColumn context).
+    // Wiring `imeAction = Next` + `KeyboardActions(onNext)` gives users
+    // a soft-keyboard path to move between fields, and a dedicated
+    // FocusRequester per field lets the field-tap hit-tester reliably
+    // hand focus to whichever field the user actually tapped.
+    val nameFocus = remember { FocusRequester() }
+    val summaryFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
 
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.md, vertical = spacing.sm),
@@ -669,13 +702,25 @@ private fun NotebookSection(
                     onValueChange = { draftName = it },
                     label = { Text("Name") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(
+                        onNext = { focusManager.moveFocus(FocusDirection.Down) },
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(nameFocus),
                 )
                 androidx.compose.material3.OutlinedTextField(
                     value = draftSummary,
                     onValueChange = { draftSummary = it },
                     label = { Text("One-line description") },
-                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(
+                        onDone = { focusManager.clearFocus() },
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(summaryFocus),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
                     `in`.jphe.storyvox.data.db.entity.FictionMemoryEntry.Kind.entries.forEach { k ->

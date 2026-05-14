@@ -1,5 +1,6 @@
 package `in`.jphe.storyvox.ui.component
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -51,21 +53,30 @@ fun ChapterCard(
         )
     else CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
 
+    // Issue #461 — the previous fix (#295) used `Card(onClick = ...)` plus
+    // a sibling `Modifier.semantics(mergeDescendants = true)` on the outer
+    // surface. That works in isolation but regressed in Compose Material3
+    // 1.2+: the Card's internal clickable lives on a child of the outer
+    // semantics node, and uiautomator/Espresso again report
+    // `clickable=false` on the row because the parent semantics node has
+    // no action node attached. Pull the click handler onto the SAME outer
+    // modifier as the semantics block so both action + role + contentDesc
+    // live on a single a11y node — the row is now reliably a Button with
+    // an onClick. Use `Card { … }` (the non-clickable overload) for the
+    // visual chrome only.
     Card(
-        onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            // Issue #266 — the un-merged `semantics {}` here used to split the
-            // a11y tree: this node got role=Button + contentDescription, while
-            // the Card's own clickable lived on a child node. Espresso/
-            // UIAutomator reported clickable='false' on the row because the
-            // role node and the action node were different. Merging
-            // descendants flattens them, so the row reads as a single
-            // clickable Button with our content-desc.
+            .clickable(
+                role = Role.Button,
+                onClickLabel = "Open chapter",
+                onClick = onClick,
+            )
             .semantics(mergeDescendants = true) {
                 role = Role.Button
                 contentDescription = "Chapter ${state.number}, ${state.title}, ${state.durationLabel}" +
                     if (state.isDownloaded) ", downloaded" else ""
+                onClick(label = "Open chapter") { onClick(); true }
             },
         colors = highlight,
         shape = MaterialTheme.shapes.medium,
@@ -119,6 +130,19 @@ fun ChapterCard(
         }
     }
 }
+
+/**
+ * Issue #461 — structural marker for [ChapterCardClickableTest]. Set to
+ * `true` when the outer surface of [ChapterCard] uses an explicit
+ * `Modifier.clickable` so the click action lives on the same node as the
+ * `semantics { role; contentDescription }` block. The regressed
+ * implementation (pre-#461) used `Card(onClick = …)` alone, with the
+ * Card's internal clickable on a child node; uiautomator dumped the row
+ * as `clickable=false`. If a future refactor returns to that shape,
+ * flip this back to `false` AND remove the marker contract — but only
+ * after re-verifying on a real device that rows are tappable.
+ */
+internal const val chapterCardUsesOuterClickable: Boolean = true
 
 /**
  * Issue #256 — strip a redundant chapter-number prefix from a chapter
