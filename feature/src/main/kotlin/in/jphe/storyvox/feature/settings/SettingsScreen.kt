@@ -580,6 +580,17 @@ fun SettingsScreen(
                     onApiTokenChange = viewModel::setNotionApiToken,
                 )
             }
+            // Issue #380 — PLOS open-access peer-reviewed science.
+            // Default OFF; academic content is opt-in. v1 renders the
+            // abstract + first ~3 body sections as a single chapter
+            // per article. Future PR splits on heading_1 boundaries
+            // into real per-section chapters.
+            SettingsSwitchRow(
+                title = "PLOS",
+                subtitle = "Open-access peer-reviewed science. Abstract plus the first body sections of each article — narratable in one sitting.",
+                checked = s.sourcePlosEnabled,
+                onCheckedChange = viewModel::setSourcePlosEnabled,
+            )
         }
 
         // ── Inbox notifications sub-card (#383) ────────────────────

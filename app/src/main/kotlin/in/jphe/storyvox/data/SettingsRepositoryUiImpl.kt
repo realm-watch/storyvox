@@ -255,6 +255,11 @@ internal object LegacySourceKeys {
             Spec(booleanPreferencesKey("pref_source_kvmr_enabled"), defaultValue = true),
         `in`.jphe.storyvox.data.source.SourceIds.NOTION to
             Spec(booleanPreferencesKey("pref_source_notion_enabled"), defaultValue = true),
+        // #380 — PLOS open-access peer-reviewed science. Academic
+        // content is an opt-in surface; fresh installs ship with this
+        // off and the user flips it on from Settings.
+        `in`.jphe.storyvox.data.source.SourceIds.PLOS to
+            Spec(booleanPreferencesKey("pref_source_plos_enabled"), defaultValue = false),
     )
 }
 
@@ -367,6 +372,10 @@ private object Keys {
      *  AuthRequired on every call until the user pastes an integration
      *  token via Settings → Library & Sync → Notion. */
     val SOURCE_NOTION_ENABLED = booleanPreferencesKey("pref_source_notion_enabled")
+    /** Issue #380 — PLOS open-access peer-reviewed science backend
+     *  on/off. Default false for fresh installs; opt-in surface like
+     *  Wikipedia. */
+    val SOURCE_PLOS_ENABLED = booleanPreferencesKey("pref_source_plos_enabled")
 
     // ── Plugin-seam Phase 1 (#384) ────────────────────────────────
     /**
@@ -644,6 +653,7 @@ class SettingsRepositoryUiImpl(
             // until the user pastes an integration token. Existing
             // users with a stored preference keep it.
             sourceNotionEnabled = prefs[Keys.SOURCE_NOTION_ENABLED] ?: true,
+            sourcePlosEnabled = prefs[Keys.SOURCE_PLOS_ENABLED] ?: false,
             // Plugin-seam Phase 1 (#384) — derive the per-plugin map
             // from the JSON blob seeded by SourcePluginsMapMigration.
             // Empty map (parse error / missing key in a race) falls
@@ -1297,6 +1307,11 @@ class SettingsRepositoryUiImpl(
     override suspend fun setSourceNotionEnabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_NOTION_ENABLED] = enabled }
         writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.NOTION, enabled)
+    }
+
+    override suspend fun setSourcePlosEnabled(enabled: Boolean) {
+        store.edit { it[Keys.SOURCE_PLOS_ENABLED] = enabled }
+        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.PLOS, enabled)
     }
 
     /**

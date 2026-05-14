@@ -215,6 +215,10 @@ fun BrowseScreen(
                 // filter body via /databases/{id}/query is the
                 // follow-up.
                 BrowseSourceKey.Notion -> false
+                // #380 — PLOS v1 has no filter sheet; the per-journal
+                // picker is the obvious follow-up. Same shape as
+                // Wikipedia today.
+                BrowseSourceKey.Plos -> false
             }
             if (filterableSource) {
                 FilterButton(
@@ -236,6 +240,7 @@ fun BrowseScreen(
                         BrowseSourceKey.Wikipedia -> 0
                         BrowseSourceKey.Kvmr -> 0
                         BrowseSourceKey.Notion -> 0
+                        BrowseSourceKey.Plos -> 0
                     },
                     onClick = { showFilterSheet = true },
                 )
@@ -516,6 +521,9 @@ fun BrowseScreen(
             // #233 — Notion v1 has no filter sheet; the configured
             // database id IS the filter scope.
             BrowseSourceKey.Notion -> { showFilterSheet = false }
+            // #380 — PLOS has no filter sheet in v1; same shape as
+            // Wikipedia. Free-form Search covers discovery.
+            BrowseSourceKey.Plos -> { showFilterSheet = false }
         }
     }
 }
@@ -608,6 +616,7 @@ private fun searchHintForSource(sourceKey: BrowseSourceKey): String = when (sour
     BrowseSourceKey.Wikipedia -> "Search Wikipedia — narrate any article"
     BrowseSourceKey.Kvmr -> "Tune in to KVMR — live community radio from Nevada City"
     BrowseSourceKey.Notion -> "Search your configured Notion database"
+    BrowseSourceKey.Plos -> "Search PLOS open-access peer-reviewed science"
 }
 
 private val BrowseTab.label: String

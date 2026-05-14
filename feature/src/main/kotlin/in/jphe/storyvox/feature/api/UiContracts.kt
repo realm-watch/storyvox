@@ -834,6 +834,11 @@ data class UiSettings(
      *  the source visible in Browse so the empty-state can teach the
      *  user about the one-paste configuration step. */
     val sourceNotionEnabled: Boolean = true,
+    /** PLOS open-access peer-reviewed science backend (#380). Default
+     *  OFF on fresh installs — academic content is an opt-in surface;
+     *  not what a fresh-install user expects in the picker until they
+     *  go looking for it. Same opt-in posture as Wikipedia. */
+    val sourcePlosEnabled: Boolean = false,
     /**
      * Plugin-seam Phase 1 (#384) — per-plugin on/off keyed by stable
      * plugin id ("kvmr", "royalroad", "notion", ...). Replaces the
@@ -1317,6 +1322,9 @@ interface SettingsRepositoryUi {
 
     /** Issue #233 — Notion fiction backend on/off + config. */
     suspend fun setSourceNotionEnabled(enabled: Boolean)
+    /** Issue #380 — PLOS open-access peer-reviewed science backend
+     *  on/off. */
+    suspend fun setSourcePlosEnabled(enabled: Boolean)
     /** Issue #233 — set the Notion database id the source queries.
      *  Both hyphenated UUID and compact 32-hex forms accepted; the
      *  impl normalizes whitespace. Empty falls back to the baked-in

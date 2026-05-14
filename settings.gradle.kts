@@ -56,5 +56,9 @@ include(":source-standard-ebooks")
 include(":source-wikipedia")
 include(":source-kvmr")
 include(":source-notion")
+// Issue #380 — PLOS (Public Library of Science). Open-access
+// peer-reviewed science backend; Solr-backed search API + per-
+// article HTML pages. Same architectural seam as :source-wikipedia.
+include(":source-plos")
 include(":core-sync")
 include(":feature")

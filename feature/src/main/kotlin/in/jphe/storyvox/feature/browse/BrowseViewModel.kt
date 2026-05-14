@@ -97,6 +97,13 @@ enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
      *  content database id as the default — once the user pastes a token
      *  in Settings, Browse → Notion surfaces TechEmpower content. */
     Notion(SourceIds.NOTION, "Notion"),
+    /** PLOS (#380) — open-access peer-reviewed science. Each article
+     *  is one fiction (DOI = id); v1 renders the abstract + first
+     *  ~3 body sections as a single chapter. Same Solr-backed
+     *  discovery surface as Wikipedia's opensearch — Popular = recent
+     *  PLOS ONE articles by publication date, Search hits the same
+     *  endpoint with a free-form `q=` term. */
+    Plos(SourceIds.PLOS, "PLOS"),
 }
 
 /** Tabs that are meaningful for [source]. GitHub registry doesn't
@@ -212,6 +219,16 @@ fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseT
     // NewReleases collapses to Popular because Notion's default
     // ordering is already recency. BestRated has no analogue.
     BrowseSourceKey.Notion -> listOf(
+        BrowseTab.Popular,
+        BrowseTab.Search,
+    )
+    // PLOS (#380): Popular = `api.plos.org/search?q=*:*&fq=journal_key:PLOSONE
+    // &sort=publication_date+desc` — recent PLOS ONE articles. Search
+    // hits the same Solr endpoint with the user's free-form `q=`.
+    // BestRated / NewReleases collapse into Popular (publication-date
+    // desc IS the new-releases view, and PLOS doesn't expose a
+    // citation-count facet worth surfacing).
+    BrowseSourceKey.Plos -> listOf(
         BrowseTab.Popular,
         BrowseTab.Search,
     )
@@ -424,6 +441,7 @@ class BrowseViewModel @Inject constructor(
                     if (s.sourceWikipediaEnabled) add(BrowseSourceKey.Wikipedia)
                     if (s.sourceKvmrEnabled) add(BrowseSourceKey.Kvmr)
                     if (s.sourceNotionEnabled) add(BrowseSourceKey.Notion)
+                    if (s.sourcePlosEnabled) add(BrowseSourceKey.Plos)
                 }
             }
             .distinctUntilChanged()
@@ -697,6 +715,15 @@ class BrowseViewModel @Inject constructor(
                 _githubFilter.value = GitHubSearchFilter()
                 _palaceFilter.value = MemPalaceFilter()
             }
+            BrowseSourceKey.Plos -> {
+                // PLOS (#380) — Solr-backed catalog with no per-source
+                // filter sheet in v1; free-form Search covers
+                // discovery and Popular surfaces recent PLOS ONE.
+                // Same clear-siblings shape as Wikipedia.
+                _filter.value = BrowseFilter()
+                _githubFilter.value = GitHubSearchFilter()
+                _palaceFilter.value = MemPalaceFilter()
+            }
         }
     }
 
@@ -922,6 +949,16 @@ private fun resolveSource(
     // same first page in v1. Blank-search-with-blank-filter stays
     // null so the screen renders the SearchHint empty state.
     BrowseSourceKey.Notion -> when (tab) {
+        BrowseTab.Popular -> BrowseSource.Popular
+        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
+        else -> null
+    }
+    // PLOS (#380): Popular hits api.plos.org/search filtered to
+    // PLOS ONE sorted by publication date desc — the closest
+    // analogue to a "top stories" landing PLOS exposes. Search
+    // hits the same Solr endpoint with the user's free-form `q=`.
+    // No filter surface in v1.
+    BrowseSourceKey.Plos -> when (tab) {
         BrowseTab.Popular -> BrowseSource.Popular
         BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
         else -> null

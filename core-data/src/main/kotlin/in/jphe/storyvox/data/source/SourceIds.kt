@@ -82,4 +82,13 @@ object SourceIds {
      *  surfaces TechEmpower content without configuration once the
      *  user supplies the integration token. */
     const val NOTION: String = "notion"
+    /** PLOS / Public Library of Science (#380) — open-access peer-
+     *  reviewed science. Each article is one fiction (DOI = id);
+     *  v1 renders the abstract + first ~3 body sections as a single
+     *  chapter. Same architectural seam as Wikipedia — Solr-backed
+     *  search API + per-article HTML pages, all CC-licensed content.
+     *  Default OFF on fresh installs (academic content is opt-in;
+     *  not what a fresh-install user expects in the picker until
+     *  they go looking for it). */
+    const val PLOS: String = "plos"
 }
