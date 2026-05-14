@@ -2,6 +2,8 @@ package `in`.jphe.storyvox.source.epub
 
 import `in`.jphe.storyvox.data.source.FictionSource
 import `in`.jphe.storyvox.data.source.SourceIds
+import `in`.jphe.storyvox.data.source.plugin.SourceCategory
+import `in`.jphe.storyvox.data.source.plugin.SourcePlugin
 import `in`.jphe.storyvox.data.source.model.ChapterContent
 import `in`.jphe.storyvox.data.source.model.ChapterInfo
 import `in`.jphe.storyvox.data.source.model.FictionDetail
@@ -34,6 +36,14 @@ import javax.inject.Singleton
  * mtime would short-circuit the re-parse — same shape we use for
  * GitHub manifests via cheap-poll.
  */
+@SourcePlugin(
+    id = SourceIds.EPUB,
+    displayName = "Local EPUB files",
+    defaultEnabled = false,
+    category = SourceCategory.Text,
+    supportsFollow = false,
+    supportsSearch = false,
+)
 @Singleton
 internal class EpubSource @Inject constructor(
     private val config: EpubConfig,

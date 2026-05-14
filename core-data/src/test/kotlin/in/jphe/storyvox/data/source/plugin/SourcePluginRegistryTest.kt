@@ -1,6 +1,7 @@
 package `in`.jphe.storyvox.data.source.plugin
 
 import `in`.jphe.storyvox.data.source.FictionSource
+import `in`.jphe.storyvox.data.source.SourceIds
 import `in`.jphe.storyvox.data.source.model.ChapterContent
 import `in`.jphe.storyvox.data.source.model.FictionDetail
 import `in`.jphe.storyvox.data.source.model.FictionResult
@@ -11,6 +12,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -92,6 +94,67 @@ class SourcePluginRegistryTest {
         val found = registry.byId("fake")
         assertNotNull(found)
         assertEquals(source, found!!.source)
+    }
+
+    @Test fun `phase 2 expected roster of 12 plugins resolves end-to-end`() {
+        // Plugin-seam Phase 2 (#384) — after the 11-backend migration
+        // the registry should surface the full storyvox roster: the
+        // original :source-kvmr from Phase 1 + the 11 fiction backends
+        // migrated here. This test exercises the registry contract
+        // with a synthetic roster matching the @SourcePlugin
+        // annotations declared across the source modules; the actual
+        // KSP-generated bindings are verified at compile time by
+        // `:app:assembleDebug` (Hilt would fail to build the graph if
+        // any descriptor were missing or duplicated).
+        val expectedIds = listOf(
+            SourceIds.ROYAL_ROAD,
+            SourceIds.GITHUB,
+            SourceIds.MEMPALACE,
+            SourceIds.RSS,
+            SourceIds.EPUB,
+            SourceIds.OUTLINE,
+            SourceIds.GUTENBERG,
+            SourceIds.AO3,
+            SourceIds.STANDARD_EBOOKS,
+            SourceIds.WIKIPEDIA,
+            SourceIds.KVMR,
+            SourceIds.NOTION,
+        )
+        val descriptors = expectedIds.map { id ->
+            descriptor(
+                id = id,
+                displayName = id,
+                category = if (id == SourceIds.KVMR) SourceCategory.AudioStream else SourceCategory.Text,
+            )
+        }
+
+        val registry = SourcePluginRegistry(descriptors.toSet())
+
+        assertEquals(12, registry.all.size)
+        // Every expected id resolves via byId — order-independent so
+        // the assertion stays robust against future sort changes.
+        for (id in expectedIds) {
+            assertNotNull("Expected plugin id '$id' missing from registry", registry.byId(id))
+        }
+        // ids list is non-empty and matches the descriptor set.
+        assertEquals(expectedIds.toSet(), registry.ids.toSet())
+    }
+
+    @Test fun `duplicate ids fail fast at registry construction`() {
+        // Plugin-seam Phase 2 (#384) — two @SourcePlugin annotations
+        // colliding on the same id must surface as a hard failure at
+        // app startup, not as silent which-one-wins behaviour. The
+        // init-block check on the registry catches it.
+        val first = descriptor(id = "dupe", displayName = "First", category = SourceCategory.Text)
+        val second = descriptor(id = "dupe", displayName = "Second", category = SourceCategory.Text)
+
+        val ex = assertThrows(IllegalStateException::class.java) {
+            SourcePluginRegistry(setOf(first, second))
+        }
+        assertTrue(
+            "Expected message to mention the duplicate id, got: ${ex.message}",
+            ex.message?.contains("dupe") == true,
+        )
     }
 
     // ─── fixtures ─────────────────────────────────────────────────

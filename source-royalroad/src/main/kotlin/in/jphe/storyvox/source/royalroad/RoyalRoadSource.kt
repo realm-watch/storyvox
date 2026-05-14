@@ -1,6 +1,9 @@
 package `in`.jphe.storyvox.source.royalroad
 
 import `in`.jphe.storyvox.data.source.FictionSource
+import `in`.jphe.storyvox.data.source.SourceIds
+import `in`.jphe.storyvox.data.source.plugin.SourceCategory
+import `in`.jphe.storyvox.data.source.plugin.SourcePlugin
 import `in`.jphe.storyvox.data.source.model.ChapterContent
 import `in`.jphe.storyvox.data.source.model.ContentWarning
 import `in`.jphe.storyvox.data.source.model.FictionDetail
@@ -43,6 +46,14 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
  * See `docs/superpowers/specs/2026-05-05-storyvox-design.md` §5 and
  * `scratch/dreamers/oneiros.md` for the full plan.
  */
+@SourcePlugin(
+    id = SourceIds.ROYAL_ROAD,
+    displayName = "Royal Road",
+    defaultEnabled = true,
+    category = SourceCategory.Text,
+    supportsFollow = true,
+    supportsSearch = true,
+)
 @Singleton
 class RoyalRoadSource @Inject internal constructor(
     private val fetcher: CloudflareAwareFetcher,

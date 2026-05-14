@@ -53,6 +53,26 @@ class SourcePluginRegistry @Inject constructor(
                 .thenBy { it.displayName.lowercase() },
         )
 
+    init {
+        // Plugin-seam Phase 2 (#384) — fail fast at app startup if two
+        // `@SourcePlugin` annotations declared the same id. Hilt would
+        // otherwise happily wire both factories into the multibinding
+        // set and consumers would see a non-deterministic which-one-
+        // wins lookup. The check runs in the Singleton-scoped graph
+        // build, so a duplicate is surfaced once at process start.
+        val byId = all.groupBy { it.id }
+        val duplicates = byId.filterValues { it.size > 1 }
+        if (duplicates.isNotEmpty()) {
+            val detail = duplicates.entries.joinToString("; ") { (id, descriptors) ->
+                "$id × ${descriptors.size} (${descriptors.joinToString { it.displayName }})"
+            }
+            error(
+                "SourcePluginRegistry: duplicate @SourcePlugin ids detected — $detail. " +
+                    "Each plugin's id must be unique; consult SourceIds for the canonical list.",
+            )
+        }
+    }
+
     /** Plugins registered under [category], preserving the
      *  display-order sort. Returns an empty list when no plugins in
      *  the category are registered. */

@@ -39,6 +39,11 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
 
+    // Plugin-seam Phase 2 (#384) — emits the @SourcePlugin → @IntoSet
+    // SourcePluginDescriptor Hilt module for MemPalaceSource. Legacy
+    // @IntoMap binding in di/MemPalaceModule.kt is kept (Phase 3 removes).
+    ksp(project(":core-plugin-ksp"))
+
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
 }

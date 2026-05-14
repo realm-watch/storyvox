@@ -9,7 +9,14 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
-## [0.5.26] — 2026-05-13
+## [0.5.27] — 2026-05-13
+
+### Added
+- **Plugin seam — Phase 2: 11 remaining backends migrated to `@SourcePlugin`** (#384) — every fiction source (`royalroad`, `github`, `mempalace`, `rss`, `epub`, `outline`, `gutenberg`, `ao3`, `standard_ebooks`, `wikipedia`, `notion`) now carries a `@SourcePlugin(id=…, displayName=…, defaultEnabled=…, category=Text, supportsFollow=…, supportsSearch=…)` annotation on its `FictionSource` impl, with `ksp(project(":core-plugin-ksp"))` wired in each module's `build.gradle.kts`. The KSP processor emits one `@Provides @IntoSet SourcePluginDescriptor` Hilt module per annotated class, so the `SourcePluginRegistry` singleton now exposes the full 12-plugin roster (the 11 fiction backends + KVMR from Phase 1). Existing `@IntoMap @StringKey` Hilt bindings are intentionally kept — Phase 2 is additive over the legacy wiring; Phase 3 will delete the legacy `BrowseSourceKey` enum and the per-source `sourceXxxEnabled` booleans on `UiSettings` once the registry-driven UI lands.
+- **`SourcePluginRegistry` duplicate-id guard** (#384) — registry `init` block now hard-fails at app startup with an `IllegalStateException` listing the offending ids when two `@SourcePlugin` annotations declare the same id. Catches a copy-paste mistake on a fresh-source addition before Hilt's silent which-one-wins multibinding behaviour can ship.
+- Two new `SourcePluginRegistryTest` cases: the duplicate-id guard, and a Phase 2 roster contract test that asserts the registry surfaces all 12 expected `SourceIds.*` ids via `byId` and matches the expected size.
+
+
 
 ### Added
 - **Cross-source Inbox tab in Library** (#383) — new fourth Library sub-tab (`All / Reading / Inbox / History`) surfaces a chronological feed of source-emitted events: "3 new chapters in The Wandering Inn", "KVMR live now", and (future) Wikipedia article updates. Tap a row to deep-link to the chapter/program; an unread-count badge sits on the tab itself. The feed is source-agnostic — one timeline across every backend that emits update events.
