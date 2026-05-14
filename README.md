@@ -16,7 +16,7 @@ Stream chapters from [Royal Road](https://royalroad.com), [GitHub](https://githu
   </picture>
 </div>
 
-> **v0.5.31** — twelve fiction sources (Royal Road, GitHub, RSS, EPUB, Outline, Memory Palace, Project Gutenberg, AO3, Standard Ebooks, Wikipedia, KVMR live audio, Notion), Azure HD voices as an optional cloud TTS backend (BYOK), Tier 3 multi-engine parallel synthesis (1–8 engines × N threads each), smart-resume CTA, AI chat per fiction across seven LLM providers, GitHub OAuth, Settings redesign (8 sections), shake-to-extend sleep timer. GPL-3.0 (downstream of the engine, not a posture choice — see [License](#license)).
+> **v0.5.35** — twelve fiction sources (Royal Road, GitHub, RSS, EPUB, Outline, Memory Palace, Project Gutenberg, AO3, Standard Ebooks, Wikipedia, KVMR live audio, Notion), Azure HD voices as an optional cloud TTS backend (BYOK), Tier 3 multi-engine parallel synthesis (1–8 engines × N threads each), smart-resume CTA, AI chat per fiction across seven LLM providers, GitHub OAuth, Settings redesign (8 sections), shake-to-extend sleep timer. GPL-3.0 (downstream of the engine, not a posture choice — see [License](#license)).
 
 ---
 
