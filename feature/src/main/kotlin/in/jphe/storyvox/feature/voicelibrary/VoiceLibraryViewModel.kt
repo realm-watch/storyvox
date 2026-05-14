@@ -17,14 +17,18 @@ import `in`.jphe.storyvox.playback.voice.VoiceManager
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -68,6 +72,13 @@ data class VoiceLibraryUiState(
      *  (defaults to expanded); will already include every Available
      *  engine on first paint (Available defaults to collapsed). */
     val collapsedEngines: Set<EngineKey> = emptySet(),
+    /** Issue #264 — set of two-letter language codes ("en", "es", "fr"...)
+     *  for which at least one voice exists in the unfiltered catalog. The
+     *  language-chip strip renders one chip per code. Sorted alphabetically
+     *  with English pinned first when present (covers the dominant case for
+     *  JP's catalog and matches how the rest of the app surfaces locale
+     *  pickers — English-first, alphabetical otherwise). */
+    val availableLanguageCodes: List<String> = emptyList(),
 )
 
 @Immutable
@@ -77,6 +88,7 @@ data class DownloadingVoice(
     val progress: Float?,
 )
 
+@OptIn(FlowPreview::class)
 @HiltViewModel
 class VoiceLibraryViewModel @Inject constructor(
     private val voiceManager: VoiceManager,
@@ -95,9 +107,46 @@ class VoiceLibraryViewModel @Inject constructor(
     private val _pendingDelete = MutableStateFlow<UiVoiceInfo?>(null)
     private val _error = MutableStateFlow<String?>(null)
 
+    // Issue #264 — search + language filter state lives in the VM so it
+    // survives rotation / process death and so the filter pipeline runs
+    // off the main thread (the unfiltered installed list is 1188 rows).
+    //
+    // `_query` is the raw, instantly-updating value bound two-way to the
+    // OutlinedTextField — the screen reads this for the field's `value`
+    // so the user's keypresses paint immediately. The debounced
+    // projection feeds the filter pipeline; debounced at 200 ms so
+    // typing "english" doesn't recompute the filter five times in a row
+    // on a slow scroll. JP's spec ask: 200 ms (#264).
+    private val _query = MutableStateFlow("")
+    /** Raw search query — bound two-way to the search field. Reflects
+     *  every keypress instantly. The filter pipeline runs off the
+     *  debounced projection below; this flow is only the field's bind
+     *  target. */
+    val voiceFilterQuery: StateFlow<String> = _query.asStateFlow()
+    private val _selectedLanguage = MutableStateFlow<String?>(null)
+    /** Selected two-letter language code (`en`, `es`, ...), or null when
+     *  no language chip is selected. */
+    val voiceFilterLanguage: StateFlow<String?> = _selectedLanguage.asStateFlow()
+
     private val azureKeyConfigured = settingsRepo.settings.map { it.azure.isConfigured }
 
-    val uiState: StateFlow<VoiceLibraryUiState> = combine(
+    /** Debounced query for the filter pipeline. 200 ms matches the
+     *  spec from #264 — long enough to swallow burst-typing on Flip3
+     *  (where finger latency on the inner display already adds ~50 ms),
+     *  short enough that "fr" + pause feels instant. `onStart("")` is
+     *  required so the very first emission of the pipeline doesn't wait
+     *  200 ms for the user to type something — without it, the screen
+     *  paints empty for a beat on cold launch. */
+    private val debouncedQuery: kotlinx.coroutines.flow.Flow<String> = _query
+        .debounce(200)
+        .onStart { emit("") }
+        .distinctUntilChanged()
+
+    /** Unfiltered UI state — voices grouped by engine/tier, favourites
+     *  resolved, collapsed-engine set computed. The filter pipeline runs
+     *  on this and reuses the existing grouping; threading filter into
+     *  the inner combine would push past the 5-arg combine ceiling. */
+    private val unfilteredUiState: kotlinx.coroutines.flow.Flow<VoiceLibraryUiState> = combine(
         voiceManager.installedVoices,
         voiceManager.availableVoicesFlow,
         voiceManager.activeVoice,
@@ -150,6 +199,24 @@ class VoiceLibraryViewModel @Inject constructor(
         }
         val installedGrouped = installedFiltered.groupByEngineThenTier()
         val availableGrouped = availableFiltered.groupByEngineThenTier()
+        // Issue #264 — dynamically derive the language-chip strip from
+        // the union of every voice the user can see. The chip list shows
+        // a chip per language code that has at least one voice, sorted
+        // alphabetically with English pinned first (English is the
+        // dominant default; first-place position keeps it under the
+        // user's thumb on the Flip3 inner display without scrolling the
+        // chip row).
+        val allLanguages = (installed + available).asSequence()
+            .map { it.primaryLanguageCode() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .sorted()
+            .toList()
+        val orderedLanguages = if ("en" in allLanguages) {
+            listOf("en") + allLanguages.filter { it != "en" }
+        } else {
+            allLanguages
+        }
         VoiceLibraryUiState(
             favorites = favorites,
             installedByEngine = installedGrouped,
@@ -164,6 +231,28 @@ class VoiceLibraryViewModel @Inject constructor(
                 availableEngines = availableGrouped.keys,
                 flipped = locals.flipped,
             ),
+            availableLanguageCodes = orderedLanguages,
+        )
+    }
+
+    /** Filtered, debounced UI state — what the screen actually renders.
+     *  Combines the unfiltered state with the debounced query and the
+     *  selected language code, applying the AND-semantics filter to the
+     *  three voice buckets (favorites, installed, available). When both
+     *  query and language are empty the unfiltered state passes through
+     *  untouched — same reference, so Compose's `remember` keys stay
+     *  stable and the screen avoids spurious re-renders. */
+    val uiState: StateFlow<VoiceLibraryUiState> = combine(
+        unfilteredUiState,
+        debouncedQuery,
+        _selectedLanguage.asStateFlow(),
+    ) { state, q, lang ->
+        if (q.isBlank() && lang == null) return@combine state
+        val crit = VoiceFilterCriteria(query = q, language = lang)
+        state.copy(
+            favorites = state.favorites.filter { it.matchesCriteria(crit) },
+            installedByEngine = state.installedByEngine.filterBy(crit),
+            availableByEngine = state.availableByEngine.filterBy(crit),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), VoiceLibraryUiState())
 
@@ -171,6 +260,28 @@ class VoiceLibraryViewModel @Inject constructor(
 
     fun toggleFavorite(voiceId: String) {
         viewModelScope.launch { voiceFavorites.toggle(voiceId) }
+    }
+
+    /** Issue #264 — search field two-way bind. The OutlinedTextField
+     *  pushes every keypress here; the field re-reads [voiceFilterQuery]
+     *  for its `value`. The debounced projection is what reaches the
+     *  filter — see [debouncedQuery]. */
+    fun setQuery(query: String) {
+        _query.value = query
+    }
+
+    /** Issue #264 — language chip toggle. Pass the same code that is
+     *  currently selected to deselect it (null = no language filter).
+     *  AND-combined with the search query in [uiState]. */
+    fun setLanguage(code: String?) {
+        _selectedLanguage.value = code
+    }
+
+    /** Issue #264 — reset both filter dimensions in one call. Useful
+     *  for an explicit "Clear filters" affordance and for tests. */
+    fun clearFilters() {
+        _query.value = ""
+        _selectedLanguage.value = null
     }
 
     /** User tapped an engine sub-header — flip its collapsed state in
