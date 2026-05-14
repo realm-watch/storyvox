@@ -79,6 +79,11 @@ private val Context.settingsDataStore: DataStore<Preferences> by preferencesData
         listOf(
             PunctuationPauseEnumToMultiplierMigration,
             FirstTimeDefaultVoiceMigration,
+            // Issue #417 — seed `pref_source_radio_enabled` from the
+            // legacy `pref_source_kvmr_enabled` value on the first run
+            // of v0.5.32. Runs BEFORE SourcePluginsMapMigration so the
+            // JSON map seed sees the renamed key. Idempotent.
+            KvmrEnabledToRadioEnabledMigration,
             // Plugin-seam Phase 1 (#384) — seed the per-plugin JSON map
             // from the legacy per-source keys on first read. Idempotent
             // once the JSON key exists.
@@ -157,6 +162,56 @@ internal val FirstTimeDefaultVoiceMigration: DataMigration<Preferences> =
         override suspend fun migrate(currentData: Preferences): Preferences {
             val mutable = currentData.toMutablePreferences()
             mutable[voiceKey] = "piper_lessac_en_US_low"
+            return mutable.toPreferences()
+        }
+
+        override suspend fun cleanUp() = Unit
+    }
+
+/**
+ * Issue #417 — one-shot migration from `pref_source_kvmr_enabled` to
+ * `pref_source_radio_enabled` on the first run of v0.5.32 (when
+ * `:source-kvmr` was generalized to `:source-radio`).
+ *
+ * Existing users with `sourceKvmrEnabled = true` (the v0.5.20+ default
+ * for KVMR) keep their radio backend visible — the toggle they flipped
+ * (or didn't flip) for KVMR continues to govern the renamed source
+ * without an explicit re-opt-in. A user who explicitly turned KVMR off
+ * sees the new Radio backend OFF too; their preference travels.
+ *
+ * Order matters: this runs BEFORE [SourcePluginsMapMigration] so the
+ * JSON-map seeder finds the renamed key and lands the right state for
+ * the new `SourceIds.RADIO` entry there too. The legacy
+ * `pref_source_kvmr_enabled` key is kept (not deleted) so the same
+ * value can also seed `SourceIds.KVMR` in the JSON map — the alias
+ * id in [`SourceIds.KVMR`] is still a routable backend during the
+ * one-cycle transition.
+ *
+ * Idempotent: once `pref_source_radio_enabled` is present (or the
+ * legacy key is absent on a fresh install), the migration is a no-op.
+ */
+internal val KvmrEnabledToRadioEnabledMigration: DataMigration<Preferences> =
+    object : DataMigration<Preferences> {
+        private val legacyKvmr = booleanPreferencesKey("pref_source_kvmr_enabled")
+        private val newRadio = booleanPreferencesKey("pref_source_radio_enabled")
+
+        override suspend fun shouldMigrate(currentData: Preferences): Boolean {
+            // Nothing to seed if the user already has a value (or had
+            // one seeded on a prior run).
+            if (currentData[newRadio] != null) return false
+            // Fresh install (no legacy key either) → the JSON-map
+            // seeder will pick up the SourceIds.RADIO default directly;
+            // no migration needed.
+            return currentData[legacyKvmr] != null
+        }
+
+        override suspend fun migrate(currentData: Preferences): Preferences {
+            val mutable = currentData.toMutablePreferences()
+            val legacyValue = currentData[legacyKvmr] ?: true
+            mutable[newRadio] = legacyValue
+            // Keep legacy key intact for one cycle so the JSON-map
+            // seeder + the SourceIds.KVMR alias keep their preference
+            // history. Phase-4 of the plugin seam will delete it.
             return mutable.toPreferences()
         }
 
@@ -253,6 +308,16 @@ internal object LegacySourceKeys {
             Spec(booleanPreferencesKey("pref_source_wikipedia_enabled"), defaultValue = false),
         `in`.jphe.storyvox.data.source.SourceIds.WIKISOURCE to
             Spec(booleanPreferencesKey("pref_source_wikisource_enabled"), defaultValue = false),
+        // Issue #417 — :source-kvmr generalized to :source-radio. The
+        // canonical entry is RADIO with its own pref_source_radio_enabled
+        // key (seeded from the legacy pref_source_kvmr_enabled value
+        // via KvmrEnabledToRadioEnabledMigration). The KVMR row is kept
+        // as a one-cycle alias so the JSON map continues to surface a
+        // value under the legacy id for any consumer still routing
+        // through SourceIds.KVMR; the actual FictionSource binding for
+        // both ids points at the same RadioSource instance.
+        `in`.jphe.storyvox.data.source.SourceIds.RADIO to
+            Spec(booleanPreferencesKey("pref_source_radio_enabled"), defaultValue = true),
         `in`.jphe.storyvox.data.source.SourceIds.KVMR to
             Spec(booleanPreferencesKey("pref_source_kvmr_enabled"), defaultValue = true),
         `in`.jphe.storyvox.data.source.SourceIds.NOTION to
@@ -389,9 +454,18 @@ private object Keys {
      *  the Wikimedia transcribed-public-domain-texts project (CC0/PD
      *  posture, no third-party-ToS surface). */
     val SOURCE_WIKISOURCE_ENABLED = booleanPreferencesKey("pref_source_wikisource_enabled")
-    /** Issue #374 — KVMR community radio backend on/off. Default TRUE
-     *  on fresh installs (JP's local station + the new audio-stream
-     *  pipeline should be discoverable without an opt-in step). */
+    /** Issue #417 — generalized :source-kvmr → :source-radio. Default
+     *  TRUE on fresh installs (the audio-stream pipeline + the curated
+     *  KVMR/KQED/KCSB/KXPR/SomaFM seed list should be discoverable
+     *  without an opt-in step). Seeded from the legacy
+     *  pref_source_kvmr_enabled value for upgrading users via
+     *  KvmrEnabledToRadioEnabledMigration. */
+    val SOURCE_RADIO_ENABLED = booleanPreferencesKey("pref_source_radio_enabled")
+
+    /** Issue #374 — legacy KVMR backend on/off, kept as a one-cycle
+     *  alias of [SOURCE_RADIO_ENABLED] (#417). Default TRUE on fresh
+     *  installs. A follow-up release will drop this key once one full
+     *  release cycle has elapsed with the renamed entry live. */
     val SOURCE_KVMR_ENABLED = booleanPreferencesKey("pref_source_kvmr_enabled")
     /** Issue #233 — Notion backend on/off. Default TRUE on fresh
      *  installs per #390 — the bundled techempower.org database id

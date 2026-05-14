@@ -55,7 +55,10 @@ include(":source-ao3")
 include(":source-standard-ebooks")
 include(":source-wikipedia")
 include(":source-wikisource")
-include(":source-kvmr")
+// Issue #417 — generalized :source-kvmr → :source-radio. The renamed
+// module still serves persisted KVMR fictions via a one-cycle
+// SourceIds.KVMR alias declared in :source-radio's Hilt module.
+include(":source-radio")
 include(":source-notion")
 include(":source-hackernews")
 include(":source-arxiv")

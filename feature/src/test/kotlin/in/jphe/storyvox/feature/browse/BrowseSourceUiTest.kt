@@ -27,7 +27,11 @@ class BrowseSourceUiTest {
             SourceIds.STANDARD_EBOOKS to "Standard Ebooks",
             SourceIds.WIKIPEDIA to "Wikipedia",
             SourceIds.WIKISOURCE to "Wikisource",
-            SourceIds.KVMR to "KVMR",
+            // Issue #417 — :source-kvmr → :source-radio. Both ids
+            // resolve to the "Radio" chip during the one-cycle
+            // migration overlap.
+            SourceIds.RADIO to "Radio",
+            SourceIds.KVMR to "Radio",
             SourceIds.NOTION to "Notion",
             SourceIds.HACKERNEWS to "Hacker News",
             SourceIds.ARXIV to "arXiv",
@@ -35,7 +39,7 @@ class BrowseSourceUiTest {
             SourceIds.DISCORD to "Discord",
         )
 
-        assertEquals(17, expected.size)
+        assertEquals(18, expected.size)
         for ((id, label) in expected) {
             assertEquals(
                 "Unexpected chip label for $id",
@@ -109,7 +113,10 @@ class BrowseSourceUiTest {
             SourceIds.ROYAL_ROAD, SourceIds.GITHUB, SourceIds.MEMPALACE,
             SourceIds.RSS, SourceIds.EPUB, SourceIds.OUTLINE,
             SourceIds.GUTENBERG, SourceIds.AO3, SourceIds.STANDARD_EBOOKS,
-            SourceIds.WIKIPEDIA, SourceIds.WIKISOURCE, SourceIds.KVMR,
+            SourceIds.WIKIPEDIA, SourceIds.WIKISOURCE,
+            // Issue #417 — RADIO is canonical; KVMR alias kept for
+            // one cycle to cover persisted-id resolution.
+            SourceIds.RADIO, SourceIds.KVMR,
             SourceIds.NOTION, SourceIds.HACKERNEWS, SourceIds.ARXIV,
             SourceIds.PLOS, SourceIds.DISCORD,
         )

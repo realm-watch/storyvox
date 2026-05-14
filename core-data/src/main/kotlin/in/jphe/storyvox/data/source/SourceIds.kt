@@ -73,14 +73,27 @@ object SourceIds {
      *  for single-page works. Same CC0/public-domain legal posture as
      *  Project Gutenberg / Standard Ebooks. */
     const val WIKISOURCE: String = "wikisource"
-    /** KVMR (#374, closes #373 first piece) — Nevada City community
-     *  radio (kvmr.org). First concrete entry in the audio-stream
-     *  backend category (#373). The source surfaces a single live
-     *  fiction whose one chapter carries [ChapterContent.audioUrl]
-     *  pointing at KVMR's public AAC stream; playback bypasses TTS
-     *  and routes the URL through Media3. KVMR is JP's local station;
-     *  the same source-shape generalizes to any other community-radio
-     *  / college-radio stream that publishes a stable URL. */
+    /** Radio (#417, generalized from #374's `:source-kvmr`) — live
+     *  radio streams (curated KVMR/KQED/KCSB/KXPR/SomaFM seed list +
+     *  user-starred Radio Browser imports). Each station is one
+     *  fiction with one "Live" chapter; the chapter carries an
+     *  AAC/MP3/HLS stream URL routed through Media3 / ExoPlayer (audio
+     *  pipeline bypasses TTS — see issue #373). The CC0 Radio Browser
+     *  directory (https://www.radio-browser.info/) powers the search
+     *  surface so the long tail of community / college / public radio
+     *  stations is reachable without storyvox needing to curate
+     *  manually. */
+    const val RADIO: String = "radio"
+
+    /** Legacy alias for [RADIO] kept across one migration cycle so
+     *  v0.5.20..0.5.31 persisted KVMR fictions (rows with
+     *  `sourceId = "kvmr"`) continue to resolve after the
+     *  :source-kvmr → :source-radio rename. The matching `@StringKey`
+     *  binding in `:source-radio`'s Hilt module routes both ids to the
+     *  same [`RadioSource`][in.jphe.storyvox.source.radio.RadioSource]
+     *  instance. A follow-up release can drop this once one full
+     *  release cycle has elapsed; until then the alias is load-bearing
+     *  for library-shelf / playback-position survival. */
     const val KVMR: String = "kvmr"
     /** Notion (#233) — Notion databases as a fiction backend. Each
      *  database row is one fiction; each page's top-level `heading_1`

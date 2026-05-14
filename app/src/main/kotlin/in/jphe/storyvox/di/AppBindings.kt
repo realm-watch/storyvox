@@ -163,6 +163,14 @@ object AppBindings {
     @Provides @Singleton
     fun provideRssConfig(impl: `in`.jphe.storyvox.data.RssConfigImpl): `in`.jphe.storyvox.source.rss.config.RssConfig = impl
 
+    /** Issue #417 — bridges the source-radio [RadioConfig] interface to
+     *  the app-side DataStore-backed impl. Same shape as
+     *  [provideRssConfig]: the impl is exposed concretely so the
+     *  Browse → Radio → Search UI can call mutators (star / unstar)
+     *  directly. */
+    @Provides @Singleton
+    fun provideRadioConfig(impl: `in`.jphe.storyvox.data.RadioConfigImpl): `in`.jphe.storyvox.source.radio.config.RadioConfig = impl
+
     /** Bridges the source-epub [EpubConfig] read interface (#235) to
      *  the concrete app-side SAF-backed impl. */
     @Provides @Singleton
@@ -289,7 +297,12 @@ object AppBindings {
                 val snap = settings.settings.first()
                 return when (sourceId) {
                     "royalroad" -> snap.inboxNotifyRoyalRoad
-                    "kvmr" -> snap.inboxNotifyKvmr
+                    // Issue #417 — :source-kvmr generalized to
+                    // :source-radio. Both sourceIds map to the same
+                    // inboxNotifyKvmr toggle (the UI label can update
+                    // in a follow-up; the persisted key stays stable
+                    // so the toggle history survives).
+                    "radio", "kvmr" -> snap.inboxNotifyKvmr
                     "wikipedia" -> snap.inboxNotifyWikipedia
                     else -> true
                 }
