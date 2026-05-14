@@ -1,0 +1,149 @@
+package `in`.jphe.storyvox.feature.browse
+
+import `in`.jphe.storyvox.data.source.SourceIds
+
+/**
+ * Plugin-seam Phase 3 (#384) — side-table of per-source UI hints
+ * keyed by sourceId. Lives in `:feature/browse` because the data here
+ * is purely UI-shaped: chip strip labels, supported-tabs lists, filter
+ * sheet variants, search-hint copy.
+ *
+ * The Phase 1/2 `BrowseSourceKey` enum carried this data inline on
+ * each enum entry. Phase 3 deletes the enum in favour of iterating
+ * `SourcePluginRegistry.descriptors`, but the per-source UI bits don't
+ * belong on the `SourcePluginDescriptor` (which lives in `:core-data`
+ * and shouldn't know about Compose tabs or filter shapes).
+ *
+ * The table is keyed by the `SourceIds` string constants. A future
+ * out-of-tree backend that adds a new `SourceIds.X` constant must also
+ * add its row here (or rely on the defaults — short label = registry
+ * display name, supported tabs = Popular + Search).
+ *
+ * Adding a row is a single-file diff next to the source's
+ * `@SourcePlugin` annotation backfill — far less invasive than the
+ * Phase 1/2 17-touchpoint shape.
+ */
+internal object BrowseSourceUi {
+
+    /**
+     * Short label for the browse chip strip. The registry's
+     * `displayName` is the formal "Archive of Our Own" / "Local EPUB
+     * files" form, which doesn't fit on a chip on a narrow phone.
+     * Falls through to the descriptor's `displayName` when no override
+     * is present.
+     */
+    fun chipLabel(id: String, displayName: String): String = when (id) {
+        SourceIds.ROYAL_ROAD -> "Royal Road"
+        SourceIds.GITHUB -> "GitHub"
+        // "Palace" instead of "Memory Palace" so the segmented source
+        // picker doesn't break the chip label across two lines on
+        // narrow phones (#148).
+        SourceIds.MEMPALACE -> "Palace"
+        SourceIds.RSS -> "RSS"
+        SourceIds.EPUB -> "Local"
+        SourceIds.OUTLINE -> "Wiki"
+        SourceIds.GUTENBERG -> "Gutenberg"
+        SourceIds.AO3 -> "AO3"
+        SourceIds.STANDARD_EBOOKS -> "Standard Ebooks"
+        SourceIds.WIKIPEDIA -> "Wikipedia"
+        SourceIds.WIKISOURCE -> "Wikisource"
+        SourceIds.KVMR -> "KVMR"
+        SourceIds.NOTION -> "Notion"
+        SourceIds.HACKERNEWS -> "Hacker News"
+        SourceIds.ARXIV -> "arXiv"
+        SourceIds.PLOS -> "PLOS"
+        SourceIds.DISCORD -> "Discord"
+        else -> displayName
+    }
+
+    /**
+     * Tabs meaningful for [id]. [githubSignedIn] gates the auth-only
+     * GitHub tabs (`MyRepos` #200, `Starred` #201, `Gists` #202).
+     * Unknown ids fall through to a reasonable default of
+     * Popular + Search.
+     */
+    fun supportedTabs(id: String, githubSignedIn: Boolean = false): List<BrowseTab> = when (id) {
+        SourceIds.ROYAL_ROAD -> listOf(
+            BrowseTab.Popular,
+            BrowseTab.NewReleases,
+            BrowseTab.BestRated,
+            BrowseTab.Search,
+        )
+        SourceIds.GITHUB -> buildList {
+            add(BrowseTab.Popular)
+            add(BrowseTab.NewReleases)
+            if (githubSignedIn) {
+                add(BrowseTab.MyRepos)
+                add(BrowseTab.Starred)
+                add(BrowseTab.Gists)
+            }
+            add(BrowseTab.Search)
+        }
+        SourceIds.MEMPALACE -> listOf(BrowseTab.Popular, BrowseTab.NewReleases)
+        SourceIds.RSS -> listOf(BrowseTab.NewReleases, BrowseTab.Popular, BrowseTab.Search)
+        SourceIds.EPUB -> listOf(BrowseTab.Popular, BrowseTab.Search)
+        SourceIds.OUTLINE -> listOf(BrowseTab.Popular, BrowseTab.Search)
+        SourceIds.GUTENBERG -> listOf(BrowseTab.Popular, BrowseTab.NewReleases, BrowseTab.Search)
+        SourceIds.AO3 -> listOf(BrowseTab.Popular, BrowseTab.NewReleases)
+        SourceIds.STANDARD_EBOOKS -> listOf(BrowseTab.Popular, BrowseTab.NewReleases, BrowseTab.Search)
+        SourceIds.WIKIPEDIA -> listOf(BrowseTab.Popular, BrowseTab.Search)
+        SourceIds.WIKISOURCE -> listOf(BrowseTab.Popular, BrowseTab.Search)
+        SourceIds.KVMR -> listOf(BrowseTab.Popular)
+        SourceIds.NOTION -> listOf(BrowseTab.Popular, BrowseTab.Search)
+        SourceIds.HACKERNEWS -> listOf(BrowseTab.Popular, BrowseTab.Search)
+        SourceIds.ARXIV -> listOf(BrowseTab.Popular, BrowseTab.Search)
+        SourceIds.PLOS -> listOf(BrowseTab.Popular, BrowseTab.Search)
+        SourceIds.DISCORD -> listOf(BrowseTab.Popular, BrowseTab.Search)
+        else -> listOf(BrowseTab.Popular, BrowseTab.Search)
+    }
+
+    /**
+     * Filter sheet shape for [id]. Only three sources surface a filter
+     * sheet in v1: RoyalRoad has the `/fictions/search` form
+     * (`BrowseFilter`), GitHub has the `/search/repositories` qualifier
+     * set (`GitHubSearchFilter`), MemPalace has a wing chooser
+     * (`MemPalaceFilter`). All other sources return [FilterShape.None]
+     * — their filter button is hidden from the toolbar.
+     */
+    fun filterShape(id: String): FilterShape = when (id) {
+        SourceIds.ROYAL_ROAD -> FilterShape.RoyalRoad
+        SourceIds.GITHUB -> FilterShape.GitHub
+        SourceIds.MEMPALACE -> FilterShape.MemPalace
+        else -> FilterShape.None
+    }
+
+    /** Issue #271 — per-source subtitle for the Search empty state. */
+    fun searchHint(id: String, displayName: String): String = when (id) {
+        SourceIds.ROYAL_ROAD -> "Find fictions across Royal Road"
+        SourceIds.GITHUB -> "Search indexed GitHub repositories"
+        SourceIds.MEMPALACE -> "Search your MemPalace knowledge base"
+        SourceIds.RSS -> "Search your subscribed feeds"
+        SourceIds.EPUB -> "Search your local EPUB library"
+        SourceIds.OUTLINE -> "Search your Outline notes"
+        SourceIds.GUTENBERG -> "Search Project Gutenberg's 70,000+ public-domain books"
+        SourceIds.AO3 -> "Search AO3 by tag, fandom, or character"
+        SourceIds.STANDARD_EBOOKS -> "Search Standard Ebooks' hand-curated public-domain classics"
+        SourceIds.WIKIPEDIA -> "Search Wikipedia — narrate any article"
+        SourceIds.WIKISOURCE -> "Search Wikisource — transcribed public-domain texts"
+        SourceIds.KVMR -> "Tune in to KVMR — live community radio from Nevada City"
+        SourceIds.NOTION -> "Search your configured Notion database"
+        SourceIds.HACKERNEWS -> "Search Hacker News stories (Algolia-backed full-text)"
+        SourceIds.ARXIV -> "Search arXiv — open-access academic papers"
+        SourceIds.PLOS -> "Search PLOS — open-access peer-reviewed science"
+        SourceIds.DISCORD -> "Search messages in your selected Discord server"
+        else -> "Search $displayName"
+    }
+}
+
+/**
+ * Plugin-seam Phase 3 (#384) — filter sheet variants. The Phase 1/2
+ * enum branched on `BrowseSourceKey`; Phase 3 routes through this
+ * sealed-shape sentinel keyed off the sourceId via
+ * [BrowseSourceUi.filterShape].
+ */
+internal enum class FilterShape {
+    None,
+    RoyalRoad,
+    GitHub,
+    MemPalace,
+}

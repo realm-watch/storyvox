@@ -75,6 +75,8 @@ import javax.inject.Singleton
     category = SourceCategory.AudioStream,
     supportsFollow = false,
     supportsSearch = true,
+    description = "KVMR community radio · Nevada City · live AAC stream via Media3 (bypasses TTS)",
+    sourceUrl = "https://kvmr.org",
 )
 @Singleton
 internal class KvmrSource @Inject constructor() : FictionSource {

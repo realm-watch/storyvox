@@ -69,6 +69,8 @@ import javax.inject.Singleton
     category = SourceCategory.Text,
     supportsFollow = false,
     supportsSearch = true,
+    description = "14M+ fanfiction works via per-tag Atom feeds + official EPUB downloads",
+    sourceUrl = "https://archiveofourown.org",
 )
 @Singleton
 internal class Ao3Source @Inject constructor(

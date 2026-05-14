@@ -49,6 +49,8 @@ import javax.inject.Singleton
     category = SourceCategory.Text,
     supportsFollow = false,
     supportsSearch = false,
+    description = "Any RSS/Atom feed · one feed = one fiction · items become chapters",
+    sourceUrl = "",
 )
 @Singleton
 internal class RssSource @Inject constructor(

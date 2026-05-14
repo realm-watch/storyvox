@@ -53,6 +53,13 @@ class SourcePluginRegistry @Inject constructor(
                 .thenBy { it.displayName.lowercase() },
         )
 
+    /** Alias for [all] used by Phase 3 (#384) call sites that iterate
+     *  the registry rather than the deleted `BrowseSourceKey` enum.
+     *  The shape (sorted list of descriptors) is the same; the name
+     *  reads better at iteration sites that don't otherwise mention
+     *  "registry". */
+    val descriptors: List<SourcePluginDescriptor> get() = all
+
     init {
         // Plugin-seam Phase 2 (#384) — fail fast at app startup if two
         // `@SourcePlugin` annotations declared the same id. Hilt would

@@ -69,6 +69,8 @@ import javax.inject.Singleton
     category = SourceCategory.Text,
     supportsFollow = false,
     supportsSearch = true,
+    description = "Top stories, Ask HN, Show HN · stories + top comments as single-chapter fictions · Algolia search",
+    sourceUrl = "https://news.ycombinator.com",
 )
 @Singleton
 internal class HackerNewsSource @Inject constructor(

@@ -62,6 +62,8 @@ import javax.inject.Singleton
     category = SourceCategory.Text,
     supportsFollow = false,
     supportsSearch = true,
+    description = "Any Wikipedia article narrated · article = fiction, sections = chapters · per-language",
+    sourceUrl = "https://en.wikipedia.org",
 )
 @Singleton
 internal class WikipediaSource @Inject constructor(

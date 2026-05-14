@@ -53,6 +53,8 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
     category = SourceCategory.Text,
     supportsFollow = true,
     supportsSearch = true,
+    description = "Web fiction · cookie sign-in for Follows + premium chapters",
+    sourceUrl = "https://www.royalroad.com",
 )
 @Singleton
 class RoyalRoadSource @Inject internal constructor(

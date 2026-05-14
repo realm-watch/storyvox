@@ -58,6 +58,8 @@ import javax.inject.Singleton
     category = SourceCategory.Text,
     supportsFollow = false,
     supportsSearch = true,
+    description = "Hand-curated, typographically polished public-domain classics · tap-to-add downloads EPUB",
+    sourceUrl = "https://standardebooks.org",
 )
 @Singleton
 internal class StandardEbooksSource @Inject constructor(
