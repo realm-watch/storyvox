@@ -2,6 +2,8 @@ package `in`.jphe.storyvox.source.gutenberg
 
 import `in`.jphe.storyvox.data.source.FictionSource
 import `in`.jphe.storyvox.data.source.SourceIds
+import `in`.jphe.storyvox.data.source.plugin.SourceCategory
+import `in`.jphe.storyvox.data.source.plugin.SourcePlugin
 import `in`.jphe.storyvox.data.source.model.ChapterContent
 import `in`.jphe.storyvox.data.source.model.ChapterInfo
 import `in`.jphe.storyvox.data.source.model.FictionDetail
@@ -48,6 +50,14 @@ import javax.inject.Singleton
  * `storyvox-gutenberg/1.0` User-Agent so any rate-limit hits can be
  * routed to a real contact.
  */
+@SourcePlugin(
+    id = SourceIds.GUTENBERG,
+    displayName = "Project Gutenberg",
+    defaultEnabled = true,
+    category = SourceCategory.Text,
+    supportsFollow = false,
+    supportsSearch = true,
+)
 @Singleton
 internal class GutenbergSource @Inject constructor(
     private val api: GutendexApi,

@@ -2,6 +2,8 @@ package `in`.jphe.storyvox.source.mempalace
 
 import `in`.jphe.storyvox.data.source.FictionSource
 import `in`.jphe.storyvox.data.source.SourceIds
+import `in`.jphe.storyvox.data.source.plugin.SourceCategory
+import `in`.jphe.storyvox.data.source.plugin.SourcePlugin
 import `in`.jphe.storyvox.data.source.model.ChapterContent
 import `in`.jphe.storyvox.data.source.model.ChapterInfo
 import `in`.jphe.storyvox.data.source.model.FictionDetail
@@ -45,6 +47,14 @@ import javax.inject.Singleton
  * Hilt binding lives in [`in`.jphe.storyvox.source.mempalace.di
  * .MemPalaceBindings] — `@IntoMap @StringKey(SourceIds.MEMPALACE)`.
  */
+@SourcePlugin(
+    id = SourceIds.MEMPALACE,
+    displayName = "Memory Palace",
+    defaultEnabled = false,
+    category = SourceCategory.Text,
+    supportsFollow = false,
+    supportsSearch = true,
+)
 @Singleton
 internal class MemPalaceSource @Inject constructor(
     private val api: PalaceDaemonApi,

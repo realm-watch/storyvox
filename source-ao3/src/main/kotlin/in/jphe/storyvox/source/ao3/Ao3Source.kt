@@ -2,6 +2,8 @@ package `in`.jphe.storyvox.source.ao3
 
 import `in`.jphe.storyvox.data.source.FictionSource
 import `in`.jphe.storyvox.data.source.SourceIds
+import `in`.jphe.storyvox.data.source.plugin.SourceCategory
+import `in`.jphe.storyvox.data.source.plugin.SourcePlugin
 import `in`.jphe.storyvox.data.source.model.ChapterContent
 import `in`.jphe.storyvox.data.source.model.ChapterInfo
 import `in`.jphe.storyvox.data.source.model.FictionDetail
@@ -60,6 +62,14 @@ import javax.inject.Singleton
  * Sign-in is a deliberate follow-up (#381 mentions threading the
  * AUTH_WEBVIEW pattern from #211 through).
  */
+@SourcePlugin(
+    id = SourceIds.AO3,
+    displayName = "Archive of Our Own",
+    defaultEnabled = false,
+    category = SourceCategory.Text,
+    supportsFollow = false,
+    supportsSearch = true,
+)
 @Singleton
 internal class Ao3Source @Inject constructor(
     private val api: Ao3Api,

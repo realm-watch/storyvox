@@ -2,6 +2,8 @@ package `in`.jphe.storyvox.source.rss
 
 import `in`.jphe.storyvox.data.source.FictionSource
 import `in`.jphe.storyvox.data.source.SourceIds
+import `in`.jphe.storyvox.data.source.plugin.SourceCategory
+import `in`.jphe.storyvox.data.source.plugin.SourcePlugin
 import `in`.jphe.storyvox.data.source.model.ChapterContent
 import `in`.jphe.storyvox.data.source.model.ChapterInfo
 import `in`.jphe.storyvox.data.source.model.FictionDetail
@@ -40,6 +42,14 @@ import javax.inject.Singleton
  * in-memory map keyed by fictionId + last fetch's ETag is the
  * follow-up.
  */
+@SourcePlugin(
+    id = SourceIds.RSS,
+    displayName = "RSS / Atom feeds",
+    defaultEnabled = true,
+    category = SourceCategory.Text,
+    supportsFollow = false,
+    supportsSearch = false,
+)
 @Singleton
 internal class RssSource @Inject constructor(
     private val config: RssConfig,

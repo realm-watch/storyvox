@@ -46,5 +46,12 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
 
+    // Plugin-seam Phase 2 (#384) — emits the @SourcePlugin → @IntoSet
+    // SourcePluginDescriptor Hilt module for RoyalRoadSource. The
+    // legacy @IntoMap binding in di/RoyalRoadModule.kt is kept
+    // alongside (Phase 2 invariant: registry is additive; Phase 3
+    // removes the legacy map binding).
+    ksp(project(":core-plugin-ksp"))
+
     testImplementation(libs.junit)
 }

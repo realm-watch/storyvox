@@ -2,6 +2,8 @@ package `in`.jphe.storyvox.source.standardebooks
 
 import `in`.jphe.storyvox.data.source.FictionSource
 import `in`.jphe.storyvox.data.source.SourceIds
+import `in`.jphe.storyvox.data.source.plugin.SourceCategory
+import `in`.jphe.storyvox.data.source.plugin.SourcePlugin
 import `in`.jphe.storyvox.data.source.model.ChapterContent
 import `in`.jphe.storyvox.data.source.model.ChapterInfo
 import `in`.jphe.storyvox.data.source.model.FictionDetail
@@ -49,6 +51,14 @@ import javax.inject.Singleton
  * we send a `storyvox-standardebooks/1.0` User-Agent so any rate-limit
  * hits route to a real contact.
  */
+@SourcePlugin(
+    id = SourceIds.STANDARD_EBOOKS,
+    displayName = "Standard Ebooks",
+    defaultEnabled = false,
+    category = SourceCategory.Text,
+    supportsFollow = false,
+    supportsSearch = true,
+)
 @Singleton
 internal class StandardEbooksSource @Inject constructor(
     private val api: StandardEbooksApi,

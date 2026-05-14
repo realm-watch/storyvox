@@ -34,6 +34,11 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
 
+    // Plugin-seam Phase 2 (#384) — emits the @SourcePlugin → @IntoSet
+    // SourcePluginDescriptor Hilt module for WikipediaSource. Legacy
+    // @IntoMap binding in di/WikipediaModule.kt is kept (Phase 3 removes).
+    ksp(project(":core-plugin-ksp"))
+
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
 }

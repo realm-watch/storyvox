@@ -2,6 +2,8 @@ package `in`.jphe.storyvox.source.outline
 
 import `in`.jphe.storyvox.data.source.FictionSource
 import `in`.jphe.storyvox.data.source.SourceIds
+import `in`.jphe.storyvox.data.source.plugin.SourceCategory
+import `in`.jphe.storyvox.data.source.plugin.SourcePlugin
 import `in`.jphe.storyvox.data.source.model.ChapterContent
 import `in`.jphe.storyvox.data.source.model.ChapterInfo
 import `in`.jphe.storyvox.data.source.model.FictionDetail
@@ -29,6 +31,14 @@ import javax.inject.Singleton
  * self-hosted infra, host + API token in Settings, zero ToS surface
  * because the user authorized themselves.
  */
+@SourcePlugin(
+    id = SourceIds.OUTLINE,
+    displayName = "Outline wiki",
+    defaultEnabled = false,
+    category = SourceCategory.Text,
+    supportsFollow = false,
+    supportsSearch = false,
+)
 @Singleton
 internal class OutlineSource @Inject constructor(
     private val api: OutlineApi,

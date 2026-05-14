@@ -2,6 +2,8 @@ package `in`.jphe.storyvox.source.github
 
 import `in`.jphe.storyvox.data.source.FictionSource
 import `in`.jphe.storyvox.data.source.SourceIds
+import `in`.jphe.storyvox.data.source.plugin.SourceCategory
+import `in`.jphe.storyvox.data.source.plugin.SourcePlugin
 import `in`.jphe.storyvox.data.source.model.ChapterContent
 import `in`.jphe.storyvox.data.source.model.ChapterInfo
 import `in`.jphe.storyvox.data.source.model.FictionDetail
@@ -49,6 +51,14 @@ import kotlin.time.toDuration
  * multi-source map (#35) → `sourceFor(SourceIds.GITHUB)` →
  * `fictionDetail` → `upsertDetail`.
  */
+@SourcePlugin(
+    id = SourceIds.GITHUB,
+    displayName = "GitHub fiction",
+    defaultEnabled = false,
+    category = SourceCategory.Text,
+    supportsFollow = false,
+    supportsSearch = true,
+)
 @Singleton
 internal class GitHubSource @Inject constructor(
     private val api: GitHubApi,

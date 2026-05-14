@@ -2,6 +2,8 @@ package `in`.jphe.storyvox.source.notion
 
 import `in`.jphe.storyvox.data.source.FictionSource
 import `in`.jphe.storyvox.data.source.SourceIds
+import `in`.jphe.storyvox.data.source.plugin.SourceCategory
+import `in`.jphe.storyvox.data.source.plugin.SourcePlugin
 import `in`.jphe.storyvox.data.source.model.ChapterContent
 import `in`.jphe.storyvox.data.source.model.ChapterInfo
 import `in`.jphe.storyvox.data.source.model.FictionDetail
@@ -54,6 +56,14 @@ import javax.inject.Singleton
  * `notion:<pageId>::section-<index>` where `index` is the 0-based
  * heading-split section (0 = Introduction).
  */
+@SourcePlugin(
+    id = SourceIds.NOTION,
+    displayName = "Notion",
+    defaultEnabled = true,
+    category = SourceCategory.Text,
+    supportsFollow = false,
+    supportsSearch = true,
+)
 @Singleton
 internal class NotionSource @Inject constructor(
     private val api: NotionApi,
