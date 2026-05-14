@@ -43,6 +43,8 @@ import javax.inject.Singleton
     category = SourceCategory.Text,
     supportsFollow = false,
     supportsSearch = false,
+    description = "Read .epub files from a folder you pick · zero-network",
+    sourceUrl = "",
 )
 @Singleton
 internal class EpubSource @Inject constructor(

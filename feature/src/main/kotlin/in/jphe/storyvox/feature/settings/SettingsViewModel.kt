@@ -128,21 +128,17 @@ class SettingsViewModel @Inject constructor(
     fun setGitHubPrivateReposEnabled(enabled: Boolean) =
         viewModelScope.launch { repo.setGitHubPrivateReposEnabled(enabled) }
 
-    /** Issue #221 — per-backend on/off. Hides the corresponding chip
-     *  from the Browse source picker; if the user disables their
-     *  currently-selected backend, BrowseViewModel snaps to the first
-     *  remaining one. Disabling all three is allowed (Browse degrades
-     *  to the empty-picker state) — Settings doesn't gatekeep. */
-    fun setSourceRoyalRoadEnabled(enabled: Boolean) =
-        viewModelScope.launch { repo.setSourceRoyalRoadEnabled(enabled) }
-    fun setSourceGitHubEnabled(enabled: Boolean) =
-        viewModelScope.launch { repo.setSourceGitHubEnabled(enabled) }
-    fun setSourceMemPalaceEnabled(enabled: Boolean) =
-        viewModelScope.launch { repo.setSourceMemPalaceEnabled(enabled) }
+    /**
+     * Plugin-seam Phase 3 (#384) — single per-source on/off entry
+     * point. Toggles by stable plugin id (see `SourceIds`); the
+     * BrowseViewModel picker reads back the map. As of v0.5.31 this
+     * is the only source-toggle setter — the Phase 1/2 per-backend
+     * `setSourceXxxEnabled` methods have all collapsed into this one.
+     */
+    fun setSourcePluginEnabled(id: String, enabled: Boolean) =
+        viewModelScope.launch { repo.setSourcePluginEnabled(id, enabled) }
 
-    /** Issue #236 — RSS backend on/off + feed-list management. */
-    fun setSourceRssEnabled(enabled: Boolean) =
-        viewModelScope.launch { repo.setSourceRssEnabled(enabled) }
+    /** Issue #236 — RSS feed-list management. */
     fun addRssFeed(url: String) = viewModelScope.launch { repo.addRssFeed(url) }
     fun removeRssFeed(fictionId: String) = viewModelScope.launch { repo.removeRssFeed(fictionId) }
     /** Settings UI surfaces URLs (not fictionIds) — convert via the
@@ -150,9 +146,7 @@ class SettingsViewModel @Inject constructor(
      *  source-rss internals. */
     fun removeRssFeedByUrl(url: String) = viewModelScope.launch { repo.removeRssFeedByUrl(url) }
 
-    /** Issue #235 — local EPUB backend on/off + folder picker. */
-    fun setSourceEpubEnabled(enabled: Boolean) =
-        viewModelScope.launch { repo.setSourceEpubEnabled(enabled) }
+    /** Issue #235 — local EPUB folder picker. */
     fun setEpubFolderUri(uri: String) = viewModelScope.launch { repo.setEpubFolderUri(uri) }
     fun clearEpubFolder() = viewModelScope.launch { repo.clearEpubFolder() }
     val epubFolderUri: kotlinx.coroutines.flow.StateFlow<String?> =
@@ -162,50 +156,12 @@ class SettingsViewModel @Inject constructor(
             null,
         )
 
-    /** Issue #245 — Outline backend on/off + host/API-key plumbing. */
-    fun setSourceOutlineEnabled(enabled: Boolean) =
-        viewModelScope.launch { repo.setSourceOutlineEnabled(enabled) }
-
-    /** Issue #237 — Project Gutenberg backend on/off. */
-    fun setSourceGutenbergEnabled(enabled: Boolean) =
-        viewModelScope.launch { repo.setSourceGutenbergEnabled(enabled) }
-
-    /** Issue #381 — Archive of Our Own backend on/off. */
-    fun setSourceAo3Enabled(enabled: Boolean) =
-        viewModelScope.launch { repo.setSourceAo3Enabled(enabled) }
-    /** Issue #375 — Standard Ebooks backend on/off. */
-    fun setSourceStandardEbooksEnabled(enabled: Boolean) =
-        viewModelScope.launch { repo.setSourceStandardEbooksEnabled(enabled) }
-    /** Issue #377 — Wikipedia backend on/off + per-language host. */
-    fun setSourceWikipediaEnabled(enabled: Boolean) =
-        viewModelScope.launch { repo.setSourceWikipediaEnabled(enabled) }
     fun setWikipediaLanguageCode(code: String) =
         viewModelScope.launch { repo.setWikipediaLanguageCode(code) }
-    /** Issue #376 — Wikisource backend on/off. */
-    fun setSourceWikisourceEnabled(enabled: Boolean) =
-        viewModelScope.launch { repo.setSourceWikisourceEnabled(enabled) }
-    /** Issue #374 — KVMR community radio backend on/off. */
-    fun setSourceKvmrEnabled(enabled: Boolean) =
-        viewModelScope.launch { repo.setSourceKvmrEnabled(enabled) }
-    /** Issue #233 — Notion backend on/off + config. */
-    fun setSourceNotionEnabled(enabled: Boolean) =
-        viewModelScope.launch { repo.setSourceNotionEnabled(enabled) }
-    /** Issue #379 — Hacker News backend on/off. */
-    fun setSourceHackerNewsEnabled(enabled: Boolean) =
-        viewModelScope.launch { repo.setSourceHackerNewsEnabled(enabled) }
-    /** Issue #378 — arXiv backend on/off. */
-    fun setSourceArxivEnabled(enabled: Boolean) =
-        viewModelScope.launch { repo.setSourceArxivEnabled(enabled) }
-    /** Issue #380 — PLOS open-access peer-reviewed science backend on/off. */
-    fun setSourcePlosEnabled(enabled: Boolean) =
-        viewModelScope.launch { repo.setSourcePlosEnabled(enabled) }
     fun setNotionDatabaseId(id: String) =
         viewModelScope.launch { repo.setNotionDatabaseId(id) }
     fun setNotionApiToken(token: String?) =
         viewModelScope.launch { repo.setNotionApiToken(token) }
-    /** Issue #403 — Discord backend on/off + config. */
-    fun setSourceDiscordEnabled(enabled: Boolean) =
-        viewModelScope.launch { repo.setSourceDiscordEnabled(enabled) }
     fun setDiscordApiToken(token: String?) =
         viewModelScope.launch { repo.setDiscordApiToken(token) }
     fun setDiscordServer(serverId: String, serverName: String) =

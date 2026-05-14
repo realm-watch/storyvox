@@ -9,6 +9,20 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.31] — 2026-05-14
+
+### Added
+- **Plugin manager Settings tab** (#404) — new Settings → Plugins screen iterating `SourcePluginRegistry.descriptors`. Three category sections: Fiction sources (16 in-tree), Audio streams (KVMR; v2 will grow this as the radio backend generalization in #417 lands), Voice bundles ("Coming in v2" placeholder until the voice bundle registry lands as a follow-up). Each plugin renders as a brass-edged card with a brass monogram icon, plugin name + description, capability chips (Search / Follow / Audio / Text), brass-edged switch, and tap-for-details modal sheet showing capabilities, plugin id, and source URL. Top of the screen has a search input (substring on displayName / description / id) and three filter chips (On / Off / All). Adding a new backend (a `@SourcePlugin`-annotated class) automatically surfaces a new card — no edit to the screen file needed.
+- **`@SourcePlugin.description` + `@SourcePlugin.sourceUrl`** (#404) — annotation gains two new fields backfilled across all 17 in-tree backends. The KSP processor emits both into the generated descriptor; the plugin manager card uses `description` for the subtitle and the details sheet uses `sourceUrl` for the "where this plugin reads from" row.
+
+### Changed
+- **Plugin seam Phase 3 — single source of truth** (#384, last phase) — the legacy `BrowseSourceKey` enum is deleted; the 17 hand-rolled `sourceXxxEnabled` boolean fields on `UiSettings` are deleted; the 17 `setSourceXxxEnabled` setters on `SettingsRepositoryUi` and `SettingsViewModel` are deleted; the `BrowseScreen` + `BrowseViewModel` exhaustive `when (BrowseSourceKey)` branches collapse into id-keyed lookups + a registry-iteration picker. The dual-write that mirrored each per-source toggle into both a JSON map and a per-id boolean key is gone — there's one shape now (`sourcePluginsEnabled: Map<String, Boolean>`). A one-shot migration on first launch of v0.5.31 reads the legacy `pref_source_*_enabled` boolean keys ONCE and seeds the JSON map; subsequent toggles go through `SettingsRepositoryUi.setSourcePluginEnabled(id, enabled)`. New `BrowseSourceUi` side-table in `:feature/browse` carries the per-source UI hints (chip strip label, supported tabs, filter sheet shape, search hint copy) keyed by `SourceIds` constant — adding a new backend is one row here next to the `@SourcePlugin` annotation backfill, not 17 touchpoints across modules. **The "~17 touchpoints per new backend" → "~4" goal from #384's opening statement now holds.**
+- **Settings → Library & Sync → Sources sub-card** simplified — the 17 inline per-backend toggle rows are gone; the sub-card now shows one "Plugins" link row (→ Settings → Plugins) plus the inline config rows for per-plugin configuration that doesn't belong in a checkbox toggle (EPUB folder picker, Outline host + API key, Wikipedia language code, Notion db + token, Discord bot token + server + coalesce window). The plugin manager handles every enable/disable + capability surface.
+
+### Tests
+- 6 Phase 3 tests: `RegistryDescriptorsAliasTest` (alias contract + description / sourceUrl fields), `BrowseSourceUiTest` (chipLabel / supportedTabs / filterShape / searchHint for all 17 ids + fallback), `NoBrowseSourceKeyRegressionTest` (greps the production tree to fail the build if `BrowseSourceKey` ever leaks back outside kdoc), `SettingsRepositorySourcePluginsTest` (round-trip for all 17 ids, legacy-key first-launch migration, no-dual-write into legacy booleans, forward-compat for unknown ids).
+- 4 plugin manager tests: `PluginManagerLogicTest` covering `filterPlugins` (On / Off / All chip × search query × composition) and `groupPluginsForManager` (category split + order preservation + empty input).
+
 ## [0.5.30] — 2026-05-14
 
 ### Added

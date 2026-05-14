@@ -773,112 +773,11 @@ data class UiSettings(
      * keeps its original scopes until then.
      */
     val githubPrivateReposEnabled: Boolean = false,
-    /**
-     * Per-source on/off toggles (#221). When false, the corresponding
-     * source is hidden from `BrowseSourcePicker` and any catalog/poll
-     * call short-circuits. Default true — every source ships enabled.
-     * Library and Follows aren't affected; the toggles only gate Browse
-     * surface area.
-     */
-    /** Per-backend defaults flipped to RSS-only on 2026-05-09 — fresh
-     *  installs land with just the RSS chip in Browse so the
-     *  "anything that publishes a feed" surface is the introduction
-     *  to storyvox. The other backends stay one toggle away in
-     *  Settings → Library & Sync. The Royal Road / GitHub / Memory
-     *  Palace defaults flipped to false here matter only for
-     *  *first-launch* state; existing users keep their persisted
-     *  prefs untouched. */
-    val sourceRoyalRoadEnabled: Boolean = false,
-    val sourceGitHubEnabled: Boolean = false,
-    val sourceMemPalaceEnabled: Boolean = false,
-    val sourceRssEnabled: Boolean = true,
-    val sourceEpubEnabled: Boolean = false,
-    /** Outline self-hosted-wiki backend (#245). Default off per the
-     *  RSS-only first-launch story; user opts in from Settings →
-     *  Library & Sync. */
-    val sourceOutlineEnabled: Boolean = false,
-    /** Project Gutenberg backend (#237). Default ON for fresh installs
-     *  — PG is the most-legally-clean source in the roster (public
-     *  domain by definition, no ToS surface), so it carries no risk
-     *  in the first-launch picker. The 70,000+ catalog also pairs
-     *  with the existing EPUB infrastructure (#235), so opting in is
-     *  free in terms of new dependencies the user has to configure. */
-    val sourceGutenbergEnabled: Boolean = true,
-    /** Archive of Our Own backend (#381). Default OFF for fresh
-     *  installs — AO3 content can be Explicit-rated and we don't
-     *  want first-launch users seeing it before opting in. Users
-     *  enable from Settings → Library & Sync. Same content
-     *  pipeline as Gutenberg (per-work EPUB downloads parsed via
-     *  `:source-epub`); discovery is via per-tag Atom feeds rather
-     *  than a unified JSON catalog. */
-    val sourceAo3Enabled: Boolean = false,
-    /** Standard Ebooks backend (#375). Default OFF for fresh installs
-     *  — opt-in surface, mirroring Outline/Epub/Gutenberg defaults
-     *  policy for the curated picker. Same legal posture as Gutenberg
-     *  (CC0 throughout), so users who want polished classics can flip
-     *  this on in Settings → Library & Sync alongside Gutenberg. */
-    val sourceStandardEbooksEnabled: Boolean = false,
-    /** Wikipedia non-fiction backend (#377). Default off for fresh
-     *  installs — the first non-fiction-shaped source is a deliberate
-     *  opt-in so users discover it from Settings rather than getting
-     *  a Browse picker pre-populated with a non-fiction surface they
-     *  didn't ask for. Per the RSS-only first-launch story carried
-     *  forward from the 2026-05-09 default flip. */
-    val sourceWikipediaEnabled: Boolean = false,
     /** Wikipedia language code (#377) — `en`, `de`, `ja`, `simple`, etc.
      *  Selects which Wikipedia host the source talks to:
      *  `<lang>.wikipedia.org`. Default `en`. Empty falls back to the
      *  default so a malformed prefs value doesn't brick the source. */
     val wikipediaLanguageCode: String = "en",
-    /** Wikisource backend (#376). Default off for fresh installs —
-     *  opt-in alongside the other text backends. Wikisource is the
-     *  Wikimedia project for transcribed public-domain texts; same
-     *  legal posture as Project Gutenberg / Standard Ebooks (CC0 /
-     *  public-domain throughout) but with a transcription pipeline
-     *  that's been proofread by Wikimedia volunteers. v1 is en-only
-     *  (`en.wikisource.org`); a per-language picker is a follow-up
-     *  that mirrors Wikipedia's `wikipediaLanguageCode`. */
-    val sourceWikisourceEnabled: Boolean = false,
-    /** KVMR community radio backend (#374, closes #373 first piece).
-     *  Default ON — KVMR is JP's local station, the inaugural audio-
-     *  stream backend, and there's nothing controversial about
-     *  community-radio content surfacing in the picker. Audio sources
-     *  carry a distinct legal posture from text backends (publicly
-     *  documented stream URL, explicit third-party listening
-     *  intent); enabling by default makes the new pipeline
-     *  discoverable without forcing every fresh-install user to opt in
-     *  from Settings before they see what the audio pipeline does. */
-    val sourceKvmrEnabled: Boolean = true,
-    /** Notion fiction backend (#233). Default ON for fresh installs
-     *  per #390 — the bundled database id points at the techempower.org
-     *  content database, so a fresh install on a colleague's phone
-     *  surfaces TechEmpower content immediately as narratable audio
-     *  (after they paste an integration token). The pipeline is gated
-     *  by token presence at runtime; defaulting the toggle ON makes
-     *  the source visible in Browse so the empty-state can teach the
-     *  user about the one-paste configuration step. */
-    val sourceNotionEnabled: Boolean = true,
-    /** Hacker News backend (#379). Default OFF — tech-news / discussion
-     *  is a distinct interest from fiction backends, so the picker
-     *  shouldn't surface it on every fresh install. Users opt in from
-     *  Settings → Library & Sync. */
-    val sourceHackerNewsEnabled: Boolean = false,
-    /** arXiv non-fiction backend (#378). Default OFF for fresh
-     *  installs — second non-fiction-shaped source after Wikipedia,
-     *  same opt-in posture. Users discover it from Settings →
-     *  Library & Sync rather than getting a Browse picker pre-
-     *  populated with academic-paper content they didn't ask for. */
-    val sourceArxivEnabled: Boolean = false,
-    /** PLOS open-access peer-reviewed science backend (#380). Default
-     *  OFF on fresh installs — academic content is an opt-in surface;
-     *  not what a fresh-install user expects in the picker until they
-     *  go looking for it. Same opt-in posture as Wikipedia. */
-    val sourcePlosEnabled: Boolean = false,
-    /** Discord backend (#403). Default OFF on fresh installs — bot-token
-     *  onboarding is high-friction and Discord is a private workspace,
-     *  not a public catalog. Users flip this on after creating a Discord
-     *  application + inviting their bot to the target server. */
-    val sourceDiscordEnabled: Boolean = false,
     /** True when a Discord bot token has been stored. The token itself
      *  is never surfaced to the UI — only this boolean. */
     val discordTokenConfigured: Boolean = false,
@@ -896,21 +795,20 @@ data class UiSettings(
      *  into one chapter. Default 5 min; slider range 1-30. */
     val discordCoalesceMinutes: Int = 5,
     /**
-     * Plugin-seam Phase 1 (#384) — per-plugin on/off keyed by stable
-     * plugin id ("kvmr", "royalroad", "notion", ...). Replaces the
-     * hand-rolled `sourceXxxEnabled` flags above as backends migrate
-     * to the `@SourcePlugin` annotation. Phase 1 ships with only
-     * `:source-kvmr` migrated, so this map currently mirrors
-     * [sourceKvmrEnabled] for the `kvmr` key; other ids are populated
-     * by the one-time migration shim in the settings impl that reads
-     * the legacy per-source preferences on first launch and writes
-     * them into the JSON map.
+     * Plugin-seam Phase 3 (#384) — per-plugin on/off keyed by stable
+     * plugin id ("kvmr", "royalroad", "notion", ...). Single source of
+     * truth as of v0.5.31: the deleted Phase 1/2 hand-rolled
+     * `sourceXxxEnabled` fields have all collapsed into this map.
      *
-     * Consumers in Phase 1 should keep reading the per-backend
-     * `sourceXxxEnabled` fields; this map is for Phase 2 callers that
-     * iterate the registry. The two views stay in sync via the
-     * settings impl's setters (each per-backend setter also updates
-     * the map and vice-versa).
+     * Reads: a fresh install (no migration run yet) sees an empty map;
+     * the settings impl's [SourcePluginsMapMigration] seeds the map
+     * from the legacy `pref_source_xxx_enabled` boolean keys on first
+     * launch. Subsequent toggles route through
+     * `SettingsRepositoryUi.setSourcePluginEnabled(id, enabled)`.
+     *
+     * Missing ids fall through to the plugin's `defaultEnabled` in the
+     * `BrowseViewModel` projection — so a fresh install before the
+     * migration completes still surfaces the right default-on chips.
      */
     val sourcePluginsEnabled: Map<String, Boolean> = emptyMap(),
     /** Notion database id (#233 + #390). Defaults to the baked-in
@@ -1423,62 +1321,31 @@ interface SettingsRepositoryUi {
      */
     suspend fun setGitHubPrivateReposEnabled(enabled: Boolean)
 
-    /** Per-source on/off toggles (#221). */
-    suspend fun setSourceRoyalRoadEnabled(enabled: Boolean)
-    suspend fun setSourceGitHubEnabled(enabled: Boolean)
-    suspend fun setSourceMemPalaceEnabled(enabled: Boolean)
+    /**
+     * Plugin-seam Phase 3 (#384) — toggle a `@SourcePlugin`-registered
+     * backend by its stable id. Updates the JSON-serialised
+     * `sourcePluginsEnabled` map; the BrowseViewModel projection reads
+     * the map back. Unknown ids (no plugin registered) write to the map
+     * regardless, so an out-of-tree backend that pre-populates its
+     * toggle state before its annotation lands still round-trips.
+     *
+     * As of v0.5.31 this is the single setter for per-source on/off;
+     * the Phase 1/2 hand-rolled `setSourceXxxEnabled` methods have all
+     * collapsed into this one entry point.
+     */
+    suspend fun setSourcePluginEnabled(id: String, enabled: Boolean)
 
-    /** Issue #236 — RSS / Atom backend on/off. */
-    suspend fun setSourceRssEnabled(enabled: Boolean)
-
-    /** Issue #245 — Outline self-hosted-wiki backend on/off + config. */
-    suspend fun setSourceOutlineEnabled(enabled: Boolean)
+    /** Issue #245 — Outline self-hosted-wiki backend config. */
     val outlineHost: Flow<String>
     suspend fun setOutlineHost(host: String)
     suspend fun setOutlineApiKey(apiKey: String)
     suspend fun clearOutlineConfig()
 
-    /** Issue #237 — Project Gutenberg backend on/off. */
-    suspend fun setSourceGutenbergEnabled(enabled: Boolean)
-
-    /** Issue #381 — Archive of Our Own backend on/off. */
-    suspend fun setSourceAo3Enabled(enabled: Boolean)
-    /** Issue #375 — Standard Ebooks backend on/off. */
-    suspend fun setSourceStandardEbooksEnabled(enabled: Boolean)
-    /** Issue #377 — Wikipedia backend on/off + per-language host. */
-    suspend fun setSourceWikipediaEnabled(enabled: Boolean)
     /** Issue #377 — set the Wikipedia language code (`en`, `de`,
      *  `ja`, `simple`, ...). Trimmed + lowercased before persistence;
      *  empty falls back to the default. */
     suspend fun setWikipediaLanguageCode(code: String)
-    /** Issue #376 — Wikisource (transcribed public-domain texts)
-     *  backend on/off. */
-    suspend fun setSourceWikisourceEnabled(enabled: Boolean)
-    /** Issue #374 — KVMR community radio backend on/off. */
-    suspend fun setSourceKvmrEnabled(enabled: Boolean)
 
-    /**
-     * Plugin-seam Phase 1 (#384) — toggle a `@SourcePlugin`-registered
-     * backend by its stable id. Updates the JSON-serialised
-     * `sourcePluginsEnabled` map AND, for ids that still have a
-     * matching legacy `setSourceXxxEnabled` setter, the corresponding
-     * legacy preference so the existing UI keeps observing the change.
-     *
-     * Unknown ids (no plugin registered) write to the map regardless,
-     * letting Phase 2 backends pre-populate their toggle state before
-     * their `@SourcePlugin` annotation lands.
-     */
-    suspend fun setSourcePluginEnabled(id: String, enabled: Boolean)
-
-    /** Issue #233 — Notion fiction backend on/off + config. */
-    suspend fun setSourceNotionEnabled(enabled: Boolean)
-    /** Issue #379 — Hacker News backend on/off. */
-    suspend fun setSourceHackerNewsEnabled(enabled: Boolean)
-    /** Issue #378 — arXiv backend on/off. */
-    suspend fun setSourceArxivEnabled(enabled: Boolean)
-    /** Issue #380 — PLOS open-access peer-reviewed science backend
-     *  on/off. */
-    suspend fun setSourcePlosEnabled(enabled: Boolean)
     /** Issue #233 — set the Notion database id the source queries.
      *  Both hyphenated UUID and compact 32-hex forms accepted; the
      *  impl normalizes whitespace. Empty falls back to the baked-in
@@ -1489,9 +1356,6 @@ interface SettingsRepositoryUi {
      *  Outline / palace tokens in `storyvox.secrets`. */
     suspend fun setNotionApiToken(token: String?)
 
-    /** Issue #403 — Discord backend on/off. Default OFF on fresh
-     *  installs — bot-token onboarding is high-friction. */
-    suspend fun setSourceDiscordEnabled(enabled: Boolean)
     /** Issue #403 — persist or clear the Discord bot token. Pass
      *  null or empty to clear. Stored encrypted under
      *  `pref_source_discord_token` in `storyvox.secrets`. */
@@ -1518,9 +1382,6 @@ interface SettingsRepositoryUi {
     suspend fun removeRssFeed(fictionId: String)
     suspend fun removeRssFeedByUrl(url: String)
     val rssSubscriptions: Flow<List<String>>
-
-    /** Issue #235 — local EPUB backend on/off. */
-    suspend fun setSourceEpubEnabled(enabled: Boolean)
 
     /** Issue #235 — currently-picked SAF folder URI (or null). */
     val epubFolderUri: Flow<String?>

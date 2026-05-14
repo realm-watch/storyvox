@@ -50,6 +50,14 @@ package `in`.jphe.storyvox.data.source.plugin
  * @property supportsSearch True when the plugin implements a
  *  meaningful `search()` surface. Browse hides the Search tab when
  *  false.
+ * @property description One-line plain-text subtitle surfaced in the
+ *  plugin manager card (#404). Roughly "<surface> · <auth posture>"
+ *  — e.g. "Web fiction · Atom feeds + EPUB downloads". Empty string
+ *  hides the subtitle and renders the card more compactly.
+ * @property sourceUrl Canonical "where this plugin reads from" URL
+ *  surfaced in the plugin manager details sheet (#404). Used so a
+ *  user can verify what storyvox is actually talking to. Empty
+ *  string hides the row.
  */
 @Retention(AnnotationRetention.BINARY)
 @Target(AnnotationTarget.CLASS)
@@ -60,6 +68,8 @@ annotation class SourcePlugin(
     val category: SourceCategory = SourceCategory.Text,
     val supportsFollow: Boolean = false,
     val supportsSearch: Boolean = false,
+    val description: String = "",
+    val sourceUrl: String = "",
 )
 
 /**

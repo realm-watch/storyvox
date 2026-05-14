@@ -69,6 +69,8 @@ import javax.inject.Singleton
     category = SourceCategory.Text,
     supportsFollow = false,
     supportsSearch = true,
+    description = "Open-access peer-reviewed science · abstract + first sections as single-chapter fictions · Solr search",
+    sourceUrl = "https://plos.org",
 )
 @Singleton
 internal class PlosSource @Inject constructor(

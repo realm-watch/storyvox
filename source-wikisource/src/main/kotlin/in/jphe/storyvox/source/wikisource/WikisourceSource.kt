@@ -67,6 +67,8 @@ import javax.inject.Singleton
     category = SourceCategory.Text,
     supportsFollow = false,
     supportsSearch = true,
+    description = "Transcribed public-domain texts · multi-part works become per-chapter playlists",
+    sourceUrl = "https://en.wikisource.org",
 )
 @Singleton
 internal class WikisourceSource @Inject constructor(

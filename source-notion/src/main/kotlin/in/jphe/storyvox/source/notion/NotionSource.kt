@@ -63,6 +63,8 @@ import javax.inject.Singleton
     category = SourceCategory.Text,
     supportsFollow = false,
     supportsSearch = true,
+    description = "Notion databases or public pages as fictions · anonymous reader by default · PAT for private workspaces",
+    sourceUrl = "https://www.notion.so",
 )
 @Singleton
 internal class NotionSource @Inject constructor(

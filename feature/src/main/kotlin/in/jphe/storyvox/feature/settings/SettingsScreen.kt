@@ -108,6 +108,11 @@ fun SettingsScreen(
      *  default no-op is preview/test-only; production callsites wire
      *  this through `navController.navigate(SETTINGS_DEBUG)`. */
     onOpenDebug: () -> Unit = {},
+    /** Phase 3 (#404) — opens Settings → Plugins. The plugin manager
+     *  surfaces every `@SourcePlugin`-registered backend as a
+     *  brass-edged card with toggle + capability chips + details
+     *  sheet. Default no-op is preview/test-only. */
+    onOpenPluginManager: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -456,199 +461,50 @@ fun SettingsScreen(
         )
 
         // ── Sources sub-card ──────────────────────────────────────
+        // Plugin-seam Phase 3 (#384) + Plugin manager (#404) — the
+        // inline per-backend toggle list (17 hard-coded rows) is gone;
+        // the manager screen iterates `SourcePluginRegistry.descriptors`
+        // and renders each plugin as a brass-edged card with toggle,
+        // capability chips, and tap-for-details. Adding a new backend
+        // (the `@SourcePlugin` annotation diff) automatically surfaces
+        // a new row in the manager — no edit to this file required.
         SettingsGroupCard {
-            // Per-backend Browse-picker visibility (#221). The picker
-            // chip strip filters out disabled backends; if the user
-            // turns them all off, Browse shows the empty-picker state
-            // and Library is still readable. Enabled-by-default so a
-            // fresh install matches pre-#221 behavior.
-            SettingsSwitchRow(
-                title = "Royal Road",
-                subtitle = "Web fiction. Sign in for premium chapters and Follows.",
-                checked = s.sourceRoyalRoadEnabled,
-                onCheckedChange = viewModel::setSourceRoyalRoadEnabled,
+            SettingsLinkRow(
+                title = "Plugins",
+                subtitle = "Fiction sources, audio streams, and voice bundles.",
+                onClick = onOpenPluginManager,
             )
-            SettingsSwitchRow(
-                title = "GitHub",
-                subtitle = "Repository READMEs as fictions. Anon 60 req/hr; sign in for 5,000.",
-                checked = s.sourceGitHubEnabled,
-                onCheckedChange = viewModel::setSourceGitHubEnabled,
+            // Inline config rows that hang off specific plugins —
+            // EPUB folder picker, Outline host/token, Wikipedia
+            // language code, Notion db+token, Discord bot+server.
+            // These stay accessible from the same section so the user
+            // doesn't have to bounce through the plugin manager for
+            // routine adjustments; the manager's per-plugin detail
+            // sheet links here too.
+            EpubFolderPickerRow(viewModel = viewModel)
+            OutlineConfigRow(viewModel = viewModel)
+            WikipediaLanguageRow(
+                languageCode = s.wikipediaLanguageCode,
+                onLanguageCodeChange = viewModel::setWikipediaLanguageCode,
             )
-            SettingsSwitchRow(
-                title = "Memory Palace",
-                subtitle = "Browse your local mempalace as fictions (LAN only).",
-                checked = s.sourceMemPalaceEnabled,
-                onCheckedChange = viewModel::setSourceMemPalaceEnabled,
+            NotionConfigRow(
+                databaseId = s.notionDatabaseId,
+                tokenConfigured = s.notionTokenConfigured,
+                onDatabaseIdChange = viewModel::setNotionDatabaseId,
+                onApiTokenChange = viewModel::setNotionApiToken,
             )
-            SettingsSwitchRow(
-                title = "RSS / Atom feeds",
-                subtitle = "Subscribe to feeds and read new entries as chapters. Manage your subscriptions in Browse → RSS.",
-                checked = s.sourceRssEnabled,
-                onCheckedChange = viewModel::setSourceRssEnabled,
+            val discordGuilds by viewModel.discordGuilds.collectAsStateWithLifecycle()
+            DiscordConfigRow(
+                tokenConfigured = s.discordTokenConfigured,
+                serverId = s.discordServerId,
+                serverName = s.discordServerName,
+                coalesceMinutes = s.discordCoalesceMinutes,
+                guilds = discordGuilds,
+                onApiTokenChange = viewModel::setDiscordApiToken,
+                onServerSelected = viewModel::setDiscordServer,
+                onCoalesceMinutesChange = viewModel::setDiscordCoalesceMinutes,
+                onRefreshGuilds = viewModel::refreshDiscordGuilds,
             )
-            // Issue #247 — feed add/remove/suggested moved to a FAB-
-            // launched sheet on Browse → RSS. Only the source on/off
-            // toggle stays here; that's a "source enable" call, not
-            // "feed management".
-            SettingsSwitchRow(
-                title = "Local EPUB files",
-                subtitle = "Read .epub files from a folder you pick.",
-                checked = s.sourceEpubEnabled,
-                onCheckedChange = viewModel::setSourceEpubEnabled,
-            )
-            if (s.sourceEpubEnabled) {
-                EpubFolderPickerRow(viewModel = viewModel)
-            }
-            SettingsSwitchRow(
-                title = "Outline (self-hosted wiki)",
-                subtitle = "Read your Outline collections and documents.",
-                checked = s.sourceOutlineEnabled,
-                onCheckedChange = viewModel::setSourceOutlineEnabled,
-            )
-            if (s.sourceOutlineEnabled) {
-                OutlineConfigRow(viewModel = viewModel)
-            }
-            SettingsSwitchRow(
-                title = "Project Gutenberg",
-                subtitle = "70,000+ public-domain books. Tap one to import its EPUB.",
-                checked = s.sourceGutenbergEnabled,
-                onCheckedChange = viewModel::setSourceGutenbergEnabled,
-            )
-            // #381 — AO3 defaults OFF. Subtitle flags the
-            // Explicit-content possibility so the toggle is an
-            // informed opt-in, not a surprise.
-            SettingsSwitchRow(
-                title = "Archive of Our Own",
-                subtitle = "Fanfiction via per-tag feeds and official EPUB downloads. May include Explicit-rated works.",
-                checked = s.sourceAo3Enabled,
-                onCheckedChange = viewModel::setSourceAo3Enabled,
-            )
-            SettingsSwitchRow(
-                title = "Standard Ebooks",
-                subtitle = "Curated, typographically polished public-domain classics. Tap one to import its EPUB.",
-                checked = s.sourceStandardEbooksEnabled,
-                onCheckedChange = viewModel::setSourceStandardEbooksEnabled,
-            )
-            // Issue #377 — Wikipedia: first non-fiction long-form
-            // backend. Each article = one fiction, each top-level
-            // section = one chapter. Language-code field shows only
-            // when the toggle is on, same pattern as Outline / EPUB.
-            SettingsSwitchRow(
-                title = "Wikipedia",
-                subtitle = "Narrate any Wikipedia article. Sections become chapters.",
-                checked = s.sourceWikipediaEnabled,
-                onCheckedChange = viewModel::setSourceWikipediaEnabled,
-            )
-            if (s.sourceWikipediaEnabled) {
-                WikipediaLanguageRow(
-                    languageCode = s.wikipediaLanguageCode,
-                    onLanguageCodeChange = viewModel::setWikipediaLanguageCode,
-                )
-            }
-            // Issue #376 — Wikisource: transcribed public-domain texts
-            // (Shakespeare, classic novels, historical documents). Same
-            // CC0/PD legal posture as Project Gutenberg / Standard
-            // Ebooks. Default OFF on fresh installs — opt-in surface.
-            SettingsSwitchRow(
-                title = "Wikisource",
-                subtitle = "Transcribed public-domain texts. Multi-part works become per-chapter playlists.",
-                checked = s.sourceWikisourceEnabled,
-                onCheckedChange = viewModel::setSourceWikisourceEnabled,
-            )
-            // Issue #374 (closes #373 first piece) — KVMR community
-            // radio: first entry in the new audio-stream backend
-            // category. Plays the live AAC stream through Media3
-            // instead of the TTS pipeline. Defaults ON — JP's local
-            // station, low-controversy content, surfaces the new
-            // pipeline so fresh-install users see what an audio
-            // backend looks like next to the text backends.
-            SettingsSwitchRow(
-                title = "KVMR Community Radio",
-                subtitle = "Live stream from Nevada City. First audio-stream backend — pitch slider hides on live audio.",
-                checked = s.sourceKvmrEnabled,
-                onCheckedChange = viewModel::setSourceKvmrEnabled,
-            )
-            // Issue #233 — Notion fiction backend. Default ON per #390
-            // with the techempower.org database baked in as the
-            // default. Until the user pastes an Internal Integration
-            // Token, the source returns AuthRequired on every call;
-            // the inline config row below collects the token + lets
-            // the user override the database id if they want to point
-            // at their own Notion DB.
-            SettingsSwitchRow(
-                title = "Notion",
-                // Issue #393 — anonymous-mode is the default for token-less
-                // installs; the subtitle reflects what the user actually
-                // gets out of the box (TechEmpower content) rather than
-                // the PAT-only past behavior.
-                subtitle = if (s.notionMode == "ANONYMOUS_PUBLIC")
-                    "Reads TechEmpower.org as one fiction with chapters for Guides, Resources, About, and Donate. No setup. Paste a token below to read your own private database instead."
-                else
-                    "Read a Notion database as fiction. Heading-1 boundaries split chapters.",
-                checked = s.sourceNotionEnabled,
-                onCheckedChange = viewModel::setSourceNotionEnabled,
-            )
-            if (s.sourceNotionEnabled) {
-                NotionConfigRow(
-                    databaseId = s.notionDatabaseId,
-                    tokenConfigured = s.notionTokenConfigured,
-                    onDatabaseIdChange = viewModel::setNotionDatabaseId,
-                    onApiTokenChange = viewModel::setNotionApiToken,
-                )
-            }
-            // Issue #379 — Hacker News fiction backend. Default OFF;
-            // tech-news / discussion isn't fiction in the picker's
-            // strict sense, so users opt in here rather than getting
-            // HN surfaced in the Browse chip strip on first launch.
-            SettingsSwitchRow(
-                title = "Hacker News",
-                subtitle = "Top stories, Ask HN, and Show HN as single-chapter fictions. Link stories include the top comments.",
-                checked = s.sourceHackerNewsEnabled,
-                onCheckedChange = viewModel::setSourceHackerNewsEnabled,
-            )
-            // Issue #378 — arXiv (open-access academic papers). Opt-in,
-            // same posture as Wikipedia.
-            SettingsSwitchRow(
-                title = "arXiv",
-                subtitle = "Open-access academic papers. Each paper is a single-chapter fiction; v1 renders the abstract + author byline.",
-                checked = s.sourceArxivEnabled,
-                onCheckedChange = viewModel::setSourceArxivEnabled,
-            )
-            // Issue #380 — PLOS (open-access peer-reviewed science).
-            // Opt-in surface; academic content is not what a fresh
-            // install expects in the picker by default.
-            SettingsSwitchRow(
-                title = "PLOS",
-                subtitle = "Open-access peer-reviewed science. Each article (one DOI) is a single-chapter fiction; v1 renders the abstract + first sections.",
-                checked = s.sourcePlosEnabled,
-                onCheckedChange = viewModel::setSourcePlosEnabled,
-            )
-            // Issue #403 — Discord backend. Default OFF; opt-in
-            // surface (bot-token onboarding is high-friction and
-            // Discord is a private workspace). The inline config row
-            // collects the bot token, picks a server from the
-            // populated guild list, and lets the user tune the
-            // same-author message coalesce window.
-            SettingsSwitchRow(
-                title = "Discord",
-                subtitle = "Bot-token-authed channel reader. Server = filter, channel = fiction, message = chapter (with optional same-author coalescing).",
-                checked = s.sourceDiscordEnabled,
-                onCheckedChange = viewModel::setSourceDiscordEnabled,
-            )
-            if (s.sourceDiscordEnabled) {
-                val discordGuilds by viewModel.discordGuilds.collectAsStateWithLifecycle()
-                DiscordConfigRow(
-                    tokenConfigured = s.discordTokenConfigured,
-                    serverId = s.discordServerId,
-                    serverName = s.discordServerName,
-                    coalesceMinutes = s.discordCoalesceMinutes,
-                    guilds = discordGuilds,
-                    onApiTokenChange = viewModel::setDiscordApiToken,
-                    onServerSelected = viewModel::setDiscordServer,
-                    onCoalesceMinutesChange = viewModel::setDiscordCoalesceMinutes,
-                    onRefreshGuilds = viewModel::refreshDiscordGuilds,
-                )
-            }
         }
 
         // ── Inbox notifications sub-card (#383) ────────────────────

@@ -63,6 +63,10 @@ object StoryvoxRoutes {
      *  Azure live diagnostics + 20-event ring + clipboard export for bug
      *  reports. */
     const val SETTINGS_DEBUG = "settings/debug"
+    /** Phase 3 / Plugin manager (#404) — Settings → Plugins. Registry-
+     *  driven plugin manager: brass-edged card grid with toggle +
+     *  capability chips + tap-for-details. */
+    const val SETTINGS_PLUGINS = "settings/plugins"
     const val AUTH_WEBVIEW = "auth/webview"
     /** Issue #91 — GitHub Device Flow sign-in modal. */
     const val GITHUB_SIGN_IN = "auth/github/signin"
@@ -510,6 +514,18 @@ private fun StoryvoxNavHostContent(
                     onOpenPronunciationDict = { navController.navigate(StoryvoxRoutes.SETTINGS_PRONUNCIATION) },
                     onOpenAiSessions = { navController.navigate(StoryvoxRoutes.SETTINGS_AI_SESSIONS) },
                     onOpenDebug = { navController.navigate(StoryvoxRoutes.SETTINGS_DEBUG) },
+                    onOpenPluginManager = { navController.navigate(StoryvoxRoutes.SETTINGS_PLUGINS) },
+                )
+            }
+            composable(
+                StoryvoxRoutes.SETTINGS_PLUGINS,
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+            ) {
+                `in`.jphe.storyvox.feature.settings.plugins.PluginManagerScreen(
+                    onNavigateBack = { navController.popBackStack() },
                 )
             }
             composable(

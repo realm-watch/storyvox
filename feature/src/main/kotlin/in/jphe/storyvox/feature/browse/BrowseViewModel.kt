@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import `in`.jphe.storyvox.data.source.SourceIds
+import `in`.jphe.storyvox.data.source.plugin.SourcePluginDescriptor
+import `in`.jphe.storyvox.data.source.plugin.SourcePluginRegistry
 import `in`.jphe.storyvox.feature.api.BrowseFilter
 import `in`.jphe.storyvox.feature.api.BrowsePaginator
 import `in`.jphe.storyvox.feature.api.BrowseRepositoryUi
@@ -28,337 +30,45 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 enum class BrowseTab { Popular, NewReleases, BestRated, Search, MyRepos, Starred, Gists }
 
-/**
- * Top-level source picker on the Browse screen. Chooses which
- * `FictionSource` the tabs route to. Royal Road is the default; the
- * GitHub option surfaces the curated registry from PR #58 via the
- * existing Popular/NewReleases tabs (BestRated + Search are hidden
- * on GitHub until step 8b adds /search/repositories integration).
- */
-enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
-    RoyalRoad(SourceIds.ROYAL_ROAD, "Royal Road"),
-    GitHub(SourceIds.GITHUB, "GitHub"),
-    /** MemPalace — JP's local memory system as a read-only fiction source.
-     *  Only meaningful when on JP's home LAN; off-network the source returns
-     *  NetworkError on every call and Browse → Palace shows the empty state. */
-    // "Palace" instead of "Memory Palace" so the segmented source picker
-    // doesn't break the chip label across two lines on narrow phones (#148).
-    MemPalace(SourceIds.MEMPALACE, "Palace"),
-    /** RSS / Atom feeds (#236) — user's own subscription list, no global
-     *  catalog. Each subscribed feed URL becomes one fiction; each item
-     *  is one chapter. Pure user-content backend. */
-    Rss(SourceIds.RSS, "RSS"),
-    /** Local EPUB files (#235) — user picks a folder via SAF, indexed
-     *  EPUBs render as fictions, spine items as chapters. Zero-network. */
-    Epub(SourceIds.EPUB, "Local"),
-    /** Outline (#245) — self-hosted wiki. Collections = fictions,
-     *  documents = chapters. Pure user-content backend. */
-    Outline(SourceIds.OUTLINE, "Wiki"),
-    /** Project Gutenberg (#237) — 70,000+ public-domain titles via
-     *  the Gutendex JSON catalog. Tap-to-add downloads each book's
-     *  EPUB once and renders it through the `:source-epub` parser.
-     *  Most-legally-clean source in the roster. */
-    Gutenberg(SourceIds.GUTENBERG, "Gutenberg"),
-    /** Archive of Our Own (#381) — 14M+ fanfiction works via AO3's
-     *  per-tag Atom feeds (catalog) + per-work EPUB downloads
-     *  (content). Same content pipeline as Gutenberg; discovery is
-     *  fundamentally per-tag rather than per-catalog, so the
-     *  genre picker drives a curated fandom list. */
-    Ao3(SourceIds.AO3, "AO3"),
-    /** Standard Ebooks (#375) — ~900 hand-curated, typographically
-     *  polished public-domain classics. Browse hits the public HTML
-     *  catalog at `/ebooks?view=list`; tap-to-add downloads the
-     *  recommended-compatible EPUB once and renders chapters through
-     *  the `:source-epub` parser. Same CC0 legal posture as Gutenberg. */
-    StandardEbooks(SourceIds.STANDARD_EBOOKS, "Standard Ebooks"),
-    /** Wikipedia (#377) — first non-fiction long-form backend. Each
-     *  article is one fiction; each top-level section is one chapter
-     *  (chapter 0 = "Introduction"). Sourced from `<lang>.wikipedia.org`
-     *  with the language code configurable in Settings. */
-    Wikipedia(SourceIds.WIKIPEDIA, "Wikipedia"),
-    /** Wikisource (#376) — Wikimedia transcribed-public-domain-texts
-     *  project (Shakespeare, classic novels, historical documents).
-     *  Multi-part works are walked as `/Subpage` chapters; single-page
-     *  works fall back to the Wikipedia-style heading split. Same
-     *  CC0/PD legal posture as Project Gutenberg / Standard Ebooks. */
-    Wikisource(SourceIds.WIKISOURCE, "Wikisource"),
-    /** KVMR (#374, closes #373 first piece) — Nevada City community
-     *  radio. First entry in the audio-stream backend category: the
-     *  one chapter ("Live") carries an audioUrl that the playback
-     *  engine hands to Media3 / ExoPlayer instead of the TTS pipeline.
-     *  Single-fiction backend (no catalog to browse); Popular surfaces
-     *  the station, NewReleases / Search aren't meaningful. */
-    Kvmr(SourceIds.KVMR, "KVMR"),
-    /** Notion (#233) — Notion databases as a fiction backend. Each
-     *  database row is one fiction; each page's top-level `heading_1`
-     *  boundary splits the body into chapters. Requires a Notion
-     *  Internal Integration Token (PAT). #390 bakes the techempower.org
-     *  content database id as the default — once the user pastes a token
-     *  in Settings, Browse → Notion surfaces TechEmpower content. */
-    Notion(SourceIds.NOTION, "Notion"),
-    /** Hacker News (#379) — front-page tech-news threads as
-     *  single-chapter fictions. Popular surfaces the first 50 of HN's
-     *  top-stories list; Search hits the Algolia HN Search API.
-     *  Default OFF on fresh installs; opt-in from Settings → Library
-     *  & Sync. */
-    HackerNews(SourceIds.HACKERNEWS, "Hacker News"),
-    /** arXiv (#378) — open-access academic papers. Each paper is one
-     *  fiction; v1 chapter is the abstract + title + author byline
-     *  rendered from the `arxiv.org/abs/<id>` HTML page. Default
-     *  category for the browse landing is `cs.AI`; full-PDF body
-     *  extraction is a follow-up. Default OFF on fresh installs. */
-    Arxiv(SourceIds.ARXIV, "arXiv"),
-    /** PLOS (#380) — open-access peer-reviewed science. Each article
-     *  (one DOI) is one fiction; v1 renders abstract + first ~3 body
-     *  sections as a single chapter. Solr-backed search; HTML body
-     *  extraction same approach as Wikipedia. Default OFF — academic
-     *  content is opt-in. */
-    Plos(SourceIds.PLOS, "PLOS"),
-    /** Discord (#403) — first chat-platform backend. Mapping: server
-     *  → top-level filter, channel → fiction, message → chapter
-     *  (with optional same-author coalescing). Bot-token PAT auth;
-     *  user creates a Discord application, generates a bot token,
-     *  invites their bot to the target server with
-     *  `READ_MESSAGE_HISTORY` scope, and pastes the token in
-     *  Settings. Default OFF on fresh installs — bot-token
-     *  onboarding is high-friction. */
-    Discord(SourceIds.DISCORD, "Discord"),
-}
-
-/** Tabs that are meaningful for [source]. GitHub registry doesn't
- *  yet support BestRated (no rating-ordered fetch — registry stores
- *  curator rating but doesn't yet sort by it), so it's hidden on
- *  GitHub. Search is wired as of step 8b — flips
- *  `GitHubSource.search()` to `/search/repositories?q=topic:fiction
- *  +{userQuery}`.
- *
- *  [githubSignedIn] gates the auth-only tabs on the GitHub source —
- *  `MyRepos` (#200), `Starred` (#201), and `Gists` (#202) — visible
- *  only when the user has captured an OAuth session via the Device
- *  Flow. Defaulting false
- *  keeps existing call sites (tests, screens that don't observe
- *  settings yet) on the anonymous tab list. */
-fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseTab> = when (this) {
-    BrowseSourceKey.RoyalRoad -> listOf(
-        BrowseTab.Popular,
-        BrowseTab.NewReleases,
-        BrowseTab.BestRated,
-        BrowseTab.Search,
-    )
-    BrowseSourceKey.GitHub -> buildList {
-        add(BrowseTab.Popular)
-        add(BrowseTab.NewReleases)
-        if (githubSignedIn) {
-            add(BrowseTab.MyRepos)
-            add(BrowseTab.Starred)
-            add(BrowseTab.Gists)
-        }
-        add(BrowseTab.Search)
-    }
-    // Spec: docs/superpowers/specs/2026-05-08-mempalace-integration-design.md.
-    // - Popular = Wings tab (top-N rooms by drawer count).
-    // - NewReleases = Recent tab (rooms ordered by latest drawer).
-    // - BestRated has no analogue (palace doesn't rank).
-    // - Search hidden in v1; surfaces in P1 once cross-room ranking lands.
-    BrowseSourceKey.MemPalace -> listOf(
-        BrowseTab.Popular,
-        BrowseTab.NewReleases,
-    )
-    // RSS subscriptions form a flat user-curated list. NewReleases sorts
-    // by most-recent-item-first; Popular shows the same set in subscription
-    // order. Search filters by feed title. BestRated has no analogue.
-    BrowseSourceKey.Rss -> listOf(
-        BrowseTab.NewReleases,
-        BrowseTab.Popular,
-        BrowseTab.Search,
-    )
-    // Local EPUB files: indexed list + search by filename. NewReleases
-    // and Popular both list the indexed books in the same order
-    // (alphabetical by filename) since EPUBs are static.
-    BrowseSourceKey.Epub -> listOf(
-        BrowseTab.Popular,
-        BrowseTab.Search,
-    )
-    BrowseSourceKey.Outline -> listOf(
-        BrowseTab.Popular,
-        BrowseTab.Search,
-    )
-    // Gutenberg (#237): Popular sorts by Gutendex download_count;
-    // NewReleases sorts by highest book-id (PG ingests roughly
-    // chronologically). BestRated has no analogue. Search hits
-    // Gutendex's title+author full-text matcher.
-    BrowseSourceKey.Gutenberg -> listOf(
-        BrowseTab.Popular,
-        BrowseTab.NewReleases,
-        BrowseTab.Search,
-    )
-    // AO3 (#381): Popular and NewReleases both surface the
-    // per-tag Atom feed (sorted by recency — AO3 doesn't expose a
-    // separate popularity signal without HTML scraping, which v1
-    // explicitly opts out of). Search is hidden in v1 because the
-    // AO3 search endpoint returns HTML only; reinstating it is the
-    // follow-up. The fandom row (BrowseFilter genres) routes
-    // through byGenre() to a specific tag's feed.
-    BrowseSourceKey.Ao3 -> listOf(
-        BrowseTab.Popular,
-        BrowseTab.NewReleases,
-    )
-    // Standard Ebooks (#375): Popular sorts by SE's "popularity"
-    // (most → least); NewReleases sorts by SE's "default" (release
-    // date desc — i.e. newest produced first). Search hits the same
-    // listing endpoint with `?query=`. BestRated has no analogue
-    // (SE doesn't rank by reading-quality). Same tab shape as
-    // Gutenberg — both are catalog-plus-EPUB-download backends.
-    BrowseSourceKey.StandardEbooks -> listOf(
-        BrowseTab.Popular,
-        BrowseTab.NewReleases,
-        BrowseTab.Search,
-    )
-    // Wikipedia (#377): Popular = Today's Featured Article + the
-    // mostread cluster from yesterday's feed (a curated landing,
-    // not paginated). Search hits MediaWiki's opensearch endpoint.
-    // BestRated has no analogue; NewReleases overlaps the featured
-    // listing since Wikipedia doesn't expose a stable "new
-    // articles" feed worth surfacing.
-    BrowseSourceKey.Wikipedia -> listOf(
-        BrowseTab.Popular,
-        BrowseTab.Search,
-    )
-    // Wikisource (#376): Popular = Category:Validated_texts (the
-    // curated quality tier where pages have been double-proofread —
-    // reads cleanest through TTS). Search hits MediaWiki's
-    // list=search endpoint restricted to mainspace. NewReleases /
-    // BestRated have no analogue — transcribed-text inflows are
-    // glacial and there's no rating axis.
-    BrowseSourceKey.Wikisource -> listOf(
-        BrowseTab.Popular,
-        BrowseTab.Search,
-    )
-    // KVMR (#374): single-fiction backend. Popular surfaces the live
-    // station; Search exists for completeness (matches the station
-    // name) but isn't really a discovery surface. NewReleases /
-    // BestRated have no analogue — the station is the station.
-    BrowseSourceKey.Kvmr -> listOf(
-        BrowseTab.Popular,
-    )
-    // Notion (#233): database-as-catalog. Popular = `databases/{id}/query`
-    // sorted by last-edited-time desc (Notion's default). Search is a
-    // client-side filter over the same first-page result in v1; a
-    // server-side filter via Notion's query body is the follow-up.
-    // NewReleases collapses to Popular because Notion's default
-    // ordering is already recency. BestRated has no analogue.
-    BrowseSourceKey.Notion -> listOf(
-        BrowseTab.Popular,
-        BrowseTab.Search,
-    )
-    // Hacker News (#379): Popular = top stories landing
-    // (topstories.json, first 50). Search hits the Algolia HN Search
-    // API. NewReleases / BestRated have no analogue in v1 — Ask HN /
-    // Show HN split is the spec'd follow-up that will plumb its own
-    // tab(s).
-    BrowseSourceKey.HackerNews -> listOf(
-        BrowseTab.Popular,
-        BrowseTab.Search,
-    )
-    // arXiv (#378): Popular = "recent in cs.AI" (sorted by
-    // submittedDate desc). NewReleases would collapse to the same
-    // surface. BestRated has no analogue. Search hits the public
-    // `all:<term>` query API.
-    BrowseSourceKey.Arxiv -> listOf(
-        BrowseTab.Popular,
-        BrowseTab.Search,
-    )
-    // PLOS (#380): Popular = recent PLOS ONE articles sorted by
-    // publication_date desc. Search hits the same Solr endpoint
-    // with free-form q=. NewReleases collapses to Popular (recency
-    // is already the order); BestRated has no analogue.
-    BrowseSourceKey.Plos -> listOf(
-        BrowseTab.Popular,
-        BrowseTab.Search,
-    )
-    // Discord (#403): channels-as-fictions catalog. Popular = the
-    // configured server's text+announcement channels in position
-    // order; Search hits Discord's /guilds/{id}/messages/search.
-    // NewReleases / BestRated have no analogue — Discord channels
-    // don't expose recency / popularity orderings without N extra
-    // round-trips per channel.
-    BrowseSourceKey.Discord -> listOf(
-        BrowseTab.Popular,
-        BrowseTab.Search,
-    )
-}
-
 @Immutable
 data class BrowseUiState(
-    val sourceKey: BrowseSourceKey = BrowseSourceKey.RoyalRoad,
+    /** Stable plugin id (see `SourceIds`) of the currently selected
+     *  source. The Phase 1/2 `BrowseSourceKey` enum was deleted in
+     *  Phase 3 (#384) in favour of registry-driven iteration; the chip
+     *  picker, tab list, and filter sheet all key off this string now. */
+    val sourceId: String = SourceIds.ROYAL_ROAD,
     val tab: BrowseTab = BrowseTab.Popular,
     val query: String = "",
     val items: List<UiFiction> = emptyList(),
-    /** True only on the very first page fetch (drives skeleton grid). */
     val isLoading: Boolean = true,
-    /** True while fetching subsequent pages (drives footer spinner). */
     val isAppending: Boolean = false,
-    /** False once the upstream returned `hasNext = false`. */
     val hasMore: Boolean = true,
-    /** Last fetch error from the paginator, if any. Cleared on the next
-     *  successful page. The screen surfaces this as an error state when
-     *  [items] is empty (no prior data to fall back on) and as a snackbar
-     *  / footer hint when [items] is non-empty (a tail-page failed but
-     *  earlier pages are still useful). */
     val error: String? = null,
     val filter: BrowseFilter = BrowseFilter(),
     val isFilterActive: Boolean = false,
-    /** GitHub-shaped filter — applied when sourceKey is GitHub. RR-source
-     *  filter ([filter]) and GitHub filter coexist in state so flipping
-     *  between sources doesn't lose either side's settings (subject to
-     *  the [BrowseViewModel.selectSource] reset policy). */
     val githubFilter: GitHubSearchFilter = GitHubSearchFilter(),
     val isGitHubFilterActive: Boolean = false,
-    /** MemPalace-shaped filter (#191) — applied when sourceKey is
-     *  MemPalace. Coexists with [filter] / [githubFilter] across
-     *  source switches per [BrowseViewModel.selectSource] reset
-     *  policy. */
     val palaceFilter: MemPalaceFilter = MemPalaceFilter(),
-    /** Available wing names for the MemPalace filter sheet. Loaded
-     *  lazily on first switch to MemPalace; empty until the daemon
-     *  responds (or daemon unreachable). */
     val palaceWings: List<String> = emptyList(),
-    /** True when an OAuth session is captured. Drives the `MyRepos`
-     *  (#200) and `Gists` (#202) tab visibility on the GitHub
-     *  source. Sourced from `SettingsRepositoryUi.settings.github`
-     *  and flips back to false on sign-out / token expiry. */
     val githubSignedIn: Boolean = false,
-    /** True when the user has a GitHub OAuth session that includes the
-     *  `repo` scope (#203 / #204). Drives the visibility chip row in
-     *  the GitHub filter sheet — the `is:public` / `is:private`
-     *  qualifiers are only meaningful for callers with private-repo
-     *  access. */
     val hasGitHubRepoScope: Boolean = false,
-    /** Issue #241 — Royal Road sign-in state. Drives the soft-gate on
-     *  RR listing tabs (Popular / NewReleases / BestRated / filter-
-     *  active): when false, those tabs render a sign-in CTA empty
-     *  state rather than firing an anonymous request that returns the
-     *  same content but carries the "bot" framing. Search and
-     *  Add-by-URL keep working anonymously — they target specific
-     *  URLs the user already knows. */
     val royalRoadSignedIn: Boolean = false,
-    /** Sources the user has enabled in Settings (#221). Drives the
-     *  BrowseSourcePicker membership — disabled sources are hidden from
-     *  the chip strip. Default to all three so a fresh-install user sees
-     *  the full picker. */
-    val enabledSources: Set<BrowseSourceKey> = BrowseSourceKey.entries.toSet(),
+    /** Sources the user has enabled in Settings, as a set of stable
+     *  plugin ids. */
+    val enabledSourceIds: Set<String> = emptySet(),
+    /** Ordered list of plugin descriptors visible to the picker (the
+     *  enabled subset, in registry display order). Surfaced here so the
+     *  chip strip can render without re-injecting the registry. */
+    val visibleSources: List<SourcePluginDescriptor> = emptyList(),
 )
 
-/** Typed view of a paginator's five state flows. Lifted into its own
- *  type so the outer `combine` doesn't need positional `vals[i]` casts —
- *  Copilot called the indexing form fragile and was right. */
+/** Typed view of a paginator's five state flows. */
 private data class PaginatorView(
     val items: List<UiFiction>,
     val isLoading: Boolean,
@@ -367,96 +77,62 @@ private data class PaginatorView(
     val error: String?,
 )
 
-/** Bundled view of the user-controllable knobs (source picker, tab,
- *  query, RR filter, GitHub filter, MemPalace filter, GH sign-in).
- *  Lifted into its own record so the outer combines stay within the
- *  5-arg `combine` overload as we add filter shapes per source. The
- *  MemPalace filter and the sign-in flag are folded in via nested
- *  combines (see [BrowseViewModel.controls]) to keep within the
- *  overload arity. */
+/** Bundled view of the user-controllable knobs. */
 private data class ControlsView(
-    val sourceKey: BrowseSourceKey,
+    val sourceId: String,
     val tab: BrowseTab,
     val query: String,
     val filter: BrowseFilter,
     val githubFilter: GitHubSearchFilter,
     val palaceFilter: MemPalaceFilter,
-    /** Snapshot of the GitHub auth state — true when the user has a
-     *  captured session (`UiGitHubAuthState.SignedIn`). Drives the
-     *  `MyRepos` (#200) and `Gists` (#202) tab visibility conditions
-     *  in [BrowseUiState]. */
     val githubSignedIn: Boolean,
     val hasGitHubRepoScope: Boolean,
-    /** Issue #241 — sourced from `SettingsRepositoryUi.settings.isSignedIn`
-     *  (Royal Road cookie state). Drives the soft-gate on RR listing
-     *  tabs in [resolveSource] and the sign-in CTA empty state in
-     *  BrowseScreen. */
     val royalRoadSignedIn: Boolean,
-    /** Backends the user has not toggled off in Settings (#221).
-     *  Drives [BrowseSourcePicker] membership and an auto-snap when the
-     *  currently-selected source disappears. */
-    val enabledSources: Set<BrowseSourceKey>,
+    val enabledSourceIds: Set<String>,
+    val visibleSources: List<SourcePluginDescriptor>,
 )
 
 /**
- * Browse screen ViewModel. Each (tab, debounced query, filter) tuple
- * resolves to a [BrowseSource]; the repository hands a fresh
- * [BrowsePaginator] for it. The paginator accumulates pages on
- * `loadNext()` calls; the screen calls [loadMore] when the user nears
- * the end of the grid.
+ * Browse screen ViewModel.
  *
- * `flatMapLatest` drops the previous paginator's flows when the tuple
- * changes (tab switch, new search, filter applied) — old paginator
- * objects become unreferenced and GC'd. The initial-load coroutine is
- * driven by `collectLatest` on the same paginator StateFlow so it's
- * cancelled cleanly when the tuple changes mid-fetch.
+ * Plugin-seam Phase 3 (#384) — the source picker is now driven by
+ * `SourcePluginRegistry.descriptors` rather than the (deleted)
+ * `BrowseSourceKey` enum. `selectSource` takes a plugin id; the
+ * resolver routes by id string.
  */
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
 class BrowseViewModel @Inject constructor(
     private val repo: BrowseRepositoryUi,
     private val settings: SettingsRepositoryUi,
+    private val registry: SourcePluginRegistry,
 ) : ViewModel() {
 
-    private val _sourceKey = MutableStateFlow(BrowseSourceKey.RoyalRoad)
+    /** Default selected source — first defaultEnabled plugin, or
+     *  [SourceIds.ROYAL_ROAD] as a sentinel when nothing is enabled. */
+    private val defaultSourceId: String =
+        registry.descriptors.firstOrNull { it.defaultEnabled }?.id ?: SourceIds.ROYAL_ROAD
+
+    private val _sourceId = MutableStateFlow(defaultSourceId)
     private val _tab = MutableStateFlow(BrowseTab.Popular)
     private val _query = MutableStateFlow("")
     private val _filter = MutableStateFlow(BrowseFilter())
     private val _githubFilter = MutableStateFlow(GitHubSearchFilter())
     private val _palaceFilter = MutableStateFlow(MemPalaceFilter())
     private val _palaceWings = MutableStateFlow<List<String>>(emptyList())
-    /** Latches once the wings have been fetched (or attempted) so we
-     *  don't re-hit the daemon on every source switch. Reset only on
-     *  process death; a stale list is acceptable in v1. */
     private var palaceWingsLoaded = false
     val query: StateFlow<String> = _query.asStateFlow()
 
-    /** Github sign-in projection — drives MyRepos (#200) and Gists
-     *  (#202) tab visibility. `Expired` reads as signed-out: the disk
-     *  copy is intact for Settings to render "session expired" but the
-     *  listing endpoints would 401, so hiding the tabs keeps the user
-     *  from a guaranteed-failure path. */
     private val githubSignedIn: StateFlow<Boolean> = settings.settings
         .map { it.github is UiGitHubAuthState.SignedIn }
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    /** Issue #241 — Royal Road sign-in projection. Single boolean
-     *  derived from `UiSettings.isSignedIn` (the RR cookie state).
-     *  Drives the soft-gate on listing tabs in [resolveSource] and the
-     *  empty-state CTA in BrowseScreen. StateFlow so [selectSource]'s
-     *  init-block auto-snap can read `.value` synchronously. */
     private val royalRoadSignedIn: StateFlow<Boolean> = settings.settings
         .map { it.isSignedIn }
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    /** True when the user is signed in to GitHub with the `repo` scope
-     *  granted. The scopes string is space-separated per RFC 6749; the
-     *  Settings impl persists exactly what GitHub returned. Drives the
-     *  GitHub filter sheet's visibility chip row — without `repo` the
-     *  `is:private` qualifier silently returns nothing, so we hide the
-     *  knob entirely instead of letting users wander into an empty grid. */
     private val hasGitHubRepoScope: kotlinx.coroutines.flow.Flow<Boolean> =
         settings.settings
             .map { s ->
@@ -466,9 +142,6 @@ class BrowseViewModel @Inject constructor(
             }
             .distinctUntilChanged()
 
-    /** Bundled auth signals — flows into the controls combine as one arg
-     *  to stay within the 5-arg overload after #241 added a third boolean.
-     *  Recomposes on any field change; downstream code reads what it needs. */
     private data class AuthSnapshot(
         val githubSignedIn: Boolean,
         val hasGitHubRepoScope: Boolean,
@@ -480,56 +153,44 @@ class BrowseViewModel @Inject constructor(
             AuthSnapshot(gh, repo, rr)
         }.distinctUntilChanged()
 
-    /** Per-backend on/off projection (#221). The Settings screen exposes
-     *  three switches; this collapses them to a [Set] of enabled keys so
-     *  Browse can filter the source picker to the user's preference. A
-     *  fresh install defaults to all three, matching pre-#221 behavior.
-     *  StateFlow (not cold Flow) so [selectSource]'s init-block snap can
-     *  read .value synchronously. */
-    private val enabledSources: StateFlow<Set<BrowseSourceKey>> =
+    /**
+     * Plugin-seam Phase 3 (#384) — enabled-set projection straight off
+     * the registry-driven `sourcePluginsEnabled` map. The Phase 1/2
+     * version collected 17 hand-rolled per-source boolean projections;
+     * Phase 3 reads them by id from one map, with `defaultEnabled`
+     * fallback for ids that haven't been written yet.
+     */
+    private val enabledSourceIds: StateFlow<Set<String>> =
         settings.settings
             .map { s ->
                 buildSet {
-                    if (s.sourceRoyalRoadEnabled) add(BrowseSourceKey.RoyalRoad)
-                    if (s.sourceGitHubEnabled) add(BrowseSourceKey.GitHub)
-                    if (s.sourceMemPalaceEnabled) add(BrowseSourceKey.MemPalace)
-                    if (s.sourceRssEnabled) add(BrowseSourceKey.Rss)
-                    if (s.sourceEpubEnabled) add(BrowseSourceKey.Epub)
-                    if (s.sourceOutlineEnabled) add(BrowseSourceKey.Outline)
-                    if (s.sourceGutenbergEnabled) add(BrowseSourceKey.Gutenberg)
-                    if (s.sourceAo3Enabled) add(BrowseSourceKey.Ao3)
-                    if (s.sourceStandardEbooksEnabled) add(BrowseSourceKey.StandardEbooks)
-                    if (s.sourceWikipediaEnabled) add(BrowseSourceKey.Wikipedia)
-                    if (s.sourceWikisourceEnabled) add(BrowseSourceKey.Wikisource)
-                    if (s.sourceKvmrEnabled) add(BrowseSourceKey.Kvmr)
-                    if (s.sourceNotionEnabled) add(BrowseSourceKey.Notion)
-                    if (s.sourceHackerNewsEnabled) add(BrowseSourceKey.HackerNews)
-                    if (s.sourceArxivEnabled) add(BrowseSourceKey.Arxiv)
-                    if (s.sourcePlosEnabled) add(BrowseSourceKey.Plos)
-                    if (s.sourceDiscordEnabled) add(BrowseSourceKey.Discord)
+                    for (descriptor in registry.descriptors) {
+                        val explicit = s.sourcePluginsEnabled[descriptor.id]
+                        val effective = explicit ?: descriptor.defaultEnabled
+                        if (effective) add(descriptor.id)
+                    }
                 }
             }
             .distinctUntilChanged()
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BrowseSourceKey.entries.toSet())
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5_000),
+                registry.descriptors.filter { it.defaultEnabled }.map { it.id }.toSet(),
+            )
 
-    /** Active paginator for the current tuple; null when the search tab
-     *  has neither a query nor active filters (the empty search hint is
-     *  shown instead). Multi-step combine: the 5-arg overload is full
-     *  with source/tab/query/RRFilter/GHFilter, so palaceFilter (#191)
-     *  and githubSignedIn (#200) layer on top in nested combines. */
     private val paginator: StateFlow<BrowsePaginator?> = run {
         val baseTuple = combine(
-            _sourceKey,
+            _sourceId,
             _tab,
             _query.debounce(300),
             _filter,
             _githubFilter,
-        ) { sourceKey, tab, q, filter, ghFilter ->
-            ResolveTuple(sourceKey, tab, q, filter, ghFilter)
+        ) { sourceId, tab, q, filter, ghFilter ->
+            ResolveTuple(sourceId, tab, q, filter, ghFilter)
         }
         combine(baseTuple, _palaceFilter, githubSignedIn, royalRoadSignedIn) { tup, palaceFilter, ghSignedIn, rrSignedIn ->
             resolveSource(
-                sourceKey = tup.sourceKey,
+                sourceId = tup.sourceId,
                 tab = tup.tab,
                 q = tup.q,
                 filter = tup.filter,
@@ -537,7 +198,7 @@ class BrowseViewModel @Inject constructor(
                 palaceFilter = palaceFilter,
                 githubSignedIn = ghSignedIn,
                 royalRoadSignedIn = rrSignedIn,
-            )?.let { source -> source to tup.sourceKey.sourceId }
+            )?.let { source -> source to tup.sourceId }
         }
             .distinctUntilChanged()
             .map { pair -> pair?.let { (source, sourceId) -> repo.paginator(source, sourceId) } }
@@ -545,20 +206,9 @@ class BrowseViewModel @Inject constructor(
     }
 
     init {
-        // Kick off the initial page whenever a fresh paginator lands.
-        // `collectLatest` cancels the inner suspend if the tuple shifts
-        // mid-fetch (e.g. user types more in the search box) — without
-        // this guarantee an unreferenced paginator could keep hammering
-        // the network after its UI is gone.
         viewModelScope.launch {
             paginator.collectLatest { p -> p?.loadNext() }
         }
-        // Auto-snap off auth-only tabs (`MyRepos` #200, `Starred` #201,
-        // `Gists` #202) when the user signs out. They disappear from
-        // `supportedTabs(githubSignedIn=false)`, so leaving the value
-        // pinned would render an empty grid driven by a null
-        // BrowseSource. Snap to Popular so the screen has something to
-        // draw.
         viewModelScope.launch {
             githubSignedIn.collectLatest { signedIn ->
                 if (!signedIn && _tab.value in AUTH_ONLY_GH_TABS) {
@@ -566,47 +216,29 @@ class BrowseViewModel @Inject constructor(
                 }
             }
         }
-        // Auto-snap source selection when the user disables the current
-        // backend in Settings (#221). The picker filters disabled keys
-        // out, but `_sourceKey` is the source-of-truth for the paginator
-        // and would otherwise keep firing requests against a backend the
-        // user just told us to ignore. Snap to the first enabled key, or
-        // RoyalRoad as a sentinel if the user disabled everything (the
-        // empty-picker branch in BrowseSourcePicker handles the visual).
         viewModelScope.launch {
-            enabledSources.collectLatest { enabled ->
-                if (_sourceKey.value !in enabled) {
-                    _sourceKey.value = enabled.firstOrNull() ?: BrowseSourceKey.RoyalRoad
+            enabledSourceIds.collectLatest { enabled ->
+                if (_sourceId.value !in enabled) {
+                    _sourceId.value = enabled.firstOrNull() ?: defaultSourceId
                 }
             }
         }
     }
 
-    /** All user-controlled knobs collapsed into one typed record. The
-     *  inner 5-arg combine builds the base tuple; outer combine folds
-     *  in palaceFilter (#191), githubSignedIn (#200/#202), and the
-     *  has-`repo`-scope flag (#204) without exceeding the `combine`
-     *  5-arg overload. */
     private val controls: kotlinx.coroutines.flow.Flow<ControlsView> = run {
         val baseTuple = combine(
-            _sourceKey, _tab, _query, _filter, _githubFilter,
-        ) { sourceKey, tab, q, filter, ghFilter ->
-            ResolveTuple(sourceKey, tab, q, filter, ghFilter)
+            _sourceId, _tab, _query, _filter, _githubFilter,
+        ) { sourceId, tab, q, filter, ghFilter ->
+            ResolveTuple(sourceId, tab, q, filter, ghFilter)
         }
-        // 4-arg combine — under the ceiling thanks to [authSnapshot]
-        // bundling the three auth-related booleans (github sign-in,
-        // github repo-scope, royal-road sign-in #241). If a 6th
-        // independent controls flow ever needs to land, lift one of
-        // these into a side StateFlow consumed inside the lambda
-        // rather than reaching for the variadic overload.
         combine(
             baseTuple,
             _palaceFilter,
             authSnapshot,
-            enabledSources,
+            enabledSourceIds,
         ) { tup, palaceFilter, auth, enabled ->
             ControlsView(
-                sourceKey = tup.sourceKey,
+                sourceId = tup.sourceId,
                 tab = tup.tab,
                 query = tup.q,
                 filter = tup.filter,
@@ -615,18 +247,17 @@ class BrowseViewModel @Inject constructor(
                 githubSignedIn = auth.githubSignedIn,
                 hasGitHubRepoScope = auth.hasGitHubRepoScope,
                 royalRoadSignedIn = auth.royalRoadSignedIn,
-                enabledSources = enabled,
+                enabledSourceIds = enabled,
+                visibleSources = registry.descriptors.filter { it.id in enabled },
             )
         }
     }
 
     val uiState: StateFlow<BrowseUiState> = paginator.flatMapLatest { p ->
         if (p == null) {
-            // Empty-search/no-filter: surface a quiet idle state so the
-            // screen renders SearchHint rather than the skeleton grid.
             combine(controls, _palaceWings) { c, wings ->
                 BrowseUiState(
-                    sourceKey = c.sourceKey,
+                    sourceId = c.sourceId,
                     tab = c.tab,
                     query = c.query,
                     items = emptyList(),
@@ -643,14 +274,11 @@ class BrowseViewModel @Inject constructor(
                     githubSignedIn = c.githubSignedIn,
                     hasGitHubRepoScope = c.hasGitHubRepoScope,
                     royalRoadSignedIn = c.royalRoadSignedIn,
-                    enabledSources = c.enabledSources,
+                    enabledSourceIds = c.enabledSourceIds,
+                    visibleSources = c.visibleSources,
                 )
             }
         } else {
-            // Two-step combine: first collapse the paginator's five
-            // flows into a typed [PaginatorView], then merge with the
-            // [ControlsView]. Keeps each combine within the 5-arg
-            // comfort zone and avoids positional `vals[i]` casts.
             val paginatorView = combine(
                 p.items,
                 p.isLoading,
@@ -662,7 +290,7 @@ class BrowseViewModel @Inject constructor(
             }
             combine(paginatorView, controls, _palaceWings) { view, c, wings ->
                 BrowseUiState(
-                    sourceKey = c.sourceKey,
+                    sourceId = c.sourceId,
                     tab = c.tab,
                     query = c.query,
                     items = view.items,
@@ -679,141 +307,37 @@ class BrowseViewModel @Inject constructor(
                     githubSignedIn = c.githubSignedIn,
                     hasGitHubRepoScope = c.hasGitHubRepoScope,
                     royalRoadSignedIn = c.royalRoadSignedIn,
-                    enabledSources = c.enabledSources,
+                    enabledSourceIds = c.enabledSourceIds,
+                    visibleSources = c.visibleSources,
                 )
             }
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BrowseUiState())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BrowseUiState(sourceId = defaultSourceId))
 
-    fun selectSource(key: BrowseSourceKey) {
-        if (_sourceKey.value == key) return
-        _sourceKey.value = key
-        // If the previously-selected tab isn't supported on the new
-        // source (e.g. user was on BestRated/Search on RR and switches
-        // to GitHub, or MyRepos/Gists when not on GitHub), snap to
-        // Popular so the screen has something sensible to render.
-        if (_tab.value !in key.supportedTabs(githubSignedIn.value)) {
+    /** Select a source by stable plugin id (see `SourceIds`). */
+    fun selectSource(id: String) {
+        if (_sourceId.value == id) return
+        _sourceId.value = id
+        val supported = BrowseSourceUi.supportedTabs(id, githubSignedIn.value)
+        if (_tab.value !in supported) {
             _tab.value = BrowseTab.Popular
         }
-        // Per-source filter shapes don't translate, so clear the
-        // *other* sources' filters on switch. Always clear the query
-        // so a half-typed term doesn't leak across sources.
         _query.value = ""
-        when (key) {
-            BrowseSourceKey.RoyalRoad -> {
+        when (BrowseSourceUi.filterShape(id)) {
+            FilterShape.RoyalRoad -> {
                 _githubFilter.value = GitHubSearchFilter()
                 _palaceFilter.value = MemPalaceFilter()
             }
-            BrowseSourceKey.GitHub -> {
+            FilterShape.GitHub -> {
                 _filter.value = BrowseFilter()
                 _palaceFilter.value = MemPalaceFilter()
             }
-            BrowseSourceKey.MemPalace -> {
+            FilterShape.MemPalace -> {
                 _filter.value = BrowseFilter()
                 _githubFilter.value = GitHubSearchFilter()
-                // Lazy-load the wing list on first switch — keeps the
-                // daemon round-trip off the cold-start path for users
-                // who never visit the palace tab.
                 ensurePalaceWingsLoaded()
             }
-            BrowseSourceKey.Rss -> {
-                // RSS has no per-source filter; clear sibling filters
-                // so a switch from RR/GitHub/Palace doesn't carry
-                // stale state into a future switch back.
-                _filter.value = BrowseFilter()
-                _githubFilter.value = GitHubSearchFilter()
-                _palaceFilter.value = MemPalaceFilter()
-            }
-            BrowseSourceKey.Epub -> {
-                // Local EPUB: same as RSS — no per-source filter, clear siblings.
-                _filter.value = BrowseFilter()
-                _githubFilter.value = GitHubSearchFilter()
-                _palaceFilter.value = MemPalaceFilter()
-            }
-            BrowseSourceKey.Outline -> {
-                _filter.value = BrowseFilter()
-                _githubFilter.value = GitHubSearchFilter()
-                _palaceFilter.value = MemPalaceFilter()
-            }
-            BrowseSourceKey.Gutenberg -> {
-                // PG has no per-source filter in v1 — its catalog
-                // is queried directly via Search/Popular/NewReleases.
-                // Clear sibling filters so a future switch back to RR/GH
-                // doesn't pick up leftover state.
-                _filter.value = BrowseFilter()
-                _githubFilter.value = GitHubSearchFilter()
-                _palaceFilter.value = MemPalaceFilter()
-            }
-            BrowseSourceKey.Ao3 -> {
-                // AO3 has no per-source filter sheet in v1 — the
-                // fandom picker rides on the genre row.
-                _filter.value = BrowseFilter()
-                _githubFilter.value = GitHubSearchFilter()
-                _palaceFilter.value = MemPalaceFilter()
-            }
-            BrowseSourceKey.StandardEbooks -> {
-                // SE has no per-source filter in v1 — same shape as PG.
-                _filter.value = BrowseFilter()
-                _githubFilter.value = GitHubSearchFilter()
-                _palaceFilter.value = MemPalaceFilter()
-            }
-            BrowseSourceKey.Wikipedia -> {
-                // Wikipedia has no per-source filter in v1 — Popular is
-                // featured + mostread, Search hits opensearch.
-                _filter.value = BrowseFilter()
-                _githubFilter.value = GitHubSearchFilter()
-                _palaceFilter.value = MemPalaceFilter()
-            }
-            BrowseSourceKey.Wikisource -> {
-                // Wikisource (#376) — no per-source filter; landing
-                // category (Validated_texts) IS the filter scope.
-                // Same clear-siblings shape as the other text backends.
-                _filter.value = BrowseFilter()
-                _githubFilter.value = GitHubSearchFilter()
-                _palaceFilter.value = MemPalaceFilter()
-            }
-            BrowseSourceKey.Kvmr -> {
-                // KVMR (#374) is a single-fiction audio backend — no
-                // filter sheet, no genre picker. Same clear-siblings
-                // shape as RSS / Epub / Outline / Gutenberg.
-                _filter.value = BrowseFilter()
-                _githubFilter.value = GitHubSearchFilter()
-                _palaceFilter.value = MemPalaceFilter()
-            }
-            BrowseSourceKey.Notion -> {
-                // Notion (#233) — database-as-catalog backend; no
-                // per-source filter in v1 (the database id IS the
-                // filter scope). Same clear-siblings shape.
-                _filter.value = BrowseFilter()
-                _githubFilter.value = GitHubSearchFilter()
-                _palaceFilter.value = MemPalaceFilter()
-            }
-            BrowseSourceKey.HackerNews -> {
-                // Hacker News (#379) — top-stories landing + Algolia
-                // search; no per-source filter sheet in v1.
-                _filter.value = BrowseFilter()
-                _githubFilter.value = GitHubSearchFilter()
-                _palaceFilter.value = MemPalaceFilter()
-            }
-            BrowseSourceKey.Arxiv -> {
-                // arXiv (#378) — recent-in-cs.AI landing + free-form
-                // search; no per-source filter sheet in v1.
-                _filter.value = BrowseFilter()
-                _githubFilter.value = GitHubSearchFilter()
-                _palaceFilter.value = MemPalaceFilter()
-            }
-            BrowseSourceKey.Plos -> {
-                // PLOS (#380) — recent PLOS ONE landing + Solr search;
-                // no per-source filter sheet in v1.
-                _filter.value = BrowseFilter()
-                _githubFilter.value = GitHubSearchFilter()
-                _palaceFilter.value = MemPalaceFilter()
-            }
-            BrowseSourceKey.Discord -> {
-                // Discord (#403) — channels-as-fictions; the server-id
-                // configured in Settings IS the filter scope. No
-                // per-source filter sheet in v1. Same clear-siblings
-                // shape as the other catalog-driven sources.
+            FilterShape.None -> {
                 _filter.value = BrowseFilter()
                 _githubFilter.value = GitHubSearchFilter()
                 _palaceFilter.value = MemPalaceFilter()
@@ -825,11 +349,7 @@ class BrowseViewModel @Inject constructor(
         if (palaceWingsLoaded) return
         palaceWingsLoaded = true
         viewModelScope.launch {
-            // Empty list on failure — the sheet renders an "All" chip
-            // only and the user sees no wing options, which matches
-            // the "palace unreachable / unconfigured" empty state.
-            // Reset the latch on failure so a subsequent switch retries.
-            val wings = runCatching { repo.genres(BrowseSourceKey.MemPalace.sourceId) }
+            val wings = runCatching { repo.genres(SourceIds.MEMPALACE) }
                 .getOrDefault(emptyList())
             if (wings.isEmpty()) palaceWingsLoaded = false
             _palaceWings.value = wings
@@ -845,31 +365,16 @@ class BrowseViewModel @Inject constructor(
     fun setPalaceFilter(filter: MemPalaceFilter) { _palaceFilter.value = filter }
     fun resetPalaceFilter() { _palaceFilter.value = MemPalaceFilter() }
 
-    /** Called by the grid when the user nears the end of the visible
-     *  list. Idempotent — the paginator's mutex collapses concurrent
-     *  calls. */
     fun loadMore() {
         viewModelScope.launch { paginator.value?.loadNext() }
     }
 
-    // ─── RSS feed management (#247) ────────────────────────────────────
-    // Moved from SettingsViewModel as part of the "whole move" of feed
-    // add/remove out of Settings into a FAB-launched sheet on Browse →
-    // RSS. The underlying repository surface didn't change; we just
-    // changed where the user reaches it. SettingsScreen still owns the
-    // RSS source on/off toggle (that's a "source enable" call, not
-    // "feed management").
+    // ─── RSS feed management (#247) ─────────────────────────────────────
 
-    /** Hot stream of currently-subscribed feed URLs. Drives the
-     *  removable-feeds list in the Browse RSS management sheet. */
     val rssSubscriptions: StateFlow<List<String>> =
         settings.rssSubscriptions
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    /** Hot stream of curated suggested feeds. Backed by the
-     *  jphein/storyvox-feeds registry (#246) with a baked-in seed list
-     *  so the sheet's "Suggested" section has something to render
-     *  before the network fetch resolves. */
     val suggestedRssFeeds: StateFlow<List<`in`.jphe.storyvox.feature.api.SuggestedFeed>> =
         settings.suggestedRssFeeds
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -883,24 +388,27 @@ class BrowseViewModel @Inject constructor(
     }
 }
 
-/** Tabs on the GitHub source that require an OAuth session.
- *  Used by the auto-snap watcher to bounce the user off the tab
- *  cleanly when their session goes away (sign-out, expired). */
 private val AUTH_ONLY_GH_TABS: Set<BrowseTab> = setOf(BrowseTab.MyRepos, BrowseTab.Starred, BrowseTab.Gists)
 
-/** 5-arg shoehorn so the inner [combine] stays within the overload
- *  arity. Folded back into [ControlsView] (or consumed directly by
- *  [resolveSource]) at the next combine layer. */
 private data class ResolveTuple(
-    val sourceKey: BrowseSourceKey,
+    val sourceId: String,
     val tab: BrowseTab,
     val q: String,
     val filter: BrowseFilter,
     val ghFilter: GitHubSearchFilter,
 )
 
+/**
+ * Phase 3 (#384) — id-keyed source resolver. The Phase 1/2 version
+ * was an exhaustive `when (BrowseSourceKey)` on 17 enum branches;
+ * Phase 3 keys off the stable plugin id, with a "registry default"
+ * fall-through for unknown ids (Popular / NewReleases / Search →
+ * the default `BrowseSource` shape). Source-specific routing (RR
+ * sign-in gate, GitHub auth-only tabs, MemPalace wing routing)
+ * stays as targeted branches keyed off the id constants.
+ */
 private fun resolveSource(
-    sourceKey: BrowseSourceKey,
+    sourceId: String,
     tab: BrowseTab,
     q: String,
     filter: BrowseFilter,
@@ -908,21 +416,8 @@ private fun resolveSource(
     palaceFilter: MemPalaceFilter,
     githubSignedIn: Boolean,
     royalRoadSignedIn: Boolean,
-): BrowseSource? = when (sourceKey) {
-    // GitHub: filter takes priority over tab. When filter is active OR
-    // user is on Search with a typed query, route to FilteredGitHub so
-    // the qualifier-laden query lands. Otherwise the tab decides
-    // (Popular/NewReleases/MyRepos/Gists/Search). MyRepos and Gists
-    // are sign-in-gated; a stale tab value when the user has signed
-    // out maps to null (BrowseScreen will see the tab missing from
-    // supportedTabs and re-snap). Search-with-blank-query stays null
-    // so the screen renders SearchHint. The GitHub filter doesn't
-    // apply to Gists (no `/search/gists` endpoint shape matches the
-    // repo-search qualifiers) so an active filter just means the tab
-    // still pages through gists.
-    BrowseSourceKey.GitHub -> when {
-        // Auth-only tabs short-circuit ahead of the filter check —
-        // search qualifiers don't apply to `/user/{repos,starred,gists}`.
+): BrowseSource? = when (sourceId) {
+    SourceIds.GITHUB -> when {
         tab == BrowseTab.MyRepos -> if (githubSignedIn) BrowseSource.GitHubMyRepos else null
         tab == BrowseTab.Starred -> if (githubSignedIn) BrowseSource.GitHubStarred else null
         tab == BrowseTab.Gists -> if (githubSignedIn) BrowseSource.GitHubGists else null
@@ -935,14 +430,7 @@ private fun resolveSource(
         tab == BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
         else -> null
     }
-    // Issue #241 — soft-gate on RR sign-in. Listing tabs
-    // (Popular / NewReleases / BestRated / any filter-active tab)
-    // return null when the user is not signed in to RR; the screen
-    // renders a sign-in CTA empty state instead of firing an
-    // anonymous request. Search and Add-by-URL stay open: they
-    // target specific URLs the user already knows, which is
-    // structurally distinct from anonymous browsing.
-    BrowseSourceKey.RoyalRoad -> when {
+    SourceIds.ROYAL_ROAD -> when {
         tab == BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
         !royalRoadSignedIn -> null
         filter.isActive() -> BrowseSource.Filtered(
@@ -953,135 +441,38 @@ private fun resolveSource(
         tab == BrowseTab.BestRated -> BrowseSource.BestRated
         else -> null
     }
-    // MemPalace: when a wing is selected, route through ByGenre so the
-    // daemon scopes the listing to that wing (overrides tab). Wing-less
-    // requests fall through to the tab-driven Popular/NewReleases pair.
-    // Spec P1 surfaces the daemon's /search endpoint behind a feature
-    // flag; today Search is hidden on MemPalace.
-    BrowseSourceKey.MemPalace -> when {
+    SourceIds.MEMPALACE -> when {
         palaceFilter.wing != null -> BrowseSource.ByGenre(palaceFilter.wing)
         tab == BrowseTab.Popular -> BrowseSource.Popular
         tab == BrowseTab.NewReleases -> BrowseSource.NewReleases
         else -> null
     }
-    // RSS (#236): Search filters by feed title (handled by RssSource);
-    // Popular and NewReleases both list the user's subscriptions
-    // (RssSource sorts NewReleases by most-recent-item).
-    BrowseSourceKey.Rss -> when {
+    SourceIds.RSS -> when {
         tab == BrowseTab.Search -> if (q.isBlank()) BrowseSource.NewReleases else BrowseSource.Search(q)
         tab == BrowseTab.Popular -> BrowseSource.Popular
         tab == BrowseTab.NewReleases -> BrowseSource.NewReleases
         else -> null
     }
-    // Local EPUB (#235): same shape as RSS — Popular = full list,
-    // Search filters by filename. No NewReleases concept (files are
-    // static). Library tab is hidden via supportedTabs.
-    BrowseSourceKey.Epub -> when {
+    SourceIds.EPUB, SourceIds.OUTLINE -> when {
         tab == BrowseTab.Search -> if (q.isBlank()) BrowseSource.Popular else BrowseSource.Search(q)
         tab == BrowseTab.Popular -> BrowseSource.Popular
         else -> null
     }
-    // Outline (#245): same shape as Epub — Popular = full collection
-    // list, Search filters by collection name.
-    BrowseSourceKey.Outline -> when {
-        tab == BrowseTab.Search -> if (q.isBlank()) BrowseSource.Popular else BrowseSource.Search(q)
-        tab == BrowseTab.Popular -> BrowseSource.Popular
-        else -> null
-    }
-    // Project Gutenberg (#237): Popular hits Gutendex `?sort=popular`;
-    // NewReleases hits `?sort=descending` (highest id = newest);
-    // Search hits `?search=<term>`. No filter surface in v1 — the
-    // catalog's free-form subject strings don't map cleanly to a
-    // filter sheet; topic search via the Search tab covers the
-    // discovery cases.
-    BrowseSourceKey.Gutenberg -> when (tab) {
-        BrowseTab.Popular -> BrowseSource.Popular
-        BrowseTab.NewReleases -> BrowseSource.NewReleases
-        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
-        else -> null
-    }
-    // AO3 (#381): both tabs route through the same Atom feed
-    // (the source's popular() and latestUpdates() return the
-    // tag-feed-sorted-by-recency in both cases — AO3 doesn't
-    // expose a separate popularity signal without HTML scraping,
-    // which v1 opts out of). Search is hidden via supportedTabs.
-    BrowseSourceKey.Ao3 -> when (tab) {
+    SourceIds.AO3 -> when (tab) {
         BrowseTab.Popular -> BrowseSource.Popular
         BrowseTab.NewReleases -> BrowseSource.NewReleases
         else -> null
     }
-    // Standard Ebooks (#375): Popular hits SE `?sort=popularity`;
-    // NewReleases hits `?sort=default` (release date desc); Search
-    // hits `?query=<term>`. No filter surface in v1 — same shape as
-    // Gutenberg, which the SE source structurally mirrors.
-    BrowseSourceKey.StandardEbooks -> when (tab) {
+    SourceIds.KVMR -> when (tab) {
+        BrowseTab.Popular -> BrowseSource.Popular
+        else -> null
+    }
+    // Default Popular/NewReleases/Search shape — Gutenberg, Standard
+    // Ebooks, Wikipedia, Wikisource, Notion, Hacker News, arXiv, PLOS,
+    // Discord all use this resolver.
+    else -> when (tab) {
         BrowseTab.Popular -> BrowseSource.Popular
         BrowseTab.NewReleases -> BrowseSource.NewReleases
-        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
-        else -> null
-    }
-    // Wikipedia (#377): Popular = Today's Featured Article +
-    // mostread (one-shot, not paginated). Search hits the MediaWiki
-    // opensearch endpoint. No filter surface — Wikipedia's category
-    // system is too fan-shaped to flatten into a filter sheet, and
-    // free-form search covers the discovery cases.
-    BrowseSourceKey.Wikipedia -> when (tab) {
-        BrowseTab.Popular -> BrowseSource.Popular
-        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
-        else -> null
-    }
-    // Wikisource (#376): Popular = Category:Validated_texts (the
-    // curated, double-proofread landing). Search hits MediaWiki's
-    // list=search restricted to mainspace. Same routing shape as
-    // Wikipedia — no filter sheet, no genre picker, free-form Search
-    // covers the rest.
-    BrowseSourceKey.Wikisource -> when (tab) {
-        BrowseTab.Popular -> BrowseSource.Popular
-        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
-        else -> null
-    }
-    // KVMR (#374): one fiction, one tab. Popular surfaces the live
-    // station immediately; Search is hidden in supportedTabs so the
-    // tab-router never lands here with anything else.
-    BrowseSourceKey.Kvmr -> when (tab) {
-        BrowseTab.Popular -> BrowseSource.Popular
-        else -> null
-    }
-    // Notion (#233): database-as-catalog. Popular surfaces the
-    // database's first page (sorted by last_edited_time desc per
-    // Notion's default); Search runs a client-side filter over the
-    // same first page in v1. Blank-search-with-blank-filter stays
-    // null so the screen renders the SearchHint empty state.
-    BrowseSourceKey.Notion -> when (tab) {
-        BrowseTab.Popular -> BrowseSource.Popular
-        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
-        else -> null
-    }
-    // Hacker News (#379): Popular = top-stories landing (first 50);
-    // Search = Algolia-backed full-text. Same shape as Notion above.
-    BrowseSourceKey.HackerNews -> when (tab) {
-        BrowseTab.Popular -> BrowseSource.Popular
-        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
-        else -> null
-    }
-    // arXiv (#378): same Popular/Search shape — recent-in-cs.AI on
-    // Popular, free-form Atom `all:<q>` on Search.
-    BrowseSourceKey.Arxiv -> when (tab) {
-        BrowseTab.Popular -> BrowseSource.Popular
-        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
-        else -> null
-    }
-    // PLOS (#380): recent-PLOS-ONE landing + free-form Solr search.
-    BrowseSourceKey.Plos -> when (tab) {
-        BrowseTab.Popular -> BrowseSource.Popular
-        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
-        else -> null
-    }
-    // Discord (#403): channels-as-fictions catalog + guild-scoped
-    // free-text search. Blank-search-with-blank-filter stays null so
-    // the screen renders the SearchHint empty state.
-    BrowseSourceKey.Discord -> when (tab) {
-        BrowseTab.Popular -> BrowseSource.Popular
         BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
         else -> null
     }

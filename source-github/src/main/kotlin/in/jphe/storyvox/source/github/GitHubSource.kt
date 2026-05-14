@@ -58,6 +58,8 @@ import kotlin.time.toDuration
     category = SourceCategory.Text,
     supportsFollow = false,
     supportsSearch = true,
+    description = "Repo READMEs as fictions · OAuth Device Flow unlocks 5000/hr + private repos",
+    sourceUrl = "https://github.com",
 )
 @Singleton
 internal class GitHubSource @Inject constructor(

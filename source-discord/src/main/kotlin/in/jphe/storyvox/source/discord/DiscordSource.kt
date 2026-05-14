@@ -63,6 +63,8 @@ import javax.inject.Singleton
     category = SourceCategory.Text,
     supportsFollow = false,
     supportsSearch = true,
+    description = "Bot-token-authed channel reader · server = filter, channel = fiction, message = chapter (with same-author coalescing)",
+    sourceUrl = "https://discord.com",
 )
 @Singleton
 internal class DiscordSource @Inject constructor(

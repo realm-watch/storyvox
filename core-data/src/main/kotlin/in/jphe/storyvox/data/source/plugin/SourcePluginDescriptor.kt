@@ -36,6 +36,14 @@ data class SourcePluginDescriptor(
     val supportsFollow: Boolean,
     /** True when the plugin implements a meaningful search surface. */
     val supportsSearch: Boolean,
+    /** One-line plain-text subtitle for the plugin manager card.
+     *  Matches the annotation's `description`. Empty string =
+     *  hide the subtitle row. */
+    val description: String = "",
+    /** Canonical "where this plugin reads from" URL for the plugin
+     *  manager details sheet. Matches the annotation's `sourceUrl`.
+     *  Empty string = hide the row. */
+    val sourceUrl: String = "",
     /** Live `FictionSource` instance — same one the repository's
      *  `Map<String, FictionSource>` resolves for this id. */
     val source: FictionSource,

@@ -57,6 +57,8 @@ import javax.inject.Singleton
     category = SourceCategory.Text,
     supportsFollow = false,
     supportsSearch = true,
+    description = "70,000+ public-domain books via Gutendex · tap-to-add downloads EPUB once",
+    sourceUrl = "https://www.gutenberg.org",
 )
 @Singleton
 internal class GutenbergSource @Inject constructor(

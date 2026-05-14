@@ -720,41 +720,7 @@ class SettingsRepositoryUiImpl(
             // expected to override this to FALSE at the BuildConfig level
             // to satisfy the Play Store's anti-scraping posture. Until
             // that lands, this default is ON for all builds.
-            sourceRoyalRoadEnabled = prefs[Keys.SOURCE_ROYALROAD_ENABLED] ?: true,
-            sourceGitHubEnabled = prefs[Keys.SOURCE_GITHUB_ENABLED] ?: false,
-            sourceMemPalaceEnabled = prefs[Keys.SOURCE_MEMPALACE_ENABLED] ?: false,
-            sourceRssEnabled = prefs[Keys.SOURCE_RSS_ENABLED] ?: true,
-            sourceEpubEnabled = prefs[Keys.SOURCE_EPUB_ENABLED] ?: false,
-            sourceOutlineEnabled = prefs[Keys.SOURCE_OUTLINE_ENABLED] ?: false,
-            sourceGutenbergEnabled = prefs[Keys.SOURCE_GUTENBERG_ENABLED] ?: true,
-            // #381 — AO3 defaults OFF on fresh installs (Explicit-
-            // content gate; opt-in from Settings → Library & Sync).
-            sourceAo3Enabled = prefs[Keys.SOURCE_AO3_ENABLED] ?: false,
-            sourceStandardEbooksEnabled = prefs[Keys.SOURCE_STANDARD_EBOOKS_ENABLED] ?: false,
-            sourceWikipediaEnabled = prefs[Keys.SOURCE_WIKIPEDIA_ENABLED] ?: false,
             wikipediaLanguageCode = wikipedia.languageCode,
-            // Issue #376 — Wikisource backend. Default OFF on fresh
-            // installs; opt-in surface like Outline / EPUB / Wikipedia.
-            sourceWikisourceEnabled = prefs[Keys.SOURCE_WIKISOURCE_ENABLED] ?: false,
-            // #374 — KVMR defaults ON on fresh installs (first audio-stream
-            // backend, JP's local station, low-controversy content).
-            sourceKvmrEnabled = prefs[Keys.SOURCE_KVMR_ENABLED] ?: true,
-            // #233 + #390 — Notion defaults ON on fresh installs. The
-            // bundled techempower.org database id needs the toggle ON
-            // to be visible in Browse; the source returns AuthRequired
-            // until the user pastes an integration token. Existing
-            // users with a stored preference keep it.
-            sourceNotionEnabled = prefs[Keys.SOURCE_NOTION_ENABLED] ?: true,
-            // #379 — Hacker News defaults OFF: tech-news isn't fiction
-            // in the picker's strict sense; users opt in from Settings.
-            sourceHackerNewsEnabled = prefs[Keys.SOURCE_HACKERNEWS_ENABLED] ?: false,
-            // #378 — arXiv: default OFF, same posture as Wikipedia.
-            sourceArxivEnabled = prefs[Keys.SOURCE_ARXIV_ENABLED] ?: false,
-            // #380 — PLOS open-access: academic content is opt-in.
-            sourcePlosEnabled = prefs[Keys.SOURCE_PLOS_ENABLED] ?: false,
-            // #403 — Discord: opt-in surface; bot-token onboarding is
-            // high-friction so fresh installs ship with this off.
-            sourceDiscordEnabled = prefs[Keys.SOURCE_DISCORD_ENABLED] ?: false,
             discordTokenConfigured = discord.apiToken.isNotBlank(),
             discordServerId = discord.serverId,
             discordServerName = discord.serverName,
@@ -1406,26 +1372,6 @@ class SettingsRepositoryUiImpl(
         store.edit { it[Keys.GITHUB_PRIVATE_REPOS_ENABLED] = enabled }
     }
 
-    override suspend fun setSourceRoyalRoadEnabled(enabled: Boolean) {
-        store.edit { it[Keys.SOURCE_ROYALROAD_ENABLED] = enabled }
-        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.ROYAL_ROAD, enabled)
-    }
-
-    override suspend fun setSourceGitHubEnabled(enabled: Boolean) {
-        store.edit { it[Keys.SOURCE_GITHUB_ENABLED] = enabled }
-        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.GITHUB, enabled)
-    }
-
-    override suspend fun setSourceMemPalaceEnabled(enabled: Boolean) {
-        store.edit { it[Keys.SOURCE_MEMPALACE_ENABLED] = enabled }
-        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.MEMPALACE, enabled)
-    }
-
-    override suspend fun setSourceRssEnabled(enabled: Boolean) {
-        store.edit { it[Keys.SOURCE_RSS_ENABLED] = enabled }
-        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.RSS, enabled)
-    }
-
     override suspend fun addRssFeed(url: String) = rssConfig.addFeed(url)
     override suspend fun removeRssFeed(fictionId: String) = rssConfig.removeFeed(fictionId)
     override suspend fun removeRssFeedByUrl(url: String) {
@@ -1438,77 +1384,18 @@ class SettingsRepositoryUiImpl(
     override val rssSubscriptions: kotlinx.coroutines.flow.Flow<List<String>> =
         rssConfig.subscriptions.map { subs -> subs.map { it.url } }
 
-    override suspend fun setSourceEpubEnabled(enabled: Boolean) {
-        store.edit { it[Keys.SOURCE_EPUB_ENABLED] = enabled }
-        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.EPUB, enabled)
-    }
     override val epubFolderUri: kotlinx.coroutines.flow.Flow<String?> = epubConfig.folderUriString
     override suspend fun setEpubFolderUri(uri: String) = epubConfig.setFolder(uri)
     override suspend fun clearEpubFolder() = epubConfig.clearFolder()
 
-    override suspend fun setSourceOutlineEnabled(enabled: Boolean) {
-        store.edit { it[Keys.SOURCE_OUTLINE_ENABLED] = enabled }
-        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.OUTLINE, enabled)
-    }
-    override suspend fun setSourceGutenbergEnabled(enabled: Boolean) {
-        store.edit { it[Keys.SOURCE_GUTENBERG_ENABLED] = enabled }
-        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.GUTENBERG, enabled)
-    }
-    override suspend fun setSourceAo3Enabled(enabled: Boolean) {
-        store.edit { it[Keys.SOURCE_AO3_ENABLED] = enabled }
-        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.AO3, enabled)
-    }
-    override suspend fun setSourceStandardEbooksEnabled(enabled: Boolean) {
-        store.edit { it[Keys.SOURCE_STANDARD_EBOOKS_ENABLED] = enabled }
-        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.STANDARD_EBOOKS, enabled)
-    }
     override val outlineHost: kotlinx.coroutines.flow.Flow<String> =
         outlineConfig.state.map { it.host }
     override suspend fun setOutlineHost(host: String) = outlineConfig.setHost(host)
     override suspend fun setOutlineApiKey(apiKey: String) = outlineConfig.setApiKey(apiKey)
     override suspend fun clearOutlineConfig() = outlineConfig.clear()
 
-    override suspend fun setSourceWikipediaEnabled(enabled: Boolean) {
-        store.edit { it[Keys.SOURCE_WIKIPEDIA_ENABLED] = enabled }
-        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.WIKIPEDIA, enabled)
-    }
     override suspend fun setWikipediaLanguageCode(code: String) =
         wikipediaConfig.setLanguageCode(code)
-
-    override suspend fun setSourceWikisourceEnabled(enabled: Boolean) {
-        store.edit { it[Keys.SOURCE_WIKISOURCE_ENABLED] = enabled }
-        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.WIKISOURCE, enabled)
-    }
-
-    override suspend fun setSourceKvmrEnabled(enabled: Boolean) {
-        store.edit { it[Keys.SOURCE_KVMR_ENABLED] = enabled }
-        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.KVMR, enabled)
-    }
-
-    override suspend fun setSourceNotionEnabled(enabled: Boolean) {
-        store.edit { it[Keys.SOURCE_NOTION_ENABLED] = enabled }
-        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.NOTION, enabled)
-    }
-
-    override suspend fun setSourceHackerNewsEnabled(enabled: Boolean) {
-        store.edit { it[Keys.SOURCE_HACKERNEWS_ENABLED] = enabled }
-        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.HACKERNEWS, enabled)
-    }
-
-    override suspend fun setSourceArxivEnabled(enabled: Boolean) {
-        store.edit { it[Keys.SOURCE_ARXIV_ENABLED] = enabled }
-        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.ARXIV, enabled)
-    }
-
-    override suspend fun setSourcePlosEnabled(enabled: Boolean) {
-        store.edit { it[Keys.SOURCE_PLOS_ENABLED] = enabled }
-        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.PLOS, enabled)
-    }
-
-    override suspend fun setSourceDiscordEnabled(enabled: Boolean) {
-        store.edit { it[Keys.SOURCE_DISCORD_ENABLED] = enabled }
-        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.DISCORD, enabled)
-    }
 
     override suspend fun setDiscordApiToken(token: String?) {
         discordConfig.setApiToken(token)
@@ -1533,35 +1420,15 @@ class SettingsRepositoryUiImpl(
         discordGuildDirectory.listGuilds()
 
     /**
-     * Plugin-seam Phase 1 (#384) — registry-driven entry point.
-     * Writes the per-plugin map AND, when the id has a matching
-     * legacy `SOURCE_*_ENABLED` key, the legacy key too. The dual
-     * write keeps the existing per-backend `UiSettings.sourceXxxEnabled`
-     * observers in sync until Phase 2 deletes them.
+     * Plugin-seam Phase 3 (#384) — registry-driven entry point and
+     * single source of truth as of v0.5.31. Writes the per-plugin map;
+     * the legacy `pref_source_xxx_enabled` boolean keys are kept on
+     * disk for the one-shot [SourcePluginsMapMigration] seed but no
+     * longer dual-written here. The Phase 1/2 dual-write that mirrored
+     * each toggle into the legacy boolean is gone — there's only one
+     * shape now.
      */
     override suspend fun setSourcePluginEnabled(id: String, enabled: Boolean) {
-        store.edit { prefs ->
-            // Write the map first so a reader observing the JSON key
-            // doesn't see a transiently-inconsistent state where the
-            // legacy boolean has flipped but the map hasn't.
-            val current = `in`.jphe.storyvox.data.source.plugin.decodeSourcePluginsEnabledJson(
-                prefs[Keys.SOURCE_PLUGINS_ENABLED_JSON],
-            ).toMutableMap()
-            current[id] = enabled
-            prefs[Keys.SOURCE_PLUGINS_ENABLED_JSON] =
-                `in`.jphe.storyvox.data.source.plugin.encodeSourcePluginsEnabledJson(current)
-            // Dual-write the legacy boolean so existing UiSettings
-            // observers keep firing.
-            LegacySourceKeys.ALL[id]?.let { spec ->
-                prefs[spec.key] = enabled
-            }
-        }
-    }
-
-    /** Helper invoked by each legacy `setSourceXxxEnabled` to mirror
-     *  the write into the plugin map. Phase 1 dual-write — Phase 2
-     *  removes the legacy setters and this helper. */
-    private suspend fun writePluginEnabledIntoMap(id: String, enabled: Boolean) {
         store.edit { prefs ->
             val current = `in`.jphe.storyvox.data.source.plugin.decodeSourcePluginsEnabledJson(
                 prefs[Keys.SOURCE_PLUGINS_ENABLED_JSON],

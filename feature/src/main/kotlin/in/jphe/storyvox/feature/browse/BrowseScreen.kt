@@ -60,6 +60,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import `in`.jphe.storyvox.data.source.SourceIds
+import `in`.jphe.storyvox.data.source.plugin.SourcePluginDescriptor
 import `in`.jphe.storyvox.feature.api.BrowseFilter
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
@@ -126,17 +128,17 @@ fun BrowseScreen(
         // FictionRepository between Royal Road and GitHub. Tabs and the
         // filter sheet rebind to whatever the chosen source supports.
         BrowseSourcePicker(
-            selected = state.sourceKey,
+            selectedId = state.sourceId,
             onSelect = viewModel::selectSource,
-            enabledKeys = state.enabledSources,
+            visibleSources = state.visibleSources,
             // Picker now handles its own horizontal padding via LazyRow's
             // contentPadding so off-screen chips can pan into view without
             // an outer padding clipping them at the edges.
             modifier = Modifier.fillMaxWidth(),
         )
 
-        val supportedTabs = remember(state.sourceKey, state.githubSignedIn) {
-            state.sourceKey.supportedTabs(githubSignedIn = state.githubSignedIn)
+        val supportedTabs = remember(state.sourceId, state.githubSignedIn) {
+            BrowseSourceUi.supportedTabs(state.sourceId, githubSignedIn = state.githubSignedIn)
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -196,74 +198,22 @@ fun BrowseScreen(
             // at the bottom of the file) and presenting a tappable icon
             // that does nothing reads as a bug to users (phone audit
             // pass 2).
-            val filterableSource = when (state.sourceKey) {
-                BrowseSourceKey.RoyalRoad,
-                BrowseSourceKey.GitHub,
-                BrowseSourceKey.MemPalace -> true
-                BrowseSourceKey.Rss,
-                BrowseSourceKey.Epub,
-                BrowseSourceKey.Outline,
-                BrowseSourceKey.Gutenberg,
-                // AO3 (#381) — no filter sheet in v1; the fandom row
-                // belongs to the source's genre picker. Falls into
-                // the non-filterable branch like the other catalog-
-                // driven sources.
-                BrowseSourceKey.Ao3 -> false
-                BrowseSourceKey.StandardEbooks -> false
-                BrowseSourceKey.Wikipedia -> false
-                // #376 — Wikisource has no filter sheet; the curated
-                // landing IS the filter (Category:Validated_texts) and
-                // free-form search covers the rest.
-                BrowseSourceKey.Wikisource -> false
-                // #374 — KVMR is a single-fiction audio backend; no
-                // filter surface (you either tune in or you don't).
-                BrowseSourceKey.Kvmr -> false
-                // #233 — Notion v1 has no filter sheet; the database
-                // configured in Settings IS the filter. A server-side
-                // filter body via /databases/{id}/query is the
-                // follow-up.
-                BrowseSourceKey.Notion -> false
-                // #379 — Hacker News has no filter sheet; the catalog
-                // (Top / Ask / Show) selection lives in the Browse tab
-                // shape itself, not a sidecar filter.
-                BrowseSourceKey.HackerNews -> false
-                // #378 — arXiv has no filter sheet in v1; the category
-                // picker (default cs.AI) is a v2 surface.
-                BrowseSourceKey.Arxiv -> false
-                // #380 — PLOS has no filter sheet in v1; the journal /
-                // subject picker is a v2 surface.
-                BrowseSourceKey.Plos -> false
-                // #403 — Discord has no filter sheet in v1; the
-                // configured server (set in Settings → Library & Sync
-                // → Discord) IS the filter scope. A per-channel filter
-                // sheet is a follow-up.
-                BrowseSourceKey.Discord -> false
-            }
-            if (filterableSource) {
+            // Plugin-seam Phase 3 (#384) — filter shape lookup goes
+            // through the registry-keyed side-table in `BrowseSourceUi`
+            // rather than an exhaustive when over the deleted
+            // `BrowseSourceKey` enum. RR / GitHub / MemPalace are the
+            // three filter-bearing surfaces today; everything else
+            // hides the button.
+            val shape = BrowseSourceUi.filterShape(state.sourceId)
+            if (shape != FilterShape.None) {
                 FilterButton(
-                    activeCount = when (state.sourceKey) {
-                        BrowseSourceKey.RoyalRoad -> state.filter.activeCount()
-                        BrowseSourceKey.GitHub -> state.githubFilter.activeCount()
-                        // #191 — single dimension (wing) so badge counts at
-                        // most 1.
-                        BrowseSourceKey.MemPalace -> if (state.palaceFilter.wing != null) 1 else 0
-                        // Gated by `filterableSource` above; the
-                        // non-filterable branches are unreachable here
-                        // but Kotlin still wants exhaustive coverage.
-                        BrowseSourceKey.Rss,
-                        BrowseSourceKey.Epub,
-                        BrowseSourceKey.Outline,
-                        BrowseSourceKey.Gutenberg,
-                        BrowseSourceKey.Ao3 -> 0
-                        BrowseSourceKey.StandardEbooks -> 0
-                        BrowseSourceKey.Wikipedia -> 0
-                        BrowseSourceKey.Wikisource -> 0
-                        BrowseSourceKey.Kvmr -> 0
-                        BrowseSourceKey.Notion -> 0
-                        BrowseSourceKey.HackerNews -> 0
-                        BrowseSourceKey.Arxiv -> 0
-                        BrowseSourceKey.Plos -> 0
-                        BrowseSourceKey.Discord -> 0
+                    activeCount = when (shape) {
+                        FilterShape.RoyalRoad -> state.filter.activeCount()
+                        FilterShape.GitHub -> state.githubFilter.activeCount()
+                        // #191 — single dimension (wing) so badge counts
+                        // at most 1.
+                        FilterShape.MemPalace -> if (state.palaceFilter.wing != null) 1 else 0
+                        FilterShape.None -> 0
                     },
                     onClick = { showFilterSheet = true },
                 )
@@ -274,7 +224,7 @@ fun BrowseScreen(
         // below the tab row so users always know the listing is scoped.
         // Tapping the chip clears the wing (one-tap reset path) without
         // having to reopen the sheet.
-        if (state.sourceKey == BrowseSourceKey.MemPalace && state.palaceFilter.wing != null) {
+        if (state.sourceId == SourceIds.MEMPALACE && state.palaceFilter.wing != null) {
             ActiveWingChip(
                 wing = state.palaceFilter.wing!!,
                 onClear = { viewModel.resetPalaceFilter() },
@@ -285,10 +235,14 @@ fun BrowseScreen(
         }
 
         if (state.tab == BrowseTab.Search) {
+            val sourceLabel = remember(state.sourceId, state.visibleSources) {
+                state.visibleSources.firstOrNull { it.id == state.sourceId }?.displayName
+                    ?: state.sourceId
+            }
             OutlinedTextField(
                 value = state.query,
                 onValueChange = viewModel::setQuery,
-                label = { Text("Search ${state.sourceKey.displayName}") },
+                label = { Text("Search $sourceLabel") },
                 modifier = Modifier.fillMaxWidth().padding(spacing.md),
                 singleLine = true,
             )
@@ -300,11 +254,12 @@ fun BrowseScreen(
             // shimmer for a request the resolver wasn't going to fire.
             // Search stays open (the resolver in BrowseViewModel exempts
             // it), so the CTA is suppressed when the user is on Search.
-            state.sourceKey == BrowseSourceKey.RoyalRoad &&
+            state.sourceId == SourceIds.ROYAL_ROAD &&
                 !state.royalRoadSignedIn &&
                 state.tab != BrowseTab.Search -> RoyalRoadSignedOutCta(onOpenRoyalRoadSignIn)
             state.isLoading && state.items.isEmpty() -> SkeletonGrid()
-            state.tab == BrowseTab.Search && state.query.isBlank() && !state.isFilterActive -> SearchHint(state.sourceKey)
+            state.tab == BrowseTab.Search && state.query.isBlank() && !state.isFilterActive ->
+                SearchHint(state.sourceId, state.visibleSources)
             // First-load failure with no cached items: full-screen error.
             // Retry triggers viewModel.loadMore() which the paginator
             // resolves to the same page that failed.
@@ -327,7 +282,7 @@ fun BrowseScreen(
                 // hands us a fresh items list anyway; we just nudge the
                 // viewport back to the start so the user doesn't land
                 // mid-scroll into a different listing.
-                LaunchedEffect(state.sourceKey, state.tab, state.query, state.filter) {
+                LaunchedEffect(state.sourceId, state.tab, state.query, state.filter) {
                     if (gridState.firstVisibleItemIndex != 0) {
                         gridState.scrollToItem(0)
                     }
@@ -456,7 +411,7 @@ fun BrowseScreen(
     // RSS source; other backends manage subscriptions elsewhere
     // (Settings folder picker for EPUB, host config for Outline,
     // sign-in for RR/GitHub).
-    if (state.sourceKey == BrowseSourceKey.Rss) {
+    if (state.sourceId == SourceIds.RSS) {
         FloatingActionButton(
             onClick = { showRssManageSheet = true },
             containerColor = MaterialTheme.colorScheme.primary,
@@ -479,8 +434,8 @@ fun BrowseScreen(
     }
 
     if (showFilterSheet) {
-        when (state.sourceKey) {
-            BrowseSourceKey.RoyalRoad -> BrowseFilterSheet(
+        when (BrowseSourceUi.filterShape(state.sourceId)) {
+            FilterShape.RoyalRoad -> BrowseFilterSheet(
                 filter = state.filter,
                 onApply = { applied ->
                     viewModel.setFilter(applied)
@@ -492,7 +447,7 @@ fun BrowseScreen(
                 },
                 onDismiss = { showFilterSheet = false },
             )
-            BrowseSourceKey.GitHub -> GitHubFilterSheet(
+            FilterShape.GitHub -> GitHubFilterSheet(
                 filter = state.githubFilter,
                 onApply = { applied ->
                     viewModel.setGitHubFilter(applied)
@@ -505,7 +460,7 @@ fun BrowseScreen(
                 onDismiss = { showFilterSheet = false },
                 showVisibilityChips = state.hasGitHubRepoScope,
             )
-            BrowseSourceKey.MemPalace -> MemPalaceFilterSheet(
+            FilterShape.MemPalace -> MemPalaceFilterSheet(
                 filter = state.palaceFilter,
                 wings = state.palaceWings,
                 onApply = { applied ->
@@ -518,46 +473,14 @@ fun BrowseScreen(
                 },
                 onDismiss = { showFilterSheet = false },
             )
-            // #236 — RSS has no filter UI (the subscription list is
-            // managed in Settings, not a Browse-side sheet).
-            BrowseSourceKey.Rss -> { showFilterSheet = false }
-            // #235 — EPUB also has no filter UI (folder picker is in
-            // Settings).
-            BrowseSourceKey.Epub -> { showFilterSheet = false }
-            BrowseSourceKey.Outline -> { showFilterSheet = false }
-            // #237 — Gutenberg has no filter sheet; topic-search via
-            // the Search tab covers the discovery cases.
-            BrowseSourceKey.Gutenberg -> { showFilterSheet = false }
-            // #381 — AO3 has no filter sheet; the curated fandom
-            // list rides on the genre row.
-            BrowseSourceKey.Ao3 -> { showFilterSheet = false }
-            // #375 — Standard Ebooks mirrors Gutenberg's surface: no
-            // filter sheet in v1, free-form Search covers discovery.
-            BrowseSourceKey.StandardEbooks -> { showFilterSheet = false }
-            // #377 — Wikipedia has no filter sheet; the language code
-            // lives in Settings and topic-search via opensearch covers
-            // discovery.
-            BrowseSourceKey.Wikipedia -> { showFilterSheet = false }
-            // #376 — Wikisource has no filter sheet; the curated landing
-            // (Category:Validated_texts) IS the filter scope.
-            BrowseSourceKey.Wikisource -> { showFilterSheet = false }
-            // #374 — KVMR is a single-fiction audio backend; no filter
-            // sheet (the station is the station).
-            BrowseSourceKey.Kvmr -> { showFilterSheet = false }
-            // #233 — Notion v1 has no filter sheet; the configured
-            // database id IS the filter scope.
-            BrowseSourceKey.Notion -> { showFilterSheet = false }
-            // #379 — Hacker News has no filter sheet in v1; the Top
-            // landing is the surface and Search is the discovery path.
-            BrowseSourceKey.HackerNews -> { showFilterSheet = false }
-            // #378 — arXiv has no filter sheet in v1.
-            BrowseSourceKey.Arxiv -> { showFilterSheet = false }
-            // #380 — PLOS has no filter sheet in v1.
-            BrowseSourceKey.Plos -> { showFilterSheet = false }
-            // #403 — Discord has no filter sheet in v1; the configured
-            // server is the filter scope (set in Settings → Library &
-            // Sync → Discord).
-            BrowseSourceKey.Discord -> { showFilterSheet = false }
+            // Plugin-seam Phase 3 (#384) — sources without a filter
+            // sheet (RSS / Epub / Outline / Gutenberg / AO3 / Standard
+            // Ebooks / Wikipedia / Wikisource / KVMR / Notion / Hacker
+            // News / arXiv / PLOS / Discord) collapse into one branch.
+            // The toolbar filter button is hidden for these sources via
+            // [BrowseSourceUi.filterShape], so reaching this branch is
+            // a defensive path that just dismisses the sheet.
+            FilterShape.None -> { showFilterSheet = false }
         }
     }
 }
@@ -599,8 +522,11 @@ private fun SkeletonGrid() {
 }
 
 @Composable
-private fun SearchHint(sourceKey: BrowseSourceKey) {
+private fun SearchHint(sourceId: String, visibleSources: List<SourcePluginDescriptor>) {
     val spacing = LocalSpacing.current
+    val displayName = remember(sourceId, visibleSources) {
+        visibleSources.firstOrNull { it.id == sourceId }?.displayName ?: sourceId
+    }
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -617,44 +543,17 @@ private fun SearchHint(sourceKey: BrowseSourceKey) {
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            // Issue #271 — per-source empty-state subtitle. The old copy
-            // hard-coded "across Royal Road" even when RSS/GitHub/etc. was
-            // the selected source. Pick the right phrase from the source
-            // key — each source has its own corpus shape (RSS = "your
-            // subscribed feeds", GitHub = "indexed repositories", etc.).
+            // Issue #271 — per-source empty-state subtitle. Phase 3
+            // (#384) — the per-source phrase lookup goes through the
+            // `BrowseSourceUi` side-table keyed by stable plugin id.
             Text(
-                searchHintForSource(sourceKey),
+                BrowseSourceUi.searchHint(sourceId, displayName),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(spacing.xxl))
         }
     }
-}
-
-/** Issue #271 — per-source subtitle for the Search empty state. */
-private fun searchHintForSource(sourceKey: BrowseSourceKey): String = when (sourceKey) {
-    BrowseSourceKey.RoyalRoad -> "Find fictions across Royal Road"
-    BrowseSourceKey.GitHub -> "Search indexed GitHub repositories"
-    BrowseSourceKey.MemPalace -> "Search your MemPalace knowledge base"
-    BrowseSourceKey.Rss -> "Search your subscribed feeds"
-    BrowseSourceKey.Epub -> "Search your local EPUB library"
-    BrowseSourceKey.Outline -> "Search your Outline notes"
-    BrowseSourceKey.Gutenberg -> "Search Project Gutenberg's 70,000+ public-domain books"
-    // #381 — AO3 has no Search tab in v1 (the AO3 search endpoint is
-    // HTML-only and we don't scrape). This hint is unreachable
-    // unless a future iteration re-adds the tab, but Kotlin still
-    // wants exhaustive coverage. Keep the copy ready for that day.
-    BrowseSourceKey.Ao3 -> "Search AO3 by tag, fandom, or character"
-    BrowseSourceKey.StandardEbooks -> "Search Standard Ebooks' hand-curated public-domain classics"
-    BrowseSourceKey.Wikipedia -> "Search Wikipedia — narrate any article"
-    BrowseSourceKey.Wikisource -> "Search Wikisource — transcribed public-domain texts"
-    BrowseSourceKey.Kvmr -> "Tune in to KVMR — live community radio from Nevada City"
-    BrowseSourceKey.Notion -> "Search your configured Notion database"
-    BrowseSourceKey.HackerNews -> "Search Hacker News stories (Algolia-backed full-text)"
-    BrowseSourceKey.Arxiv -> "Search arXiv — open-access academic papers"
-    BrowseSourceKey.Plos -> "Search PLOS — open-access peer-reviewed science"
-    BrowseSourceKey.Discord -> "Search messages in your selected Discord server"
 }
 
 private val BrowseTab.label: String
@@ -687,37 +586,34 @@ private val BrowseTab.label: String
  *  - keep the brass-primary selection treatment so the strip still
  *    reads as part of the realm aesthetic.
  *
- * Adding a new backend stays one entry in `BrowseSourceKey.entries`.
+ * Plugin-seam Phase 3 (#384) — the picker iterates the
+ * `SourcePluginRegistry`-derived `visibleSources` list rather than
+ * the (deleted) `BrowseSourceKey.entries`. Adding a new backend is
+ * one `@SourcePlugin`-annotated class — no enum entry needed.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BrowseSourcePicker(
-    selected: BrowseSourceKey,
-    onSelect: (BrowseSourceKey) -> Unit,
-    enabledKeys: Set<BrowseSourceKey>,
+    selectedId: String,
+    onSelect: (String) -> Unit,
+    visibleSources: List<SourcePluginDescriptor>,
     modifier: Modifier = Modifier,
 ) {
     val spacing = LocalSpacing.current
-    // Filter to user-enabled sources (#221) — when a backend is toggled
-    // off in Settings, drop it from the picker entirely so Browse stops
-    // trying to talk to it. If the user disables their currently-selected
-    // source, BrowseViewModel snaps back to the first enabled one.
-    val keys = remember(enabledKeys) {
-        BrowseSourceKey.entries.filter { it in enabledKeys }
-    }
-    if (keys.isEmpty()) return
+    if (visibleSources.isEmpty()) return
     LazyRow(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(spacing.sm),
         contentPadding = PaddingValues(horizontal = spacing.md),
     ) {
-        items(keys, key = { it.name }) { key ->
+        items(visibleSources, key = { it.id }) { descriptor ->
+            val label = BrowseSourceUi.chipLabel(descriptor.id, descriptor.displayName)
             FilterChip(
-                selected = key == selected,
-                onClick = { onSelect(key) },
+                selected = descriptor.id == selectedId,
+                onClick = { onSelect(descriptor.id) },
                 label = {
                     Text(
-                        text = key.displayName,
+                        text = label,
                         style = MaterialTheme.typography.labelLarge,
                         maxLines = 1,
                         softWrap = false,

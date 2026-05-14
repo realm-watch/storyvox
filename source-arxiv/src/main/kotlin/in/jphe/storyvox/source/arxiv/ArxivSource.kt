@@ -68,6 +68,8 @@ import javax.inject.Singleton
     category = SourceCategory.Text,
     supportsFollow = false,
     supportsSearch = true,
+    description = "Open-access academic papers · abstract + author byline as single-chapter fictions · default cs.AI",
+    sourceUrl = "https://arxiv.org",
 )
 @Singleton
 internal class ArxivSource @Inject constructor(
