@@ -1,6 +1,8 @@
 package `in`.jphe.storyvox.feature.reader
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
@@ -24,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.material3.ripple
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Replay30
@@ -37,7 +40,6 @@ import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkAdd
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -73,6 +75,7 @@ import `in`.jphe.storyvox.feature.api.UiSleepTimerMode
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.BrassProgressTrack
+import `in`.jphe.storyvox.ui.component.BrassVoiceIcon
 import `in`.jphe.storyvox.ui.component.ErrorBlock
 import `in`.jphe.storyvox.ui.component.ErrorPlacement
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
@@ -136,6 +139,26 @@ fun AudiobookView(
     /** Issue #121 — seek to the active chapter's bookmark, if any. No-op
      *  when the chapter has none. */
     onJumpToBookmark: () -> Unit = {},
+    /**
+     * Issue #418 — live inter-sentence pause multiplier (#109) for the
+     * magical-voice-icon quick sheet. Defaults to 1× (audiobook-tuned
+     * default) so preview/test callsites that don't care about cadence
+     * stay simple.
+     */
+    punctuationPauseMultiplier: Float = 1f,
+    /**
+     * Issue #418 — high-quality Sonic pitch-interpolation flag (#193)
+     * for the quick sheet's "Sonic quality" toggle row. Defaults to
+     * `true` to match Settings.
+     */
+    pitchInterpolationHighQuality: Boolean = true,
+    /** Issue #418 — apply the inter-sentence pause multiplier. Wired by
+     *  ReaderViewModel into both PlaybackControllerUi (live) +
+     *  SettingsRepositoryUi (persist). */
+    onSetPunctuationPause: (Float) -> Unit = {},
+    /** Issue #418 — toggle Sonic high-quality flag. Persisted via
+     *  SettingsRepositoryUi; engine reads at next chapter render. */
+    onSetPitchHighQuality: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val spacing = LocalSpacing.current
@@ -150,7 +173,14 @@ fun AudiobookView(
         fadeIn(animationSpec = tween(motion.standardDurationMs, easing = motion.standardEasing))
     val spinnerExit = if (reducedMotion) ExitTransition.None else
         fadeOut(animationSpec = tween(motion.standardDurationMs, easing = motion.standardEasing))
-    var showSheet by remember { mutableStateOf(false) }
+    // Issue #418 — two distinct sheets now: the magical-voice-icon
+    // opens the voice quick sheet (speed/pitch/voice/pause/quality +
+    // Advanced expander), the ⋮ overflow opens the remaining
+    // non-voice items (sentence step, sleep timer, bookmark, recap,
+    // chat). Splitting the state ensures one sheet's dismiss-animation
+    // doesn't fight the other's open-animation.
+    var showVoiceSheet by remember { mutableStateOf(false) }
+    var showOverflowSheet by remember { mutableStateOf(false) }
 
     // Issue #278 — full-screen error block when the loading state has
     // been stuck for 30+ seconds. Replaces the eternal conjuring sigil
@@ -201,7 +231,14 @@ fun AudiobookView(
                 Column(
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .padding(horizontal = 56.dp), // leave room for the trailing IconButton on either side so centering stays true
+                        // Issue #418 — bumped from 56 dp to 104 dp on the
+                        // trailing side because the top bar now carries
+                        // TWO trailing affordances (brass voice icon +
+                        // ⋮ overflow). Leading side stays at 56 dp for
+                        // the Settings gear. Asymmetric padding via
+                        // start/end keeps the title visually centered
+                        // across both sides' negative space.
+                        .padding(start = 56.dp, end = 104.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(
@@ -221,11 +258,42 @@ fun AudiobookView(
                         )
                     }
                 }
-                IconButton(
-                    onClick = { showSheet = true },
+                // Issue #418 — magical voice settings icon. Tap opens
+                // the voice quick sheet; long-press jumps straight to
+                // the Voice Library (same gesture as a "I want to
+                // change voices entirely" shortcut). Sits to the left
+                // of the overflow so the brass glyph reads as the
+                // primary affordance and the ⋮ reads as the secondary
+                // "more" surface — matching the issue's IA pitch.
+                //
+                // combinedClickable wraps a Box so we can attach both
+                // onClick + onLongClick to the same brass-icon target.
+                // IconButton can't host onLongClick directly. We
+                // preserve the 48 dp touch target by sizing the Box.
+                Row(
                     modifier = Modifier.align(Alignment.CenterEnd),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Outlined.MoreVert, contentDescription = "Player options")
+                    val voiceInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .combinedClickable(
+                                interactionSource = voiceInteraction,
+                                indication = ripple(bounded = false, radius = 24.dp),
+                                role = androidx.compose.ui.semantics.Role.Button,
+                                onClickLabel = "Voice settings",
+                                onLongClickLabel = "Open Voice Library",
+                                onClick = { showVoiceSheet = true },
+                                onLongClick = onPickVoice,
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        BrassVoiceIcon(size = 24.dp)
+                    }
+                    IconButton(onClick = { showOverflowSheet = true }) {
+                        Icon(Icons.Outlined.MoreVert, contentDescription = "Player options")
+                    }
                 }
             }
             // While the chapter body + voice model are still loading we don't
@@ -406,54 +474,99 @@ fun AudiobookView(
             }
         }
 
-        if (showSheet) {
-            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-            val coroutineScope = rememberCoroutineScope()
-            // Candlelight scrim — a translucent brass tone composited over
-            // the default scrim color, instead of a flat black dim. Reads
-            // as "the light's been turned down", not "the screen got eaten".
-            val brassScrim = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-                .compositeOver(MaterialTheme.colorScheme.scrim.copy(alpha = 0.42f))
+        // Candlelight scrim — a translucent brass tone composited over
+        // the default scrim color, instead of a flat black dim. Reads
+        // as "the light's been turned down", not "the screen got eaten".
+        // Shared between both sheets so they feel like the same
+        // brass-edged "shade-down" affordance, not two different surfaces.
+        val brassScrim = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+            .compositeOver(MaterialTheme.colorScheme.scrim.copy(alpha = 0.42f))
+
+        // Issue #418 — magical voice settings sheet. Half-expanded by
+        // default (skipPartiallyExpanded = false would force half-state;
+        // we want the user to be able to drag UP for the Advanced
+        // expander, so we keep true and let the sheet auto-size to its
+        // content). The Speed slider is the first row so the most-used
+        // knob lands under the user's thumb the instant the sheet opens.
+        if (showVoiceSheet) {
+            val voiceSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
             ModalBottomSheet(
-                onDismissRequest = { showSheet = false },
-                sheetState = sheetState,
+                onDismissRequest = { showVoiceSheet = false },
+                sheetState = voiceSheetState,
                 containerColor = MaterialTheme.colorScheme.surfaceContainer,
                 scrimColor = brassScrim,
                 tonalElevation = 6.dp,
             ) {
-                PlayerOptionsSheet(
+                val voiceScope = rememberCoroutineScope()
+                VoiceQuickSheetContent(
                     state = state,
+                    punctuationPauseMultiplier = punctuationPauseMultiplier,
+                    pitchInterpolationHighQuality = pitchInterpolationHighQuality,
                     onSetSpeed = onSetSpeed,
                     onPersistSpeed = onPersistSpeed,
                     onSetPitch = onSetPitch,
                     onPersistPitch = onPersistPitch,
+                    onSetPunctuationPause = onSetPunctuationPause,
+                    onSetPitchHighQuality = onSetPitchHighQuality,
+                    onPickVoice = {
+                        voiceScope.launch { voiceSheetState.hide() }
+                        showVoiceSheet = false
+                        onPickVoice()
+                    },
+                    onOpenAdvancedVoice = {
+                        voiceScope.launch { voiceSheetState.hide() }
+                        showVoiceSheet = false
+                        // Deep-link into Voice Library — same destination
+                        // as long-press on the icon. The lexicon +
+                        // phonemizer pickers live there (VoiceLibraryScreen
+                        // lines 364/367/451/454); replicating them here
+                        // would force SAF + Kokoro detection into the
+                        // player layer for no UX gain.
+                        onPickVoice()
+                    },
+                )
+            }
+        }
+
+        // Issue #418 — the post-split overflow sheet. Keeps only the
+        // non-voice items: sentence-step transport (#120), sleep timer,
+        // bookmark drop/jump (#121), recap (#81), AI chat. Voice
+        // settings (speed/pitch/voice/pause/quality) have moved out
+        // entirely to the voice quick sheet above.
+        if (showOverflowSheet) {
+            val overflowSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            ModalBottomSheet(
+                onDismissRequest = { showOverflowSheet = false },
+                sheetState = overflowSheetState,
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                scrimColor = brassScrim,
+                tonalElevation = 6.dp,
+            ) {
+                val overflowScope = rememberCoroutineScope()
+                PlayerOverflowSheet(
+                    state = state,
                     onStartSleepTimer = onStartSleepTimer,
                     onCancelSleepTimer = onCancelSleepTimer,
                     onPreviousSentence = onPreviousSentence,
                     onNextSentence = onNextSentence,
-                    onPickVoice = {
-                        coroutineScope.launch { sheetState.hide() }
-                        showSheet = false
-                        onPickVoice()
-                    },
                     onRequestRecap = {
-                        coroutineScope.launch { sheetState.hide() }
-                        showSheet = false
+                        overflowScope.launch { overflowSheetState.hide() }
+                        showOverflowSheet = false
                         onRequestRecap()
                     },
                     onOpenChat = {
-                        coroutineScope.launch { sheetState.hide() }
-                        showSheet = false
+                        overflowScope.launch { overflowSheetState.hide() }
+                        showOverflowSheet = false
                         onOpenChat()
                     },
                     onBookmarkHere = {
-                        coroutineScope.launch { sheetState.hide() }
-                        showSheet = false
+                        overflowScope.launch { overflowSheetState.hide() }
+                        showOverflowSheet = false
                         onBookmarkHere()
                     },
                     onJumpToBookmark = {
-                        coroutineScope.launch { sheetState.hide() }
-                        showSheet = false
+                        overflowScope.launch { overflowSheetState.hide() }
+                        showOverflowSheet = false
                         onJumpToBookmark()
                     },
                 )
@@ -521,17 +634,24 @@ private fun SleepTimerCountdownChip(remainingMs: Long, onCancel: () -> Unit) {
     )
 }
 
+/**
+ * Issue #418 — the post-split overflow sheet (was `PlayerOptionsSheet`).
+ * Voice settings (speed / pitch / voice picker) have moved to the
+ * VoiceQuickSheet driven by the brass voice icon. This sheet keeps the
+ * remaining non-voice surface: sentence-step transport (#120), sleep
+ * timer, bookmark (#121), recap (#81), AI chat.
+ *
+ * Pre-#418 history: this composable was the single "Player options"
+ * sheet behind ⋮; the issue body identified the voice-tuning subset as
+ * the high-frequency, low-discoverability slice and pulled it out into
+ * its own always-visible icon. Splitting keeps the overflow lean.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PlayerOptionsSheet(
+private fun PlayerOverflowSheet(
     state: UiPlaybackState,
-    onSetSpeed: (Float) -> Unit,
-    onPersistSpeed: (Float) -> Unit,
-    onSetPitch: (Float) -> Unit,
-    onPersistPitch: (Float) -> Unit,
     onStartSleepTimer: (UiSleepTimerMode) -> Unit,
     onCancelSleepTimer: () -> Unit,
-    onPickVoice: () -> Unit,
     /** #120 — step back one sentence boundary. No-op at sentence 0. */
     onPreviousSentence: () -> Unit = {},
     /** #120 — step forward one sentence boundary. No-op at chapter end. */
@@ -551,61 +671,6 @@ private fun PlayerOptionsSheet(
             .padding(horizontal = spacing.lg, vertical = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
-        // #260 — Settings → Voice & Playback's Speed/Pitch sliders
-        // are continuous (no `steps`) so they render as solid brass
-        // bars; this sheet used to pass `steps = 49 / 79`, which
-        // painted dotted tracks. Same parameter rendered two ways.
-        // Solid is the chosen identity; the brass thumb + active
-        // track already carry the realm aesthetic without the dots.
-        //
-        // Trade-off: dropping `steps` means `onValueChange` fires
-        // per drag-pixel instead of per step-boundary, so more
-        // setSpeed / setPitch calls reach the engine during a drag.
-        // Sonic.setRate and KokoroEngine.setPitch are both designed
-        // for continuous live-tuning (cheap per-call), so the extra
-        // churn shouldn't surface. If it ever does, the right
-        // mitigation is a ViewModel-side debounce, not re-introducing
-        // a tick grid the user can't perceive.
-        SheetHeader("Speed", "${"%.2f".format(state.speed)}×")
-        Slider(
-            value = state.speed,
-            onValueChange = onSetSpeed,
-            onValueChangeFinished = { onPersistSpeed(state.speed) },
-            valueRange = 0.5f..3.0f,
-            // TalkBack #160 — without these, the slider announces a raw
-            // float ("1.25") instead of a meaningful value ("Speech speed,
-            // 1.25 times").
-            modifier = Modifier.semantics {
-                contentDescription = "Speech speed"
-                stateDescription = "%.2f times".format(state.speed)
-            },
-        )
-
-        // Issue #373 — Sonic pitch-shifting applies to engine-rendered
-        // PCM; on a Media3-routed live stream (KVMR + future audio
-        // backends) there's no PCM to shift, so the slider is a noop.
-        // Hiding rather than disabling keeps the sheet visually clean —
-        // a greyed-out slider next to a live-radio chip reads as "broken".
-        if (!state.isLiveAudioChapter) {
-            SheetHeader("Pitch", "${"%.2f".format(state.pitch)}×")
-            Slider(
-                value = state.pitch,
-                onValueChange = onSetPitch,
-                onValueChangeFinished = { onPersistPitch(state.pitch) },
-                // Narration-friendly band — matches Settings → Reading. Widened
-                // from 0.85..1.15 (Thalia's VoxSherpa P0 #1, 2026-05-08) for
-                // narrator-baritone headroom. Hard floor at 0.6 — below ~0.7
-                // Sonic introduces audible artifacts on Piper-medium voices.
-                valueRange = 0.6f..1.4f,
-                // TalkBack #160 — neutral pitch is 1.0 (no shift); semantics
-                // calls that out so users know what the number references.
-                modifier = Modifier.semantics {
-                    contentDescription = "Pitch"
-                    stateDescription = "%.2f, neutral at one".format(state.pitch)
-                },
-            )
-        }
-
         // #120 — sentence-step transport. The main bottom-bar buttons
         // do ±30 s (consistent with audiobook-player muscle memory);
         // these sit in the options sheet for users who want
@@ -690,34 +755,12 @@ private fun PlayerOptionsSheet(
             }
         }
 
-        SheetHeader("Voice", null)
-        // Issue #284 + #277 — the whole row must be clickable, not just
-        // the chevron. The previous IconButton-only wiring was a 36dp
-        // hit target at the screen edge; users (and tablets) routinely
-        // missed it. Wrapping the parent Row in `clickable` makes the
-        // entire row the touch target — Material rows standard.
-        //
-        // Issue #284 also asks for a more informative voice label:
-        // [engine] · [voice name]. The state's `voiceLabel` carries the
-        // raw voiceId (e.g. "piper:en_US-amy-medium" or
-        // "azure:en-US-AvaMultilingualNeural"); [formatVoiceLabel] splits
-        // the engine prefix off and dot-joins it with the voice name so
-        // it reads cleanly without pulling in the voice-catalog dep.
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onPickVoice)
-                .padding(vertical = spacing.xs),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-        ) {
-            Icon(Icons.Outlined.RecordVoiceOver, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Column(modifier = Modifier.weight(1f)) {
-                Text(formatVoiceLabel(state.voiceLabel), style = MaterialTheme.typography.bodyMedium)
-                Text("Tap to change", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        // Issue #418 — the Voice row that used to live here has moved
+        // to the dedicated VoiceQuickSheet driven by the brass voice
+        // icon in the top bar. The whole voice-tuning surface
+        // (speed / pitch / voice picker / pause / sonic quality +
+        // Advanced expander) is now one-tap-away on the icon rather
+        // than two-tap behind the ⋮.
 
         // ── Chapter Recap (issue #81) — opens the librarian modal ──
         SheetHeader("Smart features", null)
