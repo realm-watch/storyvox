@@ -14,6 +14,8 @@ import `in`.jphe.storyvox.data.db.entity.ChapterDownloadState
 import `in`.jphe.storyvox.data.db.entity.DownloadMode
 import `in`.jphe.storyvox.data.repository.ChapterRepository
 import `in`.jphe.storyvox.data.repository.FictionRepository
+import `in`.jphe.storyvox.data.repository.InboxNotificationGate
+import `in`.jphe.storyvox.data.repository.InboxRepository
 import `in`.jphe.storyvox.data.source.FictionSource
 import `in`.jphe.storyvox.data.source.model.FictionResult
 import kotlinx.coroutines.flow.first
@@ -44,6 +46,12 @@ class NewChapterPollWorker @AssistedInject constructor(
     private val fictionRepository: FictionRepository,
     private val chapterRepository: ChapterRepository,
     private val sources: Map<String, @JvmSuppressWildcards FictionSource>,
+    /** Issue #383 — write a row to the cross-source Inbox feed when
+     *  this poll detects new chapters for a fiction. */
+    private val inboxRepository: InboxRepository,
+    /** Issue #383 — gates the inbox write per-source. A false here
+     *  is the user's "don't notify me about this backend" preference. */
+    private val inboxGate: InboxNotificationGate,
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
@@ -102,6 +110,37 @@ class NewChapterPollWorker @AssistedInject constructor(
                     val missing = chapterDao.missingForFiction(fiction.id)
                     if (missing.isEmpty()) continue
                     newChapters += missing.size
+
+                    // Issue #383 — emit a cross-source Inbox event for
+                    // the user. Gate via the per-source toggle so a
+                    // user who flipped Royal Road's inbox toggle off
+                    // still gets the library updated (and the chapters
+                    // queued in EAGER mode) but doesn't see a row in
+                    // the Inbox feed. Coalescing across consecutive
+                    // polls happens inside InboxRepository.record —
+                    // we always pass the current total, and the repo
+                    // updates the existing unread row in place so the
+                    // feed doesn't flood.
+                    if (inboxGate.isEnabled(fiction.sourceId)) {
+                        val deepLinkChapterId = missing.first().id
+                        val plural = if (missing.size == 1) "chapter" else "chapters"
+                        runCatching {
+                            inboxRepository.record(
+                                sourceId = fiction.sourceId,
+                                fictionId = fiction.id,
+                                chapterId = deepLinkChapterId,
+                                title = "${missing.size} new $plural in ${fiction.title}",
+                                body = null,
+                                deepLinkUri = "storyvox://reader/${fiction.id}/$deepLinkChapterId",
+                            )
+                        }.onFailure { e ->
+                            // Inbox write is best-effort; a Room
+                            // failure shouldn't fail the entire poll
+                            // (the chapter rows are already persisted).
+                            Log.w(TAG, "inbox record failed for ${fiction.id}", e)
+                        }
+                    }
+
                     if (mode == DownloadMode.EAGER) {
                         for (m in missing) {
                             chapterRepository.queueChapterDownload(

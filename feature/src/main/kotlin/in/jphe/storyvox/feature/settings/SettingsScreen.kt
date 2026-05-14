@@ -579,6 +579,35 @@ fun SettingsScreen(
             }
         }
 
+        // ── Inbox notifications sub-card (#383) ────────────────────
+        // Same section header — these are part of "Library & Sync"
+        // because the toggles gate the cross-source Inbox feed and
+        // the optional system notifications that fire alongside it.
+        // One row per backend that emits update events today; the
+        // matching field on UiSettings stays inert when the backend
+        // doesn't poll for diffs yet (Wikipedia, Standard Ebooks —
+        // tracked as follow-ups in #383's scope notes).
+        SettingsGroupCard {
+            SettingsSwitchRow(
+                title = "Inbox: Royal Road",
+                subtitle = "New-chapter events from your Royal Road follows.",
+                checked = s.inboxNotifyRoyalRoad,
+                onCheckedChange = viewModel::setInboxNotifyRoyalRoad,
+            )
+            SettingsSwitchRow(
+                title = "Inbox: KVMR",
+                subtitle = "Live programs starting on KVMR Community Radio.",
+                checked = s.inboxNotifyKvmr,
+                onCheckedChange = viewModel::setInboxNotifyKvmr,
+            )
+            SettingsSwitchRow(
+                title = "Inbox: Wikipedia",
+                subtitle = "Updates to followed Wikipedia articles. (No diff poller yet — see #383 follow-up.)",
+                checked = s.inboxNotifyWikipedia,
+                onCheckedChange = viewModel::setInboxNotifyWikipedia,
+            )
+        }
+
         // ── Sync sub-card ─────────────────────────────────────────
         // Same section header — these are still part of "Library &
         // Sync" — just visually distinct so the user reads the card

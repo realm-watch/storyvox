@@ -17,6 +17,7 @@ import `in`.jphe.storyvox.data.db.dao.ChapterDao
 import `in`.jphe.storyvox.data.db.dao.ChapterHistoryDao
 import `in`.jphe.storyvox.data.db.dao.FictionDao
 import `in`.jphe.storyvox.data.db.dao.FictionShelfDao
+import `in`.jphe.storyvox.data.db.dao.InboxEventDao
 import `in`.jphe.storyvox.data.db.dao.LlmMessageDao
 import `in`.jphe.storyvox.data.db.dao.LlmSessionDao
 import `in`.jphe.storyvox.data.db.dao.PlaybackDao
@@ -32,6 +33,8 @@ import `in`.jphe.storyvox.data.repository.FollowsRepository
 import `in`.jphe.storyvox.data.repository.FollowsRepositoryImpl
 import `in`.jphe.storyvox.data.repository.HistoryRepository
 import `in`.jphe.storyvox.data.repository.HistoryRepositoryImpl
+import `in`.jphe.storyvox.data.repository.InboxRepository
+import `in`.jphe.storyvox.data.repository.InboxRepositoryImpl
 import `in`.jphe.storyvox.data.repository.LibraryRepository
 import `in`.jphe.storyvox.data.repository.LibraryRepositoryImpl
 import `in`.jphe.storyvox.data.repository.PlaybackPositionRepository
@@ -66,6 +69,7 @@ object DataModule {
     @Provides fun llmSessionDao(db: StoryvoxDatabase): LlmSessionDao = db.llmSessionDao()
     @Provides fun llmMessageDao(db: StoryvoxDatabase): LlmMessageDao = db.llmMessageDao()
     @Provides fun fictionShelfDao(db: StoryvoxDatabase): FictionShelfDao = db.fictionShelfDao()
+    @Provides fun inboxEventDao(db: StoryvoxDatabase): InboxEventDao = db.inboxEventDao()
 
     @Provides
     @Singleton
@@ -112,6 +116,9 @@ abstract class RepositoryBindings {
 
     @Binds @Singleton
     abstract fun bindHistoryRepository(impl: HistoryRepositoryImpl): HistoryRepository
+
+    @Binds @Singleton
+    abstract fun bindInboxRepository(impl: InboxRepositoryImpl): InboxRepository
 
     @Binds @Singleton
     abstract fun bindChapterDownloadScheduler(

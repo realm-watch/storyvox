@@ -180,6 +180,48 @@ val MIGRATION_6_7: Migration = object : Migration(6, 7) {
     }
 }
 
+/**
+ * v8 — issue #383: cross-source Inbox. New `inbox_event` table backing the
+ * Library "Inbox" sub-tab — one row per source-emitted notification (new
+ * chapters, live programs, article updates). Two indexes:
+ *  - `ts` for the `ORDER BY ts DESC` feed query
+ *  - `isRead` for the unread-count badge (`COUNT(*) WHERE isRead = 0`)
+ *
+ * No foreign keys to `fiction` / `chapter` — Inbox events deliberately
+ * survive removal of the underlying rows so the user can still see
+ * "Wikipedia: X updated" after they unfollow the article. See the
+ * [`in`.jphe.storyvox.data.db.entity.InboxEvent] kdoc for the reasoning.
+ *
+ * Purely additive — no existing data touched.
+ */
+val MIGRATION_7_8: Migration = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `inbox_event` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `sourceId` TEXT NOT NULL,
+                `fictionId` TEXT,
+                `chapterId` TEXT,
+                `title` TEXT NOT NULL,
+                `body` TEXT,
+                `ts` INTEGER NOT NULL,
+                `isRead` INTEGER NOT NULL DEFAULT 0,
+                `deepLinkUri` TEXT
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_inbox_event_ts` " +
+                "ON `inbox_event` (`ts`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_inbox_event_isRead` " +
+                "ON `inbox_event` (`isRead`)",
+        )
+    }
+}
+
 val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -187,4 +229,5 @@ val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_4_5,
     MIGRATION_5_6,
     MIGRATION_6_7,
+    MIGRATION_7_8,
 )

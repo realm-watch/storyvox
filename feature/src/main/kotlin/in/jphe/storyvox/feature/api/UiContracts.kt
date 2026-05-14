@@ -936,6 +936,24 @@ data class UiSettings(
      * the *overlay* surface.
      */
     val showDebugOverlay: Boolean = false,
+    /**
+     * Issue #383 — per-source Inbox notification toggles. When false,
+     * the corresponding backend's update emitter skips writing events
+     * to the cross-source Inbox feed (and skips the optional system
+     * notification). Default ON across the board — the Inbox tab is
+     * opt-out per-source, not opt-in. The toggle only gates the
+     * Inbox/notification surface; the source itself stays visible in
+     * Browse, and library updates still happen.
+     *
+     * Only backends that emit events today are surfaced as fields
+     * here. Wikipedia / Standard Ebooks / Outline / etc. don't poll
+     * for diffs yet (v1 scope) — they're filed as follow-ups; the
+     * matching toggle pre-existing on the Inbox section just becomes
+     * meaningful when the source starts emitting.
+     */
+    val inboxNotifyRoyalRoad: Boolean = true,
+    val inboxNotifyKvmr: Boolean = true,
+    val inboxNotifyWikipedia: Boolean = true,
 ) {
     /** Speed value the engine should run at right now — the active
      *  voice's override if set, otherwise the global default (#195). */
@@ -1343,6 +1361,18 @@ interface SettingsRepositoryUi {
      *  never fires again on this install. Default no-op for fakes;
      *  the DataStore impl persists. */
     suspend fun markMilestoneConfettiShown() {}
+
+    // ── Issue #383 — Inbox per-source mute toggles ─────────────────
+    /**
+     * Per-source Inbox notification toggles. When OFF, the backend's
+     * update emitter (poller, watcher) does NOT write to the
+     * `inbox_event` table for that source. Default ON across the
+     * board; default impls here let test fakes that don't care about
+     * the Inbox surface ignore the calls.
+     */
+    suspend fun setInboxNotifyRoyalRoad(enabled: Boolean) {}
+    suspend fun setInboxNotifyKvmr(enabled: Boolean) {}
+    suspend fun setInboxNotifyWikipedia(enabled: Boolean) {}
 }
 
 /**

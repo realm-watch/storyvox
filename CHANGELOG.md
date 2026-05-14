@@ -9,6 +9,14 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.26] — 2026-05-13
+
+### Added
+- **Cross-source Inbox tab in Library** (#383) — new fourth Library sub-tab (`All / Reading / Inbox / History`) surfaces a chronological feed of source-emitted events: "3 new chapters in The Wandering Inn", "KVMR live now", and (future) Wikipedia article updates. Tap a row to deep-link to the chapter/program; an unread-count badge sits on the tab itself. The feed is source-agnostic — one timeline across every backend that emits update events.
+- **Per-source Inbox notification toggles** (#383) — Settings → Library & Sync gets an "Inbox notifications" sub-card with one switch per emitting backend (`Royal Road`, `KVMR`, `Wikipedia`). Default ON; flipping a toggle OFF stops the backend's update emitter from writing rows to the cross-source feed without affecting library updates or the source's visibility in Browse.
+- **`InboxRepository` + `inbox_event` table** (#383) — Room migration v7 → v8 lands the append-only event table backing the Inbox. Repository coalesces consecutive "N new chapters" events for the same fiction so the feed doesn't flood after a long offline gap. No FK to fiction/chapter — events deliberately survive parent-row removal so the user can still see "Wikipedia: X updated" after they unfollow the article.
+- `NewChapterPollWorker` (#383) now records an `InboxEvent` row alongside its existing chapter-diff persistence whenever a polled source has missing chapters and the user hasn't muted that source in the Inbox toggles. KVMR live-program emission + Wikipedia article-diff emission are tracked as follow-ups — v1 wires the seam but only Royal Road's existing poll path emits today.
+
 ## [0.5.25] — 2026-05-13
 
 ### Added
