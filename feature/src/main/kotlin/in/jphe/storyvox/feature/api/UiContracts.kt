@@ -848,6 +848,17 @@ data class UiSettings(
      *  shouldn't surface it on every fresh install. Users opt in from
      *  Settings → Library & Sync. */
     val sourceHackerNewsEnabled: Boolean = false,
+    /** arXiv non-fiction backend (#378). Default OFF for fresh
+     *  installs — second non-fiction-shaped source after Wikipedia,
+     *  same opt-in posture. Users discover it from Settings →
+     *  Library & Sync rather than getting a Browse picker pre-
+     *  populated with academic-paper content they didn't ask for. */
+    val sourceArxivEnabled: Boolean = false,
+    /** PLOS open-access peer-reviewed science backend (#380). Default
+     *  OFF on fresh installs — academic content is an opt-in surface;
+     *  not what a fresh-install user expects in the picker until they
+     *  go looking for it. Same opt-in posture as Wikipedia. */
+    val sourcePlosEnabled: Boolean = false,
     /**
      * Plugin-seam Phase 1 (#384) — per-plugin on/off keyed by stable
      * plugin id ("kvmr", "royalroad", "notion", ...). Replaces the
@@ -1336,6 +1347,11 @@ interface SettingsRepositoryUi {
     suspend fun setSourceNotionEnabled(enabled: Boolean)
     /** Issue #379 — Hacker News backend on/off. */
     suspend fun setSourceHackerNewsEnabled(enabled: Boolean)
+    /** Issue #378 — arXiv backend on/off. */
+    suspend fun setSourceArxivEnabled(enabled: Boolean)
+    /** Issue #380 — PLOS open-access peer-reviewed science backend
+     *  on/off. */
+    suspend fun setSourcePlosEnabled(enabled: Boolean)
     /** Issue #233 — set the Notion database id the source queries.
      *  Both hyphenated UUID and compact 32-hex forms accepted; the
      *  impl normalizes whitespace. Empty falls back to the baked-in

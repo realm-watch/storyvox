@@ -9,6 +9,21 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.28] — 2026-05-13
+
+### Added — four new backends, all using the v0.5.27 `@SourcePlugin` pattern from day one
+- **Wikisource** (#376, #399) — Wikimedia project for transcribed public-domain texts (Shakespeare, classic novels, historical documents). Browse landing reads `Category:Validated_texts` (the double-proofread quality tier); free-form search via MediaWiki Action API. Multi-part works walked via `/Subpage` traversal; single-page works fall back to Wikipedia-style heading_1 splits. 14 unit tests. Default OFF on fresh installs.
+- **arXiv** (#378, #400) — open-access academic pre-print server (physics, math, CS). Default category for browse is `cs.AI`; free-form search via the public `export.arxiv.org/api/query` Atom feed. Each paper is one fiction; v1 chapter is the abstract + title + author byline + comments rendered from the `arxiv.org/abs/<id>` HTML page. Full-PDF body extraction is an explicit follow-up scope cut. 12 unit tests. Default OFF.
+- **Hacker News** (#379, #401) — front-page tech-news threads as single-chapter fictions. Popular surfaces the first 50 of HN's top-stories Firebase list; Search hits the Algolia HN Search API. Link stories include the title + URL + top 20 comments (threaded with `—` depth prefixes); Ask HN / Show HN use the story `text` field directly. 8 unit tests. Default OFF.
+- **PLOS / Public Library of Science** (#380, #402) — open-access peer-reviewed science (PLOS ONE, Biology, Medicine, Comp Biology, Genetics, Pathogens, Neglected Tropical Diseases). Browse landing reads recent PLOS ONE sorted by publication date; Search hits the same Solr endpoint with free-form `q=`. Each article (one DOI) is one fiction; v1 chapter is the abstract + first ~3 body sections. 11 unit tests. Default OFF.
+
+### Total backend count
+- **16 fiction backends** now: Royal Road, GitHub (curated registry), Memory Palace, RSS, EPUB, Outline, Gutenberg, AO3, Standard Ebooks, Wikipedia, Wikisource (new), KVMR (audio-stream), Notion, Hacker News, arXiv (new), PLOS (new). All four new backends register via `@SourcePlugin` and surface in the `SourcePluginRegistry` automatically — adding new backends is now ~4 touchpoints instead of 17 (per the Phase 2 #384 work that shipped in v0.5.27).
+
+### Under the hood
+- Bundle merge orchestrated per `feedback_no_eager_merge_in_bundle`: all four PRs (#399, #400, #401, #402) opened in parallel from worktrees, merged in order (Wikisource → HN → arXiv hand-rebased → PLOS hand-rebased) once each backend's CI was independently green. arXiv and PLOS branches required hand-rebase + union-resolve of additive enum + Settings UI + test-fake additions; the agent-curated commits and tests survived intact.
+- Five test fakes (`ChatViewModelTest`, three `SettingsViewModel*Test` flavors, and `RealPlaybackControllerUiTest`) updated with `setSourceArxivEnabled` / `setSourcePlosEnabled` stubs to match the new `SettingsRepositoryUi` interface members.
+
 ## [0.5.27] — 2026-05-13
 
 ### Added

@@ -33,8 +33,8 @@ android {
         applicationId = "in.jphe.storyvox"
         minSdk = 26
         targetSdk = 35
-        versionCode = 138
-        versionName = "0.5.27"
+        versionCode = 139
+        versionName = "0.5.28"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -164,6 +164,8 @@ dependencies {
     implementation(project(":source-kvmr"))
     implementation(project(":source-notion"))
     implementation(project(":source-hackernews"))
+    implementation(project(":source-arxiv"))
+    implementation(project(":source-plos"))
     implementation(project(":source-azure"))
     implementation(project(":core-sync"))
     implementation(project(":feature"))

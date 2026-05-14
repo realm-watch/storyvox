@@ -193,6 +193,12 @@ class SettingsViewModel @Inject constructor(
     /** Issue #379 — Hacker News backend on/off. */
     fun setSourceHackerNewsEnabled(enabled: Boolean) =
         viewModelScope.launch { repo.setSourceHackerNewsEnabled(enabled) }
+    /** Issue #378 — arXiv backend on/off. */
+    fun setSourceArxivEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setSourceArxivEnabled(enabled) }
+    /** Issue #380 — PLOS open-access peer-reviewed science backend on/off. */
+    fun setSourcePlosEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setSourcePlosEnabled(enabled) }
     fun setNotionDatabaseId(id: String) =
         viewModelScope.launch { repo.setNotionDatabaseId(id) }
     fun setNotionApiToken(token: String?) =

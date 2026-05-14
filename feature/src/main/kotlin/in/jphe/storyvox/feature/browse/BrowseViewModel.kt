@@ -109,6 +109,18 @@ enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
      *  Default OFF on fresh installs; opt-in from Settings → Library
      *  & Sync. */
     HackerNews(SourceIds.HACKERNEWS, "Hacker News"),
+    /** arXiv (#378) — open-access academic papers. Each paper is one
+     *  fiction; v1 chapter is the abstract + title + author byline
+     *  rendered from the `arxiv.org/abs/<id>` HTML page. Default
+     *  category for the browse landing is `cs.AI`; full-PDF body
+     *  extraction is a follow-up. Default OFF on fresh installs. */
+    Arxiv(SourceIds.ARXIV, "arXiv"),
+    /** PLOS (#380) — open-access peer-reviewed science. Each article
+     *  (one DOI) is one fiction; v1 renders abstract + first ~3 body
+     *  sections as a single chapter. Solr-backed search; HTML body
+     *  extraction same approach as Wikipedia. Default OFF — academic
+     *  content is opt-in. */
+    Plos(SourceIds.PLOS, "PLOS"),
 }
 
 /** Tabs that are meaningful for [source]. GitHub registry doesn't
@@ -243,6 +255,22 @@ fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseT
     // Show HN split is the spec'd follow-up that will plumb its own
     // tab(s).
     BrowseSourceKey.HackerNews -> listOf(
+        BrowseTab.Popular,
+        BrowseTab.Search,
+    )
+    // arXiv (#378): Popular = "recent in cs.AI" (sorted by
+    // submittedDate desc). NewReleases would collapse to the same
+    // surface. BestRated has no analogue. Search hits the public
+    // `all:<term>` query API.
+    BrowseSourceKey.Arxiv -> listOf(
+        BrowseTab.Popular,
+        BrowseTab.Search,
+    )
+    // PLOS (#380): Popular = recent PLOS ONE articles sorted by
+    // publication_date desc. Search hits the same Solr endpoint
+    // with free-form q=. NewReleases collapses to Popular (recency
+    // is already the order); BestRated has no analogue.
+    BrowseSourceKey.Plos -> listOf(
         BrowseTab.Popular,
         BrowseTab.Search,
     )
@@ -745,6 +773,20 @@ class BrowseViewModel @Inject constructor(
                 _githubFilter.value = GitHubSearchFilter()
                 _palaceFilter.value = MemPalaceFilter()
             }
+            BrowseSourceKey.Arxiv -> {
+                // arXiv (#378) — recent-in-cs.AI landing + free-form
+                // search; no per-source filter sheet in v1.
+                _filter.value = BrowseFilter()
+                _githubFilter.value = GitHubSearchFilter()
+                _palaceFilter.value = MemPalaceFilter()
+            }
+            BrowseSourceKey.Plos -> {
+                // PLOS (#380) — recent PLOS ONE landing + Solr search;
+                // no per-source filter sheet in v1.
+                _filter.value = BrowseFilter()
+                _githubFilter.value = GitHubSearchFilter()
+                _palaceFilter.value = MemPalaceFilter()
+            }
         }
     }
 
@@ -987,6 +1029,19 @@ private fun resolveSource(
     // Hacker News (#379): Popular = top-stories landing (first 50);
     // Search = Algolia-backed full-text. Same shape as Notion above.
     BrowseSourceKey.HackerNews -> when (tab) {
+        BrowseTab.Popular -> BrowseSource.Popular
+        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
+        else -> null
+    }
+    // arXiv (#378): same Popular/Search shape — recent-in-cs.AI on
+    // Popular, free-form Atom `all:<q>` on Search.
+    BrowseSourceKey.Arxiv -> when (tab) {
+        BrowseTab.Popular -> BrowseSource.Popular
+        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
+        else -> null
+    }
+    // PLOS (#380): recent-PLOS-ONE landing + free-form Solr search.
+    BrowseSourceKey.Plos -> when (tab) {
         BrowseTab.Popular -> BrowseSource.Popular
         BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
         else -> null

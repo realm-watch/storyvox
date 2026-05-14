@@ -223,6 +223,12 @@ fun BrowseScreen(
                 // (Top / Ask / Show) selection lives in the Browse tab
                 // shape itself, not a sidecar filter.
                 BrowseSourceKey.HackerNews -> false
+                // #378 — arXiv has no filter sheet in v1; the category
+                // picker (default cs.AI) is a v2 surface.
+                BrowseSourceKey.Arxiv -> false
+                // #380 — PLOS has no filter sheet in v1; the journal /
+                // subject picker is a v2 surface.
+                BrowseSourceKey.Plos -> false
             }
             if (filterableSource) {
                 FilterButton(
@@ -246,6 +252,8 @@ fun BrowseScreen(
                         BrowseSourceKey.Kvmr -> 0
                         BrowseSourceKey.Notion -> 0
                         BrowseSourceKey.HackerNews -> 0
+                        BrowseSourceKey.Arxiv -> 0
+                        BrowseSourceKey.Plos -> 0
                     },
                     onClick = { showFilterSheet = true },
                 )
@@ -532,6 +540,10 @@ fun BrowseScreen(
             // #379 — Hacker News has no filter sheet in v1; the Top
             // landing is the surface and Search is the discovery path.
             BrowseSourceKey.HackerNews -> { showFilterSheet = false }
+            // #378 — arXiv has no filter sheet in v1.
+            BrowseSourceKey.Arxiv -> { showFilterSheet = false }
+            // #380 — PLOS has no filter sheet in v1.
+            BrowseSourceKey.Plos -> { showFilterSheet = false }
         }
     }
 }
@@ -626,6 +638,8 @@ private fun searchHintForSource(sourceKey: BrowseSourceKey): String = when (sour
     BrowseSourceKey.Kvmr -> "Tune in to KVMR — live community radio from Nevada City"
     BrowseSourceKey.Notion -> "Search your configured Notion database"
     BrowseSourceKey.HackerNews -> "Search Hacker News stories (Algolia-backed full-text)"
+    BrowseSourceKey.Arxiv -> "Search arXiv — open-access academic papers"
+    BrowseSourceKey.Plos -> "Search PLOS — open-access peer-reviewed science"
 }
 
 private val BrowseTab.label: String

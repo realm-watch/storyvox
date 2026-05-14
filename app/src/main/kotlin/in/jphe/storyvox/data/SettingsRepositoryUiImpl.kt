@@ -259,6 +259,14 @@ internal object LegacySourceKeys {
             Spec(booleanPreferencesKey("pref_source_notion_enabled"), defaultValue = true),
         `in`.jphe.storyvox.data.source.SourceIds.HACKERNEWS to
             Spec(booleanPreferencesKey("pref_source_hackernews_enabled"), defaultValue = false),
+        // #378 — arXiv: default OFF, same posture as Wikipedia.
+        `in`.jphe.storyvox.data.source.SourceIds.ARXIV to
+            Spec(booleanPreferencesKey("pref_source_arxiv_enabled"), defaultValue = false),
+        // #380 — PLOS open-access peer-reviewed science. Academic
+        // content is an opt-in surface; fresh installs ship with this
+        // off and the user flips it on from Settings.
+        `in`.jphe.storyvox.data.source.SourceIds.PLOS to
+            Spec(booleanPreferencesKey("pref_source_plos_enabled"), defaultValue = false),
     )
 }
 
@@ -380,6 +388,14 @@ private object Keys {
      *  is a tech-news / discussion backend, not a fiction source in
      *  the classic sense, so it should be an explicit opt-in. */
     val SOURCE_HACKERNEWS_ENABLED = booleanPreferencesKey("pref_source_hackernews_enabled")
+    /** Issue #378 — arXiv backend on/off. Default false for fresh
+     *  installs; second non-fiction-shaped source after Wikipedia
+     *  follows the same opt-in posture. */
+    val SOURCE_ARXIV_ENABLED = booleanPreferencesKey("pref_source_arxiv_enabled")
+    /** Issue #380 — PLOS open-access peer-reviewed science backend
+     *  on/off. Default false for fresh installs; opt-in surface like
+     *  Wikipedia. */
+    val SOURCE_PLOS_ENABLED = booleanPreferencesKey("pref_source_plos_enabled")
 
     // ── Plugin-seam Phase 1 (#384) ────────────────────────────────
     /**
@@ -663,6 +679,10 @@ class SettingsRepositoryUiImpl(
             // #379 — Hacker News defaults OFF: tech-news isn't fiction
             // in the picker's strict sense; users opt in from Settings.
             sourceHackerNewsEnabled = prefs[Keys.SOURCE_HACKERNEWS_ENABLED] ?: false,
+            // #378 — arXiv: default OFF, same posture as Wikipedia.
+            sourceArxivEnabled = prefs[Keys.SOURCE_ARXIV_ENABLED] ?: false,
+            // #380 — PLOS open-access: academic content is opt-in.
+            sourcePlosEnabled = prefs[Keys.SOURCE_PLOS_ENABLED] ?: false,
             // Plugin-seam Phase 1 (#384) — derive the per-plugin map
             // from the JSON blob seeded by SourcePluginsMapMigration.
             // Empty map (parse error / missing key in a race) falls
@@ -1326,6 +1346,16 @@ class SettingsRepositoryUiImpl(
     override suspend fun setSourceHackerNewsEnabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_HACKERNEWS_ENABLED] = enabled }
         writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.HACKERNEWS, enabled)
+    }
+
+    override suspend fun setSourceArxivEnabled(enabled: Boolean) {
+        store.edit { it[Keys.SOURCE_ARXIV_ENABLED] = enabled }
+        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.ARXIV, enabled)
+    }
+
+    override suspend fun setSourcePlosEnabled(enabled: Boolean) {
+        store.edit { it[Keys.SOURCE_PLOS_ENABLED] = enabled }
+        writePluginEnabledIntoMap(`in`.jphe.storyvox.data.source.SourceIds.PLOS, enabled)
     }
 
     /**

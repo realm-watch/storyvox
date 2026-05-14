@@ -600,6 +600,23 @@ fun SettingsScreen(
                 checked = s.sourceHackerNewsEnabled,
                 onCheckedChange = viewModel::setSourceHackerNewsEnabled,
             )
+            // Issue #378 — arXiv (open-access academic papers). Opt-in,
+            // same posture as Wikipedia.
+            SettingsSwitchRow(
+                title = "arXiv",
+                subtitle = "Open-access academic papers. Each paper is a single-chapter fiction; v1 renders the abstract + author byline.",
+                checked = s.sourceArxivEnabled,
+                onCheckedChange = viewModel::setSourceArxivEnabled,
+            )
+            // Issue #380 — PLOS (open-access peer-reviewed science).
+            // Opt-in surface; academic content is not what a fresh
+            // install expects in the picker by default.
+            SettingsSwitchRow(
+                title = "PLOS",
+                subtitle = "Open-access peer-reviewed science. Each article (one DOI) is a single-chapter fiction; v1 renders the abstract + first sections.",
+                checked = s.sourcePlosEnabled,
+                onCheckedChange = viewModel::setSourcePlosEnabled,
+            )
         }
 
         // ── Inbox notifications sub-card (#383) ────────────────────
