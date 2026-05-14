@@ -191,10 +191,19 @@ jobs:
             git push
           fi
 
-      - name: Commit docs back to main
+      - name: Open docs-sync PR
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
+          # Branch-protection on main blocks the bot from pushing
+          # directly (refs/heads/main is PR-required + CODEOWNERS-
+          # gated). So instead of `git push origin main`, push to a
+          # short-lived `docs-sync/<tag>` branch and open a PR that
+          # CODEOWNERS auto-approves on merge.
+          #
+          # `[skip ci]` in the merge commit prevents the Android build
+          # from re-firing on what's a docs-only change.
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name  "github-actions[bot]"
           git add README.md docs/index.md docs/version.json docs/_layouts/default.html
@@ -202,5 +211,28 @@ jobs:
             echo "No docs changes to commit."
             exit 0
           fi
-          git commit -m "chore(release): docs sync for ${TAG} [skip ci]"
-          git push origin main
+          BRANCH="docs-sync/${TAG}"
+          git checkout -b "$BRANCH"
+          git commit -m "chore(release): docs sync for ${TAG}"
+          git push -u origin "$BRANCH"
+          # Open the PR. If one already exists for the same branch
+          # (e.g. a retry of the same workflow), gh create will fail —
+          # fall through to the merge step in that case.
+          gh pr create \
+            --title "chore(release): docs sync for $TAG" \
+            --body "Auto-generated docs sync for tag $TAG. Updates README headline, docs/index.md headline + release link, docs/version.json + meta tag (realm-sigil bind)." \
+            --base main \
+            --head "$BRANCH" \
+            --label "ci,docs" 2>&1 || true
+          # Auto-merge once the required "Build debug APK" check passes.
+          # --admin would bypass the check but requires user-level admin
+          # rights the GITHUB_TOKEN doesn't have. --auto queues the
+          # merge for when the protection rules are satisfied: the
+          # Android workflow fires on every PR (no path filter today),
+          # so the docs-only PR rides through it and merges in ~3 min.
+          # Future optimization: add paths-ignore: docs/** to android.yml
+          # to skip the rebuild on pure docs PRs.
+          gh pr merge "$BRANCH" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --squash --auto --delete-branch \
+            --subject "chore(release): docs sync for $TAG [skip ci]"
