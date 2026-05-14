@@ -9,6 +9,14 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.24] — 2026-05-13
+
+### Fixed
+- **`NotionDefaults.TECHEMPOWER_DATABASE_ID` now points at the real TechEmpower Resources database** (`2a3d706803c649409e74e9ce5ccd4c4b`, from `techempower/site.config.ts` line 48). Replaces the `TODO_FILL_IN_...` placeholder that shipped in v0.5.23. Users with their own Notion integration token shared with the database now see TechEmpower's Resources content as the default Notion fiction.
+
+### Known limitation
+- v0.5.24 still requires the user to paste a Notion integration token. The TechEmpower content lives at a publicly-shared `techempower.notion.site` URL, which is readable anonymously via Notion's *unofficial* `www.notion.so/api/v3/{loadPageChunk,queryCollection}` endpoints — but the official Notion REST API (which `:source-notion` currently uses) always returns 401 without auth, even for public content. v0.5.25 will land the anonymous-read mode + extend the tree to cover Guides + About + Donate alongside the Resources database (#393).
+
 ## [0.5.23] — 2026-05-13
 
 ### Added

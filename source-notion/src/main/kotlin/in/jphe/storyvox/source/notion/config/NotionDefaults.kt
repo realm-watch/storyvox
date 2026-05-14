@@ -3,21 +3,34 @@ package `in`.jphe.storyvox.source.notion.config
 /**
  * Issue #390 — baked-in defaults for the Notion fiction backend.
  *
- * [TECHEMPOWER_DATABASE_ID] is the **placeholder constant** for the
- * techempower.org content Notion database. The literal value below is
- * a TODO — JP fills in the actual database id before final release
- * (the database has to be created + shared with the storyvox
- * integration first; the id format is the 32-character hex string from
- * the database URL, with or without hyphens).
+ * [TECHEMPOWER_DATABASE_ID] points at TechEmpower's **Resources**
+ * Notion database — the searchable database of free tech resources
+ * for individuals with low income, their families, and nonprofit
+ * organizations. The id is sourced from
+ * [`techempower/site.config.ts`](https://github.com/techempower-org/techempower.org)
+ * `pageUrlOverrides` line 47–48 (`'/resources': '2a3d7068…'`), which
+ * is what the techempower.org website hits when a user navigates to
+ * `/resources` — the same id is queryable as a Notion database via
+ * the official REST API.
  *
- * Why ship with a placeholder rather than waiting:
- *  - Every other piece of the Notion backend (#233 — schema, API
- *    client, UI, settings plumbing) can land independently and
- *    bake/test against any DB id that exists in the user's workspace.
- *  - When the real techempower.org database id materializes, it's a
- *    one-line patch to this file — no architectural surgery.
- *  - The default applies only on **fresh installs**. Existing users
- *    who already have a non-default databaseId persisted keep it.
+ * Why a database (not a page):
+ *  - Storyvox's [`:source-notion`] queries `databases/query/{id}`.
+ *    Notion's data model distinguishes page-blocks from database-
+ *    blocks; the website's `rootNotionPageId` (`0959e445…`) is the
+ *    Guides *page* and would 404 against the database endpoint.
+ *    `2a3d7068…` is a real database — the Resources collection
+ *    underneath the root page — and that's what the API can read.
+ *  - Existing users with a non-default databaseId persisted keep
+ *    their value; this default only applies on fresh installs.
+ *
+ * Auth caveat: storyvox uses an integration-token PAT model. To
+ * read TechEmpower's Resources database the user must have a Notion
+ * integration shared with the database. The current `:source-notion`
+ * UX assumes the user pastes their own integration token; for the
+ * "techempower content out of the box" experience to fully work
+ * without setup, TechEmpower would need to either share the
+ * Resources DB publicly with a known token, or ship a bundled
+ * read-only token (issue #393 tracks that decision).
  *
  * Format note: Notion accepts both the hyphenated UUID form
  * (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`) and the compact 32-hex
@@ -25,14 +38,14 @@ package `in`.jphe.storyvox.source.notion.config
  */
 object NotionDefaults {
     /**
-     * **TODO** — replace with the real techempower.org content database
-     * id once the database is created + shared with the storyvox
-     * Notion integration. The string below is intentionally invalid
-     * (zeros) so a fresh install with no override hits a clean 404
-     * empty-state rather than silently fetching from a typo'd DB.
+     * The TechEmpower Resources database id, from
+     * `techempower/site.config.ts` line 48 (`pageUrlOverrides`,
+     * `/resources` route). Searchable database of free tech resources
+     * for low-income families, surfaced as the storyvox Notion
+     * backend's default content target on fresh installs (#390).
      */
     const val TECHEMPOWER_DATABASE_ID: String =
-        "TODO_FILL_IN_TECHEMPOWER_DATABASE_ID"
+        "2a3d706803c649409e74e9ce5ccd4c4b"
 
     /** Notion REST API host. */
     const val BASE_URL: String = "https://api.notion.com"
