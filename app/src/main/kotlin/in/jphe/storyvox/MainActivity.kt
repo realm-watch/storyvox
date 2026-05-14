@@ -16,10 +16,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.getValue
 import dagger.hilt.android.AndroidEntryPoint
+import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
+import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.ui.theme.LibraryNocturneTheme
 import `in`.jphe.storyvox.navigation.DeepLinkResolver
 import `in`.jphe.storyvox.navigation.StoryvoxNavHost
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 
@@ -34,6 +39,16 @@ class MainActivity : ComponentActivity() {
      */
     private val intentFlow = MutableStateFlow<Intent?>(null)
 
+    /**
+     * Issue #412 — the user's [ThemeOverride] preference (System / Dark /
+     * Light) must reach [LibraryNocturneTheme] so the renderer honors the
+     * Settings → Reading → Theme picker. Before this Hilt injection the
+     * theme wrapper defaulted to `isSystemInDarkTheme()` and the saved
+     * preference was purely cosmetic (showed checked in Settings, never
+     * applied).
+     */
+    @Inject lateinit var settingsRepo: SettingsRepositoryUi
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Android 15+ forces edge-to-edge by default for apps targeting
@@ -46,7 +61,20 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         intentFlow.value = intent
         setContent {
-            LibraryNocturneTheme {
+            // #412 — collect the user's theme preference + map it to
+            // the explicit darkTheme boolean LibraryNocturneTheme reads.
+            // System falls back to isSystemInDarkTheme(); Dark and Light
+            // force the corresponding palette regardless of device
+            // setting. Without this, the Settings → Reading → Theme
+            // picker was cosmetic-only.
+            val settings by settingsRepo.settings.collectAsState(initial = null)
+            val systemDark = isSystemInDarkTheme()
+            val darkTheme = when (settings?.themeOverride ?: ThemeOverride.System) {
+                ThemeOverride.System -> systemDark
+                ThemeOverride.Dark -> true
+                ThemeOverride.Light -> false
+            }
+            LibraryNocturneTheme(darkTheme = darkTheme) {
                 val navController = rememberNavController()
                 val pending by intentFlow.collectAsState()
 
