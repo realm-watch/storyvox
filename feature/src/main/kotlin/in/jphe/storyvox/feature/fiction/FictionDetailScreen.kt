@@ -311,7 +311,7 @@ fun FictionDetailScreen(
 
             BottomBar(
                 isInLibrary = state.isInLibrary,
-                followOnSource = fiction.takeIf { it.sourceId == "royalroad" }
+                followOnSource = fiction.takeIf { it.sourceSupportsFollow }
                     ?.let { FollowOnSourceUiState(isFollowed = it.isFollowedRemote) },
                 onFollow = {
                     // Issue #169 — gate the destructive path behind a
@@ -356,7 +356,7 @@ fun FictionDetailScreen(
 
             BottomBar(
                 isInLibrary = state.isInLibrary,
-                followOnSource = fiction.takeIf { it.sourceId == "royalroad" }
+                followOnSource = fiction.takeIf { it.sourceSupportsFollow }
                     ?.let { FollowOnSourceUiState(isFollowed = it.isFollowedRemote) },
                 onFollow = {
                     // Issue #169 — gate the destructive path behind a
