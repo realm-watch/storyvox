@@ -4,6 +4,9 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    // Issue #417 — :app needs kotlinx-serialization to JSON-encode the
+    // user's starred radio stations in RadioConfigImpl.
+    alias(libs.plugins.kotlin.serialization)
 }
 
 /**
@@ -161,7 +164,13 @@ dependencies {
     implementation(project(":source-standard-ebooks"))
     implementation(project(":source-wikipedia"))
     implementation(project(":source-wikisource"))
-    implementation(project(":source-kvmr"))
+    // Issue #417 — :source-radio replaces :source-kvmr. Same Gradle
+    // module, generalized: curated stations (KVMR, KQED, KCSB,
+    // KXPR, SomaFM Groove Salad) + Radio Browser API search.
+    implementation(project(":source-radio"))
+    // Issue #417 — JSON serialization for RadioConfigImpl's starred-
+    // stations DataStore payload.
+    implementation(libs.kotlinx.serialization.json)
     implementation(project(":source-notion"))
     implementation(project(":source-hackernews"))
     implementation(project(":source-arxiv"))

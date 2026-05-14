@@ -463,6 +463,14 @@ private fun resolveSource(
         BrowseTab.NewReleases -> BrowseSource.NewReleases
         else -> null
     }
+    // Issue #417 — Radio source. Popular surfaces the curated + starred
+    // list; Search hits Radio Browser. KVMR alias stays Popular-only
+    // for v0.5.20+ persisted shortcuts that still route through it.
+    SourceIds.RADIO -> when (tab) {
+        BrowseTab.Popular -> BrowseSource.Popular
+        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
+        else -> null
+    }
     SourceIds.KVMR -> when (tab) {
         BrowseTab.Popular -> BrowseSource.Popular
         else -> null

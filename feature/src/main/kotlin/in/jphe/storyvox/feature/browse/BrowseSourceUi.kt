@@ -47,7 +47,11 @@ internal object BrowseSourceUi {
         SourceIds.STANDARD_EBOOKS -> "Standard Ebooks"
         SourceIds.WIKIPEDIA -> "Wikipedia"
         SourceIds.WIKISOURCE -> "Wikisource"
-        SourceIds.KVMR -> "KVMR"
+        // Issue #417 — :source-kvmr → :source-radio. The new canonical
+        // chip says "Radio"; the legacy KVMR id is kept as an alias so
+        // any code path still resolving through it stays consistent.
+        SourceIds.RADIO -> "Radio"
+        SourceIds.KVMR -> "Radio"
         SourceIds.NOTION -> "Notion"
         SourceIds.HACKERNEWS -> "Hacker News"
         SourceIds.ARXIV -> "arXiv"
@@ -88,6 +92,11 @@ internal object BrowseSourceUi {
         SourceIds.STANDARD_EBOOKS -> listOf(BrowseTab.Popular, BrowseTab.NewReleases, BrowseTab.Search)
         SourceIds.WIKIPEDIA -> listOf(BrowseTab.Popular, BrowseTab.Search)
         SourceIds.WIKISOURCE -> listOf(BrowseTab.Popular, BrowseTab.Search)
+        // Issue #417 — Radio gains a Search tab (Radio Browser API).
+        // The legacy KVMR alias keeps Popular-only because v0.5.20+
+        // persisted resolutions through the alias never expected a
+        // Search tab anyway.
+        SourceIds.RADIO -> listOf(BrowseTab.Popular, BrowseTab.Search)
         SourceIds.KVMR -> listOf(BrowseTab.Popular)
         SourceIds.NOTION -> listOf(BrowseTab.Popular, BrowseTab.Search)
         SourceIds.HACKERNEWS -> listOf(BrowseTab.Popular, BrowseTab.Search)
@@ -125,6 +134,8 @@ internal object BrowseSourceUi {
         SourceIds.STANDARD_EBOOKS -> "Search Standard Ebooks' hand-curated public-domain classics"
         SourceIds.WIKIPEDIA -> "Search Wikipedia — narrate any article"
         SourceIds.WIKISOURCE -> "Search Wikisource — transcribed public-domain texts"
+        // Issue #417 — Radio search drives the Radio Browser API.
+        SourceIds.RADIO -> "Search Radio Browser — community, public, and college stations worldwide"
         SourceIds.KVMR -> "Tune in to KVMR — live community radio from Nevada City"
         SourceIds.NOTION -> "Search your configured Notion database"
         SourceIds.HACKERNEWS -> "Search Hacker News stories (Algolia-backed full-text)"

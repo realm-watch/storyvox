@@ -99,13 +99,14 @@ class SourcePluginRegistryTest {
     @Test fun `phase 2 expected roster of 12 plugins resolves end-to-end`() {
         // Plugin-seam Phase 2 (#384) — after the 11-backend migration
         // the registry should surface the full storyvox roster: the
-        // original :source-kvmr from Phase 1 + the 11 fiction backends
-        // migrated here. This test exercises the registry contract
-        // with a synthetic roster matching the @SourcePlugin
-        // annotations declared across the source modules; the actual
-        // KSP-generated bindings are verified at compile time by
-        // `:app:assembleDebug` (Hilt would fail to build the graph if
-        // any descriptor were missing or duplicated).
+        // original audio-stream backend (now :source-radio, was
+        // :source-kvmr; #417) + the 11 fiction backends migrated here.
+        // This test exercises the registry contract with a synthetic
+        // roster matching the @SourcePlugin annotations declared across
+        // the source modules; the actual KSP-generated bindings are
+        // verified at compile time by `:app:assembleDebug` (Hilt would
+        // fail to build the graph if any descriptor were missing or
+        // duplicated).
         val expectedIds = listOf(
             SourceIds.ROYAL_ROAD,
             SourceIds.GITHUB,
@@ -117,14 +118,19 @@ class SourcePluginRegistryTest {
             SourceIds.AO3,
             SourceIds.STANDARD_EBOOKS,
             SourceIds.WIKIPEDIA,
-            SourceIds.KVMR,
+            // Issue #417 — RADIO replaces KVMR in the canonical
+            // descriptor registry (the @SourcePlugin annotation moved
+            // with the rename); KVMR survives only as a routing alias
+            // in the FictionSource map binding, not in the descriptor
+            // registry.
+            SourceIds.RADIO,
             SourceIds.NOTION,
         )
         val descriptors = expectedIds.map { id ->
             descriptor(
                 id = id,
                 displayName = id,
-                category = if (id == SourceIds.KVMR) SourceCategory.AudioStream else SourceCategory.Text,
+                category = if (id == SourceIds.RADIO) SourceCategory.AudioStream else SourceCategory.Text,
             )
         }
 

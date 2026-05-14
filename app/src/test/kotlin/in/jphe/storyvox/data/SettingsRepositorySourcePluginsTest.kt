@@ -89,11 +89,16 @@ class SettingsRepositorySourcePluginsTest {
             SourceIds.ROYAL_ROAD, SourceIds.GITHUB, SourceIds.MEMPALACE,
             SourceIds.RSS, SourceIds.EPUB, SourceIds.OUTLINE,
             SourceIds.GUTENBERG, SourceIds.AO3, SourceIds.STANDARD_EBOOKS,
-            SourceIds.WIKIPEDIA, SourceIds.WIKISOURCE, SourceIds.KVMR,
+            SourceIds.WIKIPEDIA, SourceIds.WIKISOURCE,
+            // Issue #417 — :source-kvmr generalized to :source-radio.
+            // RADIO is the new canonical id; KVMR is kept as a one-cycle
+            // migration alias and stays in the round-trip set so the
+            // dual-key persistence shape is exercised.
+            SourceIds.RADIO, SourceIds.KVMR,
             SourceIds.NOTION, SourceIds.HACKERNEWS, SourceIds.ARXIV,
             SourceIds.PLOS, SourceIds.DISCORD,
         )
-        assertEquals(17, allIds.size)
+        assertEquals(18, allIds.size)
 
         // Toggle each off then on, in order — verify both states
         // land in the persisted map.

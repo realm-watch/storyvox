@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Issue #417 — :source-radio (generalized from :source-kvmr).
+         All curated stations stream over HTTPS and Radio Browser's JSON
+         API is HTTPS too. INTERNET is required for the Radio Browser
+         search call from this module; ACCESS_NETWORK_STATE lets the
+         client short-circuit search when offline. The audio fetch
+         itself happens inside Media3 / ExoPlayer in :core-playback
+         whose own manifest also carries INTERNET — duplicates are
+         harmless. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+</manifest>
