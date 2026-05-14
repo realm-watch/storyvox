@@ -64,7 +64,7 @@ import javax.inject.Singleton
 internal class GutenbergSource @Inject constructor(
     private val api: GutendexApi,
     @GutenbergCache private val cacheDir: File,
-) : FictionSource {
+) : FictionSource, `in`.jphe.storyvox.data.source.UrlMatcher {
 
     // EpubParser is a Kotlin object — stateless across calls. Reused
     // verbatim from `:source-epub` (where it was authored for #235);
@@ -72,6 +72,21 @@ internal class GutenbergSource @Inject constructor(
 
     override val id: String = SourceIds.GUTENBERG
     override val displayName: String = "Project Gutenberg"
+
+    /** Issue #472 — `gutenberg.org/ebooks/<id>` (canonical landing) and
+     *  `gutenberg.org/files/<id>/...` (direct mirror). Cache-host
+     *  `cache.gutenberg.org/cache/epub/<id>/...` is left to the EPUB-
+     *  direct-link matcher (lower confidence) so a direct `.epub`
+     *  download still resolves. */
+    override fun matchUrl(url: String): `in`.jphe.storyvox.data.source.RouteMatch? {
+        val m = GUTENBERG_URL_PATTERN.matchEntire(url.trim()) ?: return null
+        return `in`.jphe.storyvox.data.source.RouteMatch(
+            sourceId = SourceIds.GUTENBERG,
+            fictionId = "gutenberg:${m.groupValues[1]}",
+            confidence = 0.95f,
+            label = "Project Gutenberg book",
+        )
+    }
 
     /**
      * In-memory cache of the parsed EpubBook keyed by fictionId. EPUB
@@ -260,6 +275,12 @@ internal class GutenbergSource @Inject constructor(
         return File(cacheDir, "$id.epub")
     }
 }
+
+/** Issue #472 — Gutenberg URL pattern for the magic-link resolver. */
+internal val GUTENBERG_URL_PATTERN: Regex = Regex(
+    """^https?://(?:www\.)?gutenberg\.org/(?:ebooks|files)/(\d+)(?:/.*)?$""",
+    RegexOption.IGNORE_CASE,
+)
 
 /** `gutenberg:1342` → `1342`; returns null on malformed input. */
 private fun parseGutenbergId(fictionId: String): Int? =
