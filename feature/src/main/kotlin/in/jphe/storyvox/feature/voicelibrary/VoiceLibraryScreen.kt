@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -105,62 +107,48 @@ fun VoiceLibraryScreen(
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        // Issue #264 — substring search across all three buckets
-        // (favorites / installed / available). Matches displayName,
-        // language, and the engine label so users can find a voice by
-        // any of "Aoede", "english", "piper", or "azure". The search
-        // box is fixed above the LazyColumn rather than as a sticky
-        // item, so it's always reachable without scrolling 1000+ rows.
-        // Filter is applied locally via remember — VM stays simple,
-        // costs ~O(n) per query change.
-        var query by remember { mutableStateOf("") }
-        // Issue #264 part 2 — filter chip state. Empty set in a
-        // dimension = no filter on that dimension. AND across
-        // dimensions, OR within a dimension's chip set.
+        // Issue #264 — search query and language chip selection now
+        // live in the ViewModel (StateFlows + 200 ms debounce) so they
+        // survive rotation and the filter pipeline runs off the main
+        // thread. The screen reads the raw query for the field's
+        // two-way bind, and the VM exposes already-filtered favorites
+        // / installed / available buckets in [state]. The screen-local
+        // gender / tier / multilingual chips stay as `remember` state
+        // (still on top of the VM filter — applied as a second
+        // [filterBy] pass below) since they aren't part of JP's #264
+        // primary-knob spec.
+        val rawQuery by viewModel.voiceFilterQuery.collectAsStateWithLifecycle()
+        val selectedLanguage by viewModel.voiceFilterLanguage.collectAsStateWithLifecycle()
         var selectedGenders by remember { mutableStateOf<Set<VoiceGender>>(emptySet()) }
-        var selectedLanguages by remember { mutableStateOf<Set<String>>(emptySet()) }
         var selectedTiers by remember { mutableStateOf<Set<QualityLevel>>(emptySet()) }
         var multilingualOnly by remember { mutableStateOf(false) }
 
-        // Top 10 languages by voice count across the full unfiltered
-        // catalog. Computed once per state change — the 1188-row catalog
-        // gives roughly stable language frequencies (English dominant,
-        // long-tail tail of Spanish / French / German / Japanese / etc).
-        val topLanguages = remember(state.installedByEngine, state.availableByEngine) {
-            val all = state.installedByEngine.values.flatMap { it.values.flatten() } +
-                state.availableByEngine.values.flatMap { it.values.flatten() }
-            all.groupingBy { it.primaryLanguageCode() }
-                .eachCount()
-                .entries
-                .filter { it.key.isNotEmpty() }
-                .sortedByDescending { it.value }
-                .take(10)
-                .map { it.key }
-        }
-
-        val filterCriteria = VoiceFilterCriteria(
-            query = query,
+        // Secondary criteria (the screen-local chips) applied on top of
+        // the VM's query+language filter. When all three are at their
+        // defaults this is a no-op pass-through.
+        val secondaryCriteria = VoiceFilterCriteria(
             genders = selectedGenders,
-            languages = selectedLanguages,
             tiers = selectedTiers,
             multilingualOnly = multilingualOnly,
         )
-
-        val filteredFavorites = remember(state.favorites, filterCriteria) {
-            state.favorites.filterBy(filterCriteria)
+        val filteredFavorites = remember(state.favorites, secondaryCriteria) {
+            state.favorites.filterBy(secondaryCriteria)
         }
-        val filteredInstalled = remember(state.installedByEngine, filterCriteria) {
-            state.installedByEngine.filterBy(filterCriteria)
+        val filteredInstalled = remember(state.installedByEngine, secondaryCriteria) {
+            state.installedByEngine.filterBy(secondaryCriteria)
         }
-        val filteredAvailable = remember(state.availableByEngine, filterCriteria) {
-            state.availableByEngine.filterBy(filterCriteria)
+        val filteredAvailable = remember(state.availableByEngine, secondaryCriteria) {
+            state.availableByEngine.filterBy(secondaryCriteria)
         }
         val installedTotal = filteredInstalled.values.sumOf { tiers -> tiers.values.sumOf { it.size } }
         val availableTotal = filteredAvailable.values.sumOf { tiers -> tiers.values.sumOf { it.size } }
         val availableHasKokoro = filteredAvailable.containsKey(VoiceEngine.Kokoro)
-        val unfilteredIsEmpty = state.favorites.isEmpty() &&
-            state.installedByEngine.values.sumOf { tiers -> tiers.values.sumOf { it.size } } == 0 &&
-            state.availableByEngine.values.sumOf { tiers -> tiers.values.sumOf { it.size } } == 0
+        // Unfiltered-empty check has to read the VM unfiltered shape,
+        // not [state] — when the user has typed a query that matches
+        // nothing, [state] is empty but the catalog isn't. We use the
+        // language-code list as a proxy: if the VM has any languages,
+        // it has any voices.
+        val unfilteredIsEmpty = state.availableLanguageCodes.isEmpty()
         val filteredIsEmpty = filteredFavorites.isEmpty() &&
             installedTotal == 0 && availableTotal == 0
 
@@ -173,17 +161,22 @@ fun VoiceLibraryScreen(
             // Always-visible search bar. Brass outline + neutral text
             // matches the OutlinedTextField look already in Settings →
             // Pronunciation, so it reads as part of the same family.
+            // Two-way bound to the VM's [voiceFilterQuery] StateFlow —
+            // every keypress hits the VM instantly so [rawQuery] paints
+            // immediately; the VM debounces its 200 ms projection
+            // (see [VoiceLibraryViewModel.debouncedQuery]) before the
+            // filter pipeline runs.
             OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
+                value = rawQuery,
+                onValueChange = { viewModel.setQuery(it) },
                 placeholder = { Text("Search voices") },
                 singleLine = true,
                 leadingIcon = {
                     Icon(Icons.Outlined.Search, contentDescription = null)
                 },
-                trailingIcon = if (query.isNotEmpty()) {
+                trailingIcon = if (rawQuery.isNotEmpty()) {
                     {
-                        IconButton(onClick = { query = "" }) {
+                        IconButton(onClick = { viewModel.setQuery("") }) {
                             Icon(Icons.Outlined.Close, contentDescription = "Clear search")
                         }
                     }
@@ -193,10 +186,39 @@ fun VoiceLibraryScreen(
                     .padding(horizontal = spacing.md, vertical = spacing.xs),
             )
 
-            // Issue #264 part 2 — filter chip row. Horizontally scrollable
-            // so the four chip groups (gender / language / tier / multilingual)
-            // fit on Flip3 portrait. FilterChip is M3's bistable chip; we
-            // use selected= for the visual + content-color contract.
+            // Issue #264 — language chip strip. Single-select per JP's
+            // spec; the codes are derived dynamically from the VM's
+            // [availableLanguageCodes] so only languages with at least
+            // one voice show a chip. LazyRow so 30+ codes (the live
+            // Azure roster regularly spans 60+) don't pre-instantiate
+            // every chip on first paint — the 1188-voice catalog has
+            // long since taught us not to render the whole world
+            // upfront. Brass-pill colors match the Library/Browse chips.
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.md, vertical = spacing.xxs),
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                items(state.availableLanguageCodes, key = { "lang-$it" }) { lang ->
+                    val isSelected = lang == selectedLanguage
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = {
+                            // Toggle: tapping the active chip clears the
+                            // filter; tapping any other chip swaps to it.
+                            viewModel.setLanguage(if (isSelected) null else lang)
+                        },
+                        label = { Text(lang) },
+                        colors = brassFilterChipColors(),
+                    )
+                }
+            }
+
+            // Secondary chip row — gender / tier / multilingual. These
+            // pre-date JP's #264 primary-knob spec but stay useful, so
+            // they hang below the language strip on their own scroll.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -205,13 +227,13 @@ fun VoiceLibraryScreen(
                 horizontalArrangement = Arrangement.spacedBy(spacing.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Gender chips
                 FilterChip(
                     selected = VoiceGender.Female in selectedGenders,
                     onClick = {
                         selectedGenders = selectedGenders.toggleMember(VoiceGender.Female)
                     },
                     label = { Text("♀ Female") },
+                    colors = brassFilterChipColors(),
                 )
                 FilterChip(
                     selected = VoiceGender.Male in selectedGenders,
@@ -219,6 +241,7 @@ fun VoiceLibraryScreen(
                         selectedGenders = selectedGenders.toggleMember(VoiceGender.Male)
                     },
                     label = { Text("♂ Male") },
+                    colors = brassFilterChipColors(),
                 )
                 FilterChip(
                     selected = VoiceGender.Unknown in selectedGenders,
@@ -226,9 +249,8 @@ fun VoiceLibraryScreen(
                         selectedGenders = selectedGenders.toggleMember(VoiceGender.Unknown)
                     },
                     label = { Text("Neutral") },
+                    colors = brassFilterChipColors(),
                 )
-                // Quality tier chips — descending order matches the visual
-                // sort in the rest of the screen (Studio first).
                 listOf(
                     QualityLevel.Studio to "Studio",
                     QualityLevel.High to "High",
@@ -239,26 +261,15 @@ fun VoiceLibraryScreen(
                         selected = tier in selectedTiers,
                         onClick = { selectedTiers = selectedTiers.toggleMember(tier) },
                         label = { Text(label) },
+                        colors = brassFilterChipColors(),
                     )
                 }
-                // Multilingual toggle — single boolean chip.
                 FilterChip(
                     selected = multilingualOnly,
                     onClick = { multilingualOnly = !multilingualOnly },
                     label = { Text("Multilingual") },
+                    colors = brassFilterChipColors(),
                 )
-                // Language chips — derived from top 10 by voice count.
-                // Two-letter codes ("en", "es", "fr"...) are dense enough
-                // labels for the chip row at this width.
-                topLanguages.forEach { lang ->
-                    FilterChip(
-                        selected = lang in selectedLanguages,
-                        onClick = {
-                            selectedLanguages = selectedLanguages.toggleMember(lang)
-                        },
-                        label = { Text(lang) },
-                    )
-                }
             }
 
             if (filteredIsEmpty) {
@@ -268,8 +279,22 @@ fun VoiceLibraryScreen(
                         .padding(spacing.md),
                     contentAlignment = Alignment.Center,
                 ) {
+                    // Empty-state text reflects whichever filter
+                    // dimension the user is actually engaging — query
+                    // text wins when present (it's the more specific
+                    // signal), language label otherwise, then a generic
+                    // fallback for the rare case of only secondary
+                    // chips being active.
+                    val emptyLabel = when {
+                        rawQuery.trim().isNotEmpty() ->
+                            "No voices match \"${rawQuery.trim()}\"."
+                        selectedLanguage != null ->
+                            "No voices match \"$selectedLanguage\"."
+                        else ->
+                            "No voices match the current filters."
+                    }
                     Text(
-                        "No voices match \"${query.trim()}\".",
+                        emptyLabel,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -923,98 +948,19 @@ internal fun voiceSubtitle(voice: UiVoiceInfo): String {
     return parts.joinToString(separator = "  ·  ")
 }
 
-// ─── Issue #264 search helpers ─────────────────────────────────────
+// ─── Issue #264 chip color helpers ─────────────────────────────────
 //
-// Filter a flat voice list by case-insensitive substring across the
-// user-visible fields: displayName, language (locale tag), and the
-// engine type's coreId ("piper", "kokoro", "azure"). A blank query is
-// a no-op pass-through to avoid pointless work in the common case.
+// Brass-pill chip colors match the Library / Browse chip strips so the
+// Voice Library reads as part of the same family. The filter-criteria
+// + matchesCriteria + filterBy helpers used by the screen live in
+// VoiceFilter.kt — same package, internal visibility — so JVM tests
+// can exercise the contract without bringing up Compose.
 
-private fun List<UiVoiceInfo>.filterByQuery(query: String): List<UiVoiceInfo> {
-    val q = query.trim()
-    if (q.isEmpty()) return this
-    return filter { v -> v.matchesQuery(q) }
-}
-
-/** Same shape as the flat version, but walks the engine × tier nested
- *  map and drops empty buckets so section headers and tier subheaders
- *  don't render with zero rows underneath them. The outer iteration
- *  order is preserved (Studio → Low within Kokoro etc.) since we use
- *  [Map.mapValues]. */
-private fun Map<VoiceEngine, Map<QualityLevel, List<UiVoiceInfo>>>.filterByQuery(
-    query: String,
-): Map<VoiceEngine, Map<QualityLevel, List<UiVoiceInfo>>> {
-    val q = query.trim()
-    if (q.isEmpty()) return this
-    return mapValues { (_, tiers) ->
-        tiers.mapValues { (_, voices) -> voices.filter { it.matchesQuery(q) } }
-            .filterValues { it.isNotEmpty() }
-    }.filterValues { it.isNotEmpty() }
-}
-
-private fun UiVoiceInfo.matchesQuery(query: String): Boolean {
-    val needle = query.lowercase()
-    if (displayName.contains(needle, ignoreCase = true)) return true
-    if (language.contains(needle, ignoreCase = true)) return true
-    val engineLabel = when (engineType) {
-        is EngineType.Piper -> "piper"
-        is EngineType.Kokoro -> "kokoro"
-        is EngineType.Azure -> "azure"
-    }
-    return engineLabel.contains(needle, ignoreCase = true)
-}
-
-// ─── Issue #264 part 2 filter-chip helpers ─────────────────────────
-//
-// All four dimensions AND together. Within each dimension, an empty
-// set means "no filter on this dimension" (every voice passes).
-// Multilingual is a single boolean (no set), so it's a straightforward
-// gate rather than membership.
-
-internal data class VoiceFilterCriteria(
-    val query: String = "",
-    val genders: Set<VoiceGender> = emptySet(),
-    val languages: Set<String> = emptySet(),
-    val tiers: Set<QualityLevel> = emptySet(),
-    val multilingualOnly: Boolean = false,
+@Composable
+private fun brassFilterChipColors() = FilterChipDefaults.filterChipColors(
+    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
 )
-
-/** First-two-letter language code (`en`, `es`, `de`, `ja`, …). Used
- *  for chip aggregation so `en-US` / `en-GB` / `en-AU` all roll up
- *  under the "en" chip. */
-private fun UiVoiceInfo.primaryLanguageCode(): String =
-    language.take(2).lowercase()
-
-/** Multilingual voices have "Multilingual" in their displayName (Azure
- *  convention: `en-US-AndrewMultilingualNeural`, etc). Piper / Kokoro
- *  don't have a multilingual variant today; the chip naturally
- *  filters to Azure-only when checked. */
-private fun UiVoiceInfo.isMultilingual(): Boolean =
-    displayName.contains("multilingual", ignoreCase = true)
-
-private fun UiVoiceInfo.matchesCriteria(criteria: VoiceFilterCriteria): Boolean {
-    if (!matchesQuery(criteria.query)) return false
-    if (criteria.genders.isNotEmpty() && gender !in criteria.genders) return false
-    if (criteria.languages.isNotEmpty() && primaryLanguageCode() !in criteria.languages) return false
-    if (criteria.tiers.isNotEmpty() && qualityLevel !in criteria.tiers) return false
-    if (criteria.multilingualOnly && !isMultilingual()) return false
-    return true
-}
-
-private fun List<UiVoiceInfo>.filterBy(criteria: VoiceFilterCriteria): List<UiVoiceInfo> {
-    if (criteria == VoiceFilterCriteria()) return this  // pass-through
-    return filter { it.matchesCriteria(criteria) }
-}
-
-private fun Map<VoiceEngine, Map<QualityLevel, List<UiVoiceInfo>>>.filterBy(
-    criteria: VoiceFilterCriteria,
-): Map<VoiceEngine, Map<QualityLevel, List<UiVoiceInfo>>> {
-    if (criteria == VoiceFilterCriteria()) return this
-    return mapValues { (_, tiers) ->
-        tiers.mapValues { (_, voices) -> voices.filter { it.matchesCriteria(criteria) } }
-            .filterValues { it.isNotEmpty() }
-    }.filterValues { it.isNotEmpty() }
-}
 
 /** Toggle-membership helper — adds an element if absent, removes if
  *  present. Used by every chip's onClick to flip the relevant set. */
