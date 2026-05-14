@@ -76,10 +76,21 @@ import javax.inject.Singleton
 @Singleton
 internal class HackerNewsSource @Inject constructor(
     private val api: HackerNewsApi,
-) : FictionSource {
+) : FictionSource, `in`.jphe.storyvox.data.source.UrlMatcher {
 
     override val id: String = SourceIds.HACKERNEWS
     override val displayName: String = "Hacker News"
+
+    /** Issue #472 — `news.ycombinator.com/item?id=<id>` URL. */
+    override fun matchUrl(url: String): `in`.jphe.storyvox.data.source.RouteMatch? {
+        val m = HACKERNEWS_URL_PATTERN.matchEntire(url.trim()) ?: return null
+        return `in`.jphe.storyvox.data.source.RouteMatch(
+            sourceId = SourceIds.HACKERNEWS,
+            fictionId = "${SourceIds.HACKERNEWS}:${m.groupValues[1]}",
+            confidence = 0.95f,
+            label = "Hacker News thread",
+        )
+    }
 
     // ─── browse ────────────────────────────────────────────────────────
 
@@ -352,6 +363,12 @@ internal class HackerNewsSource @Inject constructor(
         )
     }
 }
+
+/** Issue #472 — Hacker News thread URL. */
+internal val HACKERNEWS_URL_PATTERN: Regex = Regex(
+    """^https?://news\.ycombinator\.com/item\?(?:[^=&]*=[^&]*&)*id=(\d+)(?:&.*)?$""",
+    RegexOption.IGNORE_CASE,
+)
 
 /**
  * Parse the `hackernews:<id>` encoding. Returns null on malformed
