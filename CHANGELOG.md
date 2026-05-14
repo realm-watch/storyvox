@@ -9,6 +9,26 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.33] — 2026-05-14
+
+### Added
+- **AI function calling — 5 tools** (#430, closes #216) — the chat AI can now actually *do* things in storyvox, not just answer questions. Five v1 tools wired end-to-end:
+  - `add_to_shelf(fictionId, shelf)` — Reading / Read / Wishlist
+  - `queue_chapter(fictionId, chapterIndex)` — sets the play queue to a specific chapter
+  - `mark_chapter_read(fictionId, chapterIndex)` — flips the read state
+  - `set_speed(speed)` — clamped to [0.5, 2.5]
+  - `open_voice_library()` — navigates to Voice picker
+- **Per-tool brass card in chat** — when a tool fires, a small brass-edged card renders in the chat stream showing in-flight / success / error state. Examples: "Adding *Frankenstein* to your Reading shelf…" → "✓ Added." or "✗ Couldn't find fiction with id 'xyz'." Card collapses after settling.
+- **Settings → AI → "Allow the AI to take actions" toggle** — default ON. Gates the catalog advertisement to the LLM; with the toggle OFF the AI gets a tools-free system prompt and falls back to text replies.
+- **Provider coverage v1**: Anthropic (Claude direct + Teams OAuth) + OpenAI both implement the full model→tool→model loop bounded to 5 rounds. Vertex / Bedrock / Foundry / Ollama get a graceful default `chatWithTools` fallback (plain text reply, no tool support) until each provider's tool-format wiring lands as follow-ups.
+
+### Under the hood
+- New `:core-llm/tools/` module sub-tree: `ToolSpec`, `ToolCatalog`, `ToolHandler`, `ChatStreamEvent` (rich flow type that carries text deltas + tool-call events + tool-result events in one stream). Provider chat clients gain `chatWithTools()` alongside the existing `chat()`.
+- `:feature/chat/tools/ChatToolHandlers` binds the 5 tool names to typed suspend functions wired to the existing `ShelfRepository`, `ChapterRepository`, `PlaybackControllerUi`, and `NavController` — pure execution, no LLM logic. The wiring lives outside `:core-llm` so the chat domain owns the side-effects.
+
+### Tests
+- 18 new unit tests: catalog contract (5 tools present + valid JSON schemas), Anthropic + OpenAI wire-shape snapshots (incl. tool-result round-trip via MockWebServer), handler clamp/reject paths, `set_speed` range enforcement, navigation event firing for `open_voice_library`, unsupported-provider fallback behavior.
+
 ## [0.5.32] — 2026-05-14
 
 ### Added
