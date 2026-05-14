@@ -215,6 +215,10 @@ fun BrowseScreen(
                 // filter body via /databases/{id}/query is the
                 // follow-up.
                 BrowseSourceKey.Notion -> false
+                // #379 — Hacker News has no filter sheet; the catalog
+                // (Top / Ask / Show) selection lives in the Browse tab
+                // shape itself, not a sidecar filter.
+                BrowseSourceKey.HackerNews -> false
             }
             if (filterableSource) {
                 FilterButton(
@@ -236,6 +240,7 @@ fun BrowseScreen(
                         BrowseSourceKey.Wikipedia -> 0
                         BrowseSourceKey.Kvmr -> 0
                         BrowseSourceKey.Notion -> 0
+                        BrowseSourceKey.HackerNews -> 0
                     },
                     onClick = { showFilterSheet = true },
                 )
@@ -516,6 +521,9 @@ fun BrowseScreen(
             // #233 — Notion v1 has no filter sheet; the configured
             // database id IS the filter scope.
             BrowseSourceKey.Notion -> { showFilterSheet = false }
+            // #379 — Hacker News has no filter sheet in v1; the Top
+            // landing is the surface and Search is the discovery path.
+            BrowseSourceKey.HackerNews -> { showFilterSheet = false }
         }
     }
 }
@@ -608,6 +616,7 @@ private fun searchHintForSource(sourceKey: BrowseSourceKey): String = when (sour
     BrowseSourceKey.Wikipedia -> "Search Wikipedia — narrate any article"
     BrowseSourceKey.Kvmr -> "Tune in to KVMR — live community radio from Nevada City"
     BrowseSourceKey.Notion -> "Search your configured Notion database"
+    BrowseSourceKey.HackerNews -> "Search Hacker News stories (Algolia-backed full-text)"
 }
 
 private val BrowseTab.label: String

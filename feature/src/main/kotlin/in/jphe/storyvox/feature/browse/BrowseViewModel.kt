@@ -97,6 +97,12 @@ enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
      *  content database id as the default — once the user pastes a token
      *  in Settings, Browse → Notion surfaces TechEmpower content. */
     Notion(SourceIds.NOTION, "Notion"),
+    /** Hacker News (#379) — front-page tech-news threads as
+     *  single-chapter fictions. Popular surfaces the first 50 of HN's
+     *  top-stories list; Search hits the Algolia HN Search API.
+     *  Default OFF on fresh installs; opt-in from Settings → Library
+     *  & Sync. */
+    HackerNews(SourceIds.HACKERNEWS, "Hacker News"),
 }
 
 /** Tabs that are meaningful for [source]. GitHub registry doesn't
@@ -212,6 +218,15 @@ fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseT
     // NewReleases collapses to Popular because Notion's default
     // ordering is already recency. BestRated has no analogue.
     BrowseSourceKey.Notion -> listOf(
+        BrowseTab.Popular,
+        BrowseTab.Search,
+    )
+    // Hacker News (#379): Popular = top stories landing
+    // (topstories.json, first 50). Search hits the Algolia HN Search
+    // API. NewReleases / BestRated have no analogue in v1 — Ask HN /
+    // Show HN split is the spec'd follow-up that will plumb its own
+    // tab(s).
+    BrowseSourceKey.HackerNews -> listOf(
         BrowseTab.Popular,
         BrowseTab.Search,
     )
@@ -424,6 +439,7 @@ class BrowseViewModel @Inject constructor(
                     if (s.sourceWikipediaEnabled) add(BrowseSourceKey.Wikipedia)
                     if (s.sourceKvmrEnabled) add(BrowseSourceKey.Kvmr)
                     if (s.sourceNotionEnabled) add(BrowseSourceKey.Notion)
+                    if (s.sourceHackerNewsEnabled) add(BrowseSourceKey.HackerNews)
                 }
             }
             .distinctUntilChanged()
@@ -697,6 +713,13 @@ class BrowseViewModel @Inject constructor(
                 _githubFilter.value = GitHubSearchFilter()
                 _palaceFilter.value = MemPalaceFilter()
             }
+            BrowseSourceKey.HackerNews -> {
+                // Hacker News (#379) — top-stories landing + Algolia
+                // search; no per-source filter sheet in v1.
+                _filter.value = BrowseFilter()
+                _githubFilter.value = GitHubSearchFilter()
+                _palaceFilter.value = MemPalaceFilter()
+            }
         }
     }
 
@@ -922,6 +945,13 @@ private fun resolveSource(
     // same first page in v1. Blank-search-with-blank-filter stays
     // null so the screen renders the SearchHint empty state.
     BrowseSourceKey.Notion -> when (tab) {
+        BrowseTab.Popular -> BrowseSource.Popular
+        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
+        else -> null
+    }
+    // Hacker News (#379): Popular = top-stories landing (first 50);
+    // Search = Algolia-backed full-text. Same shape as Notion above.
+    BrowseSourceKey.HackerNews -> when (tab) {
         BrowseTab.Popular -> BrowseSource.Popular
         BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
         else -> null

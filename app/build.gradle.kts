@@ -162,6 +162,7 @@ dependencies {
     implementation(project(":source-wikipedia"))
     implementation(project(":source-kvmr"))
     implementation(project(":source-notion"))
+    implementation(project(":source-hackernews"))
     implementation(project(":source-azure"))
     implementation(project(":core-sync"))
     implementation(project(":feature"))

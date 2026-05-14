@@ -580,6 +580,16 @@ fun SettingsScreen(
                     onApiTokenChange = viewModel::setNotionApiToken,
                 )
             }
+            // Issue #379 — Hacker News fiction backend. Default OFF;
+            // tech-news / discussion isn't fiction in the picker's
+            // strict sense, so users opt in here rather than getting
+            // HN surfaced in the Browse chip strip on first launch.
+            SettingsSwitchRow(
+                title = "Hacker News",
+                subtitle = "Top stories, Ask HN, and Show HN as single-chapter fictions. Link stories include the top comments.",
+                checked = s.sourceHackerNewsEnabled,
+                onCheckedChange = viewModel::setSourceHackerNewsEnabled,
+            )
         }
 
         // ── Inbox notifications sub-card (#383) ────────────────────

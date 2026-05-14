@@ -82,4 +82,12 @@ object SourceIds {
      *  surfaces TechEmpower content without configuration once the
      *  user supplies the integration token. */
     const val NOTION: String = "notion"
+    /** Hacker News (#379) — front-page stories + Ask HN / Show HN +
+     *  Algolia-backed search. Each story = one fiction with exactly
+     *  one chapter ("listen to one HN thread as an episode"). Free,
+     *  no-auth JSON via the Firebase API (https://hacker-news.firebaseio.com/v0/).
+     *  Default OFF: tech-news is a distinct interest from fiction
+     *  backends and the existing picker shouldn't surface it on
+     *  every fresh install. */
+    const val HACKERNEWS: String = "hackernews"
 }
