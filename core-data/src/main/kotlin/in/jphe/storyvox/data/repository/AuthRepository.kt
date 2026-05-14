@@ -2,6 +2,7 @@ package `in`.jphe.storyvox.data.repository
 
 import android.content.SharedPreferences
 import `in`.jphe.storyvox.data.auth.SessionState
+import `in`.jphe.storyvox.data.coroutines.ApplicationScope
 import `in`.jphe.storyvox.data.db.dao.AuthDao
 import `in`.jphe.storyvox.data.db.entity.AuthCookie
 import `in`.jphe.storyvox.data.source.FictionSource
@@ -55,6 +56,7 @@ class AuthRepositoryImpl @Inject constructor(
     private val dao: AuthDao,
     private val prefs: SharedPreferences,
     private val sources: Map<String, @JvmSuppressWildcards FictionSource>,
+    @ApplicationScope private val appScope: CoroutineScope,
 ) : AuthRepository {
 
     private val state = MutableStateFlow<SessionState>(SessionState.Anonymous)
@@ -88,14 +90,23 @@ class AuthRepositoryImpl @Inject constructor(
                 expiresAt = null,
                 userDisplayName = null,
             )
-            CoroutineScope(Dispatchers.IO).launch {
-                val row = dao.get(sourceId)
-                if (row != null) {
-                    state.value = SessionState.Authenticated(
-                        cookieHeader = cookie,
-                        expiresAt = row.expiresAt,
-                        userDisplayName = row.userDisplayName,
-                    )
+            // Hydrate the rest of the session metadata off the main thread.
+            // Routed through the injected @ApplicationScope (SupervisorJob +
+            // Dispatchers.Default) so:
+            //   - a throw from dao.get() doesn't poison sibling coroutines,
+            //   - the coroutine is part of a structured tree (cancellable in
+            //     tests and torn down with the process), and
+            //   - tests can swap a TestScope without mocking the global launch.
+            appScope.launch {
+                withContext(Dispatchers.IO) {
+                    val row = dao.get(sourceId)
+                    if (row != null) {
+                        state.value = SessionState.Authenticated(
+                            cookieHeader = cookie,
+                            expiresAt = row.expiresAt,
+                            userDisplayName = row.userDisplayName,
+                        )
+                    }
                 }
             }
         }

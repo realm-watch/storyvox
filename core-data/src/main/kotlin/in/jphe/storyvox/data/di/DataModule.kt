@@ -11,7 +11,11 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import `in`.jphe.storyvox.data.coroutines.ApplicationScope
 import `in`.jphe.storyvox.data.db.StoryvoxDatabase
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import `in`.jphe.storyvox.data.db.dao.AuthDao
 import `in`.jphe.storyvox.data.db.dao.ChapterDao
 import `in`.jphe.storyvox.data.db.dao.ChapterHistoryDao
@@ -70,6 +74,23 @@ object DataModule {
     @Provides fun llmMessageDao(db: StoryvoxDatabase): LlmMessageDao = db.llmMessageDao()
     @Provides fun fictionShelfDao(db: StoryvoxDatabase): FictionShelfDao = db.fictionShelfDao()
     @Provides fun inboxEventDao(db: StoryvoxDatabase): InboxEventDao = db.inboxEventDao()
+
+    /**
+     * Long-lived [CoroutineScope] for singleton repositories that need to fire
+     * "init" coroutines outside the lifecycle of a viewmodel / Hilt component.
+     *
+     * - [SupervisorJob] means a child failure doesn't poison sibling children.
+     * - [Dispatchers.Default] is the safe default; consumers can override with
+     *   `withContext(Dispatchers.IO)` for blocking I/O. This avoids pinning a
+     *   whole-process scope to the IO pool.
+     * - Qualified with [ApplicationScope] so test doubles can swap in a
+     *   `TestScope` without colliding with other `CoroutineScope` bindings.
+     */
+    @Provides
+    @Singleton
+    @ApplicationScope
+    fun provideApplicationScope(): CoroutineScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     @Provides
     @Singleton
