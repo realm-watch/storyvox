@@ -1,12 +1,12 @@
 # storyvox
 
-[![Build](https://github.com/jphein/storyvox/actions/workflows/android.yml/badge.svg)](https://github.com/jphein/storyvox/actions/workflows/android.yml)
-[![Release](https://img.shields.io/github/v/release/jphein/storyvox?color=b88746&label=release)](https://github.com/jphein/storyvox/releases)
+[![Build](https://github.com/techempower-org/storyvox/actions/workflows/android.yml/badge.svg)](https://github.com/techempower-org/storyvox/actions/workflows/android.yml)
+[![Release](https://img.shields.io/github/v/release/techempower-org/storyvox?color=b88746&label=release)](https://github.com/techempower-org/storyvox/releases)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-b88746.svg)](LICENSE)
 [![Built by dream-team](https://img.shields.io/badge/built%20by-dream--team-7d5fff.svg)](#how-it-was-built)
 
 **A neural-voice audiobook player for any text you have.**
-Stream chapters from [Royal Road](https://royalroad.com), [GitHub](https://github.com/), an [Outline](https://www.getoutline.com) wiki, an RSS / Atom feed, a [Memory Palace](https://github.com/jphein/mempalace) you host yourself, or a folder of EPUB files on your device — read aloud by an offline neural TTS engine. A hybrid reader/audiobook view highlights the spoken sentence in brass as you listen. Built for Android phones, tablets, and Wear OS.
+Stream chapters from [Royal Road](https://royalroad.com), [GitHub](https://github.com/), an [Outline](https://www.getoutline.com) wiki, an RSS / Atom feed, a [Memory Palace](https://github.com/techempower-org/mempalace) you host yourself, or a folder of EPUB files on your device — read aloud by an offline neural TTS engine. A hybrid reader/audiobook view highlights the spoken sentence in brass as you listen. Built for Android phones, tablets, and Wear OS.
 
 <div align="center">
   <picture>
@@ -22,7 +22,7 @@ Stream chapters from [Royal Road](https://royalroad.com), [GitHub](https://githu
 
 ## What it does
 
-- **Six fiction sources, side by side.** Browse [Royal Road](https://royalroad.com) with the full filter set (tags include/exclude, status, type, length, rating, content warnings, sort); browse fiction repos on GitHub via the curated [storyvox-registry](https://github.com/jphein/storyvox-registry) plus live `/search/repositories` results; subscribe to any **RSS / Atom feed** with a managed suggested-feeds list from [storyvox-feeds](https://github.com/jphein/storyvox-feeds); pull articles from a self-hosted **[Outline](https://www.getoutline.com)** wiki; mount a **[Memory Palace](https://github.com/jphein/mempalace)** you host yourself; or open **local EPUB files** from any folder via the system file picker. Each backend has its own on/off toggle in Settings.
+- **Six fiction sources, side by side.** Browse [Royal Road](https://royalroad.com) with the full filter set (tags include/exclude, status, type, length, rating, content warnings, sort); browse fiction repos on GitHub via the curated [storyvox-registry](https://github.com/techempower-org/storyvox-registry) plus live `/search/repositories` results; subscribe to any **RSS / Atom feed** with a managed suggested-feeds list from [storyvox-feeds](https://github.com/techempower-org/storyvox-feeds); pull articles from a self-hosted **[Outline](https://www.getoutline.com)** wiki; mount a **[Memory Palace](https://github.com/techempower-org/mempalace)** you host yourself; or open **local EPUB files** from any folder via the system file picker. Each backend has its own on/off toggle in Settings.
 - **Plays chapters as audiobooks** through an in-process neural TTS engine. Two voice families ship: [Piper](https://github.com/rhasspy/piper) (compact, ~14–30 MB) and [Kokoro](https://github.com/hexgrad/kokoro) (multi-speaker, ~330 MB). Voice models download on demand from `voices-v2`; nothing is bundled in the APK. No cloud, no API keys, no per-character billing.
 - **Optional cloud voices** — bring-your-own-key [Azure Cognitive Services HD voices](https://learn.microsoft.com/azure/ai-services/speech-service/text-to-speech) for studio-grade narration on slow devices. Offline fallback to the local engine if your key fails or the network drops. Azure is opt-in, never required, never billed by storyvox.
 - **Tier 3 multi-engine parallel synthesis.** Run 1–8 VoxSherpa engine instances side-by-side, each with its own thread pool, so a single sentence's chunks render in parallel and the next sentence is already queued before the current one finishes. Twin sliders in **Settings → Performance** (Engines, Threads/engine) let you tune for your CPU. The producer pins to a dedicated `URGENT_AUDIO` thread to keep audio scheduling honest under load.
@@ -63,7 +63,7 @@ Stream chapters from [Royal Road](https://royalroad.com), [GitHub](https://githu
 
 ## TTS engine
 
-storyvox links a local TTS engine in-process via the [VoxSherpa-TTS](https://github.com/jphein/VoxSherpa-TTS) `:engine-lib` AAR (published to JitPack). That AAR re-projects [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) inference plus the Piper and Kokoro wrappers into a single dependency. We bypass Android's `TextToSpeech` framework entirely, manage our own `AudioTrack` with a fat buffer, and pipeline next-sentence generation against current playback. No second APK, no install gate, no engine-binding handshake — synthesis runs in storyvox's own process.
+storyvox links a local TTS engine in-process via the [VoxSherpa-TTS](https://github.com/techempower-org/VoxSherpa-TTS) `:engine-lib` AAR (published to JitPack). That AAR re-projects [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) inference plus the Piper and Kokoro wrappers into a single dependency. We bypass Android's `TextToSpeech` framework entirely, manage our own `AudioTrack` with a fat buffer, and pipeline next-sentence generation against current playback. No second APK, no install gate, no engine-binding handshake — synthesis runs in storyvox's own process.
 
 For users who want studio-grade narration on slow devices, **Azure Cognitive Services HD voices** are wired in as an optional remote backend (BYOK). Add your key and region in **Settings → Voice & Playback → Azure** and pick from the full Azure HD voice roster. If your key fails or the network drops, storyvox falls back to your selected local voice for the rest of the chapter — playback never just stops on you.
 
@@ -73,7 +73,7 @@ Voice model weights for the local engine are downloaded on demand by `VoiceManag
 
 storyvox is currently distributed by sideloading. CI builds debug APKs on every `main` push; tagged releases (`v0.x.x`) attach a signed APK to the GitHub release.
 
-1. Download the latest `storyvox.apk` from the [Releases page](https://github.com/jphein/storyvox/releases).
+1. Download the latest `storyvox.apk` from the [Releases page](https://github.com/techempower-org/storyvox/releases).
 2. On your Android device, enable **Install unknown apps** for whatever browser/file manager you used.
 3. Open the APK to install.
 4. Launch storyvox. You'll be asked for notification permission (used for the lock-screen tile during playback). The voice picker appears on first launch — pick a Piper voice for a quick first chapter (~14–30 MB) or Kokoro for the multi-speaker model (~330 MB).
@@ -98,7 +98,7 @@ storyvox uses an in-app WebView for the login flow. Your password never touches 
 Requires JDK 17, Android SDK 35, and a system gradle ≥ 8.10 for the wrapper bootstrap.
 
 ```sh
-git clone https://github.com/jphein/storyvox.git
+git clone https://github.com/techempower-org/storyvox.git
 cd storyvox
 
 # One-time bootstrap
@@ -198,23 +198,23 @@ Per-dreamer detail specs live in `scratch/dreamers/`.
 The v0.4 line shipped 80+ point releases — the engine, six fiction sources, AI chat, OAuth, the Settings redesign, Azure HD as a remote TTS option, and the Tier 3 perf lane are all in. The next wave is the v0.5 line: better recall, more shaping of the read-aloud, and the long-promised knowledge graph.
 
 **Shipped in v0.4 (since v0.4.55):**
-- **Azure HD voices (BYOK).** Optional cloud TTS via Azure Cognitive Services. Settings UI ([#182](https://github.com/jphein/storyvox/issues/182)), engine wiring ([#183](https://github.com/jphein/storyvox/issues/183)), error handling and retries ([#184](https://github.com/jphein/storyvox/issues/184)), offline fallback ([#185](https://github.com/jphein/storyvox/issues/185)), full voice roster + cache eviction priority ([#186](https://github.com/jphein/storyvox/issues/186)). Bring your own key — never billed by storyvox.
+- **Azure HD voices (BYOK).** Optional cloud TTS via Azure Cognitive Services. Settings UI ([#182](https://github.com/techempower-org/storyvox/issues/182)), engine wiring ([#183](https://github.com/techempower-org/storyvox/issues/183)), error handling and retries ([#184](https://github.com/techempower-org/storyvox/issues/184)), offline fallback ([#185](https://github.com/techempower-org/storyvox/issues/185)), full voice roster + cache eviction priority ([#186](https://github.com/techempower-org/storyvox/issues/186)). Bring your own key — never billed by storyvox.
 - **Tier 3 multi-engine parallel synthesis.** Twin sliders for Engines × Threads/engine in Settings → Performance, producer pinned to a dedicated `URGENT_AUDIO` thread, VoxSherpa multi-core synced with upstream main.
-- **EPUB import** ([#235](https://github.com/jphein/storyvox/issues/235)). Folder picker via Storage Access Framework + an OPF parser; any folder of EPUB files becomes a Browse tab.
-- **RSS / Atom feeds** ([#236](https://github.com/jphein/storyvox/issues/236)). Subscribe to any feed; suggested feeds curated in [storyvox-feeds](https://github.com/jphein/storyvox-feeds) ([#246](https://github.com/jphein/storyvox/issues/246)).
-- **Outline self-hosted-wiki backend** ([#245](https://github.com/jphein/storyvox/issues/245)). Treat your Outline collections as fictions, articles as chapters.
+- **EPUB import** ([#235](https://github.com/techempower-org/storyvox/issues/235)). Folder picker via Storage Access Framework + an OPF parser; any folder of EPUB files becomes a Browse tab.
+- **RSS / Atom feeds** ([#236](https://github.com/techempower-org/storyvox/issues/236)). Subscribe to any feed; suggested feeds curated in [storyvox-feeds](https://github.com/techempower-org/storyvox-feeds) ([#246](https://github.com/techempower-org/storyvox/issues/246)).
+- **Outline self-hosted-wiki backend** ([#245](https://github.com/techempower-org/storyvox/issues/245)). Treat your Outline collections as fictions, articles as chapters.
 - **Smart-resume CTA.** Library Resume button respects last paused/playing intent — no more surprise auto-play.
-- **AI Sessions surface** ([#218](https://github.com/jphein/storyvox/issues/218)) — Settings → AI → Sessions to review past chats.
-- **AI read-aloud per assistant turn** ([#214](https://github.com/jphein/storyvox/issues/214)) — speak any chat reply through the same TTS pipeline.
-- **Per-voice speed and pitch defaults** ([#195](https://github.com/jphein/storyvox/issues/195)).
-- **Punctuation cadence drives Kokoro `silence_scale`** ([#196](https://github.com/jphein/storyvox/issues/196)) — one slider, two engines, consistent feel.
+- **AI Sessions surface** ([#218](https://github.com/techempower-org/storyvox/issues/218)) — Settings → AI → Sessions to review past chats.
+- **AI read-aloud per assistant turn** ([#214](https://github.com/techempower-org/storyvox/issues/214)) — speak any chat reply through the same TTS pipeline.
+- **Per-voice speed and pitch defaults** ([#195](https://github.com/techempower-org/storyvox/issues/195)).
+- **Punctuation cadence drives Kokoro `silence_scale`** ([#196](https://github.com/techempower-org/storyvox/issues/196)) — one slider, two engines, consistent feel.
 - **Stable debug-keystore signing** — clean upgrades over older debug builds without uninstall.
 
 **v0.5 candidates:**
-- **Notion as a seventh fiction backend** ([#233](https://github.com/jphein/storyvox/issues/233)).
-- **Knowledge graph for fiction.** Per-book Notebook (characters, places, who-said-what) seeding into MemPalace ([#147](https://github.com/jphein/storyvox/issues/147)).
+- **Notion as a seventh fiction backend** ([#233](https://github.com/techempower-org/storyvox/issues/233)).
+- **Knowledge graph for fiction.** Per-book Notebook (characters, places, who-said-what) seeding into MemPalace ([#147](https://github.com/techempower-org/storyvox/issues/147)).
 - **VoxSherpa knob exposure.** Loudness normalization, breath pause, pitch envelope as user-tunable settings ([research draft](docs/superpowers/specs/2026-05-08-voxsherpa-knobs-research.md)).
-- **PCM cache PRs C–H.** Auto-population, settings UI for cache size, graceful fallback ([#86](https://github.com/jphein/storyvox/issues/86)).
+- **PCM cache PRs C–H.** Auto-population, settings UI for cache size, graceful fallback ([#86](https://github.com/techempower-org/storyvox/issues/86)).
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the long-form roadmap and backlog.
 
@@ -238,6 +238,6 @@ Through the v0.4.56 → v0.4.83 stretch the dream-team kept landing: Solara's Az
 
 storyvox is licensed under the [GNU General Public License v3.0](LICENSE).
 
-We statically link [VoxSherpa-TTS](https://github.com/jphein/VoxSherpa-TTS) (GPL-3.0) into the APK as our TTS engine. The combined work is therefore GPL-3.0 — this license is not a posture choice, it's a downstream obligation. Relicensing more permissively would require replacing the engine, not just changing this file.
+We statically link [VoxSherpa-TTS](https://github.com/techempower-org/VoxSherpa-TTS) (GPL-3.0) into the APK as our TTS engine. The combined work is therefore GPL-3.0 — this license is not a posture choice, it's a downstream obligation. Relicensing more permissively would require replacing the engine, not just changing this file.
 
 You're free to use, modify, and redistribute under the terms of the GPL-3.0.

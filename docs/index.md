@@ -10,16 +10,16 @@ description: Offline neural TTS, optional Azure HD cloud voices. Six sources —
     <p class="tagline">A neural-voice audiobook player for any text you have.</p>
     <p>
       Stream chapters from <a href="https://royalroad.com">Royal Road</a>,
-      <a href="https://github.com/jphein/storyvox-registry">GitHub</a>, an
+      <a href="https://github.com/techempower-org/storyvox-registry">GitHub</a>, an
       <a href="https://www.getoutline.com">Outline</a> wiki, an RSS / Atom feed, a
-      <a href="https://github.com/jphein/mempalace">Memory Palace</a> you host yourself,
+      <a href="https://github.com/techempower-org/mempalace">Memory Palace</a> you host yourself,
       or a folder of EPUB files on your device — read aloud by an
       <strong>offline neural TTS engine</strong> (with optional Azure HD cloud voices),
       and a hybrid reader/audiobook view that highlights the spoken sentence as you listen.
     </p>
     <p class="cta-row">
       <a class="cta-primary" href="install/">Install</a>
-      <a class="cta-secondary" href="https://github.com/jphein/storyvox">Source on GitHub</a>
+      <a class="cta-secondary" href="https://github.com/techempower-org/storyvox">Source on GitHub</a>
     </p>
   </div>
   <div class="hero-art">
@@ -54,10 +54,10 @@ description: Offline neural TTS, optional Azure HD cloud voices. Six sources —
       <h3>Six fiction sources</h3>
       <p>
         Royal Road with the full filter set, GitHub fiction repos via the curated
-        <a href="https://github.com/jphein/storyvox-registry">storyvox-registry</a>,
+        <a href="https://github.com/techempower-org/storyvox-registry">storyvox-registry</a>,
         any RSS / Atom feed (with a managed suggested-feeds list), a self-hosted
         <a href="https://www.getoutline.com">Outline</a> wiki, your own
-        <a href="https://github.com/jphein/mempalace">Memory Palace</a>, or a folder of
+        <a href="https://github.com/techempower-org/mempalace">Memory Palace</a>, or a folder of
         EPUB files on your device. Each backend has its own on/off toggle.
       </p>
     </div>

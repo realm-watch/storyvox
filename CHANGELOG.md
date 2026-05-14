@@ -9,6 +9,13 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.22] — 2026-05-13
+
+### Infrastructure
+- **Four sibling repos moved jphein → techempower-org** — storyvox-registry, speech-to-cli, cloud-chat-assistant, gnome-speaks. The `:source-github` Featured-row fetcher (`Registry.kt`) had a hardcoded URL pointing at `raw.githubusercontent.com/jphein/storyvox-registry/main/registry.json` — flipped to `techempower-org`. The old URL still 200s via GitHub's permanent raw redirect (so existing v0.5.21 installs keep working), but the new canonical URL is now baked into the v0.5.22 binary.
+- USER_AGENT updated `storyvox/0.4 (+https://github.com/jphein/storyvox)` → `storyvox/0.5 (+https://github.com/techempower-org/storyvox)` so server-side logs / Plausible-style analytics see the canonical UA from this release forward.
+- README + docs/index.md + docs/ROADMAP.md + settings.gradle.kts comment swept for `jphein/` references; spec docs left frozen as historical record.
+
 ## [0.5.21] — 2026-05-13
 
 ### Infrastructure

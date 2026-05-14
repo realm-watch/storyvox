@@ -41,7 +41,7 @@ is the test of that abstraction. Highlights:
   `book.toml` (mdbook) + `storyvox.json` manifest parsing,
   bare-repo fallback for unmarked-up repos. Markdown → HTML/plaintext via
   commonmark.
-- **Curated registry.** `jphein/storyvox-registry` repo holds
+- **Curated registry.** `techempower-org/storyvox-registry` repo holds
   `registry.json`. Storyvox fetches once per session, surfaces entries as
   the **Featured** row at the top of Browse → GitHub.
 - **Live search + filters.** `/search/repositories?q=topic:fiction+...` for

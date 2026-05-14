@@ -22,7 +22,7 @@ dependencyResolutionManagement {
         mavenLocal()
         google()
         mavenCentral()
-        // JitPack hosts the jphein/VoxSherpa-TTS :engine-lib AAR. We link the
+        // JitPack hosts the techempower-org/VoxSherpa-TTS :engine-lib AAR. We link the
         // engines in-process to bypass Android's TextToSpeech framework path
         // (its small AudioTrack buffer underruns between sentences on modest
         // hardware, which is the gappy-playback problem v0.4.0 fixes).
