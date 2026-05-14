@@ -754,8 +754,51 @@ class EnginePlayer @AssistedInject constructor(
         // on modest hardware; without this the screen sits blank that long.
         val text = chapter.text
         sentences = chunker.chunk(text)
+        // Issue #442 — Gutenberg-derived plain text can be "stripTags(htmlBody)"-
+        // empty for spine entries that are pure-HTML wrappers (front-matter,
+        // PG header pages, image-only inserts). When that happens the
+        // chapter row carries non-empty text from getChapter()'s
+        // is-not-empty guard (so we got here) but the sentence chunker
+        // emits zero sentences — the producer loop then iterates 0
+        // entries, pushes END_PILL immediately, the consumer treats
+        // that as naturalEnd, and the user sees state=PLAYING +
+        // position=0 forever because `isPlaying=true` was already
+        // surfaced above. Surface a typed error and bail before the
+        // pipeline spins up so the UI can render "Couldn't read this
+        // chapter aloud" rather than buffering indefinitely. The
+        // brass spinner clears on isPlaying=false; the error renders
+        // in the player's error band.
+        if (sentences.isEmpty()) {
+            android.util.Log.w(
+                "EnginePlayer",
+                "loadAndPlay: chapter $chapterId yielded zero sentences " +
+                    "(text.length=${text.length}, first 80=${text.take(80)}); " +
+                    "surfacing typed error — see #442",
+            )
+            _observableState.update {
+                it.copy(
+                    isPlaying = false,
+                    error = PlaybackError.ChapterFetchFailed(
+                        "This chapter has no readable text — try the next chapter.",
+                    ),
+                )
+            }
+            invalidateState()
+            return
+        }
         currentSentenceIndex = sentences.indexOfFirst { charOffset <= it.endChar }
             .takeIf { it >= 0 } ?: 0
+        // Issue #442 — synth event log on the hot path. When playback
+        // hangs in production we have no per-chapter visibility into
+        // which step stalled (chunker / engine load / first synth /
+        // queue handoff). One info-level line per pipeline start gives
+        // us a consistent breadcrumb at logcat capture time without
+        // adding any cost in the common path.
+        android.util.Log.i(
+            "EnginePlayer",
+            "loadAndPlay: chapter=$chapterId sentences=${sentences.size} " +
+                "fromIndex=$currentSentenceIndex textChars=${text.length}",
+        )
         _observableState.update {
             it.copy(
                 currentFictionId = fictionId,

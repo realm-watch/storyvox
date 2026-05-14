@@ -58,7 +58,8 @@ import javax.inject.Singleton
 @SourcePlugin(
     id = SourceIds.WIKIPEDIA,
     displayName = "Wikipedia",
-    defaultEnabled = false,
+    // #436 — fresh-install discoverability: chip on by default.
+    defaultEnabled = true,
     category = SourceCategory.Text,
     supportsFollow = false,
     supportsSearch = true,

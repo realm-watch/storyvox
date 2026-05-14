@@ -54,7 +54,11 @@ import kotlin.time.toDuration
 @SourcePlugin(
     id = SourceIds.GITHUB,
     displayName = "GitHub fiction",
-    defaultEnabled = false,
+    // #436 — fresh-install discoverability: all 17 backend chips visible
+    // in Browse by default; users prune via Settings → Plugins. The chip
+    // strip is the only place new users learn these backends exist, so
+    // opt-in-by-default hid 12/17 of the catalog from fresh installs.
+    defaultEnabled = true,
     category = SourceCategory.Text,
     supportsFollow = false,
     supportsSearch = true,

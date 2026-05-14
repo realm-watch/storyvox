@@ -50,7 +50,11 @@ import javax.inject.Singleton
 @SourcePlugin(
     id = SourceIds.MEMPALACE,
     displayName = "Memory Palace",
-    defaultEnabled = false,
+    // #436 — fresh-install discoverability: chip visible by default;
+    // the daemon host config still gates real listings until the user
+    // points the app at a reachable host, but hiding the chip entirely
+    // means a fresh install can't discover the feature exists.
+    defaultEnabled = true,
     category = SourceCategory.Text,
     supportsFollow = false,
     supportsSearch = true,

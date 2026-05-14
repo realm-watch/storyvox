@@ -39,7 +39,10 @@ import javax.inject.Singleton
 @SourcePlugin(
     id = SourceIds.EPUB,
     displayName = "Local EPUB files",
-    defaultEnabled = false,
+    // #436 — fresh-install discoverability: chip on by default. The
+    // backend lists nothing until the user picks a folder, but the chip
+    // is the affordance that teaches new users this surface exists.
+    defaultEnabled = true,
     category = SourceCategory.Text,
     supportsFollow = false,
     supportsSearch = false,

@@ -59,7 +59,9 @@ import javax.inject.Singleton
 @SourcePlugin(
     id = SourceIds.DISCORD,
     displayName = "Discord",
-    defaultEnabled = false,
+    // #436 — fresh-install discoverability: chip on by default; the
+    // backend stays inert until the user enters a bot token in Settings.
+    defaultEnabled = true,
     category = SourceCategory.Text,
     supportsFollow = false,
     supportsSearch = true,

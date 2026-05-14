@@ -288,26 +288,35 @@ internal object LegacySourceKeys {
     val ALL: Map<String, Spec> = linkedMapOf(
         `in`.jphe.storyvox.data.source.SourceIds.ROYAL_ROAD to
             Spec(booleanPreferencesKey("pref_source_royalroad_enabled"), defaultValue = true),
+        // #436 — fresh-install discoverability: all 17 backends default
+        // ON in the JSON map so the Browse chip strip lists every
+        // backend. Per-source migration tables (`KvmrEnabledToRadioEnabled`,
+        // legacy boolean keys carried forward from old installs) still
+        // honor the user's previous explicit choices on upgrade; this
+        // table is only consulted when the legacy boolean key was never
+        // written (i.e. fresh install). Keep these defaults in lockstep
+        // with each backend's `@SourcePlugin(defaultEnabled = …)` —
+        // `SourcePluginContractTest` asserts the parity.
         `in`.jphe.storyvox.data.source.SourceIds.GITHUB to
-            Spec(booleanPreferencesKey("pref_source_github_enabled"), defaultValue = false),
+            Spec(booleanPreferencesKey("pref_source_github_enabled"), defaultValue = true),
         `in`.jphe.storyvox.data.source.SourceIds.MEMPALACE to
-            Spec(booleanPreferencesKey("pref_source_mempalace_enabled"), defaultValue = false),
+            Spec(booleanPreferencesKey("pref_source_mempalace_enabled"), defaultValue = true),
         `in`.jphe.storyvox.data.source.SourceIds.RSS to
             Spec(booleanPreferencesKey("pref_source_rss_enabled"), defaultValue = true),
         `in`.jphe.storyvox.data.source.SourceIds.EPUB to
-            Spec(booleanPreferencesKey("pref_source_epub_enabled"), defaultValue = false),
+            Spec(booleanPreferencesKey("pref_source_epub_enabled"), defaultValue = true),
         `in`.jphe.storyvox.data.source.SourceIds.OUTLINE to
-            Spec(booleanPreferencesKey("pref_source_outline_enabled"), defaultValue = false),
+            Spec(booleanPreferencesKey("pref_source_outline_enabled"), defaultValue = true),
         `in`.jphe.storyvox.data.source.SourceIds.GUTENBERG to
             Spec(booleanPreferencesKey("pref_source_gutenberg_enabled"), defaultValue = true),
         `in`.jphe.storyvox.data.source.SourceIds.AO3 to
-            Spec(booleanPreferencesKey("pref_source_ao3_enabled"), defaultValue = false),
+            Spec(booleanPreferencesKey("pref_source_ao3_enabled"), defaultValue = true),
         `in`.jphe.storyvox.data.source.SourceIds.STANDARD_EBOOKS to
-            Spec(booleanPreferencesKey("pref_source_standard_ebooks_enabled"), defaultValue = false),
+            Spec(booleanPreferencesKey("pref_source_standard_ebooks_enabled"), defaultValue = true),
         `in`.jphe.storyvox.data.source.SourceIds.WIKIPEDIA to
-            Spec(booleanPreferencesKey("pref_source_wikipedia_enabled"), defaultValue = false),
+            Spec(booleanPreferencesKey("pref_source_wikipedia_enabled"), defaultValue = true),
         `in`.jphe.storyvox.data.source.SourceIds.WIKISOURCE to
-            Spec(booleanPreferencesKey("pref_source_wikisource_enabled"), defaultValue = false),
+            Spec(booleanPreferencesKey("pref_source_wikisource_enabled"), defaultValue = true),
         // Issue #417 — :source-kvmr generalized to :source-radio. The
         // canonical entry is RADIO with its own pref_source_radio_enabled
         // key (seeded from the legacy pref_source_kvmr_enabled value
@@ -323,20 +332,20 @@ internal object LegacySourceKeys {
         `in`.jphe.storyvox.data.source.SourceIds.NOTION to
             Spec(booleanPreferencesKey("pref_source_notion_enabled"), defaultValue = true),
         `in`.jphe.storyvox.data.source.SourceIds.HACKERNEWS to
-            Spec(booleanPreferencesKey("pref_source_hackernews_enabled"), defaultValue = false),
-        // #378 — arXiv: default OFF, same posture as Wikipedia.
+            Spec(booleanPreferencesKey("pref_source_hackernews_enabled"), defaultValue = true),
+        // #378 — arXiv. Fresh-install discoverability (#436) flipped
+        // this from off → on; the user can disable via Settings → Plugins.
         `in`.jphe.storyvox.data.source.SourceIds.ARXIV to
-            Spec(booleanPreferencesKey("pref_source_arxiv_enabled"), defaultValue = false),
-        // #380 — PLOS open-access peer-reviewed science. Academic
-        // content is an opt-in surface; fresh installs ship with this
-        // off and the user flips it on from Settings.
+            Spec(booleanPreferencesKey("pref_source_arxiv_enabled"), defaultValue = true),
+        // #380 — PLOS open-access peer-reviewed science. Fresh-install
+        // discoverability (#436) flipped this from off → on.
         `in`.jphe.storyvox.data.source.SourceIds.PLOS to
-            Spec(booleanPreferencesKey("pref_source_plos_enabled"), defaultValue = false),
-        // #403 — Discord backend. Default OFF on fresh installs —
-        // bot-token onboarding is high-friction and Discord is a
-        // private workspace, not a public catalog.
+            Spec(booleanPreferencesKey("pref_source_plos_enabled"), defaultValue = true),
+        // #403 — Discord backend. Fresh-install discoverability (#436)
+        // flipped this on; chip is visible but the backend stays inert
+        // until the user enters a bot token in Settings.
         `in`.jphe.storyvox.data.source.SourceIds.DISCORD to
-            Spec(booleanPreferencesKey("pref_source_discord_enabled"), defaultValue = false),
+            Spec(booleanPreferencesKey("pref_source_discord_enabled"), defaultValue = true),
     )
 }
 

@@ -305,8 +305,27 @@ private fun GutendexBook.toSummary(): FictionSummary =
 /** Cheap HTML→plaintext for the chapter body the engine receives.
  *  The downstream pipeline normalizes further; this just gets the
  *  visible text out of the wrapper tags so the TTS engine doesn't
- *  read out angle-bracket noise. */
-private fun String.stripTags(): String =
-    Regex("<[^>]+>").replace(this, " ")
+ *  read out angle-bracket noise.
+ *
+ *  Issue #442 — strip non-visible regions before stripping tags. PG
+ *  EPUB spine entries are full HTML documents with `<head>` (style,
+ *  meta, scripts), and a permissive `<[^>]+>` regex leaves the
+ *  *contents* of those blocks in the output. On Frankenstein chapter
+ *  one ("Letter I", spine[0]) that meant the synth queue saw the
+ *  CSS text of the embedded stylesheet rather than the actual prose
+ *  — Piper synthesised that as a long, slow, mostly-silent buffer
+ *  while the user saw `state=PLAYING, position=0` indefinitely.
+ *  Pre-strip `<head>...</head>`, `<script>...</script>`, and
+ *  `<style>...</style>` (DOTALL across newlines) so only the visible
+ *  body text survives. Case-insensitive because EPUB spine documents
+ *  in the wild use both `<HEAD>` and `<head>`.
+ */
+internal fun String.stripTags(): String {
+    val noHead = Regex("(?is)<head\\b[^>]*>.*?</head>").replace(this, " ")
+    val noScript = Regex("(?is)<script\\b[^>]*>.*?</script>").replace(noHead, " ")
+    val noStyle = Regex("(?is)<style\\b[^>]*>.*?</style>").replace(noScript, " ")
+    val noComments = Regex("(?s)<!--.*?-->").replace(noStyle, " ")
+    return Regex("<[^>]+>").replace(noComments, " ")
         .replace(Regex("\\s+"), " ")
         .trim()
+}
