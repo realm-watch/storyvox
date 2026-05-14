@@ -411,6 +411,12 @@ fun SettingsScreen(
             onSetChatGroundCurrentSentence = viewModel::setChatGroundCurrentSentence,
             onSetChatGroundEntireChapter = viewModel::setChatGroundEntireChapter,
             onSetChatGroundEntireBookSoFar = viewModel::setChatGroundEntireBookSoFar,
+            // Issue #217 — cross-fiction memory toggle. Default ON for
+            // fresh installs; users can opt out here. The wire-up keeps
+            // the Settings → AI surface as the single source of truth
+            // for AI behaviour toggles (parallel to the grounding-level
+            // switches above).
+            onSetCarryMemoryAcrossFictions = viewModel::setCarryMemoryAcrossFictions,
             onTestConnection = viewModel::testAiConnection,
             onClearProbeOutcome = viewModel::clearProbeOutcome,
             onResetAi = viewModel::resetAiSettings,
@@ -1985,6 +1991,11 @@ private fun AiSection(
     onSetChatGroundCurrentSentence: (Boolean) -> Unit,
     onSetChatGroundEntireChapter: (Boolean) -> Unit,
     onSetChatGroundEntireBookSoFar: (Boolean) -> Unit,
+    /** Issue #217 — Carry memory across fictions. The chat ViewModel
+     *  reads [UiAiSettings.carryMemoryAcrossFictions] at send-time and
+     *  conditionally appends the cross-fiction context block to the
+     *  system prompt. Default ON. */
+    onSetCarryMemoryAcrossFictions: (Boolean) -> Unit,
     onTestConnection: (UiLlmProvider) -> Unit,
     onClearProbeOutcome: () -> Unit,
     onResetAi: () -> Unit,
@@ -2138,6 +2149,21 @@ private fun AiSection(
                 onSetEntireBookSoFar = onSetChatGroundEntireBookSoFar,
             )
         }
+        // Issue #217 — Cross-fiction memory toggle. Sits as a top-level
+        // switch row (not nested in an expander) because there's only
+        // one knob and it materially affects what the AI knows about
+        // the reader. Subtitle calls out the per-user-library partition
+        // ("everything you've read") and the bounded cost (~500 token
+        // cap, oldest dropped first) so the trade-off is legible at a
+        // glance. Default ON for fresh installs.
+        SettingsSwitchRow(
+            title = "Carry memory across fictions",
+            subtitle = "Chat assistant remembers characters, places, and " +
+                "concepts from other books you've read. Capped at ~500 " +
+                "tokens per turn; oldest entries drop first.",
+            checked = ai.carryMemoryAcrossFictions,
+            onCheckedChange = onSetCarryMemoryAcrossFictions,
+        )
         // Issue #262 — destructive AI-reset path. Previously a plain
         // brass-tinted TextButton that looked identical to a 'Save' or
         // 'Show' affordance. Now error-tinted with a leading Delete icon

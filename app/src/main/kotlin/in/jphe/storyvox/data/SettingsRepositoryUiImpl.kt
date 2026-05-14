@@ -467,6 +467,11 @@ private object Keys {
     val AI_CHAT_GROUND_CURRENT_SENTENCE = booleanPreferencesKey("pref_ai_chat_ground_current_sentence")
     val AI_CHAT_GROUND_ENTIRE_CHAPTER = booleanPreferencesKey("pref_ai_chat_ground_entire_chapter")
     val AI_CHAT_GROUND_ENTIRE_BOOK = booleanPreferencesKey("pref_ai_chat_ground_entire_book")
+    /** Issue #217 — cross-fiction memory toggle. Default ON; the
+     *  Settings → AI screen lets the user opt out. Absent key reads
+     *  as true so fresh installs (and pre-#217 installs upgrading)
+     *  both get the more-useful default. */
+    val AI_CARRY_MEMORY_ACROSS_FICTIONS = booleanPreferencesKey("pref_ai_carry_memory_across_fictions")
 
     /** Issue #135 — JSON-serialized [PronunciationDict] (list of
      *  pattern/replacement/matchType entries). _v1 suffix lets us
@@ -854,6 +859,10 @@ class SettingsRepositoryUiImpl(
                     includeEntireChapter = prefs[Keys.AI_CHAT_GROUND_ENTIRE_CHAPTER] ?: false,
                     includeEntireBookSoFar = prefs[Keys.AI_CHAT_GROUND_ENTIRE_BOOK] ?: false,
                 ),
+                // Issue #217 — default ON for fresh installs; pre-#217
+                // upgrades also pick up the default because the key
+                // doesn't exist yet (DataStore returns null → ?: true).
+                carryMemoryAcrossFictions = prefs[Keys.AI_CARRY_MEMORY_ACROSS_FICTIONS] ?: true,
             ),
             sigil = Sigil.current.let {
                 UiSigil(
@@ -1331,6 +1340,10 @@ class SettingsRepositoryUiImpl(
 
     override suspend fun setChatGroundEntireBookSoFar(enabled: Boolean) {
         store.edit { it[Keys.AI_CHAT_GROUND_ENTIRE_BOOK] = enabled }
+    }
+
+    override suspend fun setCarryMemoryAcrossFictions(enabled: Boolean) {
+        store.edit { it[Keys.AI_CARRY_MEMORY_ACROSS_FICTIONS] = enabled }
     }
 
     override suspend fun acknowledgeAiPrivacy() {

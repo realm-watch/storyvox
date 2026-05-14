@@ -6,6 +6,8 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import `in`.jphe.storyvox.data.db.entity.FictionMemoryEntry
+import `in`.jphe.storyvox.data.repository.FictionMemoryRepository
 import `in`.jphe.storyvox.feature.api.DownloadMode
 import `in`.jphe.storyvox.feature.api.FictionRepositoryUi
 import `in`.jphe.storyvox.feature.api.PlaybackControllerUi
@@ -43,6 +45,12 @@ data class FictionDetailUiState(
      *  .epub. UI surfaces a "Building .epub…" chip so the user knows their
      *  tap took effect even on a 5000-chapter export. */
     val isExportingEpub: Boolean = false,
+    /** Issue #217 — Notebook sub-section. The per-fiction memory entries
+     *  the cross-fiction extractor recorded (or the user typed manually
+     *  via the Notebook UI's add-note affordance). Empty list when this
+     *  book has no recorded entities yet — the UI hides the section
+     *  rather than rendering an empty card. */
+    val notebookEntries: List<FictionMemoryEntry> = emptyList(),
 )
 
 sealed interface FictionDetailUiEvent {
@@ -74,6 +82,10 @@ class FictionDetailViewModel @Inject constructor(
     private val playback: PlaybackControllerUi,
     private val exportEpub: ExportFictionToEpubUseCase,
     settings: SettingsRepositoryUi,
+    /** Issue #217 — cross-fiction memory repo. Backs the Notebook
+     *  sub-section showing which characters/places/concepts the AI
+     *  has recorded for this book, plus the user's manual notes. */
+    private val memoryRepo: FictionMemoryRepository,
     savedState: SavedStateHandle,
 ) : ViewModel() {
 
@@ -98,25 +110,59 @@ class FictionDetailViewModel @Inject constructor(
      *  call site can flip it cleanly around the use-case invocation. */
     private val isExporting = kotlinx.coroutines.flow.MutableStateFlow(false)
 
-    val uiState: StateFlow<FictionDetailUiState> = combine(
-        repo.fictionById(fictionId),
-        repo.chaptersFor(fictionId),
-        repo.library,
-        repo.fictionLoadError(fictionId),
-        isExporting,
-    ) { fiction, chapters, library, error, exporting ->
-        FictionDetailUiState(
-            fiction = fiction,
-            chapters = chapters,
-            isInLibrary = library.any { it.id == fictionId },
-            // Stop showing the spinner once we either have a cached row
-            // OR the refresh has failed — otherwise a Cloudflare/network
-            // error leaves the user on a permanent spinner with no signal.
-            isLoading = fiction == null && error == null,
-            error = error,
-            isExportingEpub = exporting,
-        )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FictionDetailUiState())
+    val uiState: StateFlow<FictionDetailUiState> = run {
+        // Issue #217 — Notebook entries surface in the detail page's
+        // mid-section. The combine ceiling is 5 args, so we nest:
+        // outer combine merges the core detail flow with the notebook
+        // feed. Keeps each layer flat for readability.
+        val base = combine(
+            repo.fictionById(fictionId),
+            repo.chaptersFor(fictionId),
+            repo.library,
+            repo.fictionLoadError(fictionId),
+            isExporting,
+        ) { fiction, chapters, library, error, exporting ->
+            FictionDetailUiState(
+                fiction = fiction,
+                chapters = chapters,
+                isInLibrary = library.any { it.id == fictionId },
+                // Stop showing the spinner once we either have a cached row
+                // OR the refresh has failed — otherwise a Cloudflare/network
+                // error leaves the user on a permanent spinner with no signal.
+                isLoading = fiction == null && error == null,
+                error = error,
+                isExportingEpub = exporting,
+            )
+        }
+        combine(base, memoryRepo.entitiesForFiction(fictionId)) { state, notebook ->
+            state.copy(notebookEntries = notebook)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FictionDetailUiState())
+    }
+
+    /**
+     * Issue #217 — record a manual Notebook entry. The Notebook UI's
+     * "Add note" affordance routes here. [userEdited]=true so the
+     * extractor's next pass on this (fictionId, name) won't overwrite
+     * the user's curation.
+     */
+    fun addNotebookEntry(name: String, summary: String, kind: FictionMemoryEntry.Kind) {
+        viewModelScope.launch {
+            memoryRepo.recordEntity(
+                fictionId = fictionId,
+                entityType = kind,
+                name = name,
+                summary = summary,
+                userEdited = true,
+            )
+        }
+    }
+
+    /** Issue #217 — delete a Notebook entry. The UI's per-row "X"
+     *  button routes here. Used to remove AI-extracted entries that
+     *  the user judges wrong, or to retract a manual note. */
+    fun deleteNotebookEntry(name: String) {
+        viewModelScope.launch { memoryRepo.deleteEntry(fictionId, name) }
+    }
 
     fun toggleFollow(follow: Boolean) {
         viewModelScope.launch { repo.follow(fictionId, follow) }

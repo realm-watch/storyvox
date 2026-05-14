@@ -8,6 +8,7 @@ import `in`.jphe.storyvox.data.db.dao.AuthDao
 import `in`.jphe.storyvox.data.db.dao.ChapterDao
 import `in`.jphe.storyvox.data.db.dao.ChapterHistoryDao
 import `in`.jphe.storyvox.data.db.dao.FictionDao
+import `in`.jphe.storyvox.data.db.dao.FictionMemoryDao
 import `in`.jphe.storyvox.data.db.dao.FictionShelfDao
 import `in`.jphe.storyvox.data.db.dao.InboxEventDao
 import `in`.jphe.storyvox.data.db.dao.LlmMessageDao
@@ -17,6 +18,7 @@ import `in`.jphe.storyvox.data.db.entity.AuthCookie
 import `in`.jphe.storyvox.data.db.entity.Chapter
 import `in`.jphe.storyvox.data.db.entity.ChapterHistory
 import `in`.jphe.storyvox.data.db.entity.Fiction
+import `in`.jphe.storyvox.data.db.entity.FictionMemoryEntry
 import `in`.jphe.storyvox.data.db.entity.FictionShelf
 import `in`.jphe.storyvox.data.db.entity.InboxEvent
 import `in`.jphe.storyvox.data.db.entity.LlmSession
@@ -41,8 +43,14 @@ import `in`.jphe.storyvox.data.db.entity.PlaybackPosition
         // source-emitted notifications. No FK to fiction/chapter so
         // events survive removal of the underlying rows.
         InboxEvent::class,
+        // v9 (#217 cross-fiction memory) — per-(fiction, name) entries
+        // the AI extracts from its own chat replies. No FK to fiction
+        // so removal of a book doesn't cascade-wipe its memory; the
+        // cross-fiction lookup still surfaces "you read this name in
+        // a book you no longer have."
+        FictionMemoryEntry::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -56,6 +64,7 @@ abstract class StoryvoxDatabase : RoomDatabase() {
     abstract fun llmMessageDao(): LlmMessageDao
     abstract fun fictionShelfDao(): FictionShelfDao
     abstract fun inboxEventDao(): InboxEventDao
+    abstract fun fictionMemoryDao(): FictionMemoryDao
 
     companion object {
         const val NAME: String = "storyvox.db"
