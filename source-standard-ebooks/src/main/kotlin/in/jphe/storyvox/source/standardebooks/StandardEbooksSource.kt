@@ -66,7 +66,18 @@ import javax.inject.Singleton
 internal class StandardEbooksSource @Inject constructor(
     private val api: StandardEbooksApi,
     @StandardEbooksCache private val cacheDir: File,
-) : FictionSource {
+) : FictionSource, `in`.jphe.storyvox.data.source.UrlMatcher {
+
+    /** Issue #472 — `standardebooks.org/ebooks/<author>/<title>` URL. */
+    override fun matchUrl(url: String): `in`.jphe.storyvox.data.source.RouteMatch? {
+        val m = STANDARD_EBOOKS_URL_PATTERN.matchEntire(url.trim()) ?: return null
+        return `in`.jphe.storyvox.data.source.RouteMatch(
+            sourceId = SourceIds.STANDARD_EBOOKS,
+            fictionId = "${SourceIds.STANDARD_EBOOKS}:${m.groupValues[1]}/${m.groupValues[2]}",
+            confidence = 0.95f,
+            label = "Standard Ebooks book",
+        )
+    }
 
     // EpubParser is a Kotlin object — stateless across calls. Reused
     // verbatim from `:source-epub` (where it was authored for #235);
@@ -295,6 +306,12 @@ private fun parseSeId(fictionId: String): Pair<String, String>? {
     if (slash < 1 || slash == rest.length - 1) return null
     return rest.substring(0, slash) to rest.substring(slash + 1)
 }
+
+/** Issue #472 — Standard Ebooks URL pattern. */
+internal val STANDARD_EBOOKS_URL_PATTERN: Regex = Regex(
+    """^https?://(?:www\.)?standardebooks\.org/ebooks/([\w-]+)/([\w-]+)(?:/.*)?$""",
+    RegexOption.IGNORE_CASE,
+)
 
 /** Build `standardebooks:{authorSlug}/{bookSlug}` from the listing-row
  *  pair. Mirrors how `:source-gutenberg` composes `gutenberg:{id}`. */
