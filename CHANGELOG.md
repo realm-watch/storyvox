@@ -9,6 +9,18 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.38] — 2026-05-14
+
+### Fixed — QA bundle from the exhaustive Flip3 pass
+- **Browse only showed 5 of 17 backend chips on fresh install** (#467, closes #436) — 12 `@SourcePlugin(defaultEnabled = false)` annotations were wrong defaults on the new backends (GitHub, Memory Palace, EPUB, Outline, AO3, Standard Ebooks, Wikipedia, Wikisource, Hacker News, arXiv, PLOS, Discord). Fresh installs of v0.5.32–v0.5.37 saw only Gutenberg / Royal Road / RSS / Notion / Radio in the chip strip. Flipped all 12 + matching `LegacySourceKeys.ALL` to `defaultEnabled = true`. Upgrade users with explicit OFF settings retain their preferences via the legacy-key migration. 7 new tests pinning the default + migration contract.
+- **Library had two adjacent tab rows with overlapping labels** (#467, closes #438) — top strip had `All / Reading / Inbox / History` (section selector), second strip had `All / Reading / Read / Wishlist` (shelf selector). Material's anti-pattern: same string in two nested navigation surfaces. Collapsed to 3 top tabs (`Library / Inbox / History`); the shelf chip row inside Library tab is now the canonical Reading affordance. 6 new tests.
+- **Settings gear icon dumped users into Voice & Playback section** (#467, closes #440) — no Settings root menu. New `SettingsHubScreen` + `SETTINGS_HUB` nav route landing on a hub of 13 brass-edged section cards: Voice library, Plugins, AI sessions, Pronunciation, Debug (dedicated subscreens for 5; legacy long-scroll for the other 7 + an "All settings" escape hatch). 6 new tests.
+- **Gutenberg chapter playback hung at 0:00 'Buffering…' indefinitely** (#467, closes #442 — `priority: high`) — two compounding causes: (a) `GutenbergSource.stripTags` was a permissive `<[^>]+>` regex that left `<head>` / `<script>` / `<style>` contents in the output, so the synth queue saw Project Gutenberg's inline CSS instead of prose and Piper synthesized punctuation-heavy CSS while the UI showed `state=PLAYING / position=0` indefinitely; (b) `EnginePlayer.loadAndPlay` had no zero-sentences guard, so the silent failure mode had no diagnostic. Fixed both — pre-strips non-visible regions in `stripTags` (DOTALL, case-insensitive) + typed `PlaybackError.ChapterFetchFailed("This chapter has no readable text…")` early-return with a hot-path synth breadcrumb log. 7 new tests.
+- **Calliope v0.5.00 milestone celebration window closes after v0.5.5** (#451, closes #435 + #439) — the dialog had been firing on fresh installs of every build past v0.5.0 with the hand-tuned headline "storyvox 0.5.00" because `Milestone.qualifies()` returned true for anything `≥ 0.5.0`. Fresh installer on v0.5.36 saw a stale headline; reported as "onboarding splash shows hardcoded 0.5.00". Fix: added an upper bound. Users who installed during the window keep their dismissal flag; fresh installers past v0.5.5 silently never see the dialog. Dialog code stays for history.
+
+### Backend defaults
+Post-#436 fix, fresh installs see all 17 backends in the Browse chip strip: Royal Road, GitHub, Memory Palace, RSS, EPUB, Outline, Gutenberg, AO3, Standard Ebooks, Wikipedia, Wikisource, Radio, Notion, Hacker News, arXiv, PLOS, Discord. Plus the 12 specialty content surfaces (audio-stream Radio category, the AI heavies trifecta from v0.5.30–v0.5.36, etc.).
+
 ## [0.5.37] — 2026-05-14
 
 ### Fixed
