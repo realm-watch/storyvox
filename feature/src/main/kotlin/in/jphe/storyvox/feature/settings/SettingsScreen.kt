@@ -549,6 +549,27 @@ fun SettingsScreen(
                 checked = s.sourceKvmrEnabled,
                 onCheckedChange = viewModel::setSourceKvmrEnabled,
             )
+            // Issue #233 — Notion fiction backend. Default ON per #390
+            // with the techempower.org database baked in as the
+            // default. Until the user pastes an Internal Integration
+            // Token, the source returns AuthRequired on every call;
+            // the inline config row below collects the token + lets
+            // the user override the database id if they want to point
+            // at their own Notion DB.
+            SettingsSwitchRow(
+                title = "Notion",
+                subtitle = "Read a Notion database as fiction. Heading-1 boundaries split chapters.",
+                checked = s.sourceNotionEnabled,
+                onCheckedChange = viewModel::setSourceNotionEnabled,
+            )
+            if (s.sourceNotionEnabled) {
+                NotionConfigRow(
+                    databaseId = s.notionDatabaseId,
+                    tokenConfigured = s.notionTokenConfigured,
+                    onDatabaseIdChange = viewModel::setNotionDatabaseId,
+                    onApiTokenChange = viewModel::setNotionApiToken,
+                )
+            }
         }
 
         // ── Sync sub-card ─────────────────────────────────────────
@@ -3017,6 +3038,95 @@ private fun WikipediaLanguageRow(
                 onClick = { onLanguageCodeChange(draft) },
                 variant = BrassButtonVariant.Primary,
             )
+        }
+    }
+}
+
+/**
+ * Issue #233 — Notion source config row. Two fields:
+ *
+ *  - **Database ID** — the Notion database the source queries. Defaults
+ *    to the techempower.org placeholder from `NotionDefaults`; the user
+ *    can override to point at their own Notion DB. Both hyphenated UUID
+ *    and 32-hex compact forms accepted by the API.
+ *  - **Integration token** — Notion "Internal Integration Token" from
+ *    notion.so/my-integrations. Stored encrypted; never re-displayed.
+ *    A configured token shows as "Token configured" rather than
+ *    surfacing the value.
+ *
+ * Inline under the Notion toggle in Library & Sync, mirroring the
+ * OutlineConfigRow shape. The "Save" button writes both fields at
+ * once; the user can change one without retyping the other.
+ */
+@Composable
+private fun NotionConfigRow(
+    databaseId: String,
+    tokenConfigured: Boolean,
+    onDatabaseIdChange: (String) -> Unit,
+    onApiTokenChange: (String?) -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    var dbDraft by remember(databaseId) { mutableStateOf(databaseId) }
+    var tokenDraft by remember { mutableStateOf("") }
+
+    Column(modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm)) {
+        Text(
+            "Notion integration",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = spacing.xs),
+        )
+        Text(
+            text = if (tokenConfigured)
+                "Token configured. Paste a new token to replace it."
+            else
+                "Paste a Notion Internal Integration Token. " +
+                    "Create one at notion.so/my-integrations, then share " +
+                    "your database with the integration.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = spacing.sm),
+        )
+        androidx.compose.material3.OutlinedTextField(
+            value = dbDraft,
+            onValueChange = { dbDraft = it.trim().take(64) },
+            label = { Text("Database ID") },
+            placeholder = { Text("32-hex or hyphenated UUID") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        androidx.compose.material3.OutlinedTextField(
+            value = tokenDraft,
+            onValueChange = { tokenDraft = it },
+            label = { Text("Integration token") },
+            placeholder = { Text("ntn_…") },
+            singleLine = true,
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth().padding(top = spacing.xs),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            BrassButton(
+                label = "Save",
+                onClick = {
+                    if (dbDraft != databaseId) onDatabaseIdChange(dbDraft)
+                    if (tokenDraft.isNotBlank()) {
+                        onApiTokenChange(tokenDraft)
+                        tokenDraft = ""
+                    }
+                },
+                variant = BrassButtonVariant.Primary,
+            )
+            if (tokenConfigured) {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        onApiTokenChange(null)
+                        tokenDraft = ""
+                    },
+                ) { Text("Clear token") }
+            }
         }
     }
 }

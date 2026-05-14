@@ -2,7 +2,7 @@
 
 ## Where voices come from
 
-Storyvox embeds the [VoxSherpa-TTS](https://github.com/jphein/VoxSherpa-TTS) engine via JitPack, which itself wraps [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) for the actual ONNX inference. The neural model weights — Piper voices and the multi-speaker Kokoro model — are not bundled in the APK (they'd add 1+ GB) but downloaded on demand by `VoiceManager` from the `voices-v2` GitHub release on `jphein/VoxSherpa-TTS`.
+Storyvox embeds the [VoxSherpa-TTS](https://github.com/techempower-org/VoxSherpa-TTS) engine via JitPack, which itself wraps [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) for the actual ONNX inference. The neural model weights — Piper voices and the multi-speaker Kokoro model — are not bundled in the APK (they'd add 1+ GB) but downloaded on demand by `VoiceManager` from the `voices-v2` GitHub release on `techempower-org/VoxSherpa-TTS`.
 
 `voices-v2` is a re-hosting of the upstream k2-fsa tarballs as flat, single-file downloads. Each Piper voice ships as `{lang}-{voice}-{quality}.onnx` + `{lang}-{voice}-{quality}.tokens.txt`. Kokoro ships as `kokoro-model.onnx` + `kokoro-voices.bin` + `kokoro-tokens.txt`. The flattening is deliberate: extracting `.tar.bz2` archives on modest hardware (Tab A7 Lite) is slow enough to delay the first chapter for tens of seconds. Doing it once server-side and serving plain files moves that cost off the device.
 
@@ -21,7 +21,7 @@ The `_int8` suffix in `VoiceCatalog.kt` voice IDs (e.g. `piper_lessac_en_US_high
 ./scripts/voices/refresh-voices-v2.sh --check-only
 
 # Pull new tarballs, extract, upload (needs gh CLI auth with write
-# access to jphein/VoxSherpa-TTS; uses ~5 GB temp space)
+# access to techempower-org/VoxSherpa-TTS; uses ~5 GB temp space)
 ./scripts/voices/refresh-voices-v2.sh
 ```
 
@@ -36,7 +36,7 @@ When you add a new upstream voice, also add a `CatalogEntry` to `core-playback/s
 
 ## Automated drift detection
 
-`.github/workflows/voice-catalog-check.yml` runs on the 1st of every month (and on manual dispatch). It performs the same diff as `--check-only` and, if there's drift, files a GitHub issue listing the new upstream voices. It does not auto-publish — refreshing `voices-v2` requires write access to `jphein/VoxSherpa-TTS` which the default `GITHUB_TOKEN` doesn't have.
+`.github/workflows/voice-catalog-check.yml` runs on the 1st of every month (and on manual dispatch). It performs the same diff as `--check-only` and, if there's drift, files a GitHub issue listing the new upstream voices. It does not auto-publish — refreshing `voices-v2` requires write access to `techempower-org/VoxSherpa-TTS` which the default `GITHUB_TOKEN` doesn't have.
 
 If the issue comes in: pull the storyvox repo, run `./scripts/voices/refresh-voices-v2.sh`, edit `VoiceCatalog.kt` to add the new entries, ship.
 

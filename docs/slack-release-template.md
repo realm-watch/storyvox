@@ -51,9 +51,9 @@ the wording before broadcasting.
 | `{{POETIC_LINE}}` | one-line theme — borrows from past milestone style. Optional but encouraged. | `Cloud-bound at last, with the right places to put a book and the right way to find it again.` |
 | `{{FEATURES_BLOCK}}` | bullets — one feature per line, with curated emoji (see palette below) | see worked example |
 | `{{ENGINEERING_BLOCK}}` | bullets — schema bumps, infra, migrations, security work | see worked example |
-| `{{APK_URL}}` | from `gh release view {{VERSION}} --json assets` | `https://github.com/jphein/storyvox/releases/download/v0.5.12/storyvox-v0.5.12.apk` |
-| `{{RELEASE_URL}}` | `https://github.com/jphein/storyvox/releases/tag/{{VERSION}}` | — |
-| `{{COMPARE_URL}}` | `https://github.com/jphein/storyvox/compare/{{PREV}}...{{VERSION}}` | — |
+| `{{APK_URL}}` | from `gh release view {{VERSION}} --json assets` | `https://github.com/techempower-org/storyvox/releases/download/v0.5.12/storyvox-v0.5.12.apk` |
+| `{{RELEASE_URL}}` | `https://github.com/techempower-org/storyvox/releases/tag/{{VERSION}}` | — |
+| `{{COMPARE_URL}}` | `https://github.com/techempower-org/storyvox/compare/{{PREV}}...{{VERSION}}` | — |
 | `{{TABLET_VERIFICATION_LINE}}` | states which device verified — empty if not installed yet | `_Installed on R83W80CAFZB · clean launch, no migration crash._` |
 | `{{REALM}}` | from `BuildConfig.SIGIL_REALM` | `fantasy` |
 | `{{BUILT_LOCAL}}` | from `BuildConfig.SIGIL_BUILT`, formatted local | `2026-05-13 06:50 PDT` |
@@ -121,9 +121,9 @@ on 2026-05-13. Reproduce by passing the rendered text below to
 :tools: Self-hosted runner on katana still doing the CI work while jphein's hosted Actions remain capped through 2026-06-01.
 
 *Install*
-:tablet: Direct APK → https://github.com/jphein/storyvox/releases/download/v0.5.12/storyvox-v0.5.12.apk
-:scroll: Release notes → https://github.com/jphein/storyvox/releases/tag/v0.5.12
-:fast_forward: Diff → https://github.com/jphein/storyvox/compare/v0.5.11...v0.5.12
+:tablet: Direct APK → https://github.com/techempower-org/storyvox/releases/download/v0.5.12/storyvox-v0.5.12.apk
+:scroll: Release notes → https://github.com/techempower-org/storyvox/releases/tag/v0.5.12
+:fast_forward: Diff → https://github.com/techempower-org/storyvox/compare/v0.5.11...v0.5.12
 
 _Installed on R83W80CAFZB · clean launch, no migration crash._
 

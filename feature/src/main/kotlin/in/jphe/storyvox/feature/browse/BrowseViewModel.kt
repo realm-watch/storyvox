@@ -90,6 +90,13 @@ enum class BrowseSourceKey(val sourceId: String, val displayName: String) {
      *  Single-fiction backend (no catalog to browse); Popular surfaces
      *  the station, NewReleases / Search aren't meaningful. */
     Kvmr(SourceIds.KVMR, "KVMR"),
+    /** Notion (#233) — Notion databases as a fiction backend. Each
+     *  database row is one fiction; each page's top-level `heading_1`
+     *  boundary splits the body into chapters. Requires a Notion
+     *  Internal Integration Token (PAT). #390 bakes the techempower.org
+     *  content database id as the default — once the user pastes a token
+     *  in Settings, Browse → Notion surfaces TechEmpower content. */
+    Notion(SourceIds.NOTION, "Notion"),
 }
 
 /** Tabs that are meaningful for [source]. GitHub registry doesn't
@@ -197,6 +204,16 @@ fun BrowseSourceKey.supportedTabs(githubSignedIn: Boolean = false): List<BrowseT
     // BestRated have no analogue — the station is the station.
     BrowseSourceKey.Kvmr -> listOf(
         BrowseTab.Popular,
+    )
+    // Notion (#233): database-as-catalog. Popular = `databases/{id}/query`
+    // sorted by last-edited-time desc (Notion's default). Search is a
+    // client-side filter over the same first-page result in v1; a
+    // server-side filter via Notion's query body is the follow-up.
+    // NewReleases collapses to Popular because Notion's default
+    // ordering is already recency. BestRated has no analogue.
+    BrowseSourceKey.Notion -> listOf(
+        BrowseTab.Popular,
+        BrowseTab.Search,
     )
 }
 
@@ -406,6 +423,7 @@ class BrowseViewModel @Inject constructor(
                     if (s.sourceStandardEbooksEnabled) add(BrowseSourceKey.StandardEbooks)
                     if (s.sourceWikipediaEnabled) add(BrowseSourceKey.Wikipedia)
                     if (s.sourceKvmrEnabled) add(BrowseSourceKey.Kvmr)
+                    if (s.sourceNotionEnabled) add(BrowseSourceKey.Notion)
                 }
             }
             .distinctUntilChanged()
@@ -671,6 +689,14 @@ class BrowseViewModel @Inject constructor(
                 _githubFilter.value = GitHubSearchFilter()
                 _palaceFilter.value = MemPalaceFilter()
             }
+            BrowseSourceKey.Notion -> {
+                // Notion (#233) — database-as-catalog backend; no
+                // per-source filter in v1 (the database id IS the
+                // filter scope). Same clear-siblings shape.
+                _filter.value = BrowseFilter()
+                _githubFilter.value = GitHubSearchFilter()
+                _palaceFilter.value = MemPalaceFilter()
+            }
         }
     }
 
@@ -888,6 +914,16 @@ private fun resolveSource(
     // tab-router never lands here with anything else.
     BrowseSourceKey.Kvmr -> when (tab) {
         BrowseTab.Popular -> BrowseSource.Popular
+        else -> null
+    }
+    // Notion (#233): database-as-catalog. Popular surfaces the
+    // database's first page (sorted by last_edited_time desc per
+    // Notion's default); Search runs a client-side filter over the
+    // same first page in v1. Blank-search-with-blank-filter stays
+    // null so the screen renders the SearchHint empty state.
+    BrowseSourceKey.Notion -> when (tab) {
+        BrowseTab.Popular -> BrowseSource.Popular
+        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
         else -> null
     }
 }

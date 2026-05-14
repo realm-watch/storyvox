@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Notion REST API at api.notion.com over HTTPS — needs INTERNET.
+         No background-network surface; all calls happen on user-driven
+         flows (Browse fetch, chapter open). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+</manifest>

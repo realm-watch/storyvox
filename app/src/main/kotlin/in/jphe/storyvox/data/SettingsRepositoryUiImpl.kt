@@ -260,6 +260,12 @@ private object Keys {
      *  on fresh installs (JP's local station + the new audio-stream
      *  pipeline should be discoverable without an opt-in step). */
     val SOURCE_KVMR_ENABLED = booleanPreferencesKey("pref_source_kvmr_enabled")
+    /** Issue #233 — Notion backend on/off. Default TRUE on fresh
+     *  installs per #390 — the bundled techempower.org database id
+     *  needs the toggle ON to be visible in Browse. Source returns
+     *  AuthRequired on every call until the user pastes an integration
+     *  token via Settings → Library & Sync → Notion. */
+    val SOURCE_NOTION_ENABLED = booleanPreferencesKey("pref_source_notion_enabled")
 
     // ── Sleep timer shake-to-extend (issue #150) ───────────────────
     val SLEEP_SHAKE_TO_EXTEND_ENABLED = booleanPreferencesKey("pref_sleep_shake_to_extend_enabled")
@@ -360,6 +366,7 @@ class SettingsRepositoryUiImpl(
     private val epubConfig: EpubConfigImpl,
     private val outlineConfig: OutlineConfigImpl,
     private val wikipediaConfig: WikipediaConfigImpl,
+    private val notionConfig: NotionConfigImpl,
     private val suggestedFeedsRegistry: SuggestedFeedsRegistry,
     private val azureCreds: AzureCredentials,
     private val azureClient: AzureSpeechClient,
@@ -392,6 +399,7 @@ class SettingsRepositoryUiImpl(
         epubConfig: EpubConfigImpl,
         outlineConfig: OutlineConfigImpl,
         wikipediaConfig: WikipediaConfigImpl,
+        notionConfig: NotionConfigImpl,
         suggestedFeedsRegistry: SuggestedFeedsRegistry,
         azureCreds: AzureCredentials,
         azureClient: AzureSpeechClient,
@@ -399,7 +407,7 @@ class SettingsRepositoryUiImpl(
     ) : this(
         context.settingsDataStore, auth, hydrator,
         palaceConfig, palaceApi, llmCreds, githubAuth, teamsAuth, rssConfig, epubConfig,
-        outlineConfig, wikipediaConfig, suggestedFeedsRegistry, azureCreds, azureClient, azureRoster,
+        outlineConfig, wikipediaConfig, notionConfig, suggestedFeedsRegistry, azureCreds, azureClient, azureRoster,
     )
 
     /**
@@ -413,20 +421,31 @@ class SettingsRepositoryUiImpl(
      */
     private val azureTick = kotlinx.coroutines.flow.MutableStateFlow(0L)
 
-    /** Issue #377 — Wikipedia config flow pairs cleanly with the
-     *  palace state because both are non-prefs sources that the
-     *  outer combine needs. Folding them into one paired flow keeps
-     *  the outer combine at the typed 5-arg overload. */
-    private val palaceWithWikipedia: Flow<Pair<`in`.jphe.storyvox.source.mempalace.config.PalaceConfigState, `in`.jphe.storyvox.source.wikipedia.config.WikipediaConfigState>> =
-        combine(palaceConfig.state, wikipediaConfig.state) { palace, wiki -> palace to wiki }
+    /** Issue #377 + #233 — non-prefs source configs bundled into a
+     *  single combine so the outer combine stays inside the 5-arg
+     *  overload. Palace + Wikipedia + Notion ride together; each
+     *  re-emits independently when its respective store changes. */
+    private data class NonPrefsConfigs(
+        val palace: `in`.jphe.storyvox.source.mempalace.config.PalaceConfigState,
+        val wikipedia: `in`.jphe.storyvox.source.wikipedia.config.WikipediaConfigState,
+        val notion: `in`.jphe.storyvox.source.notion.config.NotionConfigState,
+    )
+
+    private val nonPrefsConfigs: Flow<NonPrefsConfigs> =
+        combine(palaceConfig.state, wikipediaConfig.state, notionConfig.state) { palace, wiki, notion ->
+            NonPrefsConfigs(palace, wiki, notion)
+        }
 
     override val settings: Flow<UiSettings> = combine(
         store.data,
-        palaceWithWikipedia,
+        nonPrefsConfigs,
         githubAuth.sessionState,
         teamsAuth.sessionState,
         azureTick,
-    ) { prefs, (palace, wikipedia), githubSession, teamsSession, _ ->
+    ) { prefs, configs, githubSession, teamsSession, _ ->
+        val palace = configs.palace
+        val wikipedia = configs.wikipedia
+        val notion = configs.notion
         UiSettings(
             ttsEngine = "VoxSherpa",
             defaultVoiceId = prefs[Keys.DEFAULT_VOICE_ID],
@@ -484,6 +503,14 @@ class SettingsRepositoryUiImpl(
             // #374 — KVMR defaults ON on fresh installs (first audio-stream
             // backend, JP's local station, low-controversy content).
             sourceKvmrEnabled = prefs[Keys.SOURCE_KVMR_ENABLED] ?: true,
+            // #233 + #390 — Notion defaults ON on fresh installs. The
+            // bundled techempower.org database id needs the toggle ON
+            // to be visible in Browse; the source returns AuthRequired
+            // until the user pastes an integration token. Existing
+            // users with a stored preference keep it.
+            sourceNotionEnabled = prefs[Keys.SOURCE_NOTION_ENABLED] ?: true,
+            notionDatabaseId = notion.databaseId,
+            notionTokenConfigured = notion.apiToken.isNotBlank(),
             sleepShakeToExtendEnabled = prefs[Keys.SLEEP_SHAKE_TO_EXTEND_ENABLED] ?: true,
             showDebugOverlay = prefs[Keys.SHOW_DEBUG_OVERLAY] ?: false,
             azure = run {
@@ -1049,6 +1076,16 @@ class SettingsRepositoryUiImpl(
 
     override suspend fun setSourceKvmrEnabled(enabled: Boolean) {
         store.edit { it[Keys.SOURCE_KVMR_ENABLED] = enabled }
+    }
+
+    override suspend fun setSourceNotionEnabled(enabled: Boolean) {
+        store.edit { it[Keys.SOURCE_NOTION_ENABLED] = enabled }
+    }
+    override suspend fun setNotionDatabaseId(id: String) {
+        notionConfig.setDatabaseId(id)
+    }
+    override suspend fun setNotionApiToken(token: String?) {
+        notionConfig.setApiToken(token)
     }
 
     /** #246 — bridge to SuggestedFeedsRegistry. The fallback list

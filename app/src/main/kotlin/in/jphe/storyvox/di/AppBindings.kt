@@ -179,6 +179,12 @@ object AppBindings {
     @Provides @Singleton
     fun provideWikipediaConfig(impl: `in`.jphe.storyvox.data.WikipediaConfigImpl): `in`.jphe.storyvox.source.wikipedia.config.WikipediaConfig = impl
 
+    /** Bridges source-notion NotionConfig (#233) to the app-side
+     *  DataStore + EncryptedSharedPreferences impl. Same shape as
+     *  Outline — database id in plaintext, integration token encrypted. */
+    @Provides @Singleton
+    fun provideNotionConfig(impl: `in`.jphe.storyvox.data.NotionConfigImpl): `in`.jphe.storyvox.source.notion.config.NotionConfig = impl
+
     /**
      * Same singleton instance as [provideSettingsRepositoryUi], exposed under
      * the [PlaybackBufferConfig] contract so `core-playback`'s [EnginePlayer]

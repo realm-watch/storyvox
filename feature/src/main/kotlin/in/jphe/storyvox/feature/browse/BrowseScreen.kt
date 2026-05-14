@@ -210,6 +210,11 @@ fun BrowseScreen(
                 // #374 — KVMR is a single-fiction audio backend; no
                 // filter surface (you either tune in or you don't).
                 BrowseSourceKey.Kvmr -> false
+                // #233 — Notion v1 has no filter sheet; the database
+                // configured in Settings IS the filter. A server-side
+                // filter body via /databases/{id}/query is the
+                // follow-up.
+                BrowseSourceKey.Notion -> false
             }
             if (filterableSource) {
                 FilterButton(
@@ -230,6 +235,7 @@ fun BrowseScreen(
                         BrowseSourceKey.StandardEbooks -> 0
                         BrowseSourceKey.Wikipedia -> 0
                         BrowseSourceKey.Kvmr -> 0
+                        BrowseSourceKey.Notion -> 0
                     },
                     onClick = { showFilterSheet = true },
                 )
@@ -507,6 +513,9 @@ fun BrowseScreen(
             // #374 — KVMR is a single-fiction audio backend; no filter
             // sheet (the station is the station).
             BrowseSourceKey.Kvmr -> { showFilterSheet = false }
+            // #233 — Notion v1 has no filter sheet; the configured
+            // database id IS the filter scope.
+            BrowseSourceKey.Notion -> { showFilterSheet = false }
         }
     }
 }
@@ -598,6 +607,7 @@ private fun searchHintForSource(sourceKey: BrowseSourceKey): String = when (sour
     BrowseSourceKey.StandardEbooks -> "Search Standard Ebooks' hand-curated public-domain classics"
     BrowseSourceKey.Wikipedia -> "Search Wikipedia — narrate any article"
     BrowseSourceKey.Kvmr -> "Tune in to KVMR — live community radio from Nevada City"
+    BrowseSourceKey.Notion -> "Search your configured Notion database"
 }
 
 private val BrowseTab.label: String

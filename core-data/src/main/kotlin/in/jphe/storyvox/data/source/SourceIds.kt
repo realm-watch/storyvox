@@ -74,4 +74,12 @@ object SourceIds {
      *  the same source-shape generalizes to any other community-radio
      *  / college-radio stream that publishes a stable URL. */
     const val KVMR: String = "kvmr"
+    /** Notion (#233) — Notion databases as a fiction backend. Each
+     *  database row is one fiction; each page's top-level `heading_1`
+     *  boundary splits it into chapters. Requires a Notion Internal
+     *  Integration Token (PAT). Default database id points at the
+     *  techempower.org content database (#390) so a fresh install
+     *  surfaces TechEmpower content without configuration once the
+     *  user supplies the integration token. */
+    const val NOTION: String = "notion"
 }

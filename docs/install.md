@@ -10,7 +10,7 @@ storyvox is currently distributed by sideloading. CI builds debug APKs on every 
 
 ## Quick install
 
-1. Open the [Releases page](https://github.com/jphein/storyvox/releases) on your Android device.
+1. Open the [Releases page](https://github.com/techempower-org/storyvox/releases) on your Android device.
 2. Download the latest `storyvox-vX.Y.Z.apk` from the assets.
 3. On the device, enable **Install unknown apps** for whichever browser or file manager you used.
 4. Open the APK to install.
@@ -31,9 +31,9 @@ That's it. There's no account requirement. Anonymous browsing works for all publ
 | Network | Wi-Fi for first launch and voice download; chapters cache locally |
 
 The TTS engine runs in storyvox's own process via the
-[VoxSherpa-TTS](https://github.com/jphein/VoxSherpa-TTS) `:engine-lib` AAR, so there's no second
+[VoxSherpa-TTS](https://github.com/techempower-org/VoxSherpa-TTS) `:engine-lib` AAR, so there's no second
 APK to install and no engine-binding handshake. Voice models download on demand from the project's
-[`voices-v2`](https://github.com/jphein/VoxSherpa-TTS/releases/tag/voices-v2) GitHub release.
+[`voices-v2`](https://github.com/techempower-org/VoxSherpa-TTS/releases/tag/voices-v2) GitHub release.
 Nothing is bundled in the APK.
 
 ## Optional: sign in to Royal Road
@@ -59,7 +59,7 @@ To sign out: **Settings → Account → Sign out**.
 Requires JDK 17, Android SDK 35, and a system Gradle ≥ 8.10 for the wrapper bootstrap.
 
 ```sh
-git clone https://github.com/jphein/storyvox.git
+git clone https://github.com/techempower-org/storyvox.git
 cd storyvox
 
 # One-time bootstrap
@@ -84,10 +84,10 @@ recommended for daily use. If you want to experiment, sideload the wear APK from
 
 storyvox doesn't auto-update. When a new release ships:
 
-1. Download the new APK from [Releases](https://github.com/jphein/storyvox/releases).
+1. Download the new APK from [Releases](https://github.com/techempower-org/storyvox/releases).
 2. Open it. Android will prompt to upgrade in place — your library, voices, and progress are preserved.
 
 The app's signing key has been stable since `v0.4.15` (a checked-in debug keystore — see
-[#15](https://github.com/jphein/storyvox/pull/15)). Releases before that used the throwaway
+[#15](https://github.com/techempower-org/storyvox/pull/15)). Releases before that used the throwaway
 debug keystore Gradle generates per machine, so an upgrade from those earlier builds may
 require a clean uninstall first. Installs from `v0.4.15` forward upgrade in place.
