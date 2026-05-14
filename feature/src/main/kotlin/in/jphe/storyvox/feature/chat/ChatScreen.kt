@@ -5,7 +5,9 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,7 +25,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.AutoFixHigh
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material.icons.outlined.VolumeUp
@@ -48,6 +53,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import `in`.jphe.storyvox.llm.tools.ToolCallEvent
+import `in`.jphe.storyvox.llm.tools.ToolResult
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.theme.LocalReducedMotion
@@ -70,9 +77,23 @@ import `in`.jphe.storyvox.ui.theme.LocalSpacing
 fun ChatScreen(
     onBack: () -> Unit,
     onOpenAiSettings: () -> Unit,
+    /** Issue #216 — fired by the `open_voice_library` tool. The
+     *  callback hops out to nav-land (NavHost wires
+     *  StoryvoxRoutes.VOICE_LIBRARY). */
+    onOpenVoiceLibrary: () -> Unit = {},
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    // Issue #216 — observe one-shot nav events from tool handlers and
+    // dispatch them to the outer NavController. LaunchedEffect with
+    // Unit key so the collector runs once per composition lifetime.
+    LaunchedEffect(Unit) {
+        viewModel.navEvents.collect { event ->
+            when (event) {
+                ChatNavEvent.OpenVoiceLibrary -> onOpenVoiceLibrary()
+            }
+        }
+    }
     // Input prefill seeded by the reader's long-press character lookup
     // (#188). The VM emits this once via the `prefill` StateFlow; the
     // ChatInput observes it, copies into its local TextFieldValue, then
@@ -147,6 +168,15 @@ fun ChatScreen(
                             onReadAloud = { viewModel.readAloud(turn.text) },
                             onStopReadAloud = viewModel::stopReadAloud,
                         )
+                    }
+                    // Issue #216 — tool-call cards render in-line after
+                    // the assistant turn that triggered them. The
+                    // ordering matches the model's emit order (started
+                    // → completed cycles); the streaming bubble lives
+                    // after all of them so the user sees "tool ran →
+                    // reply continues" left-to-right.
+                    items(state.toolCalls, key = { "tool:${it.id}" }) { call ->
+                        ToolCallCard(event = call)
                     }
                     state.streaming?.let { partial ->
                         item(key = "streaming") { StreamingBubble(partial) }
@@ -323,6 +353,83 @@ private fun StreamingBubble(text: String) {
             }
         }
     }
+}
+
+// ── Tool-call card (#216) ──────────────────────────────────────────
+
+/** Issue #216 — brass-edged card surfaced inline when the AI invokes
+ *  one of the registered storyvox tools. Three visual states:
+ *
+ *  - in-flight: animated brass border, "Doing X…" copy.
+ *  - success: solid brass border, check icon, completed copy.
+ *  - error: solid error border, alert icon, error copy.
+ *
+ *  Visual vocabulary follows Library Nocturne: brass-on-warm-dark
+ *  for the primary accent, errorContainer for the failure surface.
+ *  The card stays in the timeline so the user can scroll back and
+ *  see exactly what the AI did. */
+@Composable
+private fun ToolCallCard(event: ToolCallEvent) {
+    val result = event.result
+    val (borderColor, statusIcon, statusTint) = when (result) {
+        is ToolResult.Success -> Triple(
+            MaterialTheme.colorScheme.primary,
+            Icons.Outlined.CheckCircle,
+            MaterialTheme.colorScheme.primary,
+        )
+        is ToolResult.Error -> Triple(
+            MaterialTheme.colorScheme.error,
+            Icons.Outlined.ErrorOutline,
+            MaterialTheme.colorScheme.error,
+        )
+        null -> Triple(
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+            Icons.Outlined.AutoFixHigh,
+            MaterialTheme.colorScheme.primary,
+        )
+    }
+    val statusText = when (result) {
+        null -> describeInFlight(event.name)
+        is ToolResult.Success -> result.message
+        is ToolResult.Error -> result.message
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(BorderStroke(1.dp, borderColor), RoundedCornerShape(8.dp))
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                RoundedCornerShape(8.dp),
+            )
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(
+            imageVector = statusIcon,
+            contentDescription = null,
+            tint = statusTint,
+            modifier = Modifier.padding(end = 2.dp),
+        )
+        Text(
+            text = statusText,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+/** Short, present-progressive copy used while a tool handler is
+ *  in flight. Matches the [StoryvoxToolSpecs] name set; unknown names
+ *  fall back to the generic verb. */
+private fun describeInFlight(name: String): String = when (name) {
+    "add_to_shelf" -> "Adding to shelf…"
+    "queue_chapter" -> "Queueing chapter…"
+    "mark_chapter_read" -> "Marking as read…"
+    "set_speed" -> "Setting playback speed…"
+    "open_voice_library" -> "Opening voice library…"
+    else -> "Running $name…"
 }
 
 // ── Empty states ───────────────────────────────────────────────────

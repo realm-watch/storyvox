@@ -480,6 +480,7 @@ private fun StoryvoxNavHostContent(
                 ChatScreen(
                     onBack = { navController.popBackStack() },
                     onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
+                    onOpenVoiceLibrary = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
                 )
             }
 

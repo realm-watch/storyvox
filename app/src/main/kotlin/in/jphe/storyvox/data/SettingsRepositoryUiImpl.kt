@@ -546,6 +546,11 @@ private object Keys {
      *  as true so fresh installs (and pre-#217 installs upgrading)
      *  both get the more-useful default. */
     val AI_CARRY_MEMORY_ACROSS_FICTIONS = booleanPreferencesKey("pref_ai_carry_memory_across_fictions")
+    /** Issue #216 — "Allow the AI to take actions" toggle. Default
+     *  ON across fresh + upgrading installs; the Settings → AI
+     *  screen lets the user opt out. Same write-once-default-on
+     *  pattern as the cross-fiction memory key. */
+    val AI_ACTIONS_ENABLED = booleanPreferencesKey("pref_ai_actions_enabled")
 
     /** Issue #135 — JSON-serialized [PronunciationDict] (list of
      *  pattern/replacement/matchType entries). _v1 suffix lets us
@@ -903,6 +908,12 @@ class SettingsRepositoryUiImpl(
                 // upgrades also pick up the default because the key
                 // doesn't exist yet (DataStore returns null → ?: true).
                 carryMemoryAcrossFictions = prefs[Keys.AI_CARRY_MEMORY_ACROSS_FICTIONS] ?: true,
+                // Issue #216 — default ON for fresh installs (matches
+                // [LlmConfig.aiActionsEnabled]). The chat surface only
+                // exposes actions when the active provider supports
+                // tool use; this toggle is the user's "I don't want
+                // the AI doing things" kill switch.
+                actionsEnabled = prefs[Keys.AI_ACTIONS_ENABLED] ?: true,
             ),
             sigil = Sigil.current.let {
                 UiSigil(
@@ -1386,6 +1397,10 @@ class SettingsRepositoryUiImpl(
         store.edit { it[Keys.AI_CARRY_MEMORY_ACROSS_FICTIONS] = enabled }
     }
 
+    override suspend fun setAiActionsEnabled(enabled: Boolean) {
+        store.edit { it[Keys.AI_ACTIONS_ENABLED] = enabled }
+    }
+
     override suspend fun acknowledgeAiPrivacy() {
         store.edit { it[Keys.AI_PRIVACY_ACK] = true }
     }
@@ -1711,6 +1726,9 @@ class SettingsRepositoryUiImpl(
             bedrockModel = prefs[Keys.AI_BEDROCK_MODEL] ?: "claude-haiku-4.5",
             privacyAcknowledged = prefs[Keys.AI_PRIVACY_ACK] ?: false,
             sendChapterTextEnabled = prefs[Keys.AI_SEND_CHAPTER_TEXT] ?: false,
+            // Issue #216 — default ON, matches the UiAiSettings
+            // mirror above.
+            aiActionsEnabled = prefs[Keys.AI_ACTIONS_ENABLED] ?: true,
         )
     }
 
@@ -1733,6 +1751,7 @@ class SettingsRepositoryUiImpl(
             p[Keys.AI_BEDROCK_MODEL] = config.bedrockModel
             p[Keys.AI_PRIVACY_ACK] = config.privacyAcknowledged
             p[Keys.AI_SEND_CHAPTER_TEXT] = config.sendChapterTextEnabled
+            p[Keys.AI_ACTIONS_ENABLED] = config.aiActionsEnabled
         }
     }
 

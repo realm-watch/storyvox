@@ -13,6 +13,10 @@ import `in`.jphe.storyvox.llm.auth.AnthropicTeamsAuthRepository
 import `in`.jphe.storyvox.llm.auth.TokenResult
 import `in`.jphe.storyvox.llm.di.LlmHttp
 import `in`.jphe.storyvox.llm.sse.SseLineParser
+import `in`.jphe.storyvox.llm.tools.ChatStreamEvent
+import `in`.jphe.storyvox.llm.tools.ToolCallRequest
+import `in`.jphe.storyvox.llm.tools.ToolRegistry
+import `in`.jphe.storyvox.llm.tools.ToolResult
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -20,10 +24,19 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -60,6 +73,10 @@ open class AnthropicTeamsProvider @Inject constructor(
 ) : LlmProvider {
 
     override val id: ProviderId = ProviderId.Teams
+
+    /** Issue #216 — same Messages API as Claude direct, so the same
+     *  tool-use shape applies. */
+    override val supportsTools: Boolean = true
 
     /** Override hook for tests — Messages API endpoint. */
     protected open val endpointUrl: String = ENDPOINT
@@ -279,6 +296,181 @@ open class AnthropicTeamsProvider @Inject constructor(
     }
 
     /**
+     * Issue #216 — tool-aware chat. Same wire shape as
+     * [ClaudeApiProvider.chatWithTools], plus the Teams-specific
+     * bearer + refresh-on-401 dance. We share the [ToolCallRequest]
+     * parser by inlining the same content-block walk; the duplication
+     * is tolerable for v1 (two providers) and avoids cross-class
+     * helpers leaking package-private state.
+     */
+    override fun chatWithTools(
+        messages: List<LlmMessage>,
+        systemPrompt: String?,
+        model: String?,
+        tools: ToolRegistry,
+    ): Flow<ChatStreamEvent> {
+        if (tools.catalog.isEmpty()) {
+            return stream(messages, systemPrompt, model)
+                .map { ChatStreamEvent.TextDelta(it) }
+        }
+        return flow {
+            val cfg = configFlow.first()
+            val resolvedModel = (model ?: cfg.claudeModel).resolveAnthropic()
+            val toolDecls = tools.catalog.map { spec ->
+                AnthropicToolDecl(
+                    name = spec.name,
+                    description = spec.description,
+                    inputSchema = spec.toAnthropicInputSchema(),
+                )
+            }
+            val conversation = ArrayList<AnthropicToolMessage>(
+                messages.map { msg ->
+                    AnthropicToolMessage(
+                        role = msg.role.name,
+                        content = listOf(buildJsonObject {
+                            put("type", "text")
+                            put("text", msg.content)
+                        }),
+                    )
+                },
+            )
+
+            var round = 0
+            while (round < MAX_TOOL_ROUNDS) {
+                round++
+                val body = AnthropicToolRequest(
+                    model = resolvedModel,
+                    maxTokens = MAX_TOKENS,
+                    messages = conversation,
+                    system = systemPrompt,
+                    tools = toolDecls,
+                    stream = false,
+                )
+                val response = postToolRequestWithRefresh(json.encodeToString(body))
+                val content = response["content"]?.jsonArray ?: kotlinx.serialization.json.JsonArray(emptyList())
+                val text = buildString {
+                    for (block in content) {
+                        val obj = block.jsonObject
+                        if (obj["type"]?.jsonPrimitive?.contentOrNull == "text") {
+                            obj["text"]?.jsonPrimitive?.contentOrNull?.let(::append)
+                        }
+                    }
+                }
+                val toolCalls = content.mapNotNull { block ->
+                    val obj = block.jsonObject
+                    if (obj["type"]?.jsonPrimitive?.contentOrNull != "tool_use") return@mapNotNull null
+                    val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                    val name = obj["name"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                    val input = obj["input"]?.jsonObject ?: JsonObject(emptyMap())
+                    ToolCallRequest(id = id, name = name, arguments = input)
+                }
+                val stopReason = response["stop_reason"]?.jsonPrimitive?.contentOrNull
+                if (toolCalls.isEmpty() || stopReason != "tool_use") {
+                    if (text.isNotEmpty()) emit(ChatStreamEvent.TextDelta(text))
+                    return@flow
+                }
+                conversation.add(
+                    AnthropicToolMessage(
+                        role = "assistant",
+                        content = content.map { it as JsonElement },
+                    ),
+                )
+                val resultBlocks = ArrayList<JsonElement>(toolCalls.size)
+                for (call in toolCalls) {
+                    emit(ChatStreamEvent.ToolCallStarted(call))
+                    val handler = tools.handler(call.name)
+                    val result = if (handler == null) {
+                        ToolResult.Error("Unknown tool: ${call.name}")
+                    } else {
+                        try {
+                            handler.execute(call.arguments)
+                        } catch (t: Throwable) {
+                            ToolResult.Error(
+                                "Tool ${call.name} failed: ${t.message ?: t.javaClass.simpleName}",
+                            )
+                        }
+                    }
+                    emit(ChatStreamEvent.ToolCallCompleted(call.id, call.name, result))
+                    resultBlocks.add(buildJsonObject {
+                        put("type", "tool_result")
+                        put("tool_use_id", call.id)
+                        put("content", result.message)
+                        if (result is ToolResult.Error) put("is_error", true)
+                    })
+                }
+                conversation.add(
+                    AnthropicToolMessage(role = "user", content = resultBlocks),
+                )
+            }
+            emit(
+                ChatStreamEvent.TextDelta(
+                    "(Stopped after $MAX_TOOL_ROUNDS tool rounds.)",
+                ),
+            )
+        }.flowOn(Dispatchers.IO)
+    }
+
+    /** Issue #216 — POST a non-streaming JSON body to the Messages API
+     *  with the same refresh-on-401 dance as [stream]. Returns the
+     *  parsed top-level response object. */
+    private suspend fun postToolRequestWithRefresh(payload: String): JsonObject {
+        ensureFreshToken()
+        val first = doToolRequest(payload)
+        if (first.code != 401) {
+            return first.use { parseToolResponse(it) }
+        }
+        first.close()
+        if (!refreshOrInvalidate()) {
+            throw LlmError.AuthFailed(
+                ProviderId.Teams,
+                "Teams session expired — sign in again.",
+            )
+        }
+        val retry = doToolRequest(payload)
+        return retry.use { parseToolResponse(it) }
+    }
+
+    private suspend fun doToolRequest(payload: String): okhttp3.Response {
+        val bearer = store.teamsBearerToken()
+            ?: throw LlmError.NotConfigured(ProviderId.Teams)
+        val request = Request.Builder()
+            .url(endpointUrl)
+            .header("Authorization", "Bearer $bearer")
+            .header("anthropic-version", API_VERSION)
+            .header("anthropic-beta", AnthropicTeamsAuthConfig.OAUTH_BETA_HEADER)
+            .header("content-type", "application/json")
+            .post(payload.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        return try {
+            http.newCall(request).executeAsync()
+        } catch (e: IOException) {
+            throw LlmError.Transport(ProviderId.Teams, e)
+        }
+    }
+
+    private fun parseToolResponse(resp: okhttp3.Response): JsonObject {
+        when {
+            resp.code == 401 || resp.code == 403 ->
+                throw LlmError.AuthFailed(
+                    ProviderId.Teams,
+                    resp.message.ifBlank { "HTTP ${resp.code}" },
+                )
+            !resp.isSuccessful -> {
+                val excerpt = resp.body?.string()?.take(256) ?: resp.message
+                throw LlmError.ProviderError(
+                    ProviderId.Teams, resp.code, excerpt,
+                )
+            }
+        }
+        val text = resp.body?.string()
+            ?: throw LlmError.Transport(
+                ProviderId.Teams,
+                IOException("Empty response body"),
+            )
+        return json.parseToJsonElement(text).jsonObject
+    }
+
+    /**
      * Mirror of [ClaudeApiProvider.resolveAnthropic] — Teams uses the
      * same model id space (it's the same Messages API) so the canonical
      * → wire-name mapping is identical.
@@ -302,5 +494,8 @@ open class AnthropicTeamsProvider @Inject constructor(
          *  enough that the listener doesn't see the bearer rotate
          *  every other recap. */
         const val REFRESH_LEAD_MILLIS = 60_000L
+
+        /** See [ClaudeApiProvider.MAX_TOOL_ROUNDS]. */
+        const val MAX_TOOL_ROUNDS = 5
     }
 }

@@ -4,6 +4,8 @@ import `in`.jphe.storyvox.data.db.dao.LlmMessageDao
 import `in`.jphe.storyvox.data.db.dao.LlmSessionDao
 import `in`.jphe.storyvox.data.db.entity.LlmSession
 import `in`.jphe.storyvox.data.db.entity.LlmStoredMessage
+import `in`.jphe.storyvox.llm.tools.ChatStreamEvent
+import `in`.jphe.storyvox.llm.tools.ToolRegistry
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -121,6 +123,72 @@ open class LlmSessionRepository @Inject constructor(
             model = session.model,
         )
             .onEach { replyBuf.append(it) }
+            .onCompletion { cause ->
+                if (cause == null) {
+                    messageDao.insert(
+                        LlmStoredMessage(
+                            sessionId = sessionId,
+                            role = "assistant",
+                            content = replyBuf.toString(),
+                            createdAt = System.currentTimeMillis(),
+                        ),
+                    )
+                    sessionDao.touchLastUsed(
+                        sessionId,
+                        System.currentTimeMillis(),
+                    )
+                }
+            }
+        emitAll(replyFlow)
+    }
+
+    /**
+     * Issue #216 — tool-aware variant of [chat]. Same persistence
+     * shape (user turn before stream, assistant turn on completion),
+     * but emits [ChatStreamEvent] instead of plain strings so the
+     * chat ViewModel can render tool-call cards in the timeline.
+     *
+     * When [tools] is empty the underlying provider falls through to
+     * plain streaming and the only events emitted are
+     * [ChatStreamEvent.TextDelta]. The persistence side concatenates
+     * every [ChatStreamEvent.TextDelta] into the saved assistant
+     * message; tool-call events are NOT persisted in v1 (the chat
+     * timeline shows them live and they disappear on rehydration).
+     * A future PR can add a `LlmToolCall` table when we want them to
+     * survive process death.
+     */
+    open fun chatWithTools(
+        sessionId: String,
+        userMessage: String,
+        tools: ToolRegistry,
+    ): Flow<ChatStreamEvent> = flow {
+        val session = sessionDao.get(sessionId)
+            ?: throw IllegalStateException("Session $sessionId not found")
+        val provider = ProviderId.valueOf(session.provider)
+
+        messageDao.insert(
+            LlmStoredMessage(
+                sessionId = sessionId,
+                role = "user",
+                content = userMessage,
+                createdAt = System.currentTimeMillis(),
+            ),
+        )
+        val history = messageDao.getBySession(sessionId).mapNotNull { it.toWire() }
+
+        val replyBuf = StringBuilder()
+        val replyFlow = llm.chatWithToolsOn(
+            provider = provider,
+            messages = history,
+            systemPrompt = session.systemPrompt,
+            model = session.model,
+            tools = tools,
+        )
+            .onEach { event ->
+                if (event is ChatStreamEvent.TextDelta) {
+                    replyBuf.append(event.text)
+                }
+            }
             .onCompletion { cause ->
                 if (cause == null) {
                     messageDao.insert(

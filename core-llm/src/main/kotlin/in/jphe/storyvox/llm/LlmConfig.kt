@@ -56,6 +56,22 @@ data class LlmConfig(
      *  works (key entry, Test connection) but no chapter text is
      *  ever sent. Recap button greys out with "Enable in Settings". */
     val sendChapterTextEnabled: Boolean = true,
+    /**
+     * Issue #216 — global toggle for AI-initiated actions
+     * ("Allow the AI to take actions" in Settings → AI). When false,
+     * the chat layer passes an empty [ToolRegistry] to the provider —
+     * function calling is silently disabled, the model behaves as a
+     * plain Q&A bot. When true, the v1 tool catalog from
+     * `StoryvoxToolSpecs` is advertised on every chat turn and the
+     * model can invoke handlers wired by `ChatToolHandlers`.
+     *
+     * Default ON for fresh installs — the spec calls actions out as
+     * the headline behaviour of the feature; gating them behind an
+     * opt-in toggle would hide the new capability from most users.
+     * The toggle exists as an escape hatch for users who want to
+     * disable agency for any reason (privacy, accident-avoidance).
+     */
+    val aiActionsEnabled: Boolean = true,
 )
 
 /**

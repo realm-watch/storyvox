@@ -7,6 +7,8 @@ import `in`.jphe.storyvox.llm.provider.ClaudeApiProvider
 import `in`.jphe.storyvox.llm.provider.OllamaProvider
 import `in`.jphe.storyvox.llm.provider.OpenAiApiProvider
 import `in`.jphe.storyvox.llm.provider.VertexProvider
+import `in`.jphe.storyvox.llm.tools.ChatStreamEvent
+import `in`.jphe.storyvox.llm.tools.ToolRegistry
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
@@ -63,6 +65,36 @@ class LlmRepository @Inject constructor(
     ): Flow<String> = flow {
         emitAll(providerFor(provider).stream(messages, systemPrompt, model))
     }
+
+    /**
+     * Issue #216 — tool-aware chat against an explicit provider.
+     * When [tools] is empty (or the provider doesn't support tool
+     * use), this falls through to plain text streaming, wrapped as
+     * [ChatStreamEvent.TextDelta] emits. Providers that DO support
+     * tools execute the model→tool→model loop internally and emit
+     * tool-call events as they happen.
+     */
+    fun chatWithToolsOn(
+        provider: ProviderId,
+        messages: List<LlmMessage>,
+        systemPrompt: String? = null,
+        model: String? = null,
+        tools: ToolRegistry = ToolRegistry.EMPTY,
+    ): Flow<ChatStreamEvent> = flow {
+        emitAll(
+            providerFor(provider).chatWithTools(
+                messages = messages,
+                systemPrompt = systemPrompt,
+                model = model,
+                tools = tools,
+            ),
+        )
+    }
+
+    /** Issue #216 — quick "does this provider support tool use?"
+     *  check for UI gating (empty-state on unsupported providers). */
+    fun supportsTools(provider: ProviderId): Boolean =
+        provider.implemented && providerFor(provider).supportsTools
 
     /** Run a probe on the named provider. Returns
      *  [ProbeResult.Misconfigured] for spec-only providers since they

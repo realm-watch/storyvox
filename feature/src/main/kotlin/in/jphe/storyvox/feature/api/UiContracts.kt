@@ -643,6 +643,20 @@ data class UiAiSettings(
      * the DataStore default kicks in for missing keys.
      */
     val carryMemoryAcrossFictions: Boolean = true,
+    /**
+     * Issue #216 — "Allow the AI to take actions" toggle. When ON
+     * (default) the chat surface advertises the v1 tool catalog
+     * (add_to_shelf, queue_chapter, mark_chapter_read, set_speed,
+     * open_voice_library) to the model and executes calls locally.
+     * When OFF the chat behaves as a plain Q&A bot.
+     *
+     * Only meaningful when the active provider supports function
+     * calling — v1 is Anthropic (Claude direct + Teams) + OpenAI.
+     * On other providers the chat surfaces an "actions not
+     * supported on this provider" empty state regardless of this
+     * toggle.
+     */
+    val actionsEnabled: Boolean = true,
 )
 
 /**
@@ -1292,6 +1306,9 @@ interface SettingsRepositoryUi {
     /** Issue #217 — "Carry memory across fictions" toggle. See
      *  [UiAiSettings.carryMemoryAcrossFictions]. */
     suspend fun setCarryMemoryAcrossFictions(enabled: Boolean)
+    /** Issue #216 — "Allow the AI to take actions" toggle. See
+     *  [UiAiSettings.actionsEnabled]. */
+    suspend fun setAiActionsEnabled(enabled: Boolean)
     suspend fun acknowledgeAiPrivacy()
     /**
      * Anthropic Teams (OAuth) — local sign-out. Wipes the bearer +

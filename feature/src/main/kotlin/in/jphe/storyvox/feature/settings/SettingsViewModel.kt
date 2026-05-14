@@ -355,6 +355,11 @@ class SettingsViewModel @Inject constructor(
     /** Issue #217 — "Carry memory across fictions" toggle. */
     fun setCarryMemoryAcrossFictions(enabled: Boolean) =
         viewModelScope.launch { repo.setCarryMemoryAcrossFictions(enabled) }
+    /** Issue #216 — "Allow the AI to take actions" toggle. The chat
+     *  ViewModel reads [UiAiSettings.actionsEnabled] at send-time and
+     *  switches between the tool-aware and plain-text chat paths. */
+    fun setAiActionsEnabled(enabled: Boolean) =
+        viewModelScope.launch { repo.setAiActionsEnabled(enabled) }
     fun acknowledgeAiPrivacy() = viewModelScope.launch { repo.acknowledgeAiPrivacy() }
     /** Anthropic Teams (OAuth) — local sign-out. Remote revoke deep-links
      *  to claude.ai/settings. (#181) */

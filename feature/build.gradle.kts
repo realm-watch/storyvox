@@ -67,6 +67,10 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.bundles.lifecycle)
     implementation(libs.bundles.coroutines)
+    // Issue #216 — tool-call argument shapes round-trip through
+    // [kotlinx.serialization.json.JsonObject]; the chat ViewModel
+    // and tool handlers need direct access.
+    implementation(libs.kotlinx.serialization.json)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.bundles.compose)
