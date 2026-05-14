@@ -372,6 +372,9 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repo.setChatGroundEntireChapter(enabled) }
     fun setChatGroundEntireBookSoFar(enabled: Boolean) =
         viewModelScope.launch { repo.setChatGroundEntireBookSoFar(enabled) }
+    /** Issue #217 — "Carry memory across fictions" toggle. */
+    fun setCarryMemoryAcrossFictions(enabled: Boolean) =
+        viewModelScope.launch { repo.setCarryMemoryAcrossFictions(enabled) }
     fun acknowledgeAiPrivacy() = viewModelScope.launch { repo.acknowledgeAiPrivacy() }
     /** Anthropic Teams (OAuth) — local sign-out. Remote revoke deep-links
      *  to claude.ai/settings. (#181) */

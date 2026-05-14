@@ -3,8 +3,10 @@ package `in`.jphe.storyvox.feature.chat
 import androidx.lifecycle.SavedStateHandle
 import `in`.jphe.storyvox.data.db.dao.LlmMessageDao
 import `in`.jphe.storyvox.data.db.dao.LlmSessionDao
+import `in`.jphe.storyvox.data.db.entity.FictionMemoryEntry
 import `in`.jphe.storyvox.data.db.entity.LlmSession
 import `in`.jphe.storyvox.data.db.entity.LlmStoredMessage
+import `in`.jphe.storyvox.data.repository.FictionMemoryRepository
 import `in`.jphe.storyvox.feature.api.DownloadMode
 import `in`.jphe.storyvox.feature.api.FictionRepositoryUi
 import `in`.jphe.storyvox.feature.api.PalaceProbeResult
@@ -77,16 +79,20 @@ class ChatViewModelTest {
         playbackState: UiPlaybackState = playbackOf(),
         config: LlmConfig = LlmConfig(provider = ProviderId.Claude),
         session: FakeSessionRepo = FakeSessionRepo(),
-    ): Pair<ChatViewModel, FakeSessionRepo> {
+        settings: FakeSettingsRepo = FakeSettingsRepo(),
+        memory: FakeFictionMemoryRepo = FakeFictionMemoryRepo(),
+        fictionRepo: FakeFictionRepo = FakeFictionRepo(fictionId, fictionTitle),
+    ): Triple<ChatViewModel, FakeSessionRepo, FakeFictionMemoryRepo> {
         val vm = ChatViewModel(
             sessionRepo = session,
-            fictionRepo = FakeFictionRepo(fictionId, fictionTitle),
+            fictionRepo = fictionRepo,
             playback = FakePlayback(playbackState),
             configFlow = flowOf(config),
-            settingsRepo = FakeSettingsRepo(),
+            settingsRepo = settings,
+            memoryRepo = memory,
             savedState = SavedStateHandle(mapOf("fictionId" to fictionId)),
         )
-        return vm to session
+        return Triple(vm, session, memory)
     }
 
     /** Subscribe to [vm.uiState] in the test scope so the
@@ -97,7 +103,7 @@ class ChatViewModelTest {
 
     @Test
     fun `empty state when no provider configured`() = runTest(dispatcher) {
-        val (vm, _) = makeViewModel(config = LlmConfig(provider = null))
+        val (vm, _, _) = makeViewModel(config = LlmConfig(provider = null))
         collectUiState(vm)
         advanceUntilIdle()
         assertTrue(vm.uiState.value.noProvider)
@@ -108,7 +114,7 @@ class ChatViewModelTest {
     @Test
     fun `send streams tokens into uiState then finalises into history`() = runTest(dispatcher) {
         val session = FakeSessionRepo(tokens = listOf("Hello, ", "reader."))
-        val (vm, _) = makeViewModel(session = session)
+        val (vm, _, _) = makeViewModel(session = session)
         collectUiState(vm)
 
         vm.send("What just happened?")
@@ -128,7 +134,7 @@ class ChatViewModelTest {
     @Test
     fun `send creates session on first call and reuses it on second`() = runTest(dispatcher) {
         val session = FakeSessionRepo(tokens = listOf("ok"))
-        val (vm, _) = makeViewModel(session = session, fictionId = "f1")
+        val (vm, _, _) = makeViewModel(session = session, fictionId = "f1")
 
         vm.send("first")
         advanceUntilIdle()
@@ -146,7 +152,7 @@ class ChatViewModelTest {
     @Test
     fun `send surfaces LlmError as ChatError without crashing`() = runTest(dispatcher) {
         val session = FakeSessionRepo(throwOnChat = LlmError.AuthFailed(ProviderId.Claude, "bad key"))
-        val (vm, _) = makeViewModel(session = session)
+        val (vm, _, _) = makeViewModel(session = session)
         collectUiState(vm)
 
         vm.send("hi")
@@ -162,7 +168,7 @@ class ChatViewModelTest {
     @Test
     fun `dismissError clears the banner`() = runTest(dispatcher) {
         val session = FakeSessionRepo(throwOnChat = LlmError.Transport(ProviderId.Claude, IllegalStateException("eof")))
-        val (vm, _) = makeViewModel(session = session)
+        val (vm, _, _) = makeViewModel(session = session)
         collectUiState(vm)
         vm.send("hi")
         advanceUntilIdle()
@@ -176,7 +182,7 @@ class ChatViewModelTest {
     @Test
     fun `whitespace-only send is a no-op`() = runTest(dispatcher) {
         val session = FakeSessionRepo(tokens = listOf("ok"))
-        val (vm, _) = makeViewModel(session = session)
+        val (vm, _, _) = makeViewModel(session = session)
         collectUiState(vm)
 
         vm.send("   ")
@@ -189,7 +195,7 @@ class ChatViewModelTest {
     @Test
     fun `system prompt grounds in fiction title and current chapter`() = runTest(dispatcher) {
         val session = FakeSessionRepo(tokens = listOf("ok"))
-        val (vm, _) = makeViewModel(
+        val (vm, _, _) = makeViewModel(
             session = session,
             fictionId = "f1",
             fictionTitle = "Sky Pride",
@@ -209,7 +215,7 @@ class ChatViewModelTest {
     @Test
     fun `system prompt omits chapter clause when listening to a different fiction`() = runTest(dispatcher) {
         val session = FakeSessionRepo(tokens = listOf("ok"))
-        val (vm, _) = makeViewModel(
+        val (vm, _, _) = makeViewModel(
             session = session,
             fictionId = "f1",
             fictionTitle = "Sky Pride",
@@ -223,6 +229,100 @@ class ChatViewModelTest {
         assertTrue(sp.contains("Sky Pride"))
         assertFalse(sp.contains("Some other chapter"))
     }
+
+    // ── Cross-fiction memory (issue #217) ──────────────────────────
+
+    @Test
+    fun `cross-fiction block appended when toggle on and another book has matching name`() =
+        runTest(dispatcher) {
+            // Seed: a prior book "f-prior" has an entry for "Kelsier".
+            // Current chat is in "f-current". User asks about Kelsier.
+            val memory = FakeFictionMemoryRepo().apply {
+                seed("f-prior", "Kelsier", "Mistborn, leader of the crew")
+            }
+            val session = FakeSessionRepo(tokens = listOf("ok"))
+            // The CrossFictionMemoryBlock uses fictionRepo.fictionById
+            // to resolve titles for other books. The multi-title fake
+            // resolves f-prior → "Mistborn" so the block renders cleanly.
+            val fictionRepo = FakeFictionRepoMulti(
+                mapOf(
+                    "f-current" to "Sky Pride",
+                    "f-prior" to "Mistborn",
+                ),
+            )
+            val vm = ChatViewModel(
+                sessionRepo = session,
+                fictionRepo = fictionRepo,
+                playback = FakePlayback(playbackOf()),
+                configFlow = flowOf(LlmConfig(provider = ProviderId.Claude)),
+                settingsRepo = FakeSettingsRepo(carryMemoryAcrossFictions = true),
+                memoryRepo = memory,
+                savedState = SavedStateHandle(mapOf("fictionId" to "f-current")),
+            )
+            backgroundScope.launch { vm.uiState.collect {} }
+
+            vm.send("Who is Kelsier?")
+            advanceUntilIdle()
+
+            val sp = session.lastSystemPrompt!!
+            assertTrue(
+                "cross-fiction block must appear when memory has a match. sp=$sp",
+                sp.contains("Cross-fiction context"),
+            )
+            assertTrue("entity name surfaces in block", sp.contains("Kelsier"))
+            assertTrue("source-book title surfaces", sp.contains("Mistborn"))
+        }
+
+    @Test
+    fun `cross-fiction block omitted when toggle off`() = runTest(dispatcher) {
+        val memory = FakeFictionMemoryRepo().apply {
+            seed("f-prior", "Kelsier", "Mistborn")
+        }
+        val session = FakeSessionRepo(tokens = listOf("ok"))
+        val (vm, _, _) = makeViewModel(
+            session = session,
+            memory = memory,
+            settings = FakeSettingsRepo(carryMemoryAcrossFictions = false),
+        )
+
+        vm.send("Who is Kelsier?")
+        advanceUntilIdle()
+
+        val sp = session.lastSystemPrompt!!
+        assertFalse(
+            "cross-fiction block must NOT appear when toggle is OFF. sp=$sp",
+            sp.contains("Cross-fiction context"),
+        )
+    }
+
+    @Test
+    fun `assistant reply extracts entities into memory after send completes`() =
+        runTest(dispatcher) {
+            // The AI reply contains a defining sentence the regex
+            // extractor recognises. Post-completion, the entity should
+            // be upserted into the per-fiction memory.
+            val session = FakeSessionRepo(
+                tokens = listOf("Vin is a Mistborn who works with the crew."),
+            )
+            val memory = FakeFictionMemoryRepo()
+            val (vm, _, _) = makeViewModel(
+                fictionId = "f-current",
+                session = session,
+                memory = memory,
+            )
+            backgroundScope.launch { vm.uiState.collect {} }
+
+            vm.send("Tell me about Vin")
+            advanceUntilIdle()
+
+            val recorded = memory.forFictionOnce("f-current")
+            assertEquals(
+                "expected exactly one entity from the reply, got: $recorded",
+                1, recorded.size,
+            )
+            assertEquals("Vin", recorded.first().name)
+            assertTrue(recorded.first().summary.contains("Mistborn"))
+        }
 }
 
 // ── Fakes ──────────────────────────────────────────────────────────
@@ -456,6 +556,33 @@ private class FakeFictionRepo(
     override suspend fun addByUrl(url: String): UiAddByUrlResult = UiAddByUrlResult.UnrecognizedUrl
 }
 
+/**
+ * Issue #217 — variant that resolves multiple fiction ids to titles.
+ * Needed by the cross-fiction-memory tests, where the prompt-builder
+ * resolves OTHER books' titles for the rendered block.
+ */
+private class FakeFictionRepoMulti(
+    private val titlesById: Map<String, String>,
+) : FictionRepositoryUi {
+    override val library: Flow<List<UiFiction>> = flowOf(emptyList())
+    override val follows: Flow<List<UiFollow>> = flowOf(emptyList())
+    override fun fictionById(id: String): Flow<UiFiction?> =
+        flowOf(titlesById[id]?.let { uiFictionOf(id, it) })
+    override fun fictionLoadError(id: String): Flow<String?> = flowOf(null)
+    override fun chaptersFor(fictionId: String): Flow<List<UiChapter>> = flowOf(emptyList())
+    override suspend fun chapterTextById(chapterId: String): String? = null
+    override suspend fun setDownloadMode(fictionId: String, mode: DownloadMode) = Unit
+    override suspend fun follow(fictionId: String, follow: Boolean) = Unit
+    override suspend fun setFollowedRemote(
+        fictionId: String,
+        followed: Boolean,
+    ): `in`.jphe.storyvox.feature.api.SetFollowedRemoteResult =
+        `in`.jphe.storyvox.feature.api.SetFollowedRemoteResult.Success
+    override suspend fun markAllCaughtUp() = Unit
+    override suspend fun refreshFollows() = Unit
+    override suspend fun addByUrl(url: String): UiAddByUrlResult = UiAddByUrlResult.UnrecognizedUrl
+}
+
 private fun uiFictionOf(id: String, title: String) = UiFiction(
     id = id,
     title = title,
@@ -504,8 +631,12 @@ private class FakePlayback(initial: UiPlaybackState) : PlaybackControllerUi {
  *  every method must be implemented; setters are no-ops. */
 private class FakeSettingsRepo(
     chatGrounding: UiChatGrounding = UiChatGrounding(),
+    carryMemoryAcrossFictions: Boolean = true,
 ) : SettingsRepositoryUi {
-    private val ai = UiAiSettings(chatGrounding = chatGrounding)
+    private val ai = UiAiSettings(
+        chatGrounding = chatGrounding,
+        carryMemoryAcrossFictions = carryMemoryAcrossFictions,
+    )
     override val settings: Flow<UiSettings> = flowOf(
         UiSettings(
             ttsEngine = "VoxSherpa",
@@ -560,6 +691,7 @@ private class FakeSettingsRepo(
     override suspend fun setChatGroundCurrentSentence(enabled: Boolean) = Unit
     override suspend fun setChatGroundEntireChapter(enabled: Boolean) = Unit
     override suspend fun setChatGroundEntireBookSoFar(enabled: Boolean) = Unit
+    override suspend fun setCarryMemoryAcrossFictions(enabled: Boolean) = Unit
     override suspend fun acknowledgeAiPrivacy() = Unit
     override suspend fun resetAiSettings() = Unit
     override suspend fun signOutGitHub() = Unit
@@ -607,4 +739,81 @@ private class FakeSettingsRepo(
         override suspend fun testAzureConnection(): `in`.jphe.storyvox.feature.api.AzureProbeResult =
             `in`.jphe.storyvox.feature.api.AzureProbeResult.NotConfigured
     override suspend fun signOutTeams() = Unit
+}
+
+/**
+ * Issue #217 — in-memory fake for [FictionMemoryRepository]. Mirrors
+ * the production upsert + cross-fiction lookup semantics so the
+ * ChatViewModel's prompt-builder and extractor paths can be exercised
+ * on plain JVM. Composite key (fictionId, name) — last write wins for
+ * non-user-edited entries; user-edited entries are protected from
+ * AI-overwrite (mirrors the impl behaviour).
+ */
+private class FakeFictionMemoryRepo : FictionMemoryRepository {
+    val entries: MutableMap<Pair<String, String>, FictionMemoryEntry> = mutableMapOf()
+    val flows: MutableMap<String, MutableStateFlow<List<FictionMemoryEntry>>> = mutableMapOf()
+
+    /** Synchronous seeding helper for tests — avoids needing a
+     *  CoroutineScope to pre-populate the fake before the VM runs. */
+    fun seed(
+        fictionId: String,
+        name: String,
+        summary: String,
+        entityType: FictionMemoryEntry.Kind = FictionMemoryEntry.Kind.CHARACTER,
+    ) {
+        entries[fictionId to name] = FictionMemoryEntry(
+            fictionId = fictionId,
+            entityType = entityType.name,
+            name = name,
+            summary = summary,
+            firstSeenChapterIndex = null,
+            lastUpdated = System.currentTimeMillis(),
+            userEdited = false,
+        )
+    }
+
+    override suspend fun recordEntity(
+        fictionId: String,
+        entityType: FictionMemoryEntry.Kind,
+        name: String,
+        summary: String,
+        firstSeenChapterIndex: Int?,
+        userEdited: Boolean,
+    ) {
+        val key = fictionId to name.trim()
+        if (!userEdited) {
+            val existing = entries[key]
+            if (existing?.userEdited == true) return
+        }
+        entries[key] = FictionMemoryEntry(
+            fictionId = fictionId,
+            entityType = entityType.name,
+            name = name.trim(),
+            summary = summary.trim().take(FictionMemoryRepository.SUMMARY_MAX_CHARS),
+            firstSeenChapterIndex = firstSeenChapterIndex,
+            lastUpdated = System.currentTimeMillis(),
+            userEdited = userEdited,
+        )
+        flows[fictionId]?.update { entries.values.filter { it.fictionId == fictionId } }
+    }
+
+    override suspend fun findEntityAcrossFictions(
+        name: String,
+        excludeFictionId: String?,
+    ): List<FictionMemoryEntry> = entries.values
+        .filter { it.name == name.trim() && it.fictionId != excludeFictionId }
+        .sortedByDescending { it.lastUpdated }
+
+    override fun entitiesForFiction(fictionId: String) =
+        flows.getOrPut(fictionId) {
+            MutableStateFlow(entries.values.filter { it.fictionId == fictionId })
+        }.asStateFlow()
+
+    override suspend fun forFictionOnce(fictionId: String): List<FictionMemoryEntry> =
+        entries.values.filter { it.fictionId == fictionId }
+
+    override suspend fun deleteEntry(fictionId: String, name: String) {
+        entries.remove(fictionId to name.trim())
+        flows[fictionId]?.update { entries.values.filter { it.fictionId == fictionId } }
+    }
 }

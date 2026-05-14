@@ -251,6 +251,7 @@ class SettingsViewModelModesTest {
         override suspend fun setChatGroundCurrentSentence(enabled: Boolean) = Unit
         override suspend fun setChatGroundEntireChapter(enabled: Boolean) = Unit
         override suspend fun setChatGroundEntireBookSoFar(enabled: Boolean) = Unit
+        override suspend fun setCarryMemoryAcrossFictions(enabled: Boolean) = Unit
         override suspend fun acknowledgeAiPrivacy() = Unit
         override suspend fun resetAiSettings() = Unit
         override suspend fun signOutGitHub() = Unit

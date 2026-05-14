@@ -5,11 +5,14 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import `in`.jphe.storyvox.data.repository.FictionMemoryRepository
 import `in`.jphe.storyvox.feature.api.FictionRepositoryUi
 import `in`.jphe.storyvox.feature.api.PlaybackControllerUi
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.UiChatGrounding
 import `in`.jphe.storyvox.feature.api.UiRecapPlaybackState
+import `in`.jphe.storyvox.feature.chat.memory.CrossFictionMemoryBlock
+import `in`.jphe.storyvox.feature.chat.memory.FictionMemoryExtractor
 import `in`.jphe.storyvox.llm.FeatureKind
 import `in`.jphe.storyvox.llm.LlmConfig
 import `in`.jphe.storyvox.llm.LlmError
@@ -67,6 +70,22 @@ data class ChatUiState(
      *  The matching turn's bubble shows a stop icon; other bubbles
      *  show a play icon. */
     val readingText: String? = null,
+    /** Issue #217 — debug-overlay metric for the cross-fiction memory
+     *  block. Reflects the most recent send's block, or null when
+     *  nothing was appended (toggle off, no matches, or pre-first-
+     *  send). The Settings → AI debug overlay surfaces this so JP
+     *  can see how often the block fires and how heavy it is. */
+    val crossFictionMemoryDebug: CrossFictionMemoryDebug? = null,
+)
+
+/** Issue #217 — debug overlay metric for cross-fiction memory. The
+ *  Settings → AI debug overlay (issue #294's surface) renders this
+ *  when AI debug is on. */
+@Immutable
+data class CrossFictionMemoryDebug(
+    val entryCount: Int,
+    val droppedCount: Int,
+    val approxTokens: Int,
 )
 
 /** UI-side classification of [LlmError] so the screen can pick the
@@ -113,8 +132,21 @@ class ChatViewModel @Inject constructor(
     private val playback: PlaybackControllerUi,
     private val configFlow: Flow<LlmConfig>,
     private val settingsRepo: SettingsRepositoryUi,
+    private val memoryRepo: FictionMemoryRepository,
     private val savedState: SavedStateHandle,
 ) : ViewModel() {
+
+    /** Issue #217 — cross-fiction prompt-block builder. The title
+     *  resolver pulls the *other* book's title via the same
+     *  FictionRepositoryUi we already inject. The wrapper handles
+     *  nullable Flow emission. */
+    private val crossFictionBlock = CrossFictionMemoryBlock(
+        memoryRepo = memoryRepo,
+        titleResolver = { id ->
+            fictionRepo.fictionById(id)
+                .let { runCatching { it.first()?.title }.getOrNull() }
+        },
+    )
 
     private val fictionId: String = checkNotNull(savedState["fictionId"]) {
         "ChatScreen requires a `fictionId` nav arg"
@@ -160,6 +192,11 @@ class ChatViewModel @Inject constructor(
      *  user-pressed stop also clears it via [stopReadAloud]. */
     private val _readingText = MutableStateFlow<String?>(null)
 
+    /** Issue #217 — last cross-fiction memory block's metrics. Stays
+     *  null until the first send that toggle-allows + matches the
+     *  block. Reset to null on a send where the block ended up empty. */
+    private val _memoryDebug = MutableStateFlow<CrossFictionMemoryDebug?>(null)
+
     /** Public state. Combines storage + in-flight + provider config
      *  + fiction metadata into one immutable [ChatUiState]. The 5-arg
      *  combine ceiling forces a nested shape — the inner combine
@@ -180,8 +217,8 @@ class ChatViewModel @Inject constructor(
                 error = error,
             )
         }
-        combine(base, _readingText) { state, reading ->
-            state.copy(readingText = reading)
+        combine(base, _readingText, _memoryDebug) { state, reading, memoryDebug ->
+            state.copy(readingText = reading, crossFictionMemoryDebug = memoryDebug)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChatUiState())
     }
 
@@ -238,18 +275,88 @@ class ChatViewModel @Inject constructor(
             // grounding settings before every send. Lets the user
             // flip a toggle and have the next reply use the new
             // context level immediately, without restarting the chat.
-            sessionRepo.updateSystemPrompt(sessionId, buildSystemPrompt())
+            //
+            // Issue #217 — append the cross-fiction memory block.
+            // The block is opt-in via Settings → AI ("Carry memory
+            // across fictions"), default ON. When the user toggles
+            // it off mid-chat, the next send's prompt drops the
+            // block immediately — same dynamic-rebuild story as
+            // #212's grounding toggles.
+            val basePrompt = buildSystemPrompt()
+            val carryEnabled = settingsRepo.settings.first().ai.carryMemoryAcrossFictions
+            val memoryBlock = crossFictionBlock.build(
+                fictionId = fictionId,
+                userMessage = trimmed,
+                enabled = carryEnabled,
+            )
+            _memoryDebug.value = if (memoryBlock.entryCount > 0) {
+                CrossFictionMemoryDebug(
+                    entryCount = memoryBlock.entryCount,
+                    droppedCount = memoryBlock.droppedCount,
+                    approxTokens = memoryBlock.approxTokens,
+                )
+            } else {
+                null
+            }
+            sessionRepo.updateSystemPrompt(sessionId, basePrompt + memoryBlock.text)
 
             val buf = StringBuilder()
             _streaming.value = ""
 
             sessionRepo.chat(sessionId, trimmed)
                 .catch { e -> _error.value = mapError(e) }
-                .onCompletion { _streaming.value = null }
+                .onCompletion { cause ->
+                    _streaming.value = null
+                    // Issue #217 — post-process the assistant's
+                    // reply into memory entries. Regex-based, runs
+                    // only on completion (no partial-stream
+                    // extraction — saves work on cancelled sends).
+                    // Cheap, no-network — runs on the same coroutine
+                    // dispatcher as the stream collector.
+                    if (cause == null) {
+                        extractAndRecord(buf.toString())
+                    }
+                }
                 .collect { delta ->
                     buf.append(delta)
                     _streaming.value = buf.toString()
                 }
+        }
+    }
+
+    /**
+     * Issue #217 — pull entity candidates out of [reply] and upsert
+     * them into the per-fiction memory table. Errors are swallowed
+     * (logged via the throwable's cause if the extractor explodes on
+     * pathological input) — memory population is a best-effort side
+     * effect of the chat, never a blocker. The pre-existing chat
+     * persistence path doesn't care whether this succeeds.
+     */
+    private suspend fun extractAndRecord(reply: String) {
+        val entities = runCatching { FictionMemoryExtractor.extract(reply) }
+            .getOrDefault(emptyList())
+        // Try to fish a chapter index out of the live playback state
+        // for the firstSeenChapterIndex hint. The hint is best-effort
+        // — if playback isn't active, we record null (which the
+        // Notebook UI orders last).
+        val chapterIdx = runCatching {
+            val pb = playback.state.first()
+            if (pb.fictionId != fictionId) return@runCatching null
+            val chapterId = pb.chapterId ?: return@runCatching null
+            val chapters = fictionRepo.chaptersFor(fictionId).first()
+            chapters.indexOfFirst { it.id == chapterId }.takeIf { it >= 0 }
+        }.getOrNull()
+        entities.forEach { e ->
+            runCatching {
+                memoryRepo.recordEntity(
+                    fictionId = fictionId,
+                    entityType = e.kind,
+                    name = e.name,
+                    summary = e.summary,
+                    firstSeenChapterIndex = chapterIdx,
+                    userEdited = false,
+                )
+            }
         }
     }
 

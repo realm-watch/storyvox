@@ -222,6 +222,49 @@ val MIGRATION_7_8: Migration = object : Migration(7, 8) {
     }
 }
 
+/**
+ * v9 — issue #217: cross-fiction AI memory. New `fiction_memory_entry`
+ * table holding per-fiction character/place/concept notes the AI chat
+ * post-processor extracts from its own replies. Two indexes:
+ *  - `name` for the cross-fiction lookup (`WHERE name = ?`) the
+ *    prompt-builder runs once per turn.
+ *  - `fictionId` for the per-book Notebook UI feed
+ *    (`WHERE fictionId = ? ORDER BY ...`).
+ *
+ * Composite PK `(fictionId, name)` enforces upsert semantics ("one
+ * fact per name per book"). No FK to `fiction` because removing a
+ * book shouldn't cascade-wipe what the AI remembers — surfacing
+ * "you also read this character in book X" still works after the
+ * underlying fiction row is gone. Purely additive — no existing
+ * data touched.
+ */
+val MIGRATION_8_9: Migration = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `fiction_memory_entry` (
+                `fictionId` TEXT NOT NULL,
+                `entityType` TEXT NOT NULL,
+                `name` TEXT NOT NULL,
+                `summary` TEXT NOT NULL,
+                `firstSeenChapterIndex` INTEGER,
+                `lastUpdated` INTEGER NOT NULL,
+                `userEdited` INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(`fictionId`, `name`)
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_fiction_memory_entry_name` " +
+                "ON `fiction_memory_entry` (`name`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_fiction_memory_entry_fictionId` " +
+                "ON `fiction_memory_entry` (`fictionId`)",
+        )
+    }
+}
+
 val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -230,4 +273,5 @@ val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_5_6,
     MIGRATION_6_7,
     MIGRATION_7_8,
+    MIGRATION_8_9,
 )

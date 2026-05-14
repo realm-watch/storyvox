@@ -8,6 +8,7 @@ import `in`.jphe.storyvox.data.db.migration.MIGRATION_4_5
 import `in`.jphe.storyvox.data.db.migration.MIGRATION_5_6
 import `in`.jphe.storyvox.data.db.migration.MIGRATION_6_7
 import `in`.jphe.storyvox.data.db.migration.MIGRATION_7_8
+import `in`.jphe.storyvox.data.db.migration.MIGRATION_8_9
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -121,10 +122,15 @@ class StoryvoxDatabaseMigrationTest {
         // version bumped again; chain through so Room can open the
         // file without complaining about a missing migration.
         helper.runMigrationsAndValidate(dbName, 8, true, MIGRATION_7_8).close()
+        // #217 — v9 adds fiction_memory_entry for cross-fiction AI
+        // memory. Same chain-through reasoning: the DB-level version
+        // bumped, so opening the file without the v8 → v9 migration
+        // would fail.
+        helper.runMigrationsAndValidate(dbName, 9, true, MIGRATION_8_9).close()
 
         val ctx = org.robolectric.RuntimeEnvironment.getApplication() as android.content.Context
         val db = Room.databaseBuilder(ctx, StoryvoxDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
             .build()
 
         try {
@@ -275,10 +281,13 @@ class StoryvoxDatabaseMigrationTest {
         helper.runMigrationsAndValidate(dbName, 6, true, MIGRATION_5_6).close()
         helper.runMigrationsAndValidate(dbName, 7, true, MIGRATION_6_7).close()
         helper.runMigrationsAndValidate(dbName, 8, true, MIGRATION_7_8).close()
+        // #217 — chain through v9 (fiction_memory_entry) so the
+        // Room.databaseBuilder below can open at the latest version.
+        helper.runMigrationsAndValidate(dbName, 9, true, MIGRATION_8_9).close()
 
         val ctx = org.robolectric.RuntimeEnvironment.getApplication() as android.content.Context
         val db = Room.databaseBuilder(ctx, StoryvoxDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
             .build()
 
         try {
@@ -305,5 +314,53 @@ class StoryvoxDatabaseMigrationTest {
         }
 
         assertNotNull("smoke sentinel — fail-fast if the try block was no-op'd", helper)
+    }
+
+    /**
+     * Issue #217 — v9 adds the `fiction_memory_entry` table backing
+     * cross-fiction AI memory. Purely additive: existing tables stay
+     * untouched. Two indexes (`name` for the cross-fiction lookup, and
+     * `fictionId` for the per-book Notebook feed) must exist alongside
+     * the composite-PK index. The PK is `(fictionId, name)` so upsert
+     * semantics ("one fact per name per book") fall out of conflict
+     * resolution.
+     */
+    @Test fun `migrate v8 to v9 creates fiction_memory_entry table`() {
+        val dbName = "fiction-memory-migration-test.db"
+        helper.createDatabase(dbName, 4).close()
+        helper.runMigrationsAndValidate(dbName, 5, true, MIGRATION_4_5).close()
+        helper.runMigrationsAndValidate(dbName, 6, true, MIGRATION_5_6).close()
+        helper.runMigrationsAndValidate(dbName, 7, true, MIGRATION_6_7).close()
+        helper.runMigrationsAndValidate(dbName, 8, true, MIGRATION_7_8).close()
+
+        val db = helper.runMigrationsAndValidate(
+            dbName,
+            9,
+            /* validateDroppedTables = */ true,
+            MIGRATION_8_9,
+        )
+
+        db.query(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='fiction_memory_entry'",
+        ).use { c ->
+            assertTrue("fiction_memory_entry table must exist post-migration", c.moveToFirst())
+        }
+
+        db.query(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='fiction_memory_entry'",
+        ).use { c ->
+            val indexes = mutableListOf<String>()
+            while (c.moveToNext()) indexes += c.getString(0)
+            assertTrue(
+                "index_fiction_memory_entry_name must exist (cross-fiction lookup)",
+                indexes.any { it == "index_fiction_memory_entry_name" },
+            )
+            assertTrue(
+                "index_fiction_memory_entry_fictionId must exist (per-book Notebook feed)",
+                indexes.any { it == "index_fiction_memory_entry_fictionId" },
+            )
+        }
+
+        db.close()
     }
 }

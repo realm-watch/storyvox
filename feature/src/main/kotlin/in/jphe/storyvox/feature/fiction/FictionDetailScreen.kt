@@ -292,6 +292,15 @@ fun FictionDetailScreen(
                     }
                     Hero(fiction)
                     Synopsis(fiction.synopsis)
+                    // Issue #217 — Notebook section in the wide-layout
+                    // left column, between Synopsis and the bottom-bar
+                    // padding. Hides itself if there's nothing to show
+                    // and the user hasn't tapped Add.
+                    NotebookSection(
+                        entries = state.notebookEntries,
+                        onDelete = viewModel::deleteNotebookEntry,
+                        onAdd = viewModel::addNotebookEntry,
+                    )
                 }
                 LazyColumn(
                     modifier = Modifier.weight(0.58f).fillMaxSize(),
@@ -343,6 +352,16 @@ fun FictionDetailScreen(
                 }
                 item { Hero(fiction) }
                 item { Synopsis(fiction.synopsis) }
+                // Issue #217 — Notebook section in the narrow (phone)
+                // layout. Inserted as a single LazyColumn item so it
+                // scrolls with the chapter list rather than pinning.
+                item {
+                    NotebookSection(
+                        entries = state.notebookEntries,
+                        onDelete = viewModel::deleteNotebookEntry,
+                        onAdd = viewModel::addNotebookEntry,
+                    )
+                }
                 items(state.chapters, key = { it.id }) { ch ->
                     ChapterCard(
                         state = ch.toCardState(currentId = null),
@@ -526,6 +545,160 @@ private fun Hero(fiction: UiFiction) {
                 Text("${fiction.chapterCount} ch", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("·", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(if (fiction.isOngoing) "Ongoing" else "Completed", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
+}
+
+/**
+ * Issue #217 — per-fiction Notebook section. Renders the AI-extracted
+ * + user-curated entities the cross-fiction memory layer has recorded
+ * for this book. Empty list collapses the section entirely; the
+ * surface only materialises once there's something to show OR once
+ * the user expands the "Add note" affordance.
+ *
+ * Each row shows the entity name, its kind (CHARACTER/PLACE/CONCEPT),
+ * and the one-line summary. A small "X" affordance per row lets the
+ * user delete AI-extracted entries they judge wrong; the same path
+ * works for user-edited notes ("retract this manual note"). The
+ * "Add note" expander opens a tiny form (name + summary + kind chips)
+ * that calls [onAdd] with the user's input.
+ *
+ * Per the v1 trade-offs in #217: this is a flat list, not a tabbed
+ * surface; the issue calls for a sub-tab but a section header inside
+ * the existing scroll reads cleaner on phones (no tab navigation
+ * overhead, no double-scroll) and keeps the destructive delete close
+ * to the chapter list user already has muscle memory for.
+ */
+@Composable
+private fun NotebookSection(
+    entries: List<`in`.jphe.storyvox.data.db.entity.FictionMemoryEntry>,
+    onDelete: (String) -> Unit,
+    onAdd: (String, String, `in`.jphe.storyvox.data.db.entity.FictionMemoryEntry.Kind) -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    // Expander state for the manual-add affordance. Held local-to-the-
+    // section because it's pure UI affordance — survives recomposition
+    // but doesn't need to survive process death (the form is empty
+    // until the user types, and a discard is a single tap).
+    var addOpen by remember { mutableStateOf(false) }
+    var draftName by remember { mutableStateOf("") }
+    var draftSummary by remember { mutableStateOf("") }
+    var draftKind by remember {
+        mutableStateOf(`in`.jphe.storyvox.data.db.entity.FictionMemoryEntry.Kind.CHARACTER)
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.md, vertical = spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                "Notebook",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            BrassButton(
+                label = if (addOpen) "Cancel" else "Add note",
+                onClick = {
+                    addOpen = !addOpen
+                    if (!addOpen) {
+                        draftName = ""
+                        draftSummary = ""
+                    }
+                },
+                variant = BrassButtonVariant.Text,
+            )
+        }
+        if (entries.isEmpty() && !addOpen) {
+            Text(
+                "The AI hasn't recorded anyone yet. As you chat about this book, " +
+                    "characters and places will accumulate here.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        entries.forEach { e ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                    ) {
+                        Text(
+                            e.name,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        Text(
+                            e.entityType.lowercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        if (e.userEdited) {
+                            Text(
+                                "manual",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    Text(
+                        e.summary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                BrassButton(
+                    label = "Remove",
+                    onClick = { onDelete(e.name) },
+                    variant = BrassButtonVariant.Text,
+                )
+            }
+        }
+        if (addOpen) {
+            Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                androidx.compose.material3.OutlinedTextField(
+                    value = draftName,
+                    onValueChange = { draftName = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                androidx.compose.material3.OutlinedTextField(
+                    value = draftSummary,
+                    onValueChange = { draftSummary = it },
+                    label = { Text("One-line description") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                    `in`.jphe.storyvox.data.db.entity.FictionMemoryEntry.Kind.entries.forEach { k ->
+                        BrassButton(
+                            label = k.name.lowercase().replaceFirstChar { it.uppercase() },
+                            onClick = { draftKind = k },
+                            variant = if (draftKind == k) BrassButtonVariant.Primary
+                                else BrassButtonVariant.Secondary,
+                        )
+                    }
+                }
+                BrassButton(
+                    label = "Save note",
+                    onClick = {
+                        if (draftName.isNotBlank() && draftSummary.isNotBlank()) {
+                            onAdd(draftName.trim(), draftSummary.trim(), draftKind)
+                            draftName = ""
+                            draftSummary = ""
+                            addOpen = false
+                        }
+                    },
+                    variant = BrassButtonVariant.Primary,
+                )
             }
         }
     }

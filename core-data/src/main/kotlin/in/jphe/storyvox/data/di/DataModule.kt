@@ -20,6 +20,7 @@ import `in`.jphe.storyvox.data.db.dao.AuthDao
 import `in`.jphe.storyvox.data.db.dao.ChapterDao
 import `in`.jphe.storyvox.data.db.dao.ChapterHistoryDao
 import `in`.jphe.storyvox.data.db.dao.FictionDao
+import `in`.jphe.storyvox.data.db.dao.FictionMemoryDao
 import `in`.jphe.storyvox.data.db.dao.FictionShelfDao
 import `in`.jphe.storyvox.data.db.dao.InboxEventDao
 import `in`.jphe.storyvox.data.db.dao.LlmMessageDao
@@ -31,6 +32,8 @@ import `in`.jphe.storyvox.data.repository.AuthRepositoryImpl
 import `in`.jphe.storyvox.data.repository.ChapterDownloadScheduler
 import `in`.jphe.storyvox.data.repository.ChapterRepository
 import `in`.jphe.storyvox.data.repository.ChapterRepositoryImpl
+import `in`.jphe.storyvox.data.repository.FictionMemoryRepository
+import `in`.jphe.storyvox.data.repository.FictionMemoryRepositoryImpl
 import `in`.jphe.storyvox.data.repository.FictionRepository
 import `in`.jphe.storyvox.data.repository.FictionRepositoryImpl
 import `in`.jphe.storyvox.data.repository.FollowsRepository
@@ -74,6 +77,7 @@ object DataModule {
     @Provides fun llmMessageDao(db: StoryvoxDatabase): LlmMessageDao = db.llmMessageDao()
     @Provides fun fictionShelfDao(db: StoryvoxDatabase): FictionShelfDao = db.fictionShelfDao()
     @Provides fun inboxEventDao(db: StoryvoxDatabase): InboxEventDao = db.inboxEventDao()
+    @Provides fun fictionMemoryDao(db: StoryvoxDatabase): FictionMemoryDao = db.fictionMemoryDao()
 
     /**
      * Long-lived [CoroutineScope] for singleton repositories that need to fire
@@ -140,6 +144,11 @@ abstract class RepositoryBindings {
 
     @Binds @Singleton
     abstract fun bindInboxRepository(impl: InboxRepositoryImpl): InboxRepository
+
+    @Binds @Singleton
+    abstract fun bindFictionMemoryRepository(
+        impl: FictionMemoryRepositoryImpl,
+    ): FictionMemoryRepository
 
     @Binds @Singleton
     abstract fun bindChapterDownloadScheduler(

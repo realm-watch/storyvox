@@ -628,6 +628,21 @@ data class UiAiSettings(
      * surfaces a per-toggle estimate so users understand the cost.
      */
     val chatGrounding: UiChatGrounding = UiChatGrounding(),
+    /**
+     * Issue #217 — "Carry memory across fictions" toggle. When ON,
+     * each AI chat turn pulls cross-fiction memory entries matching
+     * names in the user's message and appends them to the system
+     * prompt under a "Cross-fiction context" section. Token budget
+     * is capped at ~500 tokens (oldest entries dropped first), so
+     * the worst-case cost is bounded.
+     *
+     * Default ON for fresh installs — JP's call in #217's decisions
+     * list: more useful by default, especially for users with deep
+     * libraries who'd hit duplicate-name disambiguation immediately.
+     * Existing installs upgrading from pre-#217 also get ON because
+     * the DataStore default kicks in for missing keys.
+     */
+    val carryMemoryAcrossFictions: Boolean = true,
 )
 
 /**
@@ -1267,6 +1282,9 @@ interface SettingsRepositoryUi {
     suspend fun setChatGroundCurrentSentence(enabled: Boolean)
     suspend fun setChatGroundEntireChapter(enabled: Boolean)
     suspend fun setChatGroundEntireBookSoFar(enabled: Boolean)
+    /** Issue #217 — "Carry memory across fictions" toggle. See
+     *  [UiAiSettings.carryMemoryAcrossFictions]. */
+    suspend fun setCarryMemoryAcrossFictions(enabled: Boolean)
     suspend fun acknowledgeAiPrivacy()
     /**
      * Anthropic Teams (OAuth) — local sign-out. Wipes the bearer +
