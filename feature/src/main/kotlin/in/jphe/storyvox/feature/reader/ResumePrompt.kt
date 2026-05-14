@@ -143,11 +143,20 @@ fun ResumePrompt(
 
             // Chapter line — matches the LibraryScreen ResumeCard format:
             // "Ch. 12 · The Doors Open" (no separator when title blank).
+            // Issue #453 — 1-indexed display (index + 1) so the user
+            // never sees the storyvox internal 0-indexed counter; if
+            // the title already starts with "Chapter N" (Gutenberg's
+            // spine entries do), drop the "Chapter M ·" prefix instead
+            // of clashing with the title's own numbering.
+            val chapterTitle = entry.chapter.title
+            val titleAlreadyIndexed = chapterTitle.matches(
+                Regex("(?i)^\\s*(ch(apter|\\.)?|episode|part)\\s*\\d+.*"),
+            )
             Text(
-                text = if (entry.chapter.title.isNotBlank()) {
-                    "Chapter ${entry.chapter.index} · ${entry.chapter.title}"
-                } else {
-                    "Chapter ${entry.chapter.index}"
+                text = when {
+                    chapterTitle.isBlank() -> "Chapter ${entry.chapter.index + 1}"
+                    titleAlreadyIndexed -> chapterTitle
+                    else -> "Chapter ${entry.chapter.index + 1} · $chapterTitle"
                 },
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,

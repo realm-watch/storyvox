@@ -718,6 +718,31 @@ private fun EmptyHistory() {
  * them. We deliberately don't run a per-second ticker for what's
  * essentially a secondary-priority caption.
  */
+/**
+ * Issue #453 — format a chapter row's subtitle without leaking
+ * storyvox's internal 0-indexed chapter counter into the UI.
+ *
+ * Three shapes:
+ *  - Blank title (RSS feeds where only the index was parsed,
+ *    cold-launch state) → `"Ch. {index+1}"` (1-indexed display).
+ *  - Title already starts with "Chapter N" / "Ch. N" / "Episode N" /
+ *    "Part N" → return the title only. The previous "Ch. 0 · Chapter 1"
+ *    shape mixed 0-indexed and 1-indexed counts and read as broken.
+ *  - Plain title (Royal Road / AO3 chapter names, etc.) →
+ *    `"Ch. {index+1} · {title}"`.
+ *
+ * Pure function so the same logic runs in Library rows, Resume cards,
+ * and History rows without duplicating the indexing rules.
+ */
+internal fun formatChapterLabel(index: Int, title: String): String {
+    val indexedTitlePattern = Regex("(?i)^\\s*(ch(apter|\\.)?|episode|part)\\s*\\d+.*")
+    return when {
+        title.isBlank() -> "Ch. ${index + 1}"
+        title.matches(indexedTitlePattern) -> title
+        else -> "Ch. ${index + 1} · $title"
+    }
+}
+
 private fun relativeTimeLabel(openedAt: Long): String {
     val deltaMs = (System.currentTimeMillis() - openedAt).coerceAtLeast(0L)
     val minutes = deltaMs / 60_000L
