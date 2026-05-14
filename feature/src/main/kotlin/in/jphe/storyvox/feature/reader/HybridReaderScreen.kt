@@ -186,6 +186,16 @@ fun HybridReaderScreen(
                 // playback state, so the UI just forwards the verbs.
                 onBookmarkHere = viewModel::bookmarkHere,
                 onJumpToBookmark = viewModel::jumpToBookmark,
+                // Issue #418 — magical voice icon's quick sheet
+                // surfaces the live pause multiplier (#109) + Sonic
+                // high-quality flag (#193). State sourced from
+                // SettingsRepositoryUi via ReaderViewModel's combine;
+                // setters dual-write to PlaybackControllerUi (immediate
+                // engine apply) + SettingsRepositoryUi (persistence).
+                punctuationPauseMultiplier = state.punctuationPauseMultiplier,
+                pitchInterpolationHighQuality = state.pitchInterpolationHighQuality,
+                onSetPunctuationPause = viewModel::setPunctuationPauseMultiplier,
+                onSetPitchHighQuality = viewModel::setPitchInterpolationHighQuality,
             )
         },
         readerContent = {

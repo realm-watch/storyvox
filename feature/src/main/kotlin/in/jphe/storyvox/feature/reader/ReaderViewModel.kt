@@ -46,6 +46,18 @@ data class ReaderUiState(
      *  + the hard timeout/retry error path in [AudiobookView]. Reset to
      *  [LoadingPhase.NotLoading] as soon as either piece of state arrives. */
     val loadingPhase: LoadingPhase = LoadingPhase.NotLoading,
+    /** Issue #418 — the magical-voice-icon quick sheet shows the live
+     *  inter-sentence pause multiplier (#109) alongside speed/pitch so
+     *  the user can tune cadence without leaving the player. The value is
+     *  the global default from [SettingsRepositoryUi]; the engine reads
+     *  it via [PlaybackControllerUi.setPunctuationPauseMultiplier]
+     *  (effect lands on the next sentence boundary). */
+    val punctuationPauseMultiplier: Float = 1f,
+    /** Issue #418 — the magical-voice-icon quick sheet exposes the
+     *  high-quality Sonic pitch-interpolation toggle (#193) so users
+     *  on slow hardware can flip it off without diving into Settings.
+     *  Default true matches the Settings default. */
+    val pitchInterpolationHighQuality: Boolean = true,
 )
 
 /** Issue #278 — the player loading screen used to be a silent eternity:
@@ -251,12 +263,23 @@ class ReaderViewModel @Inject constructor(
         playback.chapterText,
         _activePane,
         _loadingPhase,
-    ) { state, text, pane, phase ->
+        // Issue #418 — read the live pause-multiplier + Sonic high-quality
+        // flag from SettingsRepositoryUi so the voice quick-sheet renders
+        // the same values the Settings screen would, without owning a
+        // separate persistence path. Both knobs are global (not per-voice)
+        // today, so projecting them onto the per-screen UI state stays
+        // sound — when the user flips one in the sheet, the
+        // SettingsRepositoryUi flow updates and the next emission flows
+        // straight back through this `combine`.
+        settings.settings,
+    ) { state, text, pane, phase, settingsSnapshot ->
         ReaderUiState(
             playback = state,
             chapterText = text,
             activePane = pane,
             loadingPhase = phase,
+            punctuationPauseMultiplier = settingsSnapshot.punctuationPauseMultiplier,
+            pitchInterpolationHighQuality = settingsSnapshot.pitchInterpolationHighQuality,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReaderUiState())
 
@@ -356,6 +379,37 @@ class ReaderViewModel @Inject constructor(
 
     fun startSleepTimer(mode: UiSleepTimerMode) = playback.startSleepTimer(mode)
     fun cancelSleepTimer() = playback.cancelSleepTimer()
+
+    /**
+     * Issue #418 — set the inter-sentence pause multiplier from the
+     * magical-voice-icon quick sheet. Mirrors the Settings → Voice &
+     * Playback "Punctuation pause" slider (#109): the engine clamps to
+     * [0..4×], the change takes effect on the next sentence boundary.
+     * We hit both seams — [PlaybackControllerUi.setPunctuationPauseMultiplier]
+     * for the immediate live-apply (engine re-reads on next sentence),
+     * and [SettingsRepositoryUi.setPunctuationPauseMultiplier] for
+     * persistence so the value survives app restart. The Settings screen
+     * uses the same dual-write pattern for speed/pitch via
+     * `persistSpeed`/`persistPitch`.
+     */
+    fun setPunctuationPauseMultiplier(multiplier: Float) {
+        playback.setPunctuationPauseMultiplier(multiplier)
+        viewModelScope.launch { settings.setPunctuationPauseMultiplier(multiplier) }
+    }
+
+    /**
+     * Issue #418 — toggle the Sonic high-quality pitch-interpolation
+     * flag from the voice quick sheet. Mirrors the Settings switch
+     * (#193). Persisted-only — the engine reads the flag at the
+     * start of each chapter render, so a mid-chapter flip applies to
+     * the next chapter rather than immediately. The quick-sheet UI
+     * surface still calls out "applies on next chapter" via subtitle
+     * copy so the listener isn't surprised when the current chapter
+     * doesn't change tone.
+     */
+    fun setPitchInterpolationHighQuality(enabled: Boolean) {
+        viewModelScope.launch { settings.setPitchInterpolationHighQuality(enabled) }
+    }
 
     // Issue #121 — in-chapter bookmark fan-out. ReaderViewModel stays
     // the single seam ChapterView talks to; controller delegate handles
