@@ -450,13 +450,31 @@ private class RealFictionRepositoryUi(
         runCatching { repo.refreshRemoteFollows() }
     }
 
-    override suspend fun addByUrl(url: String): UiAddByUrlResult =
-        when (val r = repo.addByUrl(url)) {
+    override suspend fun addByUrl(
+        url: String,
+        preferredSourceId: String?,
+    ): UiAddByUrlResult =
+        when (val r = repo.addByUrl(url, preferredSourceId)) {
             is AddByUrlResult.Success -> UiAddByUrlResult.Success(r.fictionId)
             AddByUrlResult.UnrecognizedUrl -> UiAddByUrlResult.UnrecognizedUrl
             is AddByUrlResult.UnsupportedSource -> UiAddByUrlResult.UnsupportedSource(r.sourceId)
             is AddByUrlResult.SourceFailure -> UiAddByUrlResult.Error(r.failure.message)
+            is AddByUrlResult.MultipleMatches -> UiAddByUrlResult.MultipleMatches(
+                r.candidates.map { it.toUi() },
+            )
         }
+
+    override fun previewUrl(url: String): List<`in`.jphe.storyvox.feature.api.UiRouteCandidate> =
+        repo.previewUrl(url).map { it.toUi() }
+
+    private fun `in`.jphe.storyvox.data.source.RouteMatch.toUi():
+        `in`.jphe.storyvox.feature.api.UiRouteCandidate =
+        `in`.jphe.storyvox.feature.api.UiRouteCandidate(
+            sourceId = sourceId,
+            fictionId = fictionId,
+            confidence = confidence,
+            label = label,
+        )
 }
 
 private fun DownloadMode.toData(): `in`.jphe.storyvox.data.db.entity.DownloadMode = when (this) {

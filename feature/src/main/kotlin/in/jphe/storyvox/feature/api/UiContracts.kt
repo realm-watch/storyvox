@@ -95,13 +95,31 @@ sealed class SetFollowedRemoteResult {
 sealed class UiAddByUrlResult {
     /** Resolved + persisted; UI navigates to the detail screen. */
     data class Success(val fictionId: String) : UiAddByUrlResult()
-    /** No source matched the input. */
+    /** No source matched the input. Post-#472 (Readability catch-all)
+     *  this is only seen for genuinely unparseable inputs — empty
+     *  strings, non-URL text. */
     data object UnrecognizedUrl : UiAddByUrlResult()
-    /** Recognised but not yet supported (GitHub today). */
+    /** Recognised but not yet supported (kept for completeness — every
+     *  registered plugin in v0.5.40 has a wired backend). */
     data class UnsupportedSource(val sourceId: String) : UiAddByUrlResult()
     /** Source-layer failure (network, 404, auth, rate-limit, ...). [message] is user-facing. */
     data class Error(val message: String) : UiAddByUrlResult()
+    /** Issue #472 — magic-link resolver matched two or more backends at
+     *  chooser-eligible confidence (≥0.5). UI shows a picker, then
+     *  re-invokes `addByUrl(url, preferredSourceId = picked)`. */
+    data class MultipleMatches(val candidates: List<UiRouteCandidate>) : UiAddByUrlResult()
 }
+
+/** UI-facing copy of a single route candidate from the magic-link
+ *  resolver (#472). Mirrors `RouteMatch` but doesn't depend on
+ *  `:core-data` types so the feature module stays at the boundary it
+ *  has today. */
+data class UiRouteCandidate(
+    val sourceId: String,
+    val fictionId: String,
+    val confidence: Float,
+    val label: String,
+)
 
 interface FictionRepositoryUi {
     val library: Flow<List<UiFiction>>
@@ -146,11 +164,28 @@ interface FictionRepositoryUi {
 
     /**
      * Resolve a pasted URL (or short form) to a fiction, persist it, and
-     * fetch detail. Implementation routes through `UrlRouter` + the
+     * fetch detail. Implementation routes through `UrlResolver` + the
      * multi-source map. Returns enough information for the sheet to
      * navigate on success or surface a useful message on failure.
+     *
+     * Issue #472 — when several backends claim the URL at chooser
+     * confidence (≥0.5), returns [UiAddByUrlResult.MultipleMatches]
+     * and the UI re-invokes with [preferredSourceId] = the user's
+     * picked source.
      */
-    suspend fun addByUrl(url: String): UiAddByUrlResult
+    suspend fun addByUrl(
+        url: String,
+        preferredSourceId: String? = null,
+    ): UiAddByUrlResult
+
+    /**
+     * Issue #472 — debounced preview helper for the Magic-add sheet.
+     * Returns ordered route candidates (highest-confidence first) for
+     * the partially-typed [url]. Pure-CPU, safe to call on every
+     * keystroke. Empty list = nothing parsed; the UI shows the empty
+     * state and waits.
+     */
+    fun previewUrl(url: String): List<UiRouteCandidate>
 }
 
 interface BrowseRepositoryUi {

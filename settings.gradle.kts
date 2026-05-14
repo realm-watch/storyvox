@@ -64,5 +64,10 @@ include(":source-hackernews")
 include(":source-arxiv")
 include(":source-plos")
 include(":source-discord")
+// Issue #472 — Readability4J catch-all for the magic-link paste flow.
+// Always-on, lowest-confidence match (0.1) so any HTTP(S) URL not
+// otherwise claimed by one of the 17 specialized backends still
+// produces a single-chapter "article" fiction. "No URL is a dead-end."
+include(":source-readability")
 include(":core-sync")
 include(":feature")
