@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.ripple
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Replay30
 import androidx.compose.material.icons.filled.Pause
@@ -118,10 +119,18 @@ fun AudiobookView(
      *  fictionId on the playback state, so callees can rely on it
      *  being a fully-routed navigation. */
     onOpenChat: () -> Unit = {},
-    /** Open the Settings screen. Surfaced as a leading gear icon in the
-     *  top bar so playback's per-screen Settings affordance matches the
-     *  other home screens (Library/Browse/Follows/Voices). */
+    /** Open the Settings screen. Kept on the surface for source-compat
+     *  with HybridReaderScreen's existing plumbing. The player's leading
+     *  gear icon was replaced by a Back arrow in v0.5.40 (#437) — see
+     *  [onBack]. Default no-op for previews / tests. */
     onOpenSettings: () -> Unit = {},
+    /** Issue #437 — pop the player back to whichever surface launched
+     *  it (FictionDetail, Library, Browse). Replaces the leading
+     *  Settings gear that TalkBack used to announce as "Settings" while
+     *  sighted users perceived it as a back arrow with the wrong label.
+     *  Default no-op for previews / tests; production callsites pass a
+     *  real `navController.popBackStack()`. */
+    onBack: () -> Unit = {},
     /** Issue #278 — loading-phase from the ReaderViewModel. Drives the
      *  soft "Still working…" hint at 10s and the hard timeout/retry
      *  error block at 30s. Defaults to NotLoading so previews / tests
@@ -222,11 +231,24 @@ fun AudiobookView(
                     .fillMaxWidth()
                     .padding(vertical = spacing.xs),
             ) {
+                // Issue #437 — leading top-bar icon was a Settings
+                // gear opening the Settings screen, but (a) TalkBack
+                // announced it as "Settings" while sighted users
+                // perceived it as a back arrow (only nav-shaped icon
+                // in the player's top strip), and (b) v0.5.39's nav
+                // restructure (#469) moved Settings into primary nav
+                // so the gear here is redundant. Swap for a Back
+                // arrow: the a11y label matches the icon's perceived
+                // shape and there's a fast escape from the player
+                // without reaching for the system Back button.
                 IconButton(
-                    onClick = onOpenSettings,
+                    onClick = onBack,
                     modifier = Modifier.align(Alignment.CenterStart),
                 ) {
-                    Icon(Icons.Outlined.Settings, contentDescription = "Settings")
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                    )
                 }
                 Column(
                     modifier = Modifier
