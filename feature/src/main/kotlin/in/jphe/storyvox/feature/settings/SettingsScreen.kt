@@ -786,7 +786,7 @@ fun SettingsScreen(
  * Spec § Settings UI surface, lines 384-395 of the design doc.
  */
 @Composable
-private fun GitHubSignInRow(
+internal fun GitHubSignInRow(
     state: UiGitHubAuthState,
     privateReposEnabled: Boolean,
     onSignIn: () -> Unit,
@@ -880,7 +880,7 @@ private fun GitHubSignInRow(
  * Spec: docs/superpowers/specs/2026-05-08-mempalace-integration-design.md.
  */
 @Composable
-private fun MemoryPalaceSection(
+internal fun MemoryPalaceSection(
     palace: UiPalaceConfig,
     probe: PalaceProbeResult?,
     probing: Boolean,
@@ -1254,7 +1254,7 @@ private fun AzureSection(
  *  becomes pathological even on flagship hardware.
  */
 @Composable
-private fun ParallelSynthSliders(
+internal fun ParallelSynthSliders(
     instances: Int,
     threadsPerInstance: Int,
     onInstancesChange: (Int) -> Unit,
@@ -1373,7 +1373,7 @@ private const val APPROX_BYTES_PER_CHUNK: Int = 110_000
  * crossed into experimental territory.
  */
 @Composable
-private fun BufferSlider(
+internal fun BufferSlider(
     chunks: Int,
     onChunksChange: (Int) -> Unit,
 ) {
@@ -1569,7 +1569,7 @@ private fun TickMarker(
  * precision for a perceptual knob.
  */
 @Composable
-private fun PunctuationPauseSlider(
+internal fun PunctuationPauseSlider(
     multiplier: Float,
     onMultiplierChange: (Float) -> Unit,
 ) {
@@ -1699,7 +1699,7 @@ private fun PunctuationPauseTickLabels(
  * overflow the parent edge.
  */
 @Composable
-private fun SliderTickLabels(
+internal fun SliderTickLabels(
     ticks: List<Pair<String, Float>>,
     /** Issue #261 — when non-null, tapping a tick label invokes the
      *  callback with the tick's index. The visible '▲' caret pointing
@@ -1815,7 +1815,7 @@ internal fun computeTickLabelX(
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun AiSection(
+internal fun AiSection(
     ai: UiAiSettings,
     probeOutcome: ProbeOutcome?,
     onSetProvider: (UiLlmProvider?) -> Unit,
@@ -3456,7 +3456,7 @@ private fun DiscordConfigRow(
  * would feel out of place on this surface.
  */
 @Composable
-private fun SettingsSkeleton(modifier: Modifier = Modifier) {
+internal fun SettingsSkeleton(modifier: Modifier = Modifier) {
     val spacing = LocalSpacing.current
     Column(
         modifier = modifier.verticalScroll(rememberScrollState()),
@@ -3540,7 +3540,7 @@ internal fun isV0500MilestoneBuild(versionName: String): Boolean {
  * dialog's tone — the brass details celebrate, not the copy.
  */
 @Composable
-private fun MilestoneBadgePill() {
+internal fun MilestoneBadgePill() {
     val spacing = LocalSpacing.current
     Box(
         modifier = Modifier

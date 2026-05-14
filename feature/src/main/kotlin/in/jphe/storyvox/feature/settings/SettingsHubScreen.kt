@@ -34,7 +34,8 @@ import `in`.jphe.storyvox.feature.settings.components.SectionHeading
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
 /**
- * Issue #440 — Settings hub screen.
+ * Issue #440 — Settings hub screen. Follow-up to #467 wired every
+ * named section to a dedicated subscreen.
  *
  * v0.5.36 wired the gear icon directly to [SettingsScreen], a 3,600-line
  * flat-scroll page that opened on the Voice & Playback section with no
@@ -43,20 +44,27 @@ import `in`.jphe.storyvox.ui.theme.LocalSpacing
  * "Voice & Playback" while the user scrolled through Reading, Performance,
  * AI, etc., so the title disagreed with what was actually on screen.
  *
- * This hub screen is the new gear-icon destination: a short list of
- * section cards, each carrying a one-line subtitle that previews its
- * contents and routes to either a dedicated subscreen
- * ([PluginManagerScreen][in.jphe.storyvox.feature.settings.plugins.PluginManagerScreen],
- * voice library, pronunciation dictionary, debug, AI sessions) or the
- * existing long [SettingsScreen] for sections that haven't been broken
- * out yet.
+ * The hub is the new gear-icon destination: a short list of section
+ * cards, each carrying a one-line subtitle that previews its
+ * contents and routes to a dedicated subscreen:
  *
- * The long [SettingsScreen] is intentionally preserved as a "Show all
- * Settings" landing for cards without a dedicated subscreen — splitting
- * every section into its own composable would be a much larger refactor
- * than #440's scope (the hub is the headline fix; the per-section
- * subscreens are a follow-up). A dedicated row on the hub points at
- * that long page explicitly so the affordance isn't lost.
+ *  - Voice & Playback → [VoiceAndPlaybackSettingsScreen]
+ *  - Voice library → [VoiceLibraryScreen][in.jphe.storyvox.feature.voicelibrary.VoiceLibraryScreen]
+ *  - Reading → [ReadingSettingsScreen]
+ *  - Performance → [PerformanceSettingsScreen]
+ *  - AI → [AiSettingsScreen]
+ *  - AI sessions → [SessionsScreen][in.jphe.storyvox.feature.sessions.SessionsScreen]
+ *  - Plugins → [PluginManagerScreen][in.jphe.storyvox.feature.settings.plugins.PluginManagerScreen]
+ *  - Pronunciation dictionary → [PronunciationDictScreen][in.jphe.storyvox.feature.settings.pronunciation.PronunciationDictScreen]
+ *  - Account → [AccountSettingsScreen]
+ *  - Memory Palace → [MemoryPalaceSettingsScreen]
+ *  - Developer → [DebugScreen][in.jphe.storyvox.feature.debug.DebugScreen]
+ *  - About → [AboutSettingsScreen]
+ *
+ * The long [SettingsScreen] is preserved as an "All settings" escape
+ * hatch for power users who want everything on one searchable page;
+ * a dedicated row at the bottom of the hub routes there explicitly
+ * so the affordance isn't lost.
  *
  * ## Section row order
  *
@@ -65,13 +73,13 @@ import `in`.jphe.storyvox.ui.theme.LocalSpacing
  *
  * 1. Voice & Playback — voice, speed, cadence, pitch.
  * 2. Voice library — dedicated subscreen.
- * 3. Reading — auto-advance, sleep timer, reader pause-resume.
+ * 3. Reading — theme, sleep timer.
  * 4. Performance — buffering, parallel synth, decoder choice.
  * 5. AI — chat model, grounding, recap.
  * 6. AI sessions — dedicated subscreen.
  * 7. Plugins — registry-driven plugin manager (#404 surface).
  * 8. Pronunciation dictionary — dedicated subscreen.
- * 9. Account — Royal Road / GitHub / Anthropic Teams sign-ins.
+ * 9. Account — Royal Road / GitHub sign-ins.
  * 10. Memory Palace — daemon host config + probe.
  * 11. Developer — Debug screen + advanced toggles.
  * 12. About — version sigil + open-source notices.
@@ -87,6 +95,13 @@ fun SettingsHubScreen(
     onOpenAiSessions: () -> Unit,
     onOpenPronunciationDict: () -> Unit,
     onOpenDebug: () -> Unit,
+    onOpenVoicePlayback: () -> Unit,
+    onOpenReading: () -> Unit,
+    onOpenPerformance: () -> Unit,
+    onOpenAi: () -> Unit,
+    onOpenAccount: () -> Unit,
+    onOpenMemoryPalace: () -> Unit,
+    onOpenAbout: () -> Unit,
 ) {
     val spacing = LocalSpacing.current
     Scaffold(
@@ -128,7 +143,7 @@ fun SettingsHubScreen(
                     icon = Icons.Outlined.RecordVoiceOver,
                     title = "Voice & Playback",
                     subtitle = "Voice, speed, cadence, pitch.",
-                    onClick = onOpenAllSettings,
+                    onClick = onOpenVoicePlayback,
                 )
                 // Voice library — dedicated subscreen.
                 SettingsHubRow(
@@ -140,20 +155,20 @@ fun SettingsHubScreen(
                 SettingsHubRow(
                     icon = Icons.AutoMirrored.Outlined.MenuBook,
                     title = "Reading",
-                    subtitle = "Auto-advance, sleep timer, resume policy.",
-                    onClick = onOpenAllSettings,
+                    subtitle = "Theme, sleep timer.",
+                    onClick = onOpenReading,
                 )
                 SettingsHubRow(
                     icon = Icons.Outlined.Speed,
                     title = "Performance",
                     subtitle = "Buffer, parallel synth, decoder choice.",
-                    onClick = onOpenAllSettings,
+                    onClick = onOpenPerformance,
                 )
                 SettingsHubRow(
                     icon = Icons.Outlined.AutoAwesome,
                     title = "AI",
                     subtitle = "Chat model, grounding, recap.",
-                    onClick = onOpenAllSettings,
+                    onClick = onOpenAi,
                 )
                 SettingsHubRow(
                     icon = Icons.Outlined.AutoStories,
@@ -178,14 +193,14 @@ fun SettingsHubScreen(
                 SettingsHubRow(
                     icon = Icons.Outlined.AccountCircle,
                     title = "Account",
-                    subtitle = "Royal Road, GitHub, Anthropic Teams.",
-                    onClick = onOpenAllSettings,
+                    subtitle = "Royal Road, GitHub.",
+                    onClick = onOpenAccount,
                 )
                 SettingsHubRow(
                     icon = Icons.Outlined.Cloud,
                     title = "Memory Palace",
                     subtitle = "Daemon host, probe, integration.",
-                    onClick = onOpenAllSettings,
+                    onClick = onOpenMemoryPalace,
                 )
                 SettingsHubRow(
                     icon = Icons.Outlined.BugReport,
@@ -197,7 +212,7 @@ fun SettingsHubScreen(
                     icon = Icons.Outlined.Info,
                     title = "About",
                     subtitle = "Version, sigil, open-source notices.",
-                    onClick = onOpenAllSettings,
+                    onClick = onOpenAbout,
                 )
                 // Escape hatch — the legacy flat-scroll SettingsScreen
                 // still works; users who want the old experience reach
@@ -268,13 +283,13 @@ data class SettingsHubSection(val title: String, val subtitle: String)
 val SettingsHubSections: List<SettingsHubSection> = listOf(
     SettingsHubSection("Voice & Playback", "Voice, speed, cadence, pitch."),
     SettingsHubSection("Voice library", "Pick a voice and hear samples."),
-    SettingsHubSection("Reading", "Auto-advance, sleep timer, resume policy."),
+    SettingsHubSection("Reading", "Theme, sleep timer."),
     SettingsHubSection("Performance", "Buffer, parallel synth, decoder choice."),
     SettingsHubSection("AI", "Chat model, grounding, recap."),
     SettingsHubSection("AI sessions", "Review past chats and delete history."),
     SettingsHubSection("Plugins", "Toggle backends — Fiction, Audio streams, Voice bundles."),
     SettingsHubSection("Pronunciation dictionary", "Per-word phonetic overrides."),
-    SettingsHubSection("Account", "Royal Road, GitHub, Anthropic Teams."),
+    SettingsHubSection("Account", "Royal Road, GitHub."),
     SettingsHubSection("Memory Palace", "Daemon host, probe, integration."),
     SettingsHubSection("Developer", "Debug overlay, log ring, advanced toggles."),
     SettingsHubSection("About", "Version, sigil, open-source notices."),
