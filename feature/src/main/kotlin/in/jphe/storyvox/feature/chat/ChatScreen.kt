@@ -56,6 +56,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -330,6 +332,9 @@ private fun ReadAloudButton(
     }
     androidx.compose.material3.TextButton(
         onClick = onClick,
+        modifier = Modifier.semantics(mergeDescendants = true) {
+            contentDescription = label
+        },
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
             horizontal = 8.dp, vertical = 0.dp,
         ),
@@ -443,6 +448,9 @@ private fun ToolCallCard(event: ToolCallEvent) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                contentDescription = statusText
+            }
             .border(BorderStroke(1.dp, borderColor), RoundedCornerShape(8.dp))
             .background(
                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),

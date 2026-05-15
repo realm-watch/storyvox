@@ -40,6 +40,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -160,6 +162,9 @@ fun SettingsRow(
         .fillMaxWidth()
         .heightIn(min = 64.dp)
         .let { m -> if (onClick != null) m.clickable(role = Role.Button, onClick = onClick) else m }
+        .semantics(mergeDescendants = true) {
+            contentDescription = listOfNotNull(title, subtitle).joinToString(", ")
+        }
         .padding(horizontal = spacing.md, vertical = spacing.sm)
 
     Row(
