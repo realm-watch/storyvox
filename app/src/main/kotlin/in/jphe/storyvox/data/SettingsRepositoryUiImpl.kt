@@ -632,6 +632,19 @@ private object Keys {
     /** Stored as the [ReadingDirection] enum's name. Unknown values
      *  fall back to [ReadingDirection.FollowSystem] on read. */
     val A11Y_READING_DIRECTION = stringPreferencesKey("pref_a11y_reading_direction")
+
+    /**
+     * Accessibility scaffold Phase 2 (#488, v0.5.43) — one-shot
+     * dismissal flag for the TalkBack-install nudge surfaced in the
+     * Settings → Accessibility subscreen when the user touches a
+     * screen-reader-related row but Android isn't reporting an
+     * active TalkBack service.
+     *
+     * Default `false` — every install sees the card once until the
+     * user dismisses it. Phase 2 doesn't surface the card outside
+     * the Accessibility subscreen.
+     */
+    val A11Y_TALKBACK_NUDGE_DISMISSED = booleanPreferencesKey("pref_a11y_talkback_nudge_dismissed")
 }
 
 /** Issue #195 — flat string codec for `Map<voiceId, Float>` overrides.
@@ -1004,6 +1017,7 @@ class SettingsRepositoryUiImpl(
             a11yReadingDirection = prefs[Keys.A11Y_READING_DIRECTION]
                 ?.let { runCatching { ReadingDirection.valueOf(it) }.getOrNull() }
                 ?: ReadingDirection.FollowSystem,
+            a11yTalkBackNudgeDismissed = prefs[Keys.A11Y_TALKBACK_NUDGE_DISMISSED] ?: false,
         )
     }
 
@@ -1683,6 +1697,18 @@ class SettingsRepositoryUiImpl(
     override suspend fun setA11yReadingDirection(direction: ReadingDirection) {
         store.edit { it[Keys.A11Y_READING_DIRECTION] = direction.name }
         stampSyncedWrite()
+    }
+
+    override suspend fun setA11yTalkBackNudgeDismissed(dismissed: Boolean) {
+        // #488 — one-way flip. The TalkBack nudge is a one-shot
+        // affordance, so the setter is named "dismissed" rather than
+        // "show" to make the call sites self-documenting at the use
+        // site (`setA11yTalkBackNudgeDismissed(true)` reads as "user
+        // dismissed the card").
+        store.edit { it[Keys.A11Y_TALKBACK_NUDGE_DISMISSED] = dismissed }
+        // Deliberately NOT stamped via [stampSyncedWrite]: nudge
+        // dismissal is per-install UX state and doesn't need to
+        // sync across the user's devices.
     }
 
     // ── Azure Speech Services BYOK (#182, PR-3) ────────────────────

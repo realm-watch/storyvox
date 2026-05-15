@@ -1,17 +1,32 @@
 package `in`.jphe.storyvox.feature.settings
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import `in`.jphe.storyvox.feature.api.ReadingDirection
@@ -71,6 +86,7 @@ fun AccessibilitySettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val isTalkBackActive by viewModel.isTalkBackActive.collectAsStateWithLifecycle()
     val spacing = LocalSpacing.current
     val uriHandler = LocalUriHandler.current
 
@@ -80,6 +96,22 @@ fun AccessibilitySettingsScreen(
             return@SettingsSubscreenScaffold
         }
         SettingsSubscreenBody(padding) {
+            // #488 Phase 2 — TalkBack-install nudge. Surfaces a brass-
+            // edged card when TalkBack isn't reported as active by the
+            // AccessibilityStateBridge but the user is browsing the
+            // Accessibility subscreen (so they almost certainly care).
+            // Dismissal persists forever via [a11yTalkBackNudgeDismissed].
+            //
+            // The audit (#488) found that on the dev tablet (R83W80CAFZB)
+            // TalkBack ships from a Samsung-fork or has to be installed
+            // from Play Store; without it, the screen-reader prefs on
+            // this page are inert. The nudge points the user at the
+            // OS-level toggle so they understand the dependency.
+            if (!isTalkBackActive && !s.a11yTalkBackNudgeDismissed) {
+                TalkBackInstallNudge(onDismiss = {
+                    viewModel.setA11yTalkBackNudgeDismissed(true)
+                })
+            }
             SettingsGroupCard {
                 // 1. High contrast theme — Phase 2 swaps Library
                 //    Nocturne for a higher-contrast variant. Auto-on
@@ -250,14 +282,112 @@ fun AccessibilitySettingsScreen(
                 )
             }
 
-            // Phase 2 hook — a Phase 2 agent that wants to render the
-            // "auto-detected" state (e.g. a brass note that says
-            // "TalkBack is active") will collect from
-            // [AccessibilityStateBridge.state] and render here. Phase 1
-            // doesn't surface live state in the UI; the bridge data is
-            // available via Hilt to any Phase 2 consumer that wants it.
-            @Suppress("UnusedExpression")
-            Unit  // placeholder anchor for the Phase 2 live-state row
+            // #486 Phase 2 — live state indicator. When TalkBack is
+            // active we surface a brass-edged note so the user knows
+            // the subscreen's screen-reader-related toggles are
+            // currently taking effect. The note replaces the install
+            // nudge above (the two are mutually exclusive).
+            if (isTalkBackActive) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = spacing.xs),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+                    ),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(spacing.md),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.RecordVoiceOver,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                        Text(
+                            text = "TalkBack is active. The screen-reader-related " +
+                                "settings on this page are taking effect right now.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * #488 Phase 2 — brass-edged dismissible card surfaced inside the
+ * Accessibility subscreen when TalkBack isn't reported as active.
+ *
+ * The card points the user at the OS-level Settings → Accessibility
+ * toggle since the screen-reader-related prefs on this subscreen are
+ * inert outside an active screen-reader session. Dismissal persists
+ * via [`UiSettings.a11yTalkBackNudgeDismissed`].
+ */
+@Composable
+private fun TalkBackInstallNudge(
+    onDismiss: () -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = spacing.sm),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
+        ),
+    ) {
+        Column(modifier = Modifier.padding(spacing.md)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.RecordVoiceOver,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f))
+                        .padding(spacing.xs),
+                )
+                Text(
+                    text = "TalkBack isn't running",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Text(
+                text = "The screen-reader-related settings below activate when you " +
+                    "turn on TalkBack in Android Settings → Accessibility. Some " +
+                    "devices ship with TalkBack pre-installed; on others you'll " +
+                    "need to install Android Accessibility Suite from the Play Store.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = spacing.xs),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = spacing.xs),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                TextButton(onClick = onDismiss) {
+                    Text("Got it")
+                }
+            }
         }
     }
 }

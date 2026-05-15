@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -61,7 +62,28 @@ class SettingsViewModel @Inject constructor(
     private val repo: SettingsRepositoryUi,
     private val voices: VoiceProviderUi,
     private val llm: LlmRepository,
+    /**
+     * Accessibility scaffold Phase 2 (#488) — live snapshot of which
+     * assistive services Android reports as active. Used by the
+     * Accessibility subscreen to decide whether to surface the
+     * "TalkBack isn't running" install nudge.
+     *
+     * Default uses [AccessibilityStateBridge]'s base interface impl
+     * (which emits an empty/all-false [AccessibilityState]); test
+     * harnesses that don't care about a11y rely on this default so
+     * they don't have to pass a fake bridge.
+     */
+    private val accessibilityStateBridge: AccessibilityStateBridge = object : AccessibilityStateBridge {},
 ) : ViewModel() {
+
+    /**
+     * #488 — derived state for the Accessibility subscreen: TalkBack
+     * is reported as active right now. Used by the install-nudge
+     * card alongside `UiSettings.a11yTalkBackNudgeDismissed`.
+     */
+    val isTalkBackActive: StateFlow<Boolean> = accessibilityStateBridge.state
+        .map { it.isTalkBackActive }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private val palaceProbe = MutableStateFlow<PalaceProbeResult?>(null)
     private val palaceProbing = MutableStateFlow(false)
@@ -446,6 +468,14 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repo.setA11yFontScaleOverride(scale) }
     fun setA11yReadingDirection(direction: ReadingDirection) =
         viewModelScope.launch { repo.setA11yReadingDirection(direction) }
+    /**
+     * Accessibility scaffold Phase 2 (#488) — one-shot TalkBack
+     * install-nudge dismissal. The Accessibility subscreen surfaces a
+     * dismissible card when TalkBack isn't running; tapping the
+     * dismiss button flips this flag forever for this install.
+     */
+    fun setA11yTalkBackNudgeDismissed(dismissed: Boolean) =
+        viewModelScope.launch { repo.setA11yTalkBackNudgeDismissed(dismissed) }
 }
 
 /** Map the feature-layer enum to the :core-llm enum. The two are
