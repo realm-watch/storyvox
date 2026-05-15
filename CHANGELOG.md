@@ -9,6 +9,19 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.44] — 2026-05-14
+
+### Performance — partial close of #409
+
+- **Three deferred-init fixes shave ~185 ms off Tab A7 Lite cold launch** (#494, partial close [#409](https://github.com/techempower-org/storyvox/issues/409)). Tablet 6714 ms → 6529 ms (-2.8%), Z Flip3 1342 ms → 1201 ms (-10.5%) measured via Macrobenchmark at `StartupMode.COLD`, median of 10 / 5 iterations.
+- **VoxSherpa engine-bridge seeds deferred** (~100 ms tablet) — `applyPitchQualityFromSettings` + `applyPerVoiceEngineKnobsFromSettings` moved from `StoryvoxApp.onCreate` to a `Choreographer.postFrameCallback` chain in `MainActivity`. Verified: `libsherpa-onnx-jni.so` now `dlopen`s ~250 ms *after* the "Displayed" event instead of before. The engine's `Sonic` instance still doesn't construct until the first audio-buffer request, so seed always completes before any in-flight render — no behaviour change.
+- **AccessibilityStateBridge eager-stateIn'd** (~30 ms tablet) — replaced the v0.5.43 cold `callbackFlow` exposure with a hot `StateFlow` built via `stateIn(scope = IO, started = Eagerly, initialValue = AccessibilityState())`. Activity-injected bridge wrapped in `Lazy<>`. Drops the `getEnabledAccessibilityServiceList` binder hop off the Compose Main-dispatcher first-composition path. Mid-session TalkBack changes still fire correctly.
+- **Data-layer warm-up** (negligible measured, kept anyway) — `warmDataLayer()` in `StoryvoxApp.onCreate` kicks off `Lazy<StoryvoxDatabase>.get()` + Fiction/Shelf/PlaybackPosition repos on IO. Race-loss-safe because it shares Hilt's `DoubleCheck` cache with the foreground path. Foundation for the next bigger lift.
+
+### Deferred (the real wins are next)
+- **Baseline Profile generation** (estimated ~1.5–2.5 s tablet win) — agent in flight, lands as v0.5.45. The 4.7-second "Skipped 219 frames" first-composition pass on this CPU is Compose + Hilt graph construction on the debug-flavor (non-AOT) classpath; AOT-compiling the hot paths at install time is the surgical fix.
+- **R8 minification** (estimated ~15–25% win) — currently `isMinifyEnabled = false`, queued for JP design call (reflection-heavy modules need a proguard-rules audit before flipping it on).
+
 ## [0.5.43] — 2026-05-14
 
 ### Added — Accessibility Phase 2: everything from the audit, wired
