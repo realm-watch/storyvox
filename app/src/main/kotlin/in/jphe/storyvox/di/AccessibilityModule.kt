@@ -11,11 +11,20 @@ import dagger.hilt.components.SingletonComponent
 import `in`.jphe.storyvox.feature.settings.AccessibilityState
 import `in`.jphe.storyvox.feature.settings.AccessibilityStateBridge
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
  * Accessibility scaffold (Phase 1, v0.5.42) — Hilt bindings for the
@@ -80,7 +89,31 @@ internal class RealAccessibilityStateBridge(
     private val accessibilityManager: AccessibilityManager =
         context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
 
-    override val state: Flow<AccessibilityState> = callbackFlow {
+    /**
+     * Issue #409 — bridge scope owns the listener subscription so the
+     * first frame doesn't pay for `getEnabledAccessibilityServiceList`
+     * (a binder call into system_server). v0.5.43's MainActivity wraps
+     * this bridge's flow in `flow { emitAll(state) }.collectAsState(...)`,
+     * which made the upstream `callbackFlow`'s `trySend(readSnapshot())`
+     * fire on the Compose Main dispatcher during the first composition.
+     * Samsung tablets with vendor a11y services (Voice Assistant, etc.)
+     * route that binder call through several listeners and the round-
+     * trip on the Helio P22T is roughly 250-400 ms — well into the
+     * "first frame is jank" budget.
+     *
+     * Switching to a hot [StateFlow] backed by an IO-dispatched
+     * SharingStarted.Eagerly subscription means:
+     *  - The initial snapshot is computed on Dispatchers.IO at provider
+     *    construction time (Hilt singleton scope; runs immediately
+     *    after Hilt builds the graph, but on IO not Main).
+     *  - Subsequent collectors get the cached value synchronously and
+     *    never re-run `readSnapshot()` on their own thread.
+     *  - The AccessibilityManager listener still re-emits on change,
+     *    just on IO via the bridge scope.
+     */
+    private val bridgeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    override val state: StateFlow<AccessibilityState> = callbackFlow {
         // Seed the flow with the current snapshot — consumers don't
         // have to wait for the first listener fire (which only
         // happens on actual change) before getting a value.
@@ -100,6 +133,18 @@ internal class RealAccessibilityStateBridge(
     }
         .onStart { /* no-op anchor for Phase 2 consumers to layer on */ }
         .distinctUntilChanged()
+        // Issue #409 — keep the upstream subscription alive across all
+        // consumers so `trySend(readSnapshot())` runs exactly once on
+        // bridge construction (on Dispatchers.IO via [bridgeScope]),
+        // not once per composer re-collect on the Main dispatcher.
+        // `Eagerly` means the snapshot is computed at provider-build
+        // time; the all-false [AccessibilityState] default keeps the
+        // first frame on a known-safe path until the real read lands.
+        .stateIn(
+            scope = bridgeScope,
+            started = SharingStarted.Eagerly,
+            initialValue = AccessibilityState(),
+        )
 
     private fun readSnapshot(): AccessibilityState {
         val enabledServices = accessibilityManager
