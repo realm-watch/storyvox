@@ -308,6 +308,7 @@ private class FakeSettings : SettingsRepositoryUi {
     override suspend fun setPlaybackBufferChunks(chunks: Int) = Unit
     override suspend fun setWarmupWait(enabled: Boolean) = Unit
     override suspend fun setCatchupPause(enabled: Boolean) = Unit
+    override suspend fun setFullPrerender(enabled: Boolean) = Unit
     override suspend fun setVoiceSteady(enabled: Boolean) = Unit
     override suspend fun signIn() = Unit
     override suspend fun signOut() = Unit

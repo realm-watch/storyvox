@@ -214,6 +214,9 @@ class SettingsViewModelModesTest {
             catchupPauseWrites += enabled
             state.value = state.value.copy(catchupPause = enabled)
         }
+        override suspend fun setFullPrerender(enabled: Boolean) {
+            state.value = state.value.copy(fullPrerender = enabled)
+        }
         override suspend fun setVoiceSteady(enabled: Boolean) {
             voiceSteadyWrites += enabled
             state.value = state.value.copy(voiceSteady = enabled)

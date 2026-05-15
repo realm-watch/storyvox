@@ -43,9 +43,11 @@ import `in`.jphe.storyvox.playback.SPEED_BASELINE_CHARS_PER_SECOND
 import `in`.jphe.storyvox.playback.SentenceRange
 import `in`.jphe.storyvox.playback.SleepTimer
 import `in`.jphe.storyvox.playback.TtsVolumeRamp
+import `in`.jphe.storyvox.playback.cache.EngineMutex
 import `in`.jphe.storyvox.playback.cache.PcmAppender
 import `in`.jphe.storyvox.playback.cache.PcmCache
 import `in`.jphe.storyvox.playback.cache.PcmCacheKey
+import `in`.jphe.storyvox.playback.cache.PrerenderTriggers
 import `in`.jphe.storyvox.playback.tts.source.CacheFileSource
 import `in`.jphe.storyvox.playback.tts.source.EngineStreamingSource
 import `in`.jphe.storyvox.playback.tts.source.PcmSource
@@ -153,6 +155,20 @@ class EnginePlayer @AssistedInject constructor(
      *  pipeline-construction time, so it owns key construction here.
      *  The cache itself is a `@Singleton` injected by Hilt. */
     private val pcmCache: PcmCache,
+    /** PR-F (#86) — process-wide engine mutex hoisted to a `@Singleton`
+     *  so the background [`in`.jphe.storyvox.playback.cache.ChapterRenderJob]
+     *  worker takes the SAME instance the foreground player uses.
+     *  Without sharing, a worker render could call `generateAudioPCM`
+     *  concurrent with `loadAndPlay`'s `loadModel` — the issue #11
+     *  SIGSEGV race. */
+    private val engineMutexHolder: EngineMutex,
+    /** PR-F (#86) — chapter-natural-end trigger source. The streaming
+     *  pipeline's consumer thread calls [handleChapterDone] when the
+     *  end-of-stream pill arrives; that path forwards to
+     *  [PrerenderTriggers.onChapterCompleted] so the scheduler enqueues
+     *  the N+2 render (N+1 was scheduled when N started or is already
+     *  in flight). */
+    private val prerenderTriggers: PrerenderTriggers,
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
 
     @AssistedFactory
@@ -661,8 +677,15 @@ class EnginePlayer @AssistedInject constructor(
      *  fires at suspension points — a JNI call already in flight runs to
      *  completion. Without this mutex, the new pipeline's generator can call
      *  the engine *while the old one is still inside it*, corrupting the
-     *  internal state and producing garbled PCM. */
-    private val engineMutex = Mutex()
+     *  internal state and producing garbled PCM.
+     *
+     *  PR-F (#86) — was a private `Mutex()` here pre-PR-F; hoisted to a
+     *  Hilt `@Singleton` so the background [`in`.jphe.storyvox.playback.cache.ChapterRenderJob]
+     *  shares the same instance. Implementation is unchanged — the same
+     *  `kotlinx.coroutines.sync.Mutex`, same `withLock` callsites — just
+     *  read through the holder so production + background workers see
+     *  the same lock. */
+    private val engineMutex: Mutex get() = engineMutexHolder.mutex
 
     private val _observableState = MutableStateFlow(PlaybackState())
     val observableState: StateFlow<PlaybackState> = _observableState.asStateFlow()
@@ -2081,6 +2104,15 @@ class EnginePlayer @AssistedInject constructor(
         val fictionId = _observableState.value.currentFictionId
         persistPosition()
         if (chapterId != null) chapterRepo.markChapterPlayed(chapterId)
+        // PR-F (#86) — schedule chapter N+2's background render. N+1 is
+        // either already cached, in flight as the previous chapter-done
+        // trigger's enqueue, or about to be teed by PR-D as the user
+        // taps Next. Wrapped in runCatching so a scheduler hiccup
+        // doesn't block the natural-end flow (advanceChapter, history
+        // marker, ChapterDone event).
+        if (chapterId != null) {
+            runCatching { prerenderTriggers.onChapterCompleted(chapterId) }
+        }
         // Issue #158 — piggyback the History `completed` flag on the
         // existing end-of-chapter event. Mirrors `markChapterPlayed`
         // above; both fire on the same trigger (chapter naturally

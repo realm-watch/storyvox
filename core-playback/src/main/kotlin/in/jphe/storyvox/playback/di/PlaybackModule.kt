@@ -10,6 +10,8 @@ import `in`.jphe.storyvox.playback.PlaybackController
 import `in`.jphe.storyvox.playback.SleepTimer
 import `in`.jphe.storyvox.playback.TtsVolumeRamp
 import `in`.jphe.storyvox.playback.VolumeRamp
+import `in`.jphe.storyvox.playback.cache.PcmRenderScheduler
+import `in`.jphe.storyvox.playback.cache.WorkManagerPcmRenderScheduler
 import javax.inject.Singleton
 
 @Module
@@ -23,6 +25,13 @@ abstract class PlaybackModule {
     @Binds
     @Singleton
     abstract fun bindVolumeRamp(impl: TtsVolumeRamp): VolumeRamp
+
+    /** PR-F (#86) — background PCM cache pre-render scheduler. */
+    @Binds
+    @Singleton
+    abstract fun bindPcmRenderScheduler(
+        impl: WorkManagerPcmRenderScheduler,
+    ): PcmRenderScheduler
 
     companion object {
         @Provides
