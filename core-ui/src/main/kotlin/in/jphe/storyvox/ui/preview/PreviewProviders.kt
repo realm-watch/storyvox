@@ -54,10 +54,33 @@ object SampleData {
     )
 
     val chapters: List<ChapterCardState> = listOf(
-        ChapterCardState(1, "Apocalypse: Lost", "2 days ago", "12 min", isDownloaded = true, isFinished = true, isCurrent = false),
-        ChapterCardState(2, "First Light", "2 days ago", "18 min", isDownloaded = true, isFinished = true, isCurrent = false),
-        ChapterCardState(3, "Strangers in the Inn", "1 day ago", "22 min", isDownloaded = true, isFinished = false, isCurrent = true),
-        ChapterCardState(4, "The Goblin Problem", "5 hours ago", "16 min", isDownloaded = false, isFinished = false, isCurrent = false),
+        // PR-H (#86) — preview pane shows all three cache states so the
+        // design-time @Preview reflects what the real screen will look
+        // like once the inspector flow lands per-chapter values:
+        //  - chapter 1: Complete (solid lightning bolt)
+        //  - chapter 2: Complete + Finished (badge + checkmark)
+        //  - chapter 3: Partial (pulsing hourglass — current chapter)
+        //  - chapter 4: None (no badge — the pre-PR-H look)
+        ChapterCardState(
+            1, "Apocalypse: Lost", "2 days ago", "12 min",
+            isDownloaded = true, isFinished = true, isCurrent = false,
+            cacheState = `in`.jphe.storyvox.playback.cache.ChapterCacheState.Complete,
+        ),
+        ChapterCardState(
+            2, "First Light", "2 days ago", "18 min",
+            isDownloaded = true, isFinished = true, isCurrent = false,
+            cacheState = `in`.jphe.storyvox.playback.cache.ChapterCacheState.Complete,
+        ),
+        ChapterCardState(
+            3, "Strangers in the Inn", "1 day ago", "22 min",
+            isDownloaded = true, isFinished = false, isCurrent = true,
+            cacheState = `in`.jphe.storyvox.playback.cache.ChapterCacheState.Partial,
+        ),
+        ChapterCardState(
+            4, "The Goblin Problem", "5 hours ago", "16 min",
+            isDownloaded = false, isFinished = false, isCurrent = false,
+            cacheState = `in`.jphe.storyvox.playback.cache.ChapterCacheState.None,
+        ),
     )
 
     const val SAMPLE_CHAPTER_TEXT: String = (
