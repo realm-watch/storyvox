@@ -326,6 +326,18 @@ image: /screenshots/03-reader.png
       <figcaption>Library — TechEmpower hero card on top, currently-listening with progress + smart resume below, four-tab dock <code>{Playing · Library · Voices · Settings}</code> anchored at the bottom.</figcaption>
     </figure>
     <figure>
+      <dark-image src-dark="screenshots/08-techempower-home.png" src-light="screenshots/08-techempower-home-light.png" alt="TechEmpower Home">
+        <img src="screenshots/08-techempower-home.png" alt="TechEmpower Home" loading="lazy" />
+      </dark-image>
+      <figcaption>TechEmpower Home — peer-support Discord, dial 211, Browse the resource library, About TechEmpower (v0.5.51).</figcaption>
+    </figure>
+    <figure>
+      <dark-image src-dark="screenshots/09-accessibility-settings.png" src-light="screenshots/09-accessibility-settings-light.png" alt="Accessibility settings">
+        <img src="screenshots/09-accessibility-settings.png" alt="Accessibility settings" loading="lazy" />
+      </dark-image>
+      <figcaption>Accessibility — high contrast, reduced motion, larger touch targets, screen-reader pauses, font scale override (v0.5.43).</figcaption>
+    </figure>
+    <figure>
       <dark-image src-dark="screenshots/06-filter-dark.png" src-light="screenshots/06-filter.png" alt="Royal Road filter sheet">
         <img src="screenshots/06-filter-dark.png" alt="Royal Road filter sheet" loading="lazy" />
       </dark-image>
