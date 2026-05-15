@@ -9,6 +9,29 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.45] — 2026-05-14
+
+### Performance — Baseline Profile + R8 minification
+
+- **R8 minification ON for the shipped build** (#496, partial close [#409](https://github.com/techempower-org/storyvox/issues/409)). `isMinifyEnabled = true` on the `debug` build type (which IS the shipped artifact today). **DEX bytecode shrinks 87.0 MB → 23.3 MB (-73.3%) uncompressed**; the 30+ pre-R8 dex files collapse to 2. APK on-disk only drops ~1.6 KB because ~95 MB of the APK is native `.so` files (libonnxruntime + libsherpa-onnx across 4 ABIs) that R8 can't touch. APK uncompressed total: 199.9 MB → 136.2 MB (-31.9%). Comprehensive `app/proguard-rules.pro` keeps every reflection surface load-bearing: the KSP-generated `in.jphe.storyvox.plugin.generated.**` package (without this, all 18 source plugins silently drop), `kotlinx.serialization` umbrella, Hilt + Room belt-and-suspenders, Jsoup/OkHttp `-dontwarn`. Manual tablet verification: cold launch + all 18 chips + Notion/HN/Royal Road/Telegram fiction detail open + zero FATAL/SerializationException entries in logcat.
+
+- **Baseline Profile generated + bundled** (#495, partial close #409). New `:baselineprofile` Gradle module + `BaselineProfileGenerator` instrumented test that walks the cold-launch hot path: LAUNCHER → Library (default landing) → Browse (Notion chip default-selected post-`9370b39`) → Settings hub → first fiction → Reader. 3 iterations, captured into `app/src/main/generated/baselineProfiles/baseline-prof.txt` (3265 storyvox-specific entries). Refresh manually with `./gradlew :app:generateBaselineProfile` (~5 min on the tablet); NOT on the critical-path CI build. **Measured -33.6% (1965 ms → 1304 ms) cold launch on the `nonMinifiedRelease` variant** during macro-benchmark capture.
+
+### ⚠️ The BP cold-launch win is dormant on the shipped APK
+
+ProfileInstaller only AOT-compiles bundled profiles on **non-debuggable** APKs. Today the shipped `debug` build type still has `isDebuggable = true` (default), so the profile bundles but doesn't activate at install time. The 4.5-second latent win (Skipped 219 frames on first composition) stays unrealized until **one of**:
+
+- (a) `isDebuggable = false` flips on the `debug` build type (one-line change; trades local Studio debugger attach for the cold-launch win), **OR**
+- (b) storyvox grows a real release flavor (#16, queued v1.0 prerequisite) and CI ships that.
+
+This is a JP design call. The infrastructure (BP profile + R8 rules + benchmark build type) is fully wired ahead of either path.
+
+### Under the hood
+- New `benchmark` build type — non-debuggable, no R8, debug-signed. Used by the BaselineProfile producer's `nonMinifiedRelease` variant to measure honest "with profile" / "without profile" deltas. Not shipped.
+- `release` build type now has R8 on + the same single-keystore reuse (forward-looking placeholder for #16).
+- Required `androidx.benchmark:macro` 1.4.1 — 1.3.4 chokes on Android 14's new `pm dump-profiles` stdout prefix on the Tab A7 Lite.
+- Most-likely-to-bite-future-devs: the `in.jphe.storyvox.plugin.generated.**` proguard keep is load-bearing. Drop it and Browse goes blank with no compile error. Documented at the top of `app/proguard-rules.pro`.
+
 ## [0.5.44] — 2026-05-14
 
 ### Performance — partial close of #409
