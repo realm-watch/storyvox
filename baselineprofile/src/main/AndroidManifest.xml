@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Issue #409 — Baseline Profile producer manifest.
+    `com.android.test` modules don't declare an <application> element;
+    the test APK runs against a separate target APK (`:app`,
+    `in.jphe.storyvox`) via UI Automator. AGP fills in the runner /
+    instrumentation entries from defaultConfig.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

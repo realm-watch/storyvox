@@ -76,3 +76,13 @@ include(":source-telegram")
 include(":source-readability")
 include(":core-sync")
 include(":feature")
+// Issue #409 — Baseline Profile producer module. Pure test APK
+// (`com.android.test` + `androidx.baselineprofile`) that drives a
+// hot-path walk through :app via UI Automator and emits a `.txt`
+// profile that the AndroidX Baseline Profile Gradle plugin wires
+// back into `app/src/main/baseline-prof.txt`. Not in CI's default
+// critical-path (instrumented test, needs a connected device);
+// regenerated on tag pushes or when the nav graph changes
+// materially. See baselineprofile/README-style docstring at the top
+// of `baselineprofile/build.gradle.kts` for the run command.
+include(":baselineprofile")
