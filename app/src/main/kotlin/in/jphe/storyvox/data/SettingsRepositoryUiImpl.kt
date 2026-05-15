@@ -636,6 +636,15 @@ private object Keys {
     val INBOX_NOTIFY_KVMR = booleanPreferencesKey("pref_inbox_notify_kvmr")
     val INBOX_NOTIFY_WIKIPEDIA = booleanPreferencesKey("pref_inbox_notify_wikipedia")
 
+    // ── InstantDB magical sign-in onboarding (issue #500) ──────────
+    /** Has the user seen and dismissed (or completed) the first-launch
+     *  InstantDB sync onboarding card mounted after the
+     *  VoicePickerGate? One-way flag — once flipped to true it never
+     *  resets for the life of this install, so the card never re-
+     *  prompts. The issue explicitly requires "Skip is fully respected
+     *  — never re-prompt this flow." */
+    val SYNC_ONBOARDING_DISMISSED = booleanPreferencesKey("pref_sync_onboarding_dismissed")
+
     // ── Accessibility scaffold (Phase 1, v0.5.42) ──────────────────
     // Persists the user's explicit intent for the assistive-service
     // tunables surfaced by the new Settings → Accessibility subscreen.
@@ -2080,6 +2089,24 @@ class SettingsRepositoryUiImpl(
     override suspend fun setInboxNotifyWikipedia(enabled: Boolean) {
         store.edit { it[Keys.INBOX_NOTIFY_WIKIPEDIA] = enabled }
         stampSyncedWrite()
+    }
+
+    // ── Issue #500 — magical InstantDB sign-in onboarding ──────────
+    /** Read the dismissed flag. False until the user explicitly
+     *  dismisses or completes the first-launch sync onboarding card,
+     *  then true forever (for the life of this install — uninstall /
+     *  data-clear resets along with everything else). */
+    override val syncOnboardingDismissed: Flow<Boolean> =
+        store.data.map { it[Keys.SYNC_ONBOARDING_DISMISSED] ?: false }
+
+    /** Flip the flag. Intentionally not synced via [stampSyncedWrite] —
+     *  the onboarding gate is a per-device first-launch experience, not
+     *  user-level state. A user signing in on a new device should see
+     *  the onboarding offer (their existing data will pull down) rather
+     *  than have the "you already dismissed this" flag inherited and
+     *  miss the welcome moment. */
+    override suspend fun markSyncOnboardingDismissed() {
+        store.edit { it[Keys.SYNC_ONBOARDING_DISMISSED] = true }
     }
 
     // ── InstantDB settings sync (this PR) ──────────────────────────

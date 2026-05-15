@@ -22,7 +22,12 @@ import org.junit.Test
  * sub-tabs (that part of the v0.5.40 restructure stuck). Dock is now
  * `Playing | Library | Voices | Settings`.
  *
- * These tests pin the new contract so a future refactor that re-adds a
+ * v0.5.48 (commit 7f75435) restored Playing + Voices to the dock per
+ * JP feedback: `{Library, Playing, Voices, Settings}`. The assertions
+ * here track that current layout. The "no Browse / Follows pill"
+ * contract is still pinned — those stay under the Library umbrella.
+ *
+ * These tests pin the contract so a future refactor that re-adds a
  * Browse pill to the bottom bar or that removes the Settings
  * destination fails here first. Plain JUnit (no Robolectric): we're
  * only inspecting enum + route-string state, not any Android framework
@@ -32,7 +37,7 @@ class NavStructureTest {
 
     @Test
     fun `bottom nav exposes exactly four primary destinations`() {
-        // v0.5.48 — Playing + Library + Voices + Settings. v0.5.40 had
+        // v0.5.48 — Library + Playing + Voices + Settings. v0.5.40 had
         // collapsed to {Library, Settings} but JP feedback restored
         // Playing + Voices as primary destinations. Going past four
         // needs a UX review — the sliding indicator pill in

@@ -38,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -94,6 +95,14 @@ fun LibraryScreen(
      * (Royal Road WebView for now; #241 shared sign-in surface).
      */
     onOpenFollowsSignIn: () -> Unit = {},
+    /**
+     * Issue #500 — InstantDB sync entry point. Default no-op so test /
+     * preview surfaces that don't exercise the sync sheet still
+     * compile. The production wiring in [StoryvoxNavHost] routes this
+     * to [StoryvoxRoutes.SYNC]; the cloud icon in the top app bar
+     * lights up via [SyncCloudIcon] independently of the callback.
+     */
+    onOpenSync: () -> Unit = {},
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -108,6 +117,14 @@ fun LibraryScreen(
     // every recomposition. Logs at warn level when duplicates are dropped
     // so the underlying source can be traced — silent-by-default would
     // hide the upstream bug we're guarding around.
+    // Issue #500 — local sheet visibility for the cloud-icon affordance.
+    // The sheet itself owns its own VM that reads InstantSession +
+    // SyncCoordinator state, so the Library screen only tracks the
+    // open/closed boolean here.
+    var syncSheetOpen by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(false)
+    }
+
     val dedupedFictions = androidx.compose.runtime.remember(state.fictions) {
         val out = state.fictions.distinctBy { it.id }
         val dropped = state.fictions.size - out.size
@@ -143,6 +160,17 @@ fun LibraryScreen(
             CenterAlignedTopAppBar(
                 title = { Text("Library", style = MaterialTheme.typography.titleMedium) },
                 actions = {
+                    // Issue #500 — brass cloud-icon affordance for the
+                    // InstantDB sync surface. Sits to the LEFT of the
+                    // Settings gear so the "primary" cross-cutting state
+                    // (am I synced?) reads before the secondary (settings).
+                    // The three icon states (signed-in checkmark / spinner /
+                    // question-mark) drive off [SyncStatusViewModel] —
+                    // see [SyncCloudIcon] for the mapping. Tap opens
+                    // [SyncStatusSheet] inline.
+                    `in`.jphe.storyvox.feature.sync.SyncCloudIcon(
+                        onClick = { syncSheetOpen = true },
+                    )
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Outlined.Settings, contentDescription = "Settings")
                     }
@@ -304,6 +332,18 @@ fun LibraryScreen(
         onToggle = viewModel::toggleShelf,
         onDismiss = viewModel::dismissManageShelves,
     )
+
+    // Issue #500 — InstantDB sync status sheet. Mounted unconditionally
+    // and gated on [syncSheetOpen] to keep the composition stable. The
+    // sheet's two layouts (signed-out CTA / signed-in domain grid) are
+    // driven by its own VM; this surface just controls visibility.
+    if (syncSheetOpen) {
+        `in`.jphe.storyvox.feature.sync.SyncStatusSheet(
+            onDismiss = { syncSheetOpen = false },
+            onOpenSignIn = onOpenSync,
+            onLearnMore = onOpenSync,
+        )
+    }
 }
 
 @Composable
