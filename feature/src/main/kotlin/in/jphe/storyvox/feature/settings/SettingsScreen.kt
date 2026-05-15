@@ -326,6 +326,26 @@ fun SettingsScreen(
                 chunks = s.playbackBufferChunks,
                 onChunksChange = viewModel::setPlaybackBufferChunks,
             )
+            // PCM cache PR-G (#86) — Mode C + cache size + Clear cache.
+            // Mirrors the rows in PerformanceSettingsScreen so users who
+            // land here from "All settings" search see the same controls
+            // in the same order. The two real-cache composables live in
+            // PerformanceSettingsScreen (single source of truth);
+            // a future refactor that fully removes this legacy section
+            // can drop these three lines without touching the
+            // subscreen.
+            SettingsSwitchRow(
+                title = "Full Pre-render",
+                subtitle = if (s.fullPrerender) {
+                    "Cache every chapter of every library fiction in the background. " +
+                        "Aggressive disk + CPU use; gapless playback everywhere."
+                } else {
+                    "Cache the next few chapters only (1-3 on add, +2 on chapter end). " +
+                        "Lighter on disk."
+                },
+                checked = s.fullPrerender,
+                onCheckedChange = viewModel::setFullPrerender,
+            )
             // Advanced/experimental cluster. Three rarely-touched perf
             // controls + the Tier-3 parallel-synth pair, all behind one
             // expander so first-time users aren't confronted with five
