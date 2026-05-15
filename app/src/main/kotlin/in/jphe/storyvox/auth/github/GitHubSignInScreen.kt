@@ -37,6 +37,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import `in`.jphe.storyvox.ui.a11y.LocalAccessibleTouchTargets
+import `in`.jphe.storyvox.ui.a11y.accessibleSize
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.MagicSpinner
@@ -116,12 +118,20 @@ fun GitHubSignInScreen(
                 )
             }
 
+            // #479 Phase 2 — was .size(40.dp), now M3 48dp default
+            // plus the #486 enlarged-targets opt-in.
             FilledIconButton(
                 onClick = {
                     viewModel.cancel()
                     onCancelled()
                 },
-                modifier = Modifier.align(Alignment.TopStart).padding(12.dp).size(40.dp),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(12.dp)
+                    .accessibleSize(
+                        enlargedFlag = LocalAccessibleTouchTargets.current,
+                        base = 48.dp,
+                    ),
                 shape = CircleShape,
                 colors = IconButtonDefaults.filledIconButtonColors(
                     containerColor = MaterialTheme.colorScheme.primary,

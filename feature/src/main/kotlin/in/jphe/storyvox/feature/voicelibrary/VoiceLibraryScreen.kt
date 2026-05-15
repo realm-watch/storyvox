@@ -65,6 +65,8 @@ import `in`.jphe.storyvox.playback.voice.UiVoiceInfo
 import `in`.jphe.storyvox.playback.voice.VoiceGender
 import `in`.jphe.storyvox.playback.voice.VoiceLibrarySection
 import `in`.jphe.storyvox.playback.voice.flagForLanguage
+import `in`.jphe.storyvox.ui.a11y.LocalAccessibleTouchTargets
+import `in`.jphe.storyvox.ui.a11y.accessibleSize
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.BrassProgressBar
@@ -851,12 +853,18 @@ private fun FavoriteToggle(
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
-    // a11y (#481): the favorite star is a toggleable Role.Checkbox —
-    // tap toggles the starred state. The icon's contentDescription
-    // doubles as the announcement TalkBack reads.
+    // a11y (#481, #479): favorite star is a toggleable Role.Checkbox —
+    // tap toggles starred state; icon's contentDescription doubles as
+    // the TalkBack announcement. Target was 36dp (below WCAG 2.5.5
+    // minimum); bumped to 48dp baseline via Modifier.accessibleSize,
+    // and #486 enlarged-targets opt-in widens further to 64dp under
+    // Switch Access / the user toggle.
     Box(
         modifier = Modifier
-            .size(36.dp)
+            .accessibleSize(
+                enlargedFlag = LocalAccessibleTouchTargets.current,
+                base = 48.dp,
+            )
             .clip(CircleShape)
             .clickable(
                 role = Role.Checkbox,
