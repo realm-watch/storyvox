@@ -1,5 +1,6 @@
 package `in`.jphe.storyvox.feature.api
 
+import `in`.jphe.storyvox.playback.cache.ChapterCacheState
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -48,6 +49,13 @@ data class UiChapter(
     val durationLabel: String,
     val isDownloaded: Boolean,
     val isFinished: Boolean,
+    /** PR-H (#86) — PCM cache state for this chapter under the user's
+     *  currently-active voice at 1.0× speed / 1.0× pitch. Default
+     *  `None` keeps every UiChapter construction site (today only
+     *  `AppBindings.chaptersFor`) source-compatible; the
+     *  FictionDetailViewModel composes the real value by combining
+     *  this list with `CacheStateInspector.chapterStatesFor`. */
+    val cacheState: ChapterCacheState = ChapterCacheState.None,
 )
 
 data class UiFollow(

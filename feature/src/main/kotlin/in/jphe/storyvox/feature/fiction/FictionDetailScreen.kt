@@ -152,6 +152,48 @@ fun FictionDetailScreen(
     // zero confirmation. Gate the destructive path behind an
     // AlertDialog; the additive add-to-library path stays single-tap.
     var showRemoveConfirm by remember { mutableStateOf(false) }
+
+    // PR-H (#86) — destructive "Clear fiction cache" confirm gate.
+    // Mirrors showRemoveConfirm's pattern: ephemeral state held at the
+    // screen-composable level so the dialog dismisses cleanly on
+    // configuration change without surviving as a half-rendered modal.
+    var showClearCacheConfirm by remember { mutableStateOf(false) }
+    if (showClearCacheConfirm) {
+        val titleForDialog = state.fiction?.title ?: "this fiction"
+        AlertDialog(
+            onDismissRequest = { showClearCacheConfirm = false },
+            title = { Text("Clear cached audio for $titleForDialog?") },
+            text = {
+                Text(
+                    "Removes the PCM cache for every chapter of this fiction " +
+                        "across every voice variant. Replays will re-render " +
+                        "once. The fiction stays in your library; your read " +
+                        "progress and library state are not affected.",
+                )
+            },
+            confirmButton = {
+                BrassButton(
+                    label = "Clear",
+                    onClick = {
+                        showClearCacheConfirm = false
+                        viewModel.clearFictionCache()
+                    },
+                    // No Destructive variant in BrassButton yet — Primary
+                    // is the strongest affordance the design system ships
+                    // and matches the existing "Remove from library"
+                    // destructive confirm above (also Primary).
+                    variant = BrassButtonVariant.Primary,
+                )
+            },
+            dismissButton = {
+                BrassButton(
+                    label = "Cancel",
+                    onClick = { showClearCacheConfirm = false },
+                    variant = BrassButtonVariant.Secondary,
+                )
+            },
+        )
+    }
     if (showRemoveConfirm) {
         val titleForDialog = state.fiction?.title ?: "this fiction"
         AlertDialog(
@@ -264,6 +306,27 @@ fun FictionDetailScreen(
                                     onClick = {
                                         menuOpen = false
                                         viewModel.exportToEpub(context)
+                                    },
+                                )
+                                // PR-H (#86) — destructive cache wipe for
+                                // this fiction. Routes through a confirm
+                                // dialog (showClearCacheConfirm flag) so a
+                                // mistap doesn't immediately delete every
+                                // chapter's cached audio across every
+                                // voice variant. Always visible — a no-op
+                                // wipe on an already-empty cache is cheap
+                                // and lets the user dismiss the dialog
+                                // without surprise. Gating on
+                                // "any chapter has cacheState != None"
+                                // is possible but the inspector flow may
+                                // not have first-emitted yet when the
+                                // user opens the menu on a cold launch,
+                                // so the gate would flicker.
+                                DropdownMenuItem(
+                                    text = { Text("Clear fiction cache…") },
+                                    onClick = {
+                                        menuOpen = false
+                                        showClearCacheConfirm = true
                                     },
                                 )
                             }
@@ -872,4 +935,11 @@ private fun UiChapter.toCardState(currentId: String?) = ChapterCardState(
     isDownloaded = isDownloaded,
     isFinished = isFinished,
     isCurrent = id == currentId,
+    // PR-H (#86) — forward the per-chapter PCM cache state from the
+    // view-model's CacheStateInspector flow into the card. `UiChapter.
+    // cacheState` defaults to None when the inspector hasn't produced
+    // a value (no active voice yet, or first composition before the
+    // flow's first emission), so the badge silently no-ops in that
+    // window instead of flickering bogus state.
+    cacheState = cacheState,
 )
