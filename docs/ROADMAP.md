@@ -1,92 +1,87 @@
 # storyvox roadmap
 
-A short-form list of in-flight + planned work. Detailed designs live under
+A short-form list of shipped + in-flight + planned work. Detailed designs live under
 `docs/superpowers/specs/`. Touching Compose? See
 [`docs/compose-gotchas.md`](compose-gotchas.md) for known scope-shadowing
 and stability traps before searching the internet for confusing errors.
 
-## v0.4.0 — in-process VoxSherpa engine (in flight)
+Last refreshed for **v0.5.51 — Luminous Quartz** (six-parallel-agent bundle).
 
-Bypass Android's `TextToSpeech` framework entirely; storyvox links the
-VoxSherpa engine in-process via JitPack and manages its own AudioTrack with
-a fat buffer. Eliminates per-sentence framework dispatch + small-buffer
-audio underrun (the gappy-playback problem).
+---
 
-- [x] VoxSherpa fork: add `:engine-lib` module that re-projects the engine
-      classes via Gradle `sourceSets` (no file moves → upstream merges
-      stay clean) → publishes as JitPack AAR
-- [ ] storyvox: `EnginePlayer` extends `SimpleBasePlayer`, calls
-      `VoiceEngine.getInstance().generateAudioPCM(...)` directly, manages
-      own `AudioTrack` with ~2s buffer, pipelines next-sentence generation
-- [ ] First-launch model download: pull a small Piper voice (Amy low ~14MB)
-      from huggingface into app private storage
-- [ ] Drop install gate, FileProvider, REQUEST_INSTALL_PACKAGES, fork URL
-      pin in BuildConfig — all the cruft from the AIDL/separate-APK era
-- [ ] Bump to v0.4.0 with release narrative: "self-contained audiobook
-      player, no extra apps required"
+## Shipped in the v0.5 line
 
-## Next: GitHub as a second fiction source
+The full v0.5 line landed the bulk of the user-visible surface — twenty-one fiction
+backends, three voice families, the AI chat heavies, performance work that hit the
+0.8 s cold-launch target, the a11y pass, and the TechEmpower repositioning.
 
-Spec: [`docs/superpowers/specs/2026-05-06-github-source-design.md`](superpowers/specs/2026-05-06-github-source-design.md)
+### Voice + audio
+- [x] **KittenTTS** lightest-tier voice family (v0.5.36, [#119](https://github.com/techempower-org/storyvox/issues/119)) — ~24 MB shared across 8 en_US speakers, "first chapter in 10 seconds" on slow devices
+- [x] **Per-voice lexicon override** ([#197](https://github.com/techempower-org/storyvox/issues/197)) — IPA pronunciation dictionaries per voice
+- [x] **Kokoro phonemizer-lang override** — per-voice language pinning for proper-noun fixes
+- [x] **Full PCM cache series** (v0.5.47–v0.5.49) — streaming-tee, cache-hit playback, background pre-render, Settings UI for cache size + eviction, status icons on chapter rows
+- [x] **Magical brass voice-settings icon** on the play screen replacing the buried `⋮` overflow
 
-The source layer is already pluggable behind `FictionSource`. Adding GitHub
-is the test of that abstraction. Highlights:
+### Performance
+- [x] **Cold launch 6.7 s → 0.8 s** on Galaxy Tab A7 Lite (v0.5.46) — R8 minification + Baseline Profile ([#409](https://github.com/techempower-org/storyvox/issues/409)) + `isDebuggable=false` in release builds
+- [x] **`:baselineprofile` producer module** — UI Automator walks the hot path on `:app` and emits `baseline-prof.txt` for the AndroidX plugin to wire back
 
-- **Multi-source Hilt refactor.** `Map<String, FictionSource>` with
-  `@IntoMap @StringKey` keyed by `sourceId`. `:source-royalroad` and
-  `:source-github` plug in side by side. No user-visible change.
-- **Paste-anything URL flow.** Library `+` FAB opens a sheet that accepts
-  Royal Road URLs *and* GitHub URLs — `UrlRouter` regex-routes by pattern.
-- **`:source-github` module.** OkHttp client → GitHub API,
-  `book.toml` (mdbook) + `storyvox.json` manifest parsing,
-  bare-repo fallback for unmarked-up repos. Markdown → HTML/plaintext via
-  commonmark.
-- **Curated registry.** `techempower-org/storyvox-registry` repo holds
-  `registry.json`. Storyvox fetches once per session, surfaces entries as
-  the **Featured** row at the top of Browse → GitHub.
-- **Live search + filters.** `/search/repositories?q=topic:fiction+...` for
-  the rest of the screen. Filter sheet mirrors the Royal Road one (tags,
-  status, length, recency, stars, language). Filter quality scales with
-  manifest adoption — bare repos still filter on what GitHub itself
-  exposes.
-- **Auth (deferred).** Ship v1 unauthenticated (60 req/hr is enough with
-  caching). Optional GitHub PAT field in Settings → Sources lands later.
-- **Sync.** Commit-SHA-based polling; `ChapterDownloadWorker` reused — just
-  hits raw.githubusercontent.com instead of royalroad.com.
+### Accessibility (v0.5.43)
+- [x] **Twelve a11y audit findings closed** — high-contrast brass-on-near-black theme, `prefers-reduced-motion` collapses fold-in animations, TalkBack pacing tuned to chapter-list patterns
+- [x] **Accessibility settings subscreen** — high-contrast toggle, reduced-motion toggle, dyslexia-friendly font opt-in
 
-Build sequence (each step ships value on its own):
+### Navigation (v0.5.40, settling v0.5.50)
+- [x] **Nav restructure** — Settings becomes a primary destination; Browse and Follows tuck under Library
+- [x] **Final four-tab dock** — `{Playing · Library · Voices · Settings}` (v0.5.50 revision)
+- [x] **InstantDB cross-device sync** ([#360](https://github.com/techempower-org/storyvox/issues/360), v0.5.12) — library / follows / positions / bookmarks / pronunciation / encrypted secrets
+- [x] **Magical sign-in surface** — InstantDB auth with brass-edged onboarding
 
-1. Multi-source Hilt refactor (no UX change).
-2. UrlRouter + paste-anything sheet (RR-only at first).
-3. `:source-github` module + GitHubApi client.
-4. Manifest parsing.
-5. Markdown → HTML/plaintext rendering.
-6. Add-by-URL routes GitHub end-to-end.
-7. Browse → GitHub: registry-only Featured row.
-8. Browse → GitHub: search + filter sheet.
-9. Commit-SHA polling for new chapters.
+### AI chat heavies
+- [x] **Cross-fiction memory** ([#217](https://github.com/techempower-org/storyvox/issues/217)) — character/place/concept entities surface in per-book Notebook tab with manual edit
+- [x] **Function calling** ([#216](https://github.com/techempower-org/storyvox/issues/216)) — "Add this to my Reading shelf", "Queue chapter 5", "Open Voice Library" route through `ToolCatalog`; brass-edged tool cards show in-flight state
+- [x] **Multi-modal image input** ([#215](https://github.com/techempower-org/storyvox/issues/215)) — paste cover art/scene refs into chat (Anthropic + OpenAI native, auto-downscale to 1280 px / JPEG q=85)
+
+### TechEmpower-as-default (v0.5.51, six-parallel-agent bundle)
+- [x] **Library brass TechEmpower hero card** at the top of the Library tab ([#511](https://github.com/techempower-org/storyvox/pull/511))
+- [x] **TechEmpower Home** — dedicated screen with Discord peer support + dial 211 + Browse library + About cards
+- [x] **README repositioning** — leads with TechEmpower's mission, audiobook engine framed as "under the hood"
+- [x] **Beautiful Notion covers** ([#514](https://github.com/techempower-org/storyvox/pull/514)) — body-image fallback + brass-edged synthetic `BrandedCoverTile` for cover-less pages
+- [x] **Home-screen widget** — Continue Listening + Play/Pause on Android home/lock surfaces
+- [x] **AO3 auth PR1** ([#426](https://github.com/techempower-org/storyvox/issues/426)) — auth surface scaffolding; PR2 wires the WebView login flow
+
+### Four new fiction backends (v0.5.51)
+- [x] **`:source-telegram`** ([#462](https://github.com/techempower-org/storyvox/issues/462)) — public Telegram channels via Bot API
+- [x] **`:source-palace`** ([#502](https://github.com/techempower-org/storyvox/issues/502)) — Palace Project free-library catalog walker (OPDS); non-DRM titles only, LCP DRM deferred
+- [x] **`:source-slack`** ([#454](https://github.com/techempower-org/storyvox/issues/454)) — Slack channels as fictions via Web API
+- [x] **`:source-matrix`** ([#457](https://github.com/techempower-org/storyvox/issues/457)) — federated Matrix rooms as fictions
+
+### Earlier v0.5 (fiction backends — running totals)
+- [x] **17 → 21 fiction backends** — Telegram + Palace + Slack + Matrix (v0.5.51) on top of Hacker News, arXiv, PLOS, Discord, Wikisource, Radio Browser (v0.5.38)
+- [x] **`@SourcePlugin` annotation + KSP processor** (v0.5.27) — adding a backend is ~4 touchpoints; Plugin manager auto-discovers
+- [x] **Plugin manager Settings hub** — brass-edged card grid iterating the registry
+
+---
+
+## In flight
+
+- [ ] **AO3 PR2 — login wiring** ([#426](https://github.com/techempower-org/storyvox/issues/426)) — wire the WebView login on top of PR1's auth surface. Unlocks bookmarks/marked-for-later sync and adult-content gating.
+- [ ] **Discord channel-as-fiction wiring follow-up** ([#502](https://github.com/techempower-org/storyvox/issues/502) follow-up) — improvements after the initial Palace Project pass.
+- [ ] **Settings hub follow-through** — the v0.5.38 hub has 13 cards; 5 route to subscreens, 7 still fall back to the legacy long-scroll. Each one wants its own subscreen.
+
+## Toward v1.0
+
+- [ ] **v1.0 release keystore** ([#16](https://github.com/techempower-org/storyvox/issues/16)) — generate a proper release keystore + signing config; ship a stable signed APK from a CI secret. Currently shipping with the checked-in debug keystore (stable since v0.4.15 but not the production posture).
+- [ ] **VoxSherpa knob exposure** ([research draft](superpowers/specs/2026-05-08-voxsherpa-knobs-research.md)) — loudness normalization, breath pause, pitch envelope as user-tunable settings.
+- [ ] **Auto integration** — Media3 `MediaSessionService` + `MediaBrowserService` exposes the library to Android Auto.
+- [ ] **Wear OS pairing polish** — `:wear` builds; pairing-and-discovery via `play-services-wearable` works in principle but isn't a polished experience yet.
 
 ## Backlog
 
-- **Try `AudioTrack.Builder` + `AudioAttributes`**:
-  `EnginePlayer.createAudioTrack` currently uses the six-arg
-  `AudioTrack(STREAM_MUSIC, …)` ctor to match VoxSherpa standalone exactly
-  while we hunted issue #6. The Builder form is the modern API and would
-  let us set `USAGE_MEDIA` / `CONTENT_TYPE_MUSIC` / `CONTENT_TYPE_SPEECH`
-  cleanly. Once we're confident the fuzz is gone on Tab A7 Lite, swap and
-  A/B for any audible difference.
-- **Voice picker UI**: pull from a curated list of Piper voices, download on
-  demand, cache in app storage. Replaces the placeholder "use whatever
-  VoxSherpa happened to install" model.
-- **Wear OS playback controls**: scaffold exists in `:wear` but isn't
-  wired. Pick up after engine refactor settles.
-- **Auto integration**: Media3 `MediaSessionService` + `MediaBrowserService`
-  exposes the library to Android Auto. Wear-of-the-spec is in the original
-  design doc.
-- **Voice-tagging in `storyvox.json`**: lets a fiction author specify a
-  preferred narrator voice (`narrator: "en-US-Andrew"`). Per-fiction
-  default, user can still override.
-- **Sleep timer end-of-chapter mode**: end-of-chapter fade-out
-  implemented but the duration-based timer needs a fade-out tail too.
-- **ePub / PDF / Gutenberg ingest**: separate source modules.
-  Out-of-scope until GitHub source proves the abstraction.
+- [ ] **`AudioTrack.Builder` + `AudioAttributes`** — swap the legacy six-arg `AudioTrack(STREAM_MUSIC, …)` ctor for the modern Builder form with `USAGE_MEDIA` / `CONTENT_TYPE_SPEECH`. Defer until we're sure the v0.4.x fuzz fix sticks across all chips.
+- [ ] **Voice-tagging in `storyvox.json`** — let a fiction author specify a preferred narrator voice (`narrator: "en-US-Andrew"`). Per-fiction default; user can still override.
+- [ ] **Sleep timer end-of-chapter mode** — fade-out tail polish.
+- [ ] **Knowledge graph for fiction** ([#147](https://github.com/techempower-org/storyvox/issues/147)) — per-book Notebook seeding into MemPalace. Cross-fiction memory ([#217](https://github.com/techempower-org/storyvox/issues/217)) is the read path; the seed-into-MemPalace write path is the remaining piece.
+
+## Docs / site
+
+- [x] **Comprehensive site + docs sweep for v0.5.51** — landing page, install, voices, architecture, ROADMAP, screenshots, README, wiki, version.json (this PR).

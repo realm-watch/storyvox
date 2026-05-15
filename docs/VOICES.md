@@ -2,7 +2,9 @@
 
 ## Where voices come from
 
-Storyvox embeds the [VoxSherpa-TTS](https://github.com/techempower-org/VoxSherpa-TTS) engine via JitPack, which itself wraps [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) for the actual ONNX inference. The neural model weights — Piper voices and the multi-speaker Kokoro model — are not bundled in the APK (they'd add 1+ GB) but downloaded on demand by `VoiceManager` from the `voices-v2` GitHub release on `techempower-org/VoxSherpa-TTS`.
+Storyvox embeds the [VoxSherpa-TTS](https://github.com/techempower-org/VoxSherpa-TTS) engine via JitPack, which itself wraps [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) for the actual ONNX inference. The neural model weights — Piper voices, the multi-speaker Kokoro model, and the **KittenTTS** lightest-tier model (shipped v0.5.36) — are not bundled in the APK (they'd add 1+ GB) but downloaded on demand by `VoiceManager` from the `voices-v2` GitHub release on `techempower-org/VoxSherpa-TTS`.
+
+Three voice families ship today: **Piper** (compact, ~14–30 MB per voice), **Kokoro** (multi-speaker, ~330 MB shared), and **KittenTTS** (~24 MB shared across 8 en_US speakers — the "first chapter in 10 seconds" tier for slow devices).
 
 `voices-v2` is a re-hosting of the upstream k2-fsa tarballs as flat, single-file downloads. Each Piper voice ships as `{lang}-{voice}-{quality}.onnx` + `{lang}-{voice}-{quality}.tokens.txt`. Kokoro ships as `kokoro-model.onnx` + `kokoro-voices.bin` + `kokoro-tokens.txt`. The flattening is deliberate: extracting `.tar.bz2` archives on modest hardware (Tab A7 Lite) is slow enough to delay the first chapter for tens of seconds. Doing it once server-side and serving plain files moves that cost off the device.
 

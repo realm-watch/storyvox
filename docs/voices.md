@@ -1,15 +1,16 @@
 ---
 layout: default
 title: Voice catalog
-description: Piper and Kokoro voices shipped via VoxSherpa-TTS, plus optional Azure HD cloud voices. Sizes, quality tiers, refresh workflow, and why we don't quantize.
+description: Three in-process voice families (Piper, Kokoro, KittenTTS) plus optional Azure HD cloud voices. Sizes, quality tiers, refresh workflow, and why we don't quantize.
 ---
 
 # Voice catalog
 
-storyvox ships **two local voice families**, with an **optional cloud backend** wired in for users who want studio-grade narration on slow devices:
+storyvox ships **three local voice families**, with an **optional cloud backend** wired in for users who want studio-grade narration on slow devices:
 
 - **[Piper](https://github.com/rhasspy/piper)** *(local, in-process)* — single-speaker, compact, fast. Each voice is ~14–30 MB. Best for first-time installs and for fast turnaround on slow hardware.
 - **[Kokoro](https://github.com/hexgrad/kokoro)** *(local, in-process)* — multi-speaker, ~330 MB single download, ships dozens of voice profiles in one model. Higher quality, slower to synthesize.
+- **KittenTTS** *(local, in-process — shipped v0.5.36, [#119](https://github.com/techempower-org/storyvox/issues/119))* — the lightest tier, ~24 MB shared across 8 en_US speakers. Designed for slow devices where Piper-high struggles. The "first chapter in 10 seconds" voice family.
 - **[Azure Cognitive Services HD voices](https://learn.microsoft.com/azure/ai-services/speech-service/text-to-speech)** *(cloud, BYOK)* — opt-in, paid by you to Microsoft, never by storyvox. Studio-grade narration with offline fallback to a local voice if your key fails or the network drops. See [Cloud voices](#cloud-voices-azure-hd-byok) below.
 
 Local voices run **in-process** via the [VoxSherpa-TTS](https://github.com/techempower-org/VoxSherpa-TTS) `:engine-lib` AAR, which wraps [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) for inference. No second APK, no system-TTS handoff, no per-character billing.
@@ -126,8 +127,13 @@ Cache eviction priority weights Azure renders higher than local renders since th
 
 Originally tracked in [#85](https://github.com/techempower-org/storyvox/issues/85); shipped across [#182](https://github.com/techempower-org/storyvox/issues/182)–[#186](https://github.com/techempower-org/storyvox/issues/186).
 
+## Per-voice lexicon + Kokoro phonemizer override (shipped)
+
+Long-press the brass voice-settings icon on the play screen → **Advanced expander**:
+
+- **Per-voice lexicon override** ([#197](https://github.com/techempower-org/storyvox/issues/197)) — IPA pronunciation dictionaries per voice for the names that always come out wrong. Edit per voice; entries persist across reinstalls when InstantDB sync is on.
+- **Kokoro phonemizer-lang override** — pin Kokoro to a specific language tag when the auto-detected one mispronounces proper nouns. Per-voice setting.
+
 ## Coming soon
 
 - **VoxSherpa-TTS knob exposure** ([research draft](https://github.com/techempower-org/storyvox/blob/main/docs/superpowers/specs/2026-05-08-voxsherpa-knobs-research.md)) — loudness normalization, breath pause, pitch envelope as user-tunable settings.
-- **Per-voice lexicon override** ([#197](https://github.com/techempower-org/storyvox/issues/197)) — IPA pronunciation dictionaries per voice for the names that always come out wrong.
-- **KittenTTS** ([#119](https://github.com/techempower-org/storyvox/issues/119)) — a third in-process voice family at the smallest tier, for the slowest of slow devices.

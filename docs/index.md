@@ -1,22 +1,25 @@
 ---
 layout: default
-title: storyvox — neural-voice audiobook player for any text you have
-description: Seventeen fiction backends, three in-process neural voice families, optional Azure HD cloud voices. Stream chapters from Royal Road, GitHub, RSS, EPUB, Outline, Memory Palace, Project Gutenberg, AO3, Standard Ebooks, Wikipedia, Wikisource, Radio (30k stations), Notion, Hacker News, arXiv, PLOS, and Discord. Brass-on-warm-dark Library Nocturne aesthetic. Free, GPL-3.0, no telemetry.
+title: storyvox — TechEmpower's accessible resource app, with audiobook everything
+description: TechEmpower's accessible resource app — free tech guides, peer-support Discord, dial 211 for local help. Under the hood, a neural-voice audiobook player for twenty-one fiction backends with three in-process voice families plus optional Azure HD cloud voices. Free, GPL-3.0, no telemetry.
 image: /screenshots/03-reader.png
 ---
 
 <section class="hero">
   <div class="hero-text">
     <h1>storyvox</h1>
-    <p class="tagline">Audiobook everything. Stream chapters from anywhere, read aloud in a brass-warm neural voice.</p>
+    <p class="tagline"><strong><a href="https://techempower.org">TechEmpower</a>'s accessible resource app.</strong> Browse free tech guides, connect with peer-support Discord, dial 211 for local help — and listen to any of it through a neural-voice audiobook engine that reads everything aloud.</p>
     <p>
-      Seventeen fiction backends side by side — <a href="https://royalroad.com">Royal Road</a>,
+      Under the hood: twenty-one fiction backends side by side — <a href="https://royalroad.com">Royal Road</a>,
       <a href="https://github.com">GitHub</a>, RSS feeds, EPUB files on your device,
       <a href="https://www.getoutline.com">Outline</a> wikis, your self-hosted
       <a href="https://github.com/techempower-org/mempalace">Memory Palace</a>,
       <a href="https://www.gutenberg.org/">Project Gutenberg</a>, AO3, Standard Ebooks, Wikipedia,
-      Wikisource, Radio (30k+ stations), <a href="https://notion.so">Notion</a>, Hacker News,
-      arXiv, PLOS, Discord — all read aloud by an <strong>in-process neural TTS engine</strong>
+      Wikisource, Radio (30k+ stations), <a href="https://notion.so">Notion</a> (defaults to
+      TechEmpower's resource library — Guides, Resources, About, Donate), Hacker News,
+      arXiv, PLOS, Discord, <a href="https://telegram.org">Telegram</a>,
+      <a href="https://thepalaceproject.org">Palace Project</a>, <a href="https://slack.com">Slack</a>,
+      <a href="https://matrix.org">Matrix</a> — all read aloud by an <strong>in-process neural TTS engine</strong>
       that runs entirely on-device. A hybrid reader/audiobook view highlights the spoken sentence
       in brass as you listen.
     </p>
@@ -48,6 +51,24 @@ image: /screenshots/03-reader.png
   <h2>Why storyvox</h2>
   <div class="why-grid">
     <div class="card">
+      <h3>TechEmpower Home</h3>
+      <p>
+        A dedicated TechEmpower screen ties the resource app together: free tech guides, an
+        About panel explaining the 501(c)(3) mission, a Browse-the-library shortcut, and the
+        two help paths — <strong>peer-support Discord</strong> and <strong>call 211</strong> for
+        local services. Designed for users who came for help, not for fiction.
+      </p>
+    </div>
+    <div class="card">
+      <h3>Peer support, on-tap</h3>
+      <p>
+        Tap once to open the TechEmpower
+        <a href="https://discord.gg/j3SVttxw7k">peer-support Discord</a> — real volunteers,
+        no chatbot. Tap to dial <strong>211</strong> for local United Way services. Both routes
+        live alongside the library, never buried under a Settings menu.
+      </p>
+    </div>
+    <div class="card">
       <h3>On-device neural TTS</h3>
       <p>
         Three voice families ship — <a href="https://github.com/rhasspy/piper">Piper</a> (compact),
@@ -75,9 +96,18 @@ image: /screenshots/03-reader.png
     <div class="card">
       <h3>Smooth on slow hardware</h3>
       <p>
-        Tier 3 multi-engine parallel synthesis — 1–8 VoxSherpa instances × N threads each, twin
-        sliders in Settings → Performance. A producer pinned to <code>URGENT_AUDIO</code> and PCM
-        cache buffering keep playback gapless even when Piper-high struggles on a Helio P22T.
+        Cold launch in <strong>0.8 s</strong> on a Galaxy Tab A7 Lite (down from 6.7 s) — R8
+        minification, Baseline Profile, and <code>isDebuggable=false</code> in release builds.
+        Tier 3 multi-engine parallel synthesis (1–8 VoxSherpa instances × N threads each, twin
+        sliders in Settings → Performance) plus PCM cache buffering keep playback gapless.
+      </p>
+    </div>
+    <div class="card">
+      <h3>Beautiful Notion covers</h3>
+      <p>
+        TechEmpower's Notion-backed library renders with proper page covers and brass-edged
+        synthetic tiles for pages with body images instead of explicit covers. The fallback uses
+        a Library Nocturne palette so even cover-less pages look intentional.
       </p>
     </div>
     <div class="card">
@@ -87,6 +117,14 @@ image: /screenshots/03-reader.png
         <a href="https://learn.microsoft.com/azure/ai-services/speech-service/text-to-speech">Azure HD voices</a>.
         Offline fallback to your local voice if the network drops or your key expires. Opt-in,
         never required, never billed by storyvox.
+      </p>
+    </div>
+    <div class="card">
+      <h3>Accessibility-first</h3>
+      <p>
+        High-contrast brass-on-near-black theme passes WCAG AA; <code>prefers-reduced-motion</code>
+        collapses fold-in animations; TalkBack pacing tuned to chapter-list patterns. Twelve
+        a11y audit findings closed in v0.5.43.
       </p>
     </div>
     <div class="card">
@@ -101,7 +139,7 @@ image: /screenshots/03-reader.png
 </section>
 
 <section class="sources">
-  <h2>Seventeen fiction backends, side by side</h2>
+  <h2>Twenty-one fiction backends, side by side</h2>
   <p class="muted">
     A plugin-seam architecture means each backend is ~4 touchpoints. Adding a new one auto-surfaces
     in <strong>Settings → Plugins</strong>. Each has its own on/off toggle.
@@ -170,7 +208,7 @@ image: /screenshots/03-reader.png
     <a class="source-card" href="https://notion.so">
       <span class="source-glyph" aria-hidden="true">N</span>
       <h3>Notion</h3>
-      <p>Any Notion database — defaults to the techempower.org content DB. Paste an integration token and you're in.</p>
+      <p>Any Notion page or database — defaults to the techempower.org resource library (Guides, Resources, About, Donate). Beautiful page covers + body-image fallback render brass-edged synthetic tiles for cover-less pages.</p>
     </a>
     <a class="source-card" href="https://news.ycombinator.com/">
       <span class="source-glyph" aria-hidden="true">HN</span>
@@ -191,6 +229,26 @@ image: /screenshots/03-reader.png
       <span class="source-glyph" aria-hidden="true">DC</span>
       <h3>Discord</h3>
       <p>Serialized fiction in Discord channels — channels are fictions, messages are chapters. Bot-token auth.</p>
+    </a>
+    <a class="source-card" href="https://telegram.org/">
+      <span class="source-glyph" aria-hidden="true">TG</span>
+      <h3>Telegram</h3>
+      <p>Public Telegram channels — invite the bot, channels become fictions, messages become chapters. Simpler shape than Discord (no threads, no servers).</p>
+    </a>
+    <a class="source-card" href="https://thepalaceproject.org/">
+      <span class="source-glyph" aria-hidden="true">PP</span>
+      <h3>Palace Project</h3>
+      <p>First library-borrowing backend — OPDS catalog walker for the Palace Project's free library titles. Non-DRM titles in this PR; LCP DRM deferred.</p>
+    </a>
+    <a class="source-card" href="https://slack.com/">
+      <span class="source-glyph" aria-hidden="true">SL</span>
+      <h3>Slack</h3>
+      <p>Slack channels as fictions via the Web API. Bot-token (xoxb-…) auth. Default OFF — workspaces are private and onboarding is high-friction.</p>
+    </a>
+    <a class="source-card" href="https://matrix.org/">
+      <span class="source-glyph" aria-hidden="true">MX</span>
+      <h3>Matrix</h3>
+      <p>Federated open-standard chat (matrix.org, kde.org, FOSDEM, self-hosted Synapse / Dendrite / Conduit) — rooms are fictions, messages are chapters with same-sender coalescing.</p>
     </a>
   </div>
 </section>
@@ -265,7 +323,7 @@ image: /screenshots/03-reader.png
       <dark-image src-dark="screenshots/04-library.png" src-light="screenshots/04-library-light.png" alt="Library tab">
         <img src="screenshots/04-library.png" alt="Library tab" loading="lazy" />
       </dark-image>
-      <figcaption>Library — currently-listening with progress + smart resume.</figcaption>
+      <figcaption>Library — TechEmpower hero card on top, currently-listening with progress + smart resume below, four-tab dock <code>{Playing · Library · Voices · Settings}</code> anchored at the bottom.</figcaption>
     </figure>
     <figure>
       <dark-image src-dark="screenshots/06-filter-dark.png" src-light="screenshots/06-filter.png" alt="Royal Road filter sheet">
@@ -283,7 +341,7 @@ image: /screenshots/03-reader.png
       <dark-image src-dark="screenshots/05-settings.png" src-light="screenshots/05-settings-light.png" alt="Settings hub">
         <img src="screenshots/05-settings.png" alt="Settings hub" loading="lazy" />
       </dark-image>
-      <figcaption>Settings — brass-edged section hub, eight cards.</figcaption>
+      <figcaption>Settings — brass-edged section hub (thirteen cards, post-v0.5.42).</figcaption>
     </figure>
   </div>
 </section>
@@ -325,21 +383,29 @@ image: /screenshots/03-reader.png
 <section class="recent">
   <h2>What just shipped</h2>
   <p>
-    <strong>v0.5.39</strong> — Nav restructure: Settings becomes a primary nav destination,
-    Browse and Follows tuck under Library. InstantDB sync brings settings + secrets across
-    devices. The Settings hub gets follow-through — seven remaining hub cards land as dedicated
-    subscreens. Four QA findings closed (#450, #452, #459, #461).
-    <a href="https://github.com/techempower-org/storyvox/releases/tag/v0.5.39">Full release notes →</a>
+    <strong>v0.5.51 — Luminous Quartz · six-parallel-agent bundle.</strong> TechEmpower-as-default:
+    Library leads with a brass TechEmpower hero card, a dedicated TechEmpower Home surfaces
+    Guides + Resources + Discord + 211; <strong>four new fiction backends</strong> — Telegram
+    (#462), Palace Project (#502), Slack (#454), Matrix (#457); home-screen widget with
+    Continue Listening + Play/Pause; <strong>beautiful Notion covers</strong> with body-image
+    fallback and brass-edged synthetic tiles; AO3 auth PR1 landed.
+    <a href="https://github.com/techempower-org/storyvox/releases/tag/v0.5.51">Full release notes →</a>
   </p>
   <p>
-    <strong>Earlier in v0.5:</strong> <strong>seventeen fiction backends</strong> behind a
-    plugin-seam (Hacker News, arXiv, PLOS, Discord, Wikisource, Radio Browser); <strong>three
-    voice families</strong> with KittenTTS as the new lightest tier; <strong>AI heavies</strong>
-    — cross-fiction memory (<a href="https://github.com/techempower-org/storyvox/issues/217">#217</a>),
-    function calling (<a href="https://github.com/techempower-org/storyvox/issues/216">#216</a>),
-    multi-modal image input (<a href="https://github.com/techempower-org/storyvox/issues/215">#215</a>);
-    magical brass voice-settings icon on the play screen; Plugin manager Settings hub iterating
-    the registry; Wear OS Library Nocturne with circular brass scrubber on round watches.
+    <strong>Earlier in v0.5:</strong> <strong>twenty-one fiction backends</strong> behind a
+    plugin-seam (Telegram, Palace Project, Slack, Matrix on top of the earlier Hacker News,
+    arXiv, PLOS, Discord, Wikisource, Radio Browser additions); <strong>three voice families</strong>
+    with KittenTTS as the lightest tier (v0.5.36); the full <strong>PCM cache series</strong>
+    — streaming-tee, cache-hit playback, background pre-render, Settings UI, status icons
+    (v0.5.47–v0.5.49); <strong>cold launch 6.7 s → 0.8 s</strong> on Tab A7 Lite (v0.5.46 — R8
+    + Baseline Profile + <code>isDebuggable=false</code>); <strong>twelve a11y findings closed</strong>
+    in v0.5.43 (high-contrast brass-on-near-black + reduced-motion fold-in + TalkBack pacing);
+    nav restructure (v0.5.40) settling at the current four-tab dock
+    <code>{Playing · Library · Voices · Settings}</code>; cross-device InstantDB sync
+    (v0.5.39+); <strong>AI heavies</strong> — cross-fiction memory
+    (<a href="https://github.com/techempower-org/storyvox/issues/217">#217</a>), function calling
+    (<a href="https://github.com/techempower-org/storyvox/issues/216">#216</a>), multi-modal
+    image input (<a href="https://github.com/techempower-org/storyvox/issues/215">#215</a>).
   </p>
   <p class="muted">
     See the <a href="https://github.com/techempower-org/storyvox/wiki">wiki</a> for build, voice

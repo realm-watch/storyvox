@@ -9,7 +9,7 @@
 Browse free tech guides, connect with our peer-support Discord, dial 211 for local help — and listen to any of it through a neural-voice audiobook engine that reads everything aloud.
 
 **Under the hood: a neural-voice audiobook player for any text you have.**
-Stream chapters from seventeen fiction backends — [Royal Road](https://royalroad.com), [GitHub](https://github.com/), an [Outline](https://www.getoutline.com) wiki, RSS / Atom feeds, a [Memory Palace](https://github.com/techempower-org/mempalace) you host yourself, local EPUB files, [Project Gutenberg](https://www.gutenberg.org/), [Archive of Our Own](https://archiveofourown.org/), [Standard Ebooks](https://standardebooks.org/), [Wikipedia](https://en.wikipedia.org/), [Wikisource](https://en.wikisource.org/), Radio (with [Radio Browser](https://www.radio-browser.info/) search across 30k+ stations), [Notion](https://notion.so/) databases (defaults to TechEmpower's resource library — Guides, Resources, About, Donate, ~80 free-tech resource entries), [Hacker News](https://news.ycombinator.com/), [arXiv](https://arxiv.org/), [PLOS](https://plos.org/), and [Discord](https://discord.com/) channels. Read aloud by an in-process neural TTS engine. A hybrid reader/audiobook view highlights the spoken sentence in brass as you listen. Built for Android phones, tablets, and Wear OS.
+Stream chapters from **twenty-one fiction backends** — [Royal Road](https://royalroad.com), [GitHub](https://github.com/), an [Outline](https://www.getoutline.com) wiki, RSS / Atom feeds, a [Memory Palace](https://github.com/techempower-org/mempalace) you host yourself, local EPUB files, [Project Gutenberg](https://www.gutenberg.org/), [Archive of Our Own](https://archiveofourown.org/), [Standard Ebooks](https://standardebooks.org/), [Wikipedia](https://en.wikipedia.org/), [Wikisource](https://en.wikisource.org/), Radio (with [Radio Browser](https://www.radio-browser.info/) search across 30k+ stations), [Notion](https://notion.so/) pages or databases (defaults to TechEmpower's resource library — Guides, Resources, About, Donate, ~80 free-tech resource entries), [Hacker News](https://news.ycombinator.com/), [arXiv](https://arxiv.org/), [PLOS](https://plos.org/), [Discord](https://discord.com/) channels, [Telegram](https://telegram.org/) channels, [Palace Project](https://thepalaceproject.org/) free-library titles, [Slack](https://slack.com/) channels, and [Matrix](https://matrix.org/) rooms. Read aloud by an in-process neural TTS engine. A hybrid reader/audiobook view highlights the spoken sentence in brass as you listen. Built for Android phones, tablets, and Wear OS.
 
 > **TechEmpower** is a 501(c)(3) nonprofit closing the digital divide for low-income individuals and families with free tools, training, and software. storyvox is built on that mission — the engine identity is consistent (Library Nocturne brass-on-warm-dark theme, same as it's always been), but every user-facing surface leads with TechEmpower's framing now. [techempower.org](https://techempower.org) · [Donate](https://techempower.org/donate) · Peer-support [Discord](https://discord.gg/j3SVttxw7k).
 
@@ -21,7 +21,7 @@ Stream chapters from seventeen fiction backends — [Royal Road](https://royalro
   </picture>
 </div>
 
-> **v0.5.38** — **seventeen fiction backends**, a **plugin-seam architecture** that makes new backends ~4 touchpoints (`@SourcePlugin` annotation + KSP-generated Hilt registration); **three in-process neural voice families** (Piper compact, Kokoro multi-speaker, KittenTTS lightest tier) plus Azure HD as optional BYOK cloud backend; the **AI chat heavies** — cross-fiction memory + function calling (5 tools) + multi-modal image input — all live; a **magical brass voice-settings icon** on the play screen replacing the old `⋮` overflow; a **Plugin manager** Settings hub iterating the registry; **Radio Browser API search** unlocking 30k+ stations; **Wear OS Library Nocturne** theme + circular scrubber on round watches; cold-launch -14% on low-end Android. GPL-3.0 (downstream of the engine, not a posture choice — see [License](#license)).
+> **v0.5.51 — Luminous Quartz (six-parallel-agent bundle)** — **twenty-one fiction backends** (Telegram, Palace Project, Slack, Matrix added on top of the v0.5.38 seventeen); a **plugin-seam architecture** that makes new backends ~4 touchpoints (`@SourcePlugin` annotation + KSP-generated Hilt registration); **three in-process neural voice families** (Piper compact, Kokoro multi-speaker, KittenTTS lightest tier) plus Azure HD as optional BYOK cloud backend; the **AI chat heavies** — cross-fiction memory + function calling + multi-modal image input — all live; **TechEmpower-as-default** with brass hero on Library, dedicated TechEmpower Home (Discord peer support + dial 211 + Browse + About), and beautiful Notion covers (body-image fallback + brass-edged synthetic tiles); **home-screen widget** with Continue Listening + Play/Pause; **cold launch 0.8 s** on Galaxy Tab A7 Lite (down from 6.7 s — R8 + Baseline Profile + `isDebuggable=false`, v0.5.46); **full PCM cache series** (streaming-tee, cache-hit playback, background pre-render, status icons — v0.5.47–v0.5.49); **twelve a11y findings closed** in v0.5.43 (high-contrast brass-on-near-black, reduced-motion fold-in, TalkBack pacing); **four-tab dock** `{Playing · Library · Voices · Settings}` (v0.5.50 final). GPL-3.0 (downstream of the engine, not a posture choice — see [License](#license)).
 
 ---
 
@@ -161,10 +161,10 @@ The CI workflow (`.github/workflows/android.yml`) shows the canonical build step
       │               │  in-process)   │
       ▼               │                ▼
 ┌─────────────────────────────┐  ┌──────────────────────┐
-│ Fiction sources (17)        │  │ :core-sync           │
+│ Fiction sources (21)        │  │ :core-sync           │
 │ ─────────────────────────── │  │ InstantDB sync —     │
 │ :source-royalroad           │  │ library / follows /  │
-│ :source-github              │  │ positions / books-   │
+│ :source-github              │  │ positions / book-    │
 │ :source-rss                 │  │ marks / pronuncia-   │
 │ :source-epub                │  │ tion / secrets       │
 │ :source-outline             │  │ (#360 v0.5.12)       │
@@ -178,8 +178,17 @@ The CI workflow (`.github/workflows/android.yml`) shows the canonical build step
 │ :source-notion              │  │ factory (v0.5.27)    │
 │ :source-hackernews          │  └──────────────────────┘
 │ :source-arxiv               │
-│ :source-plos                │
-│ :source-discord             │
+│ :source-plos                │  ┌──────────────────────┐
+│ :source-discord             │  │ :baselineprofile     │
+│ :source-telegram   (v0.5.51)│  │ Hot-path producer —  │
+│ :source-palace     (v0.5.51)│  │ baseline-prof.txt    │
+│ :source-slack      (v0.5.51)│  │ → cold launch 0.8 s  │
+│ :source-matrix     (v0.5.51)│  │ on Tab A7 Lite       │
+│                             │  │ (#409 v0.5.46)       │
+│ Catch-all + writer          │  └──────────────────────┘
+│ ─────────────────────────── │
+│ :source-readability         │
+│ :source-epub-writer         │
 │                             │
 │ TTS backends                │
 │ ─────────────────────────── │
@@ -189,7 +198,7 @@ The CI workflow (`.github/workflows/android.yml`) shows the canonical build step
                    (audio out)
 ```
 
-29 Gradle modules now (was 13 at v0.4.x). Fiction sources implement `FictionSource` from `:core-data` and self-register via the `@SourcePlugin` annotation; the `:core-plugin-ksp` KSP processor emits a Hilt `@IntoSet` factory per annotated class, so `SourcePluginRegistry` discovers them at startup. Adding a new backend is ~4 touchpoints today (was ~17 pre-Phase-2). The playback layer is independent of the UI; the local engine library is a single transitive dep on `:core-playback`. AI chat lives in its own `:core-llm` module — the seven-provider matrix shares one `ChatStreamEvent` flow type that carries text deltas + tool-call events + tool-result events end-to-end. Cross-device sync lives in `:core-sync` against InstantDB.
+34 Gradle modules now (was 13 at v0.4.x; 29 at v0.5.38). Fiction sources implement `FictionSource` from `:core-data` and self-register via the `@SourcePlugin` annotation; the `:core-plugin-ksp` KSP processor emits a Hilt `@IntoSet` factory per annotated class, so `SourcePluginRegistry` discovers them at startup. Adding a new backend is ~4 touchpoints today (was ~17 pre-Phase-2). The playback layer is independent of the UI; the local engine library is a single transitive dep on `:core-playback`. AI chat lives in its own `:core-llm` module — the seven-provider matrix shares one `ChatStreamEvent` flow type that carries text deltas + tool-call events + tool-result events end-to-end. Cross-device sync lives in `:core-sync` against InstantDB. A `:baselineprofile` producer module (UI Automator hot-path walk) emits `baseline-prof.txt` for the AndroidX Baseline Profile plugin — cold launch dropped 6.7 s → 0.8 s on Tab A7 Lite (v0.5.46).
 
 Design specs (each shipped or in flight) read as a thread:
 
