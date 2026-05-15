@@ -9,6 +9,26 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.47] — 2026-05-15
+
+### Added — PCM cache PR D
+- **Streaming-tee writer wires PcmAppender into EngineStreamingSource** (#497, PR D of the PCM cache series, partial close [#86](https://github.com/techempower-org/storyvox/issues/86)). Synthesized PCM now gets tee'd to disk as it streams to the audio sink, ahead of the cache-hit-replay landing in PR E. Per-sentence tee in the serial producer path; tee-from-the-sequencer (not workers) in the parallel path so byte offsets stay monotonic even when workers complete out of order. New `EngineStreamingSource` ctor param `cacheAppender: PcmAppender?` (`@Volatile`-shadowed for null-on-abandon), `finalizeCache()`, and `cacheTeeErrors: StateFlow<Int>`. `close()` + `seekToCharOffset()` abandon + null the appender. `EnginePlayer` injects `PcmCache`, constructs `PcmCacheKey` from `(chapterId, voiceId, speed, pitch, CHUNKER_VERSION, pronunciationDictHash)`, wipes stale partials per the abandon-and-restart policy, finalizes + LRU-evicts on natural chapter-end.
+- **5 new contract tests** in `EngineStreamingSourceCacheTeeTest` (Robolectric): per-sentence tee, finalize → `isComplete = true`, close abandons, seek abandons, null-appender back-compat no-op, finalize idempotency.
+
+### What user sees vs what's queued
+- **This release**: cache files start accumulating on disk as you listen. Zero user-perceptible change today.
+- **PR E (next)**: cache-hit playback — revisiting a chapter swaps in `CacheFileSource`, skipping synthesis entirely. That's the user-facing "instant replay" win.
+- **PR F**: WorkManager / `RenderScheduler` background renders for next-chapter pre-render.
+- **PR G**: Settings UI for cache quota + Mode C.
+- **PR H**: status icons.
+
+### Build-config caveat from v0.5.46 carries forward
+- `adb shell run-as in.jphe.storyvox ls cache-dir` no longer works because `isDebuggable=false` blocks `run-as`. On-device cache verification will use logcat events + the in-app diagnostic surface that PR G adds. PR D's tablet smoke-test deferred to PR E (cache-hit playback is the observable signal anyway).
+
+### Under the hood
+- One spec delta from the PR D plan file: `PcmCacheKey` (shipped in PR C / #100) already carries `pronunciationDictHash` as a 6th field beyond the plan's 5-field listing. EnginePlayer snapshots `cachedPronunciationDict.contentHash` into the key so dict edits self-evict cached chapters.
+- Gradle JVM heap bumped 4G → 8G (commit `40f7b9c`) — v0.5.46's tag CI hit SIGTERM during R8 + ART profile expansion; 8G prevents that.
+
 ## [0.5.46] — 2026-05-14
 
 ### Performance — the actual cold-launch win lands
