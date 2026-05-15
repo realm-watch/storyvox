@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Matrix Client-Server API over HTTPS to the user's configured
+         homeserver (matrix.org, kde.org, fosdem.org, self-hosted
+         Synapse / Dendrite / Conduit, etc.) — needs INTERNET. Profile
+         lookups for federated user ids reach the user's home
+         homeserver (which may differ from the room's homeserver); the
+         OkHttp client used here dispatches to whatever host the URL
+         carries, so the manifest permission is the same INTERNET
+         scope that Discord / Slack / Telegram already declare. No
+         background-network surface; all calls happen on user-driven
+         flows. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+</manifest>

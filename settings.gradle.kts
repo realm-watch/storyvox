@@ -75,6 +75,14 @@ include(":source-telegram")
 // Settings. Default OFF on fresh installs because workspaces are
 // private and bot-token onboarding is high-friction.
 include(":source-slack")
+// Issue #457 — Matrix Client-Server API backend. Federated
+// open-standard chat (matrix.org, kde.org, fosdem.org, self-hosted
+// Synapse / Dendrite / Conduit, etc.) — room = fiction, message =
+// chapter (with same-sender coalescing). Architectural twin to
+// :source-discord; default OFF on fresh installs (the Settings →
+// Plugins screen surfaces it; bot-token / access-token onboarding
+// gates content visibility).
+include(":source-matrix")
 // Issue #472 — Readability4J catch-all for the magic-link paste flow.
 // Always-on, lowest-confidence match (0.1) so any HTTP(S) URL not
 // otherwise claimed by one of the 17 specialized backends still

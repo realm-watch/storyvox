@@ -220,6 +220,18 @@ object AppBindings {
     @Provides @Singleton
     fun provideSlackConfig(impl: `in`.jphe.storyvox.data.SlackConfigImpl): `in`.jphe.storyvox.source.slack.config.SlackConfig = impl
 
+    /** Bridges source-matrix MatrixConfig (#457) to the app-side
+     *  DataStore + EncryptedSharedPreferences impl. Same shape as
+     *  Discord / Telegram — homeserver URL + resolved user id +
+     *  coalesce window in plaintext, access token encrypted under
+     *  `pref_source_matrix_token` in the shared `storyvox.secrets`
+     *  store. The Settings UI surface (token-entry sheet, homeserver
+     *  field, room picker, coalesce slider) is a follow-up; the
+     *  backend ships functional via KSP-driven plugin registration
+     *  and the existing Plugin Manager toggle. */
+    @Provides @Singleton
+    fun provideMatrixConfig(impl: `in`.jphe.storyvox.data.MatrixConfigImpl): `in`.jphe.storyvox.source.matrix.config.MatrixConfig = impl
+
     /**
      * Same singleton instance as [provideSettingsRepositoryUi], exposed under
      * the [PlaybackBufferConfig] contract so `core-playback`'s [EnginePlayer]

@@ -9,6 +9,12 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+### Added — Matrix as a fiction backend (#457)
+- **20th fiction backend.** New `:source-matrix` Gradle module. Federated open-standard chat — third chat-platform backend in the storyvox roster (after Discord #403 and Slack #454). Maps `joined room → fiction`, `m.room.message event → chapter` (with same-sender coalescing on a configurable 1-30 min window). Auth: user-supplied homeserver URL + access token (`syt_…` / `mat_…`), stored in `EncryptedSharedPreferences` under `pref_source_matrix_token` and routed through the existing `SecretsSyncer` cross-device sync allowlist.
+- `MatrixSource` implements `FictionSource` + `UrlMatcher` — claims `matrix.to/#/!roomid:server` (0.9), `matrix.to/#/#alias:server` (0.7), and raw `https://<server>/_matrix/client/v3/rooms/...` API URLs (0.9). `@SourcePlugin(id="matrix", defaultEnabled=false, ...)` — chip hidden on fresh installs until the user opts in via Plugin Manager.
+- Six Client-Server v3 endpoints wired: `whoami` (token verification + `@user:server` resolve), `joined_rooms` (catalog), room-state name + topic (room metadata, 404→empty), `rooms/{id}/messages?dir=b` (paginated history walker), `profile/{userId}/displayname` (sender resolution, per-process cache). Federation note documented: v1 routes all calls through the configured homeserver and relies on its federated profile cache; multi-host dispatch deferred to v2. E2EE rooms explicitly out of scope.
+- 22 unit tests across `MatrixModelsTest` (JSON shapes — whoami, joined_rooms, room state, messages with mixed event types, displayname null/set, error envelope with retry_after_ms) and `MatrixSourceTest` (fiction-id round-trip with `!`/`:` URL-encoding, URL matcher confidence ranking, same-sender coalescing with window edge cases, attachment surfacing for `m.image`/`m.file`/`m.video`/`m.audio`).
+
 ## [0.5.50] — 2026-05-15
 
 ### Changed
