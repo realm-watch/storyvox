@@ -10,18 +10,29 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.rememberNavController
 import androidx.compose.foundation.isSystemInDarkTheme
 import dagger.Lazy
 import dagger.hilt.android.AndroidEntryPoint
+import `in`.jphe.storyvox.feature.api.ReadingDirection
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
+import `in`.jphe.storyvox.feature.api.SpeakChapterMode
 import `in`.jphe.storyvox.feature.api.ThemeOverride
+import `in`.jphe.storyvox.feature.settings.AccessibilityState
+import `in`.jphe.storyvox.feature.settings.AccessibilityStateBridge
+import `in`.jphe.storyvox.ui.a11y.A11ySpeakChapterMode
+import `in`.jphe.storyvox.ui.a11y.LocalA11ySpeakChapterMode
+import `in`.jphe.storyvox.ui.a11y.LocalAccessibleTouchTargets
+import `in`.jphe.storyvox.ui.a11y.LocalIsTalkBackActive
 import `in`.jphe.storyvox.ui.theme.LibraryNocturneTheme
 import `in`.jphe.storyvox.navigation.DeepLinkResolver
 import `in`.jphe.storyvox.navigation.StoryvoxNavHost
@@ -60,6 +71,17 @@ class MainActivity : ComponentActivity() {
      */
     @Inject lateinit var settingsRepo: Lazy<SettingsRepositoryUi>
 
+    /**
+     * Accessibility scaffold (Phase 2, #486) — live snapshot of the
+     * assistive services Android reports as active for this process.
+     * Folded into the theme decision so TalkBack-active users land on
+     * the high-contrast variant automatically (unless they've toggled
+     * it off), Switch-Access-active users land with widened tap
+     * targets, and OS-level "Remove animations" reaches the same
+     * [LocalReducedMotion] CompositionLocal as the per-app pref.
+     */
+    @Inject lateinit var accessibilityStateBridge: AccessibilityStateBridge
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Android 15+ forces edge-to-edge by default for apps targeting
@@ -88,13 +110,46 @@ class MainActivity : ComponentActivity() {
                 flow { emitAll(settingsRepo.get().settings) }
             }
             val settings by settingsFlow.collectAsState(initial = null)
+            // #486 Phase 2 — live accessibility-service state. Folded
+            // with the user's explicit pref so the effective flag is
+            // `pref || detected`. The bridge defaults to all-false
+            // before its first emission, so the first frame on cold
+            // start matches the stored-pref-only state.
+            val a11yStateFlow = remember {
+                flow { emitAll(accessibilityStateBridge.state) }
+            }
+            val a11yState by a11yStateFlow.collectAsState(initial = AccessibilityState())
             val systemDark = isSystemInDarkTheme()
             val darkTheme = when (settings?.themeOverride ?: ThemeOverride.System) {
                 ThemeOverride.System -> systemDark
                 ThemeOverride.Dark -> true
                 ThemeOverride.Light -> false
             }
-            LibraryNocturneTheme(darkTheme = darkTheme) {
+
+            // #486 — effective accessibility-adapt flags. Each is
+            // `user explicit pref OR detected service state`. Users
+            // who have explicitly turned a toggle off can still pull
+            // their TalkBack pref to false, but the bridge will flip
+            // it back ON the next time TalkBack lights up; that's
+            // the design call ("auto-on when assistive service
+            // detected" — the prefs are the user's explicit intent,
+            // the detected state lives alongside, and the adapter
+            // uses the OR fold).
+            val useHighContrast = (settings?.a11yHighContrast ?: false) ||
+                a11yState.isTalkBackActive
+            val effectiveReducedMotion = (settings?.a11yReducedMotion ?: false) ||
+                a11yState.isReduceMotionRequested
+            val effectiveLargerTouchTargets = (settings?.a11yLargerTouchTargets ?: false) ||
+                a11yState.isSwitchAccessActive
+            val effectiveFontScale = settings?.a11yFontScaleOverride ?: 1.0f
+            val readingDirection = settings?.a11yReadingDirection ?: ReadingDirection.FollowSystem
+
+            LibraryNocturneTheme(
+                darkTheme = darkTheme,
+                useHighContrast = useHighContrast,
+                reducedMotion = effectiveReducedMotion,
+                fontScale = effectiveFontScale,
+            ) {
                 val navController = rememberNavController()
                 val pending by intentFlow.collectAsState()
 
@@ -122,7 +177,37 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                StoryvoxNavHost(navController = navController)
+                // #486 Phase 2 — RTL/LTR override + widened-targets
+                // CompositionLocal. The override only kicks in when
+                // the user has explicitly chosen a non-FollowSystem
+                // direction; otherwise Compose's parent-provided
+                // layout direction (from locale config) wins.
+                val forcedDirection: LayoutDirection? = when (readingDirection) {
+                    ReadingDirection.FollowSystem -> null
+                    ReadingDirection.ForceLtr -> LayoutDirection.Ltr
+                    ReadingDirection.ForceRtl -> LayoutDirection.Rtl
+                }
+                // #486 — chapter-header readout pref + TalkBack-active
+                // flag mirrored into `:core-ui` CompositionLocals so
+                // [ChapterCard] (and any other widget that builds a
+                // long-form content-description for TalkBack) can
+                // branch without depending on `:feature`.
+                val speakChapterMode = when (settings?.a11ySpeakChapterMode ?: SpeakChapterMode.Both) {
+                    SpeakChapterMode.Both -> A11ySpeakChapterMode.Both
+                    SpeakChapterMode.NumbersOnly -> A11ySpeakChapterMode.NumbersOnly
+                    SpeakChapterMode.TitlesOnly -> A11ySpeakChapterMode.TitlesOnly
+                }
+                val providers = buildList {
+                    add(LocalAccessibleTouchTargets provides effectiveLargerTouchTargets)
+                    add(LocalA11ySpeakChapterMode provides speakChapterMode)
+                    add(LocalIsTalkBackActive provides a11yState.isTalkBackActive)
+                    if (forcedDirection != null) {
+                        add(LocalLayoutDirection provides forcedDirection)
+                    }
+                }.toTypedArray()
+                CompositionLocalProvider(values = providers) {
+                    StoryvoxNavHost(navController = navController)
+                }
             }
         }
     }
