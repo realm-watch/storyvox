@@ -531,6 +531,17 @@ private object Keys {
      */
     val SOURCE_PLUGINS_ENABLED_JSON = stringPreferencesKey("pref_source_plugins_enabled_v1")
 
+    /**
+     * Plugin-seam Phase 4 (#501) — JSON-encoded
+     * `Map<voiceFamilyId, Boolean>` for the Plugin Manager's Voice
+     * bundles section. Twin of [SOURCE_PLUGINS_ENABLED_JSON]; missing
+     * ids fall back to each family's `defaultEnabled` in
+     * `VoiceFamilyRegistry`. The `_v1` suffix lets us rev the schema
+     * later (e.g. per-family richer state than a bare boolean) without
+     * a destructive migration.
+     */
+    val VOICE_FAMILIES_ENABLED_JSON = stringPreferencesKey("pref_voice_families_enabled_v1")
+
     // ── Sleep timer shake-to-extend (issue #150) ───────────────────
     val SLEEP_SHAKE_TO_EXTEND_ENABLED = booleanPreferencesKey("pref_sleep_shake_to_extend_enabled")
 
@@ -887,6 +898,13 @@ class SettingsRepositoryUiImpl(
                     }
                 }
             },
+            // Plugin-seam Phase 4 (#501) — Voice bundles in Plugin
+            // Manager. The map is empty on a fresh install; the
+            // ViewModel falls back to each family's `defaultEnabled`
+            // when its id is absent, so no migration shim is needed.
+            voiceFamiliesEnabled = `in`.jphe.storyvox.data.source.plugin.decodeVoiceFamiliesEnabledJson(
+                prefs[Keys.VOICE_FAMILIES_ENABLED_JSON],
+            ),
             notionDatabaseId = notion.databaseId,
             notionTokenConfigured = notion.apiToken.isNotBlank(),
             // Issue #393 — surface the anonymous-mode posture so the
@@ -1630,6 +1648,23 @@ class SettingsRepositoryUiImpl(
             current[id] = enabled
             prefs[Keys.SOURCE_PLUGINS_ENABLED_JSON] =
                 `in`.jphe.storyvox.data.source.plugin.encodeSourcePluginsEnabledJson(current)
+        }
+    }
+
+    /**
+     * Plugin-seam Phase 4 (#501) — twin of [setSourcePluginEnabled]
+     * for the voice family map. Single setter for the Plugin Manager's
+     * Voice bundles section; absent ids fall back to each family's
+     * `defaultEnabled` in `VoiceFamilyRegistry`.
+     */
+    override suspend fun setVoiceFamilyEnabled(id: String, enabled: Boolean) {
+        store.edit { prefs ->
+            val current = `in`.jphe.storyvox.data.source.plugin.decodeVoiceFamiliesEnabledJson(
+                prefs[Keys.VOICE_FAMILIES_ENABLED_JSON],
+            ).toMutableMap()
+            current[id] = enabled
+            prefs[Keys.VOICE_FAMILIES_ENABLED_JSON] =
+                `in`.jphe.storyvox.data.source.plugin.encodeVoiceFamiliesEnabledJson(current)
         }
     }
     override suspend fun setNotionDatabaseId(id: String) {

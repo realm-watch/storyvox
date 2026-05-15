@@ -296,6 +296,7 @@ class RealPlaybackControllerUiTest {
         override suspend fun probeTelegramBot(): String? = null
         override suspend fun fetchTelegramChannels(): List<Pair<String, String>> = emptyList()
         override suspend fun setSourcePluginEnabled(id: String, enabled: Boolean) = Unit
+        override suspend fun setVoiceFamilyEnabled(id: String, enabled: Boolean) = Unit
         override suspend fun setNotionDatabaseId(id: String) = Unit
         override suspend fun setNotionApiToken(token: String?) = Unit
         override val suggestedRssFeeds: kotlinx.coroutines.flow.Flow<List<`in`.jphe.storyvox.feature.api.SuggestedFeed>> = kotlinx.coroutines.flow.flowOf(emptyList())
