@@ -8,7 +8,11 @@ import dagger.Lazy
 import dagger.hilt.android.HiltAndroidApp
 import `in`.jphe.storyvox.BuildConfig
 import `in`.jphe.storyvox.data.auth.SessionHydrator
+import `in`.jphe.storyvox.data.db.StoryvoxDatabase
 import `in`.jphe.storyvox.data.repository.AuthRepository
+import `in`.jphe.storyvox.data.repository.FictionRepository
+import `in`.jphe.storyvox.data.repository.PlaybackPositionRepository
+import `in`.jphe.storyvox.data.repository.ShelfRepository
 import `in`.jphe.storyvox.data.work.WorkScheduler
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.playback.VoiceEngineQualityBridge
@@ -19,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 
 @HiltAndroidApp
 class StoryvoxApp : Application(), Configuration.Provider {
@@ -54,6 +59,28 @@ class StoryvoxApp : Application(), Configuration.Provider {
     @Inject lateinit var syncCoordinator: Lazy<SyncCoordinator>
     @Inject lateinit var settingsRepo: Lazy<SettingsRepositoryUi>
 
+    /**
+     * Issue #409 — pre-warm targets for [warmDataLayer]. All five
+     * are Hilt `@Singleton` instances LibraryViewModel (the start
+     * destination's VM) injects on its constructor. Materialising
+     * them on `Dispatchers.IO` from [Application.onCreate] means
+     * by the time `hiltViewModel()` resolves the VM on the Compose
+     * Main dispatcher, the underlying [StoryvoxDatabase] is already
+     * built, the Room migration ladder has been validated, and the
+     * repository singletons are cached — Hilt's DoubleCheck just
+     * hands back the cached instances instead of doing first-time
+     * construction (Room file open + schema validation ≈ 600-900 ms
+     * on the Helio P22T tablet).
+     *
+     * These are still `Lazy<>` so any failure during the bg warm-up
+     * doesn't take down the process: the foreground request just
+     * runs the same construction it would have run pre-warm.
+     */
+    @Inject lateinit var database: Lazy<StoryvoxDatabase>
+    @Inject lateinit var fictionRepository: Lazy<FictionRepository>
+    @Inject lateinit var shelfRepository: Lazy<ShelfRepository>
+    @Inject lateinit var playbackPositionRepository: Lazy<PlaybackPositionRepository>
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
@@ -67,6 +94,25 @@ class StoryvoxApp : Application(), Configuration.Provider {
      */
     private val initScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /**
+     * Issue #409 (round 2) — voice-engine seed calls are gated through
+     * this latch so they don't fire from [Application.onCreate]. Even
+     * though the seed coroutines run on [Dispatchers.IO], the FIRST
+     * static-field touch on `VoiceEngine`/`KokoroEngine` triggers
+     * class-loader resolution of the VoxSherpa AAR, which dlopens
+     * `libsherpa-onnx-jni.so` (~600 KB). On the Helio P22T tablet,
+     * that dlopen contends with the Compose first-composition pass
+     * for the single dexopt/linker mutex and steals roughly a second
+     * of wall-clock from "splash → first frame" — the .so load is
+     * unavoidable, but it doesn't need to happen on the cold-launch
+     * critical path. MainActivity calls [seedVoiceEngineFromSettings]
+     * from a `Choreographer.postFrameCallback` after the first real
+     * frame is drawn; the seed coroutines then run before any chapter
+     * can possibly start synthesizing (the user has to tap a chapter
+     * first).
+     */
+    private val voiceEngineSeeded = AtomicBoolean(false)
+
     override fun onCreate() {
         super.onCreate()
         // Issue #409 — every previous-eager step is now scheduled on
@@ -74,6 +120,12 @@ class StoryvoxApp : Application(), Configuration.Provider {
         // returns from onCreate as fast as the Hilt component-injection
         // boilerplate allows, so the splash screen → first-frame budget
         // is dominated by Compose work, not Application init.
+        // Issue #409 — pre-warm the data layer (Room db open + key
+        // repository singletons) on IO so LibraryViewModel's @Inject
+        // constructor (called on Main during the first composition)
+        // pulls cached instances instead of doing a first-time
+        // Room.databaseBuilder().build() on the main thread.
+        warmDataLayer()
         initScope.launch {
             // ensurePeriodicWorkScheduled hits SQLite via WorkManager's
             // internal database; on the Helio P22T that's ~150-300ms of
@@ -81,8 +133,10 @@ class StoryvoxApp : Application(), Configuration.Provider {
             workScheduler.get().ensurePeriodicWorkScheduled()
         }
         rehydrateRoyalRoadCookies()
-        applyPitchQualityFromSettings()
-        applyPerVoiceEngineKnobsFromSettings()
+        // Voice-engine seed calls intentionally NOT invoked here — see
+        // [seedVoiceEngineFromSettings] kdoc. MainActivity drives the
+        // post-first-frame hand-off so the .so dlopen lands well after
+        // the splash screen is gone.
         // InstantDB sync — if a refresh token is stored, validate it and
         // pull every per-domain syncer. No-op when no one is signed in.
         // Fire-and-forget: the coordinator launches its own coroutines
@@ -90,6 +144,63 @@ class StoryvoxApp : Application(), Configuration.Provider {
         initScope.launch {
             syncCoordinator.get().initialize()
         }
+    }
+
+    /**
+     * Issue #409 — pre-warm the Hilt data-layer singletons LibraryViewModel
+     * depends on, BEFORE the start-destination composition tries to
+     * resolve them on the Compose Main dispatcher. The biggest
+     * contributor is [StoryvoxDatabase] — Room's `databaseBuilder().build()`
+     * opens the SQLite file and validates the schema (running any
+     * pending migration) synchronously, and on the Helio P22T tablet
+     * that's ~600-900 ms of disk I/O + CPU. Doing it off main pulls
+     * that entire cost off the critical path.
+     *
+     * Once the database is up, we fan out the four key repository
+     * singletons (Fiction, Shelf, History/Playback) — Hilt's
+     * `DoubleCheck` provider caches each `@Singleton` after first
+     * construction, so the main-thread `hiltViewModel<LibraryViewModel>()`
+     * resolution just sees a cached `instance != UNINITIALIZED` and
+     * skips reconstruction.
+     *
+     * Fire-and-forget: if the warm-up coroutine fails (no observed
+     * failure mode today, but defensive) the foreground request just
+     * does the work itself — same code path, same outcome, just on a
+     * slower thread.
+     */
+    private fun warmDataLayer() {
+        initScope.launch {
+            // Open the database first; everything else depends on it.
+            database.get()
+            // Then the repos LibraryViewModel @Inject's. Each `.get()`
+            // is a no-op after the first, so listing them in any order
+            // is fine.
+            fictionRepository.get()
+            shelfRepository.get()
+            playbackPositionRepository.get()
+        }
+    }
+
+    /**
+     * Issue #409 — post-first-frame hook for the VoxSherpa engine-
+     * bridge seeds. Idempotent (the [voiceEngineSeeded] latch guards
+     * against re-entry from a config-change reattach of MainActivity).
+     * Called from [MainActivity] inside a `Choreographer.postFrameCallback`
+     * so the .so dlopen happens after the splash has handed off to the
+     * Compose surface.
+     *
+     * The semantics match the pre-#409-round-2 behavior — same two
+     * coroutines, same dispatcher, same fields written — just shifted
+     * later on the timeline. The user-visible contract ("seed the
+     * static fields before the first chapter renders") still holds:
+     * tapping a chapter is at minimum a few hundred ms of user-input
+     * latency after the first frame, and the seed coroutines complete
+     * in well under that window even on the P22T.
+     */
+    fun seedVoiceEngineFromSettings() {
+        if (!voiceEngineSeeded.compareAndSet(false, true)) return
+        applyPitchQualityFromSettings()
+        applyPerVoiceEngineKnobsFromSettings()
     }
 
     /**

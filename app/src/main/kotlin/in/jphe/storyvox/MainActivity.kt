@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.Choreographer
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -79,8 +80,18 @@ class MainActivity : ComponentActivity() {
      * it off), Switch-Access-active users land with widened tap
      * targets, and OS-level "Remove animations" reaches the same
      * [LocalReducedMotion] CompositionLocal as the per-app pref.
+     *
+     * Issue #409 — wrapped in [Lazy] so Hilt doesn't materialise the
+     * bridge during activity injection (which runs synchronously on
+     * the main thread inside `super.onCreate`). The bridge's
+     * `getSystemService(ACCESSIBILITY_SERVICE)` plus the
+     * `getEnabledAccessibilityServiceList` binder hop inside the
+     * eager `stateIn(SharingStarted.Eagerly)` is ~250 ms on the
+     * Helio P22T; deferring it to the [setContent] resolution path
+     * means it overlaps with the Compose first-frame budget rather
+     * than blocking pre-setContent main-thread work.
      */
-    @Inject lateinit var accessibilityStateBridge: AccessibilityStateBridge
+    @Inject lateinit var accessibilityStateBridge: Lazy<AccessibilityStateBridge>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -93,6 +104,20 @@ class MainActivity : ComponentActivity() {
         // to keep transport/FAB/headers off the bars.
         enableEdgeToEdge()
         intentFlow.value = intent
+        // Issue #409 — schedule the VoxSherpa engine-bridge seeds for
+        // the next vsync AFTER the first frame is drawn. Choreographer
+        // posts the callback for the *next* frame; the second
+        // post-frame chains it once more so we land squarely on
+        // post-first-frame. The actual seed work runs on Dispatchers.IO
+        // inside [StoryvoxApp.seedVoiceEngineFromSettings] — what the
+        // callback wins us is not having the .so dlopen contend for
+        // CPU/IO with the Compose first-composition pass on the
+        // Helio P22T.
+        Choreographer.getInstance().postFrameCallback {
+            Choreographer.getInstance().postFrameCallback {
+                (application as? StoryvoxApp)?.seedVoiceEngineFromSettings()
+            }
+        }
         setContent {
             // #412 — collect the user's theme preference + map it to
             // the explicit darkTheme boolean LibraryNocturneTheme reads.
@@ -115,10 +140,19 @@ class MainActivity : ComponentActivity() {
             // `pref || detected`. The bridge defaults to all-false
             // before its first emission, so the first frame on cold
             // start matches the stored-pref-only state.
-            val a11yStateFlow = remember {
-                flow { emitAll(accessibilityStateBridge.state) }
-            }
-            val a11yState by a11yStateFlow.collectAsState(initial = AccessibilityState())
+            //
+            // Issue #409 — the bridge now exposes a hot StateFlow
+            // (built off-main inside the bridge with
+            // SharingStarted.Eagerly), so collecting it is a
+            // synchronous read of the cached value — no per-collect
+            // binder hop, no per-collect callbackFlow registration.
+            // Previously this site wrapped `bridge.state` in a fresh
+            // `flow { emitAll(...) }`, which re-subscribed (and re-
+            // ran `getEnabledAccessibilityServiceList`) on every
+            // first composition.
+            val a11yState by accessibilityStateBridge.get().state.collectAsState(
+                initial = AccessibilityState(),
+            )
             val systemDark = isSystemInDarkTheme()
             val darkTheme = when (settings?.themeOverride ?: ThemeOverride.System) {
                 ThemeOverride.System -> systemDark
