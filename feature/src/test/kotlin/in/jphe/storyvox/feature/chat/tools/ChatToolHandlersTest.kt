@@ -356,6 +356,9 @@ private class FakeSettings : SettingsRepositoryUi {
     override suspend fun setDiscordServer(serverId: String, serverName: String) = Unit
     override suspend fun setDiscordCoalesceMinutes(minutes: Int) = Unit
     override suspend fun fetchDiscordGuilds(): List<Pair<String, String>> = emptyList()
+    override suspend fun setTelegramApiToken(token: String?) = Unit
+    override suspend fun probeTelegramBot(): String? = null
+    override suspend fun fetchTelegramChannels(): List<Pair<String, String>> = emptyList()
     override suspend fun addRssFeed(url: String) = Unit
     override suspend fun removeRssFeed(fictionId: String) = Unit
     override suspend fun removeRssFeedByUrl(url: String) = Unit

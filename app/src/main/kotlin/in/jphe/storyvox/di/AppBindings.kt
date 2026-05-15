@@ -201,6 +201,14 @@ object AppBindings {
     @Provides @Singleton
     fun provideDiscordConfig(impl: `in`.jphe.storyvox.data.DiscordConfigImpl): `in`.jphe.storyvox.source.discord.config.DiscordConfig = impl
 
+    /** Bridges source-telegram TelegramConfig (#462) to the app-side
+     *  impl. Bot token encrypted under `pref_source_telegram_token`
+     *  in the shared `storyvox.secrets` store. v1 has no plaintext-
+     *  pref leg; the channel list is derived from observed
+     *  `getUpdates` activity at runtime, not user-configured. */
+    @Provides @Singleton
+    fun provideTelegramConfig(impl: `in`.jphe.storyvox.data.TelegramConfigImpl): `in`.jphe.storyvox.source.telegram.config.TelegramConfig = impl
+
     /**
      * Same singleton instance as [provideSettingsRepositoryUi], exposed under
      * the [PlaybackBufferConfig] contract so `core-playback`'s [EnginePlayer]

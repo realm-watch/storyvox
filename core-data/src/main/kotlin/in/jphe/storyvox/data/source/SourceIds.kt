@@ -143,6 +143,18 @@ object SourceIds {
      *  is high-friction and Discord is a private workspace, not a
      *  public catalog. */
     const val DISCORD: String = "discord"
+    /** Telegram (#462) — fourth chat-platform backend in the
+     *  storyvox roster. Mapping: public channel → one fiction,
+     *  channel post → one chapter. Auth model is user-supplied
+     *  Bot API token (created via @BotFather, one-time setup).
+     *  The bot has to be invited as a member of any public
+     *  channel the user wants to read. No bundled default token,
+     *  no auto-join, no MTProto user-side path (private DMs /
+     *  private groups deferred to a sibling issue). Default OFF
+     *  on fresh installs because bot-token onboarding is
+     *  high-friction. v1 ships no search (Bot API has no
+     *  full-text search endpoint). */
+    const val TELEGRAM: String = "telegram"
     /** Readability4J catch-all (#472, magic-link audiobook) — the
      *  always-on last-resort matcher for the paste-anything flow. Any
      *  HTTP(S) URL that none of the 17 specialized backends claim

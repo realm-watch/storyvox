@@ -185,6 +185,40 @@ class SettingsViewModel @Inject constructor(
             _discordGuilds.value = repo.fetchDiscordGuilds()
         }
     }
+
+    // ─── Telegram (#462) ─────────────────────────────────────────
+
+    fun setTelegramApiToken(token: String?) =
+        viewModelScope.launch { repo.setTelegramApiToken(token) }
+
+    /** Authenticated bot identity (@username, or null when unset /
+     *  bad token / network out). Refreshed by [refreshTelegramProbe];
+     *  the UI calls that when the Telegram card opens or after a
+     *  token paste. Null reflects every failure path; the UI maps to
+     *  the unified "Not signed in" empty state. */
+    private val _telegramBotUsername =
+        kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val telegramBotUsername: kotlinx.coroutines.flow.StateFlow<String?> =
+        _telegramBotUsername.asStateFlow()
+
+    /** Channels the bot has observed via getUpdates this session.
+     *  Same shape as [discordGuilds] — (chatId, title) pairs the UI
+     *  surfaces as the channel list. Empty when no token, no
+     *  observed activity, or a probe failure. */
+    private val _telegramChannels =
+        kotlinx.coroutines.flow.MutableStateFlow<List<Pair<String, String>>>(emptyList())
+    val telegramChannels: kotlinx.coroutines.flow.StateFlow<List<Pair<String, String>>> =
+        _telegramChannels.asStateFlow()
+
+    /** Probe both getMe + getUpdates → getChat. Drives the Settings
+     *  card's "Authenticated as @bot · sees N channels" line. */
+    fun refreshTelegramProbe() {
+        viewModelScope.launch {
+            _telegramBotUsername.value = repo.probeTelegramBot()
+            _telegramChannels.value = repo.fetchTelegramChannels()
+        }
+    }
+
     fun setOutlineHost(host: String) = viewModelScope.launch { repo.setOutlineHost(host) }
     fun setOutlineApiKey(apiKey: String) = viewModelScope.launch { repo.setOutlineApiKey(apiKey) }
     fun clearOutlineConfig() = viewModelScope.launch { repo.clearOutlineConfig() }

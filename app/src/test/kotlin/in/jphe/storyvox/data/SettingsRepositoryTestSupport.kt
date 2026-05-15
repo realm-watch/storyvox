@@ -195,6 +195,29 @@ internal fun makeFakeDiscordConfig(
 internal fun makeFakeDiscordGuildDirectory(): `in`.jphe.storyvox.source.discord.DiscordGuildDirectory =
     `in`.jphe.storyvox.source.discord.DiscordGuildDirectory.Empty
 
+/** Real [TelegramConfigImpl] over a temp DataStore + fake secrets (#462).
+ *  Settings tests don't exercise Telegram state — the signature requires
+ *  the dep, this satisfies it. */
+internal fun makeFakeTelegramConfig(
+    dir: File,
+    scope: CoroutineScope,
+): TelegramConfigImpl {
+    val telegramStore = PreferenceDataStoreFactory.create(
+        scope = scope,
+        produceFile = { File(dir, "storyvox_telegram.preferences_pb") },
+    )
+    return TelegramConfigImpl(telegramStore, FakeSecrets())
+}
+
+/**
+ * Stub [TelegramChannelDirectory] for settings tests. Tests don't
+ * exercise the Bot API probe; the repo signature requires the dep
+ * so the stub returns nulls/empties (matches "no token" / "fetch
+ * failed" mode in production).
+ */
+internal fun makeFakeTelegramChannelDirectory(): `in`.jphe.storyvox.source.telegram.TelegramChannelDirectory =
+    `in`.jphe.storyvox.source.telegram.TelegramChannelDirectory.Empty
+
 /**
  * Real [PalaceDaemonApi] over an OkHttpClient + a fake config that emits
  * an empty [PalaceConfigState]. No HTTP is exercised by the settings

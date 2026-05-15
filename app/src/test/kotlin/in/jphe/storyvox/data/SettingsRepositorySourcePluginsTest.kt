@@ -70,6 +70,8 @@ class SettingsRepositorySourcePluginsTest {
             notionConfig = makeFakeNotionConfig(tempFolder.newFolder("notion_ds"), scope),
             discordConfig = makeFakeDiscordConfig(tempFolder.newFolder("discord_ds"), scope),
             discordGuildDirectory = makeFakeDiscordGuildDirectory(),
+            telegramConfig = makeFakeTelegramConfig(tempFolder.newFolder("telegram_ds"), scope),
+            telegramChannelDirectory = makeFakeTelegramChannelDirectory(),
             suggestedFeedsRegistry = SuggestedFeedsRegistry(),
             azureCreds = makeFakeAzureCredentials(),
             azureClient = makeFakeAzureClient(),
@@ -97,8 +99,10 @@ class SettingsRepositorySourcePluginsTest {
             SourceIds.RADIO, SourceIds.KVMR,
             SourceIds.NOTION, SourceIds.HACKERNEWS, SourceIds.ARXIV,
             SourceIds.PLOS, SourceIds.DISCORD,
+            // #462 — Telegram backend.
+            SourceIds.TELEGRAM,
         )
-        assertEquals(18, allIds.size)
+        assertEquals(19, allIds.size)
 
         // Toggle each off then on, in order — verify both states
         // land in the persisted map.
@@ -195,6 +199,10 @@ class SettingsRepositorySourcePluginsTest {
             SourceIds.RADIO, SourceIds.KVMR, SourceIds.NOTION,
             SourceIds.HACKERNEWS, SourceIds.ARXIV, SourceIds.PLOS,
             SourceIds.DISCORD,
+            // #462 — Telegram backend defaults ON for fresh-install
+            // chip-strip discoverability; backend stays inert until
+            // the user enters a bot token in Settings.
+            SourceIds.TELEGRAM,
         )
 
         val snapshot = repo.settings.first().sourcePluginsEnabled

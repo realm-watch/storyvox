@@ -71,6 +71,8 @@ class SettingsRepositoryPitchTest {
             notionConfig = makeFakeNotionConfig(tempFolder.newFolder("notion_ds"), scope),
             discordConfig = makeFakeDiscordConfig(tempFolder.newFolder("discord_ds"), scope),
             discordGuildDirectory = makeFakeDiscordGuildDirectory(),
+            telegramConfig = makeFakeTelegramConfig(tempFolder.newFolder("telegram_ds"), scope),
+            telegramChannelDirectory = makeFakeTelegramChannelDirectory(),
             suggestedFeedsRegistry = SuggestedFeedsRegistry(),
             azureCreds = makeFakeAzureCredentials(),
             azureClient = makeFakeAzureClient(),
