@@ -4,6 +4,8 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import `in`.jphe.storyvox.data.auth.SessionState
+import `in`.jphe.storyvox.data.repository.AuthRepository
 import `in`.jphe.storyvox.data.source.SourceIds
 import `in`.jphe.storyvox.data.source.plugin.SourcePluginDescriptor
 import `in`.jphe.storyvox.data.source.plugin.SourcePluginRegistry
@@ -34,7 +36,22 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-enum class BrowseTab { Popular, NewReleases, BestRated, Search, MyRepos, Starred, Gists }
+enum class BrowseTab {
+    Popular,
+    NewReleases,
+    BestRated,
+    Search,
+    // GitHub auth-only chips (#200/#201/#202).
+    MyRepos,
+    Starred,
+    Gists,
+    // AO3 auth-only chips (#426 PR2). Visible only when the user has
+    // a captured AO3 session; resolves to the AO3 subscriptions /
+    // Marked-for-Later endpoints via [BrowseSource.Ao3MySubscriptions] /
+    // [BrowseSource.Ao3MarkedForLater].
+    Ao3MySubscriptions,
+    Ao3MarkedForLater,
+}
 
 @Immutable
 data class BrowseUiState(
@@ -59,6 +76,10 @@ data class BrowseUiState(
     val githubSignedIn: Boolean = false,
     val hasGitHubRepoScope: Boolean = false,
     val royalRoadSignedIn: Boolean = false,
+    /** #426 PR2 — AO3 sign-in flag. Drives the AO3 chip's "My
+     *  Subscriptions" / "Marked for Later" tab visibility and the
+     *  signed-out CTA copy. */
+    val ao3SignedIn: Boolean = false,
     /** Sources the user has enabled in Settings, as a set of stable
      *  plugin ids. */
     val enabledSourceIds: Set<String> = emptySet(),
@@ -94,6 +115,7 @@ private data class ControlsView(
     val githubSignedIn: Boolean,
     val hasGitHubRepoScope: Boolean,
     val royalRoadSignedIn: Boolean,
+    val ao3SignedIn: Boolean,
     val enabledSourceIds: Set<String>,
     val visibleSources: List<SourcePluginDescriptor>,
 )
@@ -112,6 +134,11 @@ class BrowseViewModel @Inject constructor(
     private val repo: BrowseRepositoryUi,
     private val settings: SettingsRepositoryUi,
     private val registry: SourcePluginRegistry,
+    // #426 PR2 — observe AO3 session state directly off AuthRepository
+    // (rather than threading it through UiSettings) since AO3 sign-in
+    // is a strictly per-source concern and the UiSettings sign-in flag
+    // is RR-specific by design.
+    private val authRepo: AuthRepository,
 ) : ViewModel() {
 
     /** Default selected source — first defaultEnabled plugin, or
@@ -139,6 +166,15 @@ class BrowseViewModel @Inject constructor(
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
+    /** #426 PR2 — AO3 sign-in flag from the cross-source session-state
+     *  map. Drives the AO3 chip's "My Subscriptions" / "Marked for Later"
+     *  tab visibility. */
+    private val ao3SignedIn: StateFlow<Boolean> = authRepo
+        .sessionState(SourceIds.AO3)
+        .map { it is SessionState.Authenticated }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     /** Issue #443 — anonymous-public Notion mode is active when no
      *  integration token is configured (the source falls back to the
      *  TechEmpower public Notion content). Surfaces a demo banner on
@@ -162,11 +198,16 @@ class BrowseViewModel @Inject constructor(
         val githubSignedIn: Boolean,
         val hasGitHubRepoScope: Boolean,
         val royalRoadSignedIn: Boolean,
+        // #426 PR2 — AO3 session flag carried alongside RR / GitHub so
+        // the same auth tuple feeds both the resolver (gating
+        // [Ao3MySubscriptions] tab routing) and the controls flow
+        // (gating chip visibility).
+        val ao3SignedIn: Boolean,
     )
 
     private val authSnapshot: kotlinx.coroutines.flow.Flow<AuthSnapshot> =
-        combine(githubSignedIn, hasGitHubRepoScope, royalRoadSignedIn) { gh, repo, rr ->
-            AuthSnapshot(gh, repo, rr)
+        combine(githubSignedIn, hasGitHubRepoScope, royalRoadSignedIn, ao3SignedIn) { gh, repo, rr, ao3 ->
+            AuthSnapshot(gh, repo, rr, ao3)
         }.distinctUntilChanged()
 
     /**
@@ -204,7 +245,16 @@ class BrowseViewModel @Inject constructor(
         ) { sourceId, tab, q, filter, ghFilter ->
             ResolveTuple(sourceId, tab, q, filter, ghFilter)
         }
-        combine(baseTuple, _palaceFilter, githubSignedIn, royalRoadSignedIn) { tup, palaceFilter, ghSignedIn, rrSignedIn ->
+        // #426 PR2 — ao3SignedIn joins the gating tuple. The 4-arg
+        // `combine` overload caps at the (baseTuple, palaceFilter,
+        // ghSignedIn, rrSignedIn) shape; fold ao3SignedIn into the
+        // RR/GH auth snapshot so the call stays inside the 4-arg
+        // ceiling without dropping back to the vararg overload that
+        // costs an extra array allocation per emission.
+        val authForResolve = combine(githubSignedIn, royalRoadSignedIn, ao3SignedIn) { gh, rr, ao3 ->
+            Triple(gh, rr, ao3)
+        }
+        combine(baseTuple, _palaceFilter, authForResolve) { tup, palaceFilter, auth ->
             resolveSource(
                 sourceId = tup.sourceId,
                 tab = tup.tab,
@@ -212,8 +262,9 @@ class BrowseViewModel @Inject constructor(
                 filter = tup.filter,
                 githubFilter = tup.ghFilter,
                 palaceFilter = palaceFilter,
-                githubSignedIn = ghSignedIn,
-                royalRoadSignedIn = rrSignedIn,
+                githubSignedIn = auth.first,
+                royalRoadSignedIn = auth.second,
+                ao3SignedIn = auth.third,
             )?.let { source -> source to tup.sourceId }
         }
             .distinctUntilChanged()
@@ -228,6 +279,19 @@ class BrowseViewModel @Inject constructor(
         viewModelScope.launch {
             githubSignedIn.collectLatest { signedIn ->
                 if (!signedIn && _tab.value in AUTH_ONLY_GH_TABS) {
+                    _tab.value = BrowseTab.Popular
+                }
+            }
+        }
+        // #426 PR2 — AO3 sign-out tear-down. Mirror of the GitHub
+        // branch above: if the user signs out of AO3 while the
+        // Subscriptions / Marked-for-Later chip is active, fall
+        // back to Popular so the chip strip doesn't render a tab
+        // that resolveSource will null out (which would leave the
+        // user staring at an empty Browse).
+        viewModelScope.launch {
+            ao3SignedIn.collectLatest { signedIn ->
+                if (!signedIn && _tab.value in AUTH_ONLY_AO3_TABS) {
                     _tab.value = BrowseTab.Popular
                 }
             }
@@ -263,6 +327,7 @@ class BrowseViewModel @Inject constructor(
                 githubSignedIn = auth.githubSignedIn,
                 hasGitHubRepoScope = auth.hasGitHubRepoScope,
                 royalRoadSignedIn = auth.royalRoadSignedIn,
+                ao3SignedIn = auth.ao3SignedIn,
                 enabledSourceIds = enabled,
                 visibleSources = registry.descriptors.filter { it.id in enabled },
             )
@@ -290,6 +355,7 @@ class BrowseViewModel @Inject constructor(
                     githubSignedIn = c.githubSignedIn,
                     hasGitHubRepoScope = c.hasGitHubRepoScope,
                     royalRoadSignedIn = c.royalRoadSignedIn,
+                    ao3SignedIn = c.ao3SignedIn,
                     enabledSourceIds = c.enabledSourceIds,
                     visibleSources = c.visibleSources,
                     notionAnonymousActive = notionAnon,
@@ -324,6 +390,7 @@ class BrowseViewModel @Inject constructor(
                     githubSignedIn = c.githubSignedIn,
                     hasGitHubRepoScope = c.hasGitHubRepoScope,
                     royalRoadSignedIn = c.royalRoadSignedIn,
+                    ao3SignedIn = c.ao3SignedIn,
                     enabledSourceIds = c.enabledSourceIds,
                     visibleSources = c.visibleSources,
                     notionAnonymousActive = notionAnon,
@@ -336,7 +403,11 @@ class BrowseViewModel @Inject constructor(
     fun selectSource(id: String) {
         if (_sourceId.value == id) return
         _sourceId.value = id
-        val supported = BrowseSourceUi.supportedTabs(id, githubSignedIn.value)
+        val supported = BrowseSourceUi.supportedTabs(
+            id,
+            githubSignedIn = githubSignedIn.value,
+            ao3SignedIn = ao3SignedIn.value,
+        )
         if (_tab.value !in supported) {
             _tab.value = BrowseTab.Popular
         }
@@ -408,6 +479,12 @@ class BrowseViewModel @Inject constructor(
 
 private val AUTH_ONLY_GH_TABS: Set<BrowseTab> = setOf(BrowseTab.MyRepos, BrowseTab.Starred, BrowseTab.Gists)
 
+/** #426 PR2 — AO3 auth-only tabs (mirror of [AUTH_ONLY_GH_TABS]). */
+private val AUTH_ONLY_AO3_TABS: Set<BrowseTab> = setOf(
+    BrowseTab.Ao3MySubscriptions,
+    BrowseTab.Ao3MarkedForLater,
+)
+
 private data class ResolveTuple(
     val sourceId: String,
     val tab: BrowseTab,
@@ -434,6 +511,7 @@ private fun resolveSource(
     palaceFilter: MemPalaceFilter,
     githubSignedIn: Boolean,
     royalRoadSignedIn: Boolean,
+    ao3SignedIn: Boolean,
 ): BrowseSource? = when (sourceId) {
     SourceIds.GITHUB -> when {
         tab == BrowseTab.MyRepos -> if (githubSignedIn) BrowseSource.GitHubMyRepos else null
@@ -479,6 +557,15 @@ private fun resolveSource(
     SourceIds.AO3 -> when (tab) {
         BrowseTab.Popular -> BrowseSource.Popular
         BrowseTab.NewReleases -> BrowseSource.NewReleases
+        BrowseTab.Search -> if (q.isBlank()) null else BrowseSource.Search(q)
+        // #426 PR2 — AO3 auth-gated tabs. Resolver returns null when
+        // not signed in (BrowseSourceUi.supportedTabs already gates
+        // chip visibility behind ao3SignedIn; the redundant gate here
+        // is defensive against a stale persisted tab selection).
+        BrowseTab.Ao3MySubscriptions ->
+            if (ao3SignedIn) BrowseSource.Ao3MySubscriptions else null
+        BrowseTab.Ao3MarkedForLater ->
+            if (ao3SignedIn) BrowseSource.Ao3MarkedForLater else null
         else -> null
     }
     // Issue #417 — Radio source. Popular surfaces the curated + starred

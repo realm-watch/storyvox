@@ -125,6 +125,13 @@ fun BrowseScreen(
      *  on the listing tabs (Popular / NewReleases / BestRated) when the
      *  user is not signed in to RR; Search keeps working anonymously. */
     onOpenRoyalRoadSignIn: () -> Unit,
+    /** #426 PR2 — navigates to the AO3 sign-in WebView. Surfaced on the
+     *  AO3 chip's auth-only "My Subscriptions" / "Marked for Later" tabs
+     *  when the user is not signed in to AO3. Defaults to a no-op so
+     *  pre-PR2 BrowseScreen callers don't need to thread the param;
+     *  the only call site that needs the real route is the
+     *  StoryvoxNavHost Library branch. */
+    onOpenAo3SignIn: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     /**
      * Restructure (v0.5.40) — when true, BrowseScreen renders without
@@ -184,8 +191,12 @@ fun BrowseScreen(
             modifier = Modifier.fillMaxWidth(),
         )
 
-        val supportedTabs = remember(state.sourceId, state.githubSignedIn) {
-            BrowseSourceUi.supportedTabs(state.sourceId, githubSignedIn = state.githubSignedIn)
+        val supportedTabs = remember(state.sourceId, state.githubSignedIn, state.ao3SignedIn) {
+            BrowseSourceUi.supportedTabs(
+                state.sourceId,
+                githubSignedIn = state.githubSignedIn,
+                ao3SignedIn = state.ao3SignedIn,
+            )
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -304,6 +315,21 @@ fun BrowseScreen(
         // fallback, add a clear demo label + a Settings deep-link.
         if (state.sourceId == SourceIds.NOTION && state.notionAnonymousActive) {
             NotionDemoBanner(onOpenSettings = onOpenSettings)
+        }
+
+        // #426 PR2 — AO3 sign-in hint when the user has the AO3 chip
+        // selected but no session is captured. Renders a compact
+        // brass-tinted banner above the listing with a "Sign in to AO3"
+        // affordance — the auth-only "My Subscriptions" / "Marked for
+        // Later" tabs are hidden from the chip strip in that state, so
+        // this is the only surface that points the user at the sign-in
+        // route. Suppressed on Search (search keeps working anonymously
+        // and the banner would be redundant noise on a search query).
+        if (state.sourceId == SourceIds.AO3 &&
+            !state.ao3SignedIn &&
+            state.tab != BrowseTab.Search
+        ) {
+            Ao3SignInBanner(onOpenSignIn = onOpenAo3SignIn)
         }
 
         when {
@@ -640,6 +666,46 @@ private fun NotionDemoBanner(onOpenSettings: () -> Unit) {
 }
 
 /**
+ * #426 PR2 — compact AO3 sign-in banner. Surfaces above the AO3
+ * listing when the chip is selected and no AO3 session is captured.
+ * Mirrors [NotionDemoBanner]'s shape (Card + headline + body + text
+ * button) rather than the full-screen [RoyalRoadSignedOutCta] —
+ * AO3's Popular / NewReleases / Search tabs keep working anonymously,
+ * so we're only nudging the user toward auth-only surfaces, not
+ * blocking the listing entirely.
+ */
+@Composable
+private fun Ao3SignInBanner(onOpenSignIn: () -> Unit) {
+    val spacing = LocalSpacing.current
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = spacing.md, vertical = spacing.xs),
+    ) {
+        Column(modifier = Modifier.padding(spacing.md)) {
+            Text(
+                "AO3 sign-in",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                "Sign in to AO3 to see your subscribed works and Marked for Later.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = spacing.xxs),
+            )
+            androidx.compose.material3.TextButton(
+                onClick = onOpenSignIn,
+                modifier = Modifier.padding(top = spacing.xs),
+            ) { Text("Sign in to AO3") }
+        }
+    }
+}
+
+/**
  * Issue #458 — Browse → RSS first-tap empty state. Replaces the
  * blank-with-FAB-only screen that read as a broken source. Headline +
  * one-line explanation of how the source works + a primary "Add a
@@ -727,6 +793,11 @@ private val BrowseTab.label: String
         BrowseTab.MyRepos -> "My Repos"
         BrowseTab.Starred -> "Starred"
         BrowseTab.Gists -> "Gists"
+        // #426 PR2 — AO3 auth-only tab labels. Short forms so the
+        // chip strip fits on Flip3's 1080-px inner display without
+        // truncation (subscriptions → "Subscribed").
+        BrowseTab.Ao3MySubscriptions -> "Subscribed"
+        BrowseTab.Ao3MarkedForLater -> "Marked"
     }
 
 /**
