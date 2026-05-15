@@ -39,15 +39,17 @@ import okhttp3.OkHttpClient
 internal class FakeAuth : AuthRepository {
     private val state = MutableStateFlow<SessionState>(SessionState.Anonymous)
     override val sessionState: StateFlow<SessionState> = state.asStateFlow()
+    override fun sessionState(sourceId: String): StateFlow<SessionState> = state.asStateFlow()
     override suspend fun captureSession(
         cookieHeader: String,
         userDisplayName: String?,
         userId: String?,
         expiresAt: Long?,
+        sourceId: String,
     ) = Unit
-    override suspend fun clearSession() = Unit
-    override suspend fun cookieHeader(): String? = null
-    override suspend fun verifyOrExpire(): SessionState = SessionState.Anonymous
+    override suspend fun clearSession(sourceId: String) = Unit
+    override suspend fun cookieHeader(sourceId: String): String? = null
+    override suspend fun verifyOrExpire(sourceId: String): SessionState = SessionState.Anonymous
 }
 
 internal class FakeHydrator : SessionHydrator {

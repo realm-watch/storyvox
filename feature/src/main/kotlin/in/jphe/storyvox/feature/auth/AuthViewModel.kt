@@ -44,6 +44,15 @@ class AuthViewModel @Inject constructor(
         _captureState.value = CaptureState.Capturing
         viewModelScope.launch {
             val cookieHeader = cookies.entries.joinToString("; ") { (k, v) -> "$k=$v" }
+            // TODO(PR2 / #426): take a sourceId parameter on captureCookies()
+            // and pass it through to captureSession + hydrator + settings.
+            // AuthRepository.captureSession defaults to ROYAL_ROAD so the
+            // RR sign-in flow is unchanged today; PR2 wires the AO3 path
+            // and `auth.captureSession(..., sourceId = SourceIds.AO3)` /
+            // an AO3-aware [SessionHydrator] dispatch land here. Same goes
+            // for the `fictionRepo.refreshRemoteFollows()` fire-and-forget
+            // below — RR is the only source that has a follows concept
+            // wired today, so leaving it RR-only until PR2 is correct.
             auth.captureSession(
                 cookieHeader = cookieHeader,
                 userDisplayName = null,
