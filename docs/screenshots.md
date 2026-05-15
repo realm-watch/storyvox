@@ -14,10 +14,22 @@ Captured on a Galaxy Tab A7 Lite (800×1340 px) running storyvox in both Library
   <dark-image
     src-dark="{{ '/screenshots/01-browse.png' | relative_url }}"
     src-light="{{ '/screenshots/01-browse-light.png' | relative_url }}"
-    alt="Browse tab — Royal Road and GitHub fiction sources side by side, infinite scroll grid.">
-    <img src="{{ '/screenshots/01-browse.png' | relative_url }}" alt="Browse tab — Royal Road and GitHub fiction sources side by side, infinite scroll grid." />
+    alt="Browse tab — Notion chip selected by default (v0.5.48+), with TechEmpower's resource library tiles (Guides, Resources, About, Donate) rendered as brass-edged synthetic cover tiles.">
+    <img src="{{ '/screenshots/01-browse.png' | relative_url }}" alt="Browse tab — Notion chip selected by default with TechEmpower's resource library tiles." />
   </dark-image>
-  <figcaption>Browse — Royal Road infinite-scroll grid with cover art and pinned source picker.</figcaption>
+  <figcaption>Browse — Notion chip is the default selection (v0.5.48+), surfacing TechEmpower's free-tech resource library (Guides, Resources, About, Donate). Brass-edged synthetic <code>BrandedCoverTile</code> stand-ins fill where the source page has no explicit cover image (v0.5.51, #514).</figcaption>
+</figure>
+
+## TechEmpower Home
+
+<figure>
+  <dark-image
+    src-dark="{{ '/screenshots/08-techempower-home.png' | relative_url }}"
+    src-light="{{ '/screenshots/08-techempower-home-light.png' | relative_url }}"
+    alt="TechEmpower Home — Browse Resources, Peer Support, Call 211, and About TechEmpower cards with a Featured guides shelf below.">
+    <img src="{{ '/screenshots/08-techempower-home.png' | relative_url }}" alt="TechEmpower Home — Browse Resources, Peer Support, Call 211, About TechEmpower cards and a Featured guides shelf below." />
+  </dark-image>
+  <figcaption>TechEmpower Home — tap the brass hero card at the top of Library to reach this screen. Four primary cards (Browse Resources, Peer Support via Discord, Call 211 for local services, About TechEmpower) plus a Featured guides shelf. The two help paths sit alongside browsing, never under a Settings menu. (Shipped v0.5.51 #511.)</figcaption>
 </figure>
 
 ## Filters
@@ -72,10 +84,10 @@ Captured on a Galaxy Tab A7 Lite (800×1340 px) running storyvox in both Library
   <dark-image
     src-dark="{{ '/screenshots/04-library.png' | relative_url }}"
     src-light="{{ '/screenshots/04-library-light.png' | relative_url }}"
-    alt="Library tab — currently-listening fictions with cover, progress, last-read sentence, resume button.">
-    <img src="{{ '/screenshots/04-library.png' | relative_url }}" alt="Library tab — currently-listening fictions with cover, progress, last-read sentence, resume button." />
+    alt="Library tab — TechEmpower brass hero card at the top, library tiles below, four-tab dock at the bottom.">
+    <img src="{{ '/screenshots/04-library.png' | relative_url }}" alt="Library tab — TechEmpower brass hero card at the top, library tiles below, four-tab dock at the bottom." />
   </dark-image>
-  <figcaption>Library — currently-listening fictions with cover, progress, last-read sentence, resume button.</figcaption>
+  <figcaption>Library — the brass TechEmpower hero card sits at the top of the tab (tap → TechEmpower Home). Library tiles below show the All / Reading / Read / Wishlist filter chips and the four-tab dock <code>{Playing · Library · Voices · Settings}</code> anchored at the bottom (v0.5.50 final layout).</figcaption>
 </figure>
 
 ## Settings
@@ -84,10 +96,22 @@ Captured on a Galaxy Tab A7 Lite (800×1340 px) running storyvox in both Library
   <dark-image
     src-dark="{{ '/screenshots/05-settings.png' | relative_url }}"
     src-light="{{ '/screenshots/05-settings-light.png' | relative_url }}"
-    alt="Settings — voice library, speed, pitch, punctuation cadence, theme picker.">
-    <img src="{{ '/screenshots/05-settings.png' | relative_url }}" alt="Settings — voice library, speed, pitch, punctuation cadence, theme picker." />
+    alt="Settings hub — brass-edged section cards: Voice & Playback, Voice library, Reading, Performance, AI, Accessibility, AI sessions, Plugins, Pronunciation dictionary, Account, Memory Palace (scroll for more).">
+    <img src="{{ '/screenshots/05-settings.png' | relative_url }}" alt="Settings hub — brass-edged section cards." />
   </dark-image>
-  <figcaption>Settings — Voice &amp; Playback section: voice library, speed, pitch, punctuation cadence, pronunciation overrides, theme picker. (Dark capture pre-dates the v0.5.00 Settings IA redesign; light captures the current eight-section layout.)</figcaption>
+  <figcaption>Settings hub — brass-edged section cards (thirteen total, post-v0.5.42 redesign). Voice &amp; Playback, Voice library, Reading, Performance, AI, Accessibility, AI sessions, Plugins, Pronunciation dictionary, Account, Memory Palace surface above the fold; scroll for the remaining cards.</figcaption>
+</figure>
+
+## Accessibility (Settings subscreen)
+
+<figure>
+  <dark-image
+    src-dark="{{ '/screenshots/09-accessibility-settings.png' | relative_url }}"
+    src-light="{{ '/screenshots/09-accessibility-settings-light.png' | relative_url }}"
+    alt="Accessibility subscreen — High contrast theme, Reduced motion, Larger touch targets, Screen-reader pauses slider, Speak chapter numbers/titles segmented control, Font scale override slider.">
+    <img src="{{ '/screenshots/09-accessibility-settings.png' | relative_url }}" alt="Accessibility subscreen." />
+  </dark-image>
+  <figcaption>Accessibility (Settings → Accessibility) — High contrast theme, Reduced motion, Larger touch targets, Screen-reader pauses (500 ms default, persists when TalkBack is active), Speak chapter numbers / titles segmented control, Font scale override. Twelve a11y findings closed across v0.5.43 land in this subscreen.</figcaption>
 </figure>
 
 ## Follows
