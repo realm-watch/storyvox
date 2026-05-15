@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -109,18 +108,18 @@ fun BottomTabBar(
             modifier = Modifier
                 .fillMaxWidth()
                 // Pad above the visible nav bar (3-button nav) or
-                // gesture pill (~20px). The deeper OS gesture-exclusion
-                // zone (`mandatorySystemGestures`, ~64px on this
-                // device) is handled per-cell via
-                // `Modifier.systemGestureExclusion()` below — that
-                // tells the OS "I own taps in this rect, don't claim
-                // them as swipe-up gestures." Without that, the bottom
-                // ~44px of each tab fell inside the gesture zone and
-                // taps got swallowed by the OS, especially when
-                // attention drifted (e.g. while audio was playing).
-                // We use the exclusion-rect API instead of padding-by-
-                // the-larger-inset because that approach leaves an
-                // ugly dead strip below the cells.
+                // gesture pill (~20px). Earlier revisions also called
+                // `Modifier.systemGestureExclusion()` on each tab cell
+                // (below) to claim the deeper ~64px mandatorySystemGestures
+                // zone for taps, but that turned out to block the OS
+                // swipe-up-home and long-press-up-recents gestures
+                // entirely — they hit our exclusion rect and never
+                // reached the system. JP reported it on v0.5.41 tablet.
+                // The exclusion is removed; `windowInsetsPadding`
+                // already lifts cells above the visible gesture pill,
+                // and if specific cells fall into the gesture-pool we
+                // narrow the exclusion to just the top half of each
+                // cell (so the home gesture lives in the bottom 24dp).
                 .windowInsetsPadding(WindowInsets.navigationBars)
                 .height(BAR_HEIGHT),
         ) {
@@ -165,15 +164,19 @@ fun BottomTabBar(
                         onClick = { onSelect(tab) },
                         modifier = Modifier
                             .weight(1f)
-                            .fillMaxHeight()
-                            // Claim each tab's rect from the OS gesture
-                            // pool. Android limits the cumulative
-                            // exclusion area to 200dp from the bottom
-                            // of the window; one 80dp bar's worth of
-                            // cells is well within that. Required to
-                            // make taps reliable on gesture nav — see
-                            // the header comment on BoxWithConstraints.
-                            .systemGestureExclusion(),
+                            .fillMaxHeight(),
+                            // No `.systemGestureExclusion()` here — see
+                            // the comment on the BoxWithConstraints
+                            // padding above. Earlier revisions claimed
+                            // each cell from the OS gesture pool to
+                            // make taps reliable, but that blocked the
+                            // swipe-up-home and long-press-up-recents
+                            // gestures entirely (they hit our exclusion
+                            // rect and never reached the system). If
+                            // tap reliability degrades on gesture nav,
+                            // re-add a narrowed exclusion bound to the
+                            // top half of each cell (so the bottom 24dp
+                            // stays available for OS gestures).
                     )
                 }
             }
