@@ -9,12 +9,49 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
-### Added — Beautiful book covers for Notion-sourced fictions
-- **`BrandedCoverTile`** in `:core-ui` — pure-Compose synthetic book cover used when no remote cover URL is available. Warm Library Nocturne vertical gradient, family watermark (TechEmpower sun-disk drawn as concentric brass circles + 8 radiating rays, or generic medallion) at low alpha in the upper-left, title centered in EB Garamond, brass author line below in Inter, 1.5dp brass border. Pure-composable: no network, no bundled drawable, survives Coil S3-URL expiry by being the very thing the error slot falls back to.
-- **Fallback cascade in `FictionCoverThumb`**: coverUrl loads → `SubcomposeAsyncImage` with `ContentScale.Crop` (focal center, handles Notion's 5:1 banner aspect). coverUrl null/error AND title non-blank → `BrandedCoverTile` with the inferred `CoverSourceFamily`. Title blank → existing `MonogramSigilTile` (third-tier fallback for cascade-delete edge cases).
-- **`readBodyImageUrl` in `:source-notion`** — walks the first 12 content blocks for the first live `image` block when `format.page_cover` is unset (most TechEmpower pages). Prefers `format.display_source` (signed S3) over `properties.source` (external URLs). Wired into `buildSummaryForGenericRoot`; tile-builder TechEmpower fictions stay network-free and lean on `BrandedCoverTile`.
-- Threaded `author` + `sourceFamily` into Library / Browse / Follows / FictionDetail call sites; `coverSourceFamilyFor(sourceId)` centralizes the mapping (notion → TechEmpower, else → Generic).
-- **Font substitution note**: Fraunces / DM Sans aren't bundled in storyvox (license check would add friction), so the branded tile uses the already-bundled EB Garamond (display) + Inter (label) families. JP can decide whether to license + bundle Fraunces / DM Sans for a future visual-coherence pass.
+## [0.5.51] — 2026-05-15
+
+The six-parallel-agent release — TechEmpower becomes the default use case, plus two new chat backends, the home-screen widget, AO3 auth scaffolding, and beautiful book covers.
+
+### Added — TechEmpower as default use case (#511, closes #500)
+- **Brass-edged TechEmpower hero card** pinned at the top of Library (above ResumeCard, above empty-library hint). Sun-disk + "TechEmpower" eyebrow + mission tagline + CTA. Tap → dedicated TechEmpower Home screen.
+- **TechEmpower Home screen** at `StoryvoxRoutes.TECHEMPOWER_HOME` — 96dp sun-disk hero, mission tagline, 501(c)(3) line, 4 brass-edged cards: **Browse Resources** (loads TechEmpower Notion content) · **Peer Support Discord** (`https://discord.gg/j3SVttxw7k`, deep-links to Discord app first, browser fallback) · **Call 211** (tel: intent, long-press for 988 Suicide & Crisis Lifeline) · **About** (mission + Donate + email). 8-chip "Featured guides" strip below.
+- **Top-app-bar emergency icons** on Library + TechEmpower Home — phone icon (tap=211, long-press=988), Discord icon. One-tap reach from any home surface.
+- **README repositioned** — leads with "storyvox is TechEmpower's accessible resource app" framing, engineering capability description second. Slack release template gets a TechEmpower italic line.
+- App identity stays `in.jphe.storyvox` (load-bearing for sideload continuity); aesthetic stays Library Nocturne; TechEmpower is the content+mission identity layered on top per JP's "option B with strong in-app presence" call.
+
+### Added — Two new chat backends (20th + 21st fiction backends)
+- **`:source-slack`** (#512, closes #454) — channels-as-fictions via Bot User OAuth Token (xoxb-…). `conversations.list` for channel discovery, `conversations.history` with cursor pagination capped 5 × 200 = ~1000 messages per fiction. Same-sender coalescing parity with Discord. `supportsSearch=false` in v1 (some workspace plans restrict `search.messages`). Magic-link claim regex `^https?://(?:[\w-]+\.)?slack\.com/archives/([A-Z][A-Z0-9]+)(/p\d+)?(?:\?.*)?$` at confidence 0.9.
+- **`:source-matrix`** (#513, closes #457) — rooms-as-fictions via Matrix Client-Server API v3. Federated (matrix.org, kde.org, fosdem.org, self-hosted Synapse / Dendrite / Conduit). `whoami` + `joined_rooms` + `messages?dir=b` paginated. Same-sender coalescing slider (1-30 min). Federation v1 routes every call through the configured homeserver; multi-host dispatch deferred. E2EE explicitly out of scope.
+
+### Added — Adaptive home-screen widget (#510, closes #159)
+- **`NowPlayingWidgetProvider`** with three RemoteViews buckets selected at render time: 1×1 cover-only, 4×1 cover + title + Play/Pause + Next, 4×2 cover + title + chapter + transport + Sleep + remaining chip. `resizeMode=horizontal|vertical`.
+- Transport buttons dispatch via `PendingIntent` → `runSafely` → singleton `PlaybackController` (`togglePlayPause` / `nextChapter` / `toggleSleepTimer`).
+- `WidgetStateObserver` collects `PlaybackController.state` narrow projection (book/chapter titles, isPlaying, cover URI, ids, sleep-timer rounded to seconds) with `distinctUntilChanged` so sentence-range churn doesn't pummel the widget host.
+- Material You: `dynamicLightColorScheme()` on Android 12+, fallback to brass palette pre-31. R8 keep rule added for `NowPlayingWidgetProvider` + `WidgetEntryPoint`.
+
+### Added — AO3 auth PR1 of #426 (#509)
+- **`AuthRepository` generalized** to support multi-source sign-in. New `AuthSource` interface (`sourceId`, `signInUrl`, `identityCookieName`, `cookieHost`); per-source `sessionState(sourceId)` flow accessor; legacy `sessionState` field still returns the RR flow for back-compat.
+- `AuthRepositoryImpl` now maintains a `ConcurrentHashMap<String, MutableStateFlow<SessionState>>` and scans `cookie:*` keys at init so any persisted source hydrates on cold start.
+- `RoyalRoadAuthSource` contributed via Hilt `@IntoMap @StringKey(ROYAL_ROAD)` — no behavior change to RR sign-in. PR2 (AO3 WebView + 'My Subscriptions' tab) plugs into the new `TODO(PR2 / #426)` placeholder in `AuthViewModel.captureCookies`.
+- 9 new tests in `AuthRepositoryImplTest` (hand-rolled fakes — no Robolectric).
+
+### Added — Beautiful book covers for Notion-sourced fictions (#514)
+- **`BrandedCoverTile`** in `:core-ui` — pure-Compose 2:3 synthetic book cover. Warm Library Nocturne vertical gradient, family watermark (TechEmpower sun-disk drawn as concentric brass circles + 8 radiating rays, or generic medallion) at ~30% alpha upper-left, title centered in EB Garamond max 3 lines, brass `TECHEMPOWER`-style author line below in Inter letterspaced uppercase, 1.5dp brass-400 border. Pure-composable: no network, no bundled drawable; survives Coil S3-URL expiry by being the very thing the error slot falls back to.
+- **Fallback cascade in `FictionCoverThumb`**: `SubcomposeAsyncImage` with `ContentScale.Crop` (handles Notion's 5:1 banner aspect by center-cropping) → on null/error AND title non-blank → `BrandedCoverTile` with `coverSourceFamilyFor(sourceId)` (notion → TechEmpower, else → Generic) → title blank → existing `MonogramSigilTile` as third-tier fallback.
+- **`readBodyImageUrl` in `:source-notion`** — walks the first 12 live content blocks for the first `image` block when `format.page_cover` is unset (most TechEmpower pages). Prefers `format.display_source` over `properties.source`. Cache-aggressive at the `:source-notion` layer.
+- Font substitution note: Fraunces / DM Sans aren't bundled in storyvox; tile uses already-bundled EB Garamond + Inter. JP can decide whether to license + bundle for a future visual-coherence pass.
+
+### Closed issues
+- **#86** — PCM cache PR series (all 8 PRs shipped in v0.5.47-v0.5.49)
+- **#487** — a11y rendered-surface audit narrative (shipped as `docs/accessibility.md` in v0.5.43)
+- **#477** — WCAG contrast failures (palette tweaks shipped in v0.5.43)
+
+### Under the hood
+- **20 → 21 fiction backends** (Slack + Matrix join). Plugin-seam KSP-driven registration is the path of least resistance for new backends.
+- 6 parallel agents in isolated worktrees shipped this release in one wall-clock pass. Notion-covers + Matrix both needed rebase-conflict resolution at merge time (the cost of parallel-merge cadence on overlapping files).
+- New `pref_techempower_home_seen` boolean DataStore key on the InstantDB sync allowlist (future onboarding-nudge seam).
+- New `pref_source_slack_token`, `pref_source_matrix_token` on the InstantDB secrets allowlist — sync cross-device alongside Discord/Notion tokens.
 
 ## [0.5.50] — 2026-05-15
 
