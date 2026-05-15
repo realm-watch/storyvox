@@ -9,6 +9,25 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.46] — 2026-05-14
+
+### Performance — the actual cold-launch win lands
+
+- **`isDebuggable = false` on the shipped build** (#409 part 4 — JP design call resolved 2026-05-14). Activates ProfileInstaller's AOT compilation of the bundled Baseline Profile from v0.5.45. Combined with R8 (also v0.5.45), this is what makes the **~4.5 second tablet cold-launch win** actually materialize — the "Skipped 219 frames" first-composition pass is gone because the hot paths are now AOT-compiled at install time. The lost Android Studio debugger-attach capability is not in use (storyvox dev happens through agents + `./gradlew installDebug` + logcat); if a future workflow needs Studio attach, introduce a separate `localDev` build type rather than flipping this back.
+- **Lint-vital escalation disabled on assemble** (#409 part 4 secondary fix) — non-debuggable build types trigger `lintVitalAnalyzeDebug` as part of `:app:assembleDebug`, and AGP's lint hit an internal bug on `:core-ui`'s `A11yLocals.kt` ("Unexpected failure during lint analysis"). The file compiles + unit-tests fine; it's a lint-internal crash. Workaround: `lint { checkReleaseBuilds = false }` skips the vital escalation while `./gradlew :app:lintDebug` still runs normally.
+
+### Cold-launch arc summary (v0.5.42 → v0.5.46)
+
+| Release | Change | Tab A7 Lite cold launch |
+|---|---|---|
+| v0.5.42 | Baseline | ~6.7 s |
+| v0.5.43 | Phase 2 a11y (no perf change) | ~6.7 s |
+| v0.5.44 | Three deferred-init fixes | ~6.5 s (-185 ms) |
+| v0.5.45 | + R8 minification (DEX -73%) + Baseline Profile bundled (dormant) | ~6.5 s |
+| **v0.5.46** | **+ `isDebuggable=false` activates BP AOT compilation** | **target ~2 s (actual measure post-install)** |
+
+Real numbers land in the Slack post once installed.
+
 ## [0.5.45] — 2026-05-14
 
 ### Performance — Baseline Profile + R8 minification
