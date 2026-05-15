@@ -95,6 +95,17 @@ class StoryvoxApp : Application(), Configuration.Provider {
      *  via the [Lazy] wrapper. */
     @Inject lateinit var widgetStateObserver: Lazy<WidgetStateObserver>
 
+    /**
+     * Issue #178 — Royal Road tag-sync periodic worker + sign-in
+     * observer. The scheduler enqueues the 24h periodic worker
+     * (idempotent KEEP policy). The observer subscribes to
+     * AuthRepository's RR session state and kicks the coordinator
+     * once on the Anonymous → Authenticated edge, so first-sync
+     * happens immediately after sign-in rather than waiting ~24h.
+     */
+    @Inject lateinit var tagSyncScheduler: Lazy<`in`.jphe.storyvox.source.royalroad.tagsync.RoyalRoadTagSyncScheduler>
+    @Inject lateinit var tagSyncCoordinator: Lazy<`in`.jphe.storyvox.source.royalroad.tagsync.RoyalRoadTagSyncCoordinator>
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
@@ -173,6 +184,39 @@ class StoryvoxApp : Application(), Configuration.Provider {
         // P22T-class hardware. Idempotent — re-starting is a no-op.
         initScope.launch {
             widgetStateObserver.get().start()
+        }
+        // Issue #178 — Royal Road tag-sync. Two coroutines:
+        //   1. Schedule the 24h periodic worker (idempotent, KEEP).
+        //   2. Watch the RR session state and trigger an immediate
+        //      sync on the Anonymous → Authenticated edge so the
+        //      first round-trip happens within seconds of sign-in
+        //      rather than at the next periodic tick. Subsequent
+        //      sign-outs cancel the worker so we don't sit on an
+        //      empty schedule.
+        initScope.launch {
+            tagSyncScheduler.get().schedule()
+        }
+        initScope.launch {
+            var wasAuthed = false
+            authRepository.get().sessionState.collect { state ->
+                val nowAuthed = state is `in`.jphe.storyvox.data.auth.SessionState.Authenticated
+                if (nowAuthed && !wasAuthed) {
+                    // Sign-in edge — first sync immediately. Fire-
+                    // and-forget; failures are silent (#178 spec).
+                    runCatching { tagSyncCoordinator.get().syncNow() }
+                }
+                if (!nowAuthed && wasAuthed) {
+                    // Sign-out — cancel the periodic so we stop
+                    // hitting RR with credentialed-but-stale calls.
+                    tagSyncScheduler.get().cancel()
+                }
+                if (nowAuthed && !wasAuthed) {
+                    // Re-enqueue on each new sign-in (KEEP no-ops
+                    // if one is already scheduled).
+                    tagSyncScheduler.get().schedule()
+                }
+                wasAuthed = nowAuthed
+            }
         }
     }
 

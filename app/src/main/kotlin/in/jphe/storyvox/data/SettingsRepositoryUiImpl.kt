@@ -2244,6 +2244,7 @@ class SettingsRepositoryUiImpl(
                 SyncedType.INT -> editor[intPreferencesKey(keyName)] = value.toInt()
                 SyncedType.FLOAT -> editor[floatPreferencesKey(keyName)] = value.toFloat()
                 SyncedType.STRING -> editor[stringPreferencesKey(keyName)] = value
+                SyncedType.LONG -> editor[longPreferencesKey(keyName)] = value.toLong()
             }
         }
     }
@@ -2385,6 +2386,18 @@ class SettingsRepositoryUiImpl(
             "pref_a11y_reading_direction",
             // Issue #517 — TechEmpower Home onboarding gate.
             "pref_techempower_home_seen",
+            // Issue #178 — Royal Road tag-sync metadata. The actual
+            // followed-tags set (`pref_rr_tag_sync_followed_tags_v1`)
+            // is intentionally NOT in this allowlist: it's mirrored
+            // through RR's own server-side preference store (the
+            // "saved tags" UI on royalroad.com) rather than through
+            // InstantDB. Round-tripping it through both would risk
+            // double-merge collisions (InstantDB-LWW vs RR-LWW with
+            // different freshness windows). The two metadata keys
+            // ARE synced so a user who flips "sync with RR off" on
+            // their phone sees the toggle reflected on their tablet.
+            "pref_rr_tag_sync_enabled",
+            "pref_rr_tag_sync_last_synced_at",
         )
 
         /**
@@ -2475,11 +2488,14 @@ class SettingsRepositoryUiImpl(
             "pref_a11y_reading_direction" to SyncedType.STRING,
             // Issue #517 — TechEmpower Home onboarding gate.
             "pref_techempower_home_seen" to SyncedType.BOOLEAN,
+            // Issue #178 — Royal Road tag-sync metadata.
+            "pref_rr_tag_sync_enabled" to SyncedType.BOOLEAN,
+            "pref_rr_tag_sync_last_synced_at" to SyncedType.LONG,
         )
     }
 
     /** Synced-preference value type tag for [parseAndPut]. */
-    internal enum class SyncedType { BOOLEAN, INT, FLOAT, STRING }
+    internal enum class SyncedType { BOOLEAN, INT, FLOAT, STRING, LONG }
 }
 
 /**

@@ -43,8 +43,16 @@ dependencies {
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.webkit)
 
+    // WorkManager — Royal Road tag-sync periodic worker (#178). The
+    // shared schedule helper lives in `:core-data`'s WorkScheduler,
+    // but the @HiltWorker class itself is here next to the
+    // tag-sync coordinator because it's RR-specific.
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.hilt.work)
+
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+    ksp(libs.androidx.hilt.compiler)
 
     // Plugin-seam Phase 2 (#384) — emits the @SourcePlugin → @IntoSet
     // SourcePluginDescriptor Hilt module for RoyalRoadSource. The
@@ -54,4 +62,5 @@ dependencies {
     ksp(project(":core-plugin-ksp"))
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
