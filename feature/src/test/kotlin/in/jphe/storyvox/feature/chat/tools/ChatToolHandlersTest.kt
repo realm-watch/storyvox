@@ -229,7 +229,8 @@ private class FakeFictionRepoT : FictionRepositoryUi {
         SetFollowedRemoteResult.Success
     override suspend fun markAllCaughtUp() = Unit
     override suspend fun refreshFollows() = Unit
-    override suspend fun addByUrl(url: String): UiAddByUrlResult = UiAddByUrlResult.UnrecognizedUrl
+    override suspend fun addByUrl(url: String, preferredSourceId: String?): UiAddByUrlResult = UiAddByUrlResult.UnrecognizedUrl
+    override fun previewUrl(url: String) = emptyList<`in`.jphe.storyvox.feature.api.UiRouteCandidate>()
 }
 
 private class FakePlayback : PlaybackControllerUi {
