@@ -1,5 +1,6 @@
 package `in`.jphe.storyvox.feature.api
 
+import `in`.jphe.storyvox.playback.cache.ChapterCacheState
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -801,6 +802,26 @@ data class UiSettings(
      */
     val fullPrerender: Boolean = false,
     /**
+     * PCM cache PR-G (#86). Total bytes used by the on-disk PCM cache
+     * (sum of `<sha>.pcm` file sizes under
+     * `${context.cacheDir}/pcm-cache/`). Polled by `:app`'s
+     * SettingsRepositoryUiImpl via [CacheStatsRepository] on a 5 s
+     * cadence while the Settings screen is in the foreground.
+     * Surfaced in Settings → Performance & buffering as
+     * "Currently used: 1.4 GB / 2 GB".
+     */
+    val cacheUsedBytes: Long = 0L,
+    /**
+     * PCM cache PR-G (#86). User-configured PCM cache quota, in bytes.
+     * Default 2 GB. The Settings UI offers four discrete tiers (see
+     * [CacheQuotaOptions]: 500 MB / 2 GB / 5 GB / Unlimited);
+     * Unlimited is represented as [Long.MAX_VALUE]. Backed by
+     * `PcmCacheConfig` (its own DataStore, not the main settings
+     * store) so it's intentionally NOT round-tripped through InstantDB
+     * sync — different devices may have different storage realities.
+     */
+    val cacheQuotaBytes: Long = CacheQuotaOptions.DEFAULT_2GB,
+    /**
      * Issue #85 — Voice-Determinism preset for the VoxSherpa engine. When
      * true (default), the engine runs with VoxSherpa's calmed VITS defaults
      * (`noise_scale = 0.35`, `noise_scale_w = 0.667`); identical text
@@ -1269,6 +1290,71 @@ const val PUNCTUATION_PAUSE_NORMAL_MULTIPLIER: Float = 1f
 const val PUNCTUATION_PAUSE_LONG_MULTIPLIER: Float = 1.75f
 
 /**
+ * PCM cache PR-G (#86). The four discrete quota tiers surfaced by
+ * Settings → Performance & buffering → "Audio cache size". Stored
+ * via `PcmCacheConfig.setQuotaBytes` (its own DataStore); the Settings
+ * UI snaps any off-grid stored value to the nearest tier with [snap].
+ *
+ * Why four discrete options instead of a continuous slider: storage
+ * has fewer "in-between" use cases than punctuation pause — a user
+ * either wants a small cache (commute device, 32 GB phone) or a
+ * roomy one (binge-listening tablet, 128 GB+). Per the PCM-cache
+ * design spec.
+ */
+object CacheQuotaOptions {
+    const val LIGHT_500MB: Long = 500L * 1024 * 1024
+    const val DEFAULT_2GB: Long = 2L * 1024 * 1024 * 1024
+    const val ROOMY_5GB: Long = 5L * 1024 * 1024 * 1024
+
+    /** Sentinel for the "Unlimited" tier. PcmCacheConfig stores this
+     *  verbatim (its 100-MB floor's `coerceAtLeast` is a no-op against
+     *  [Long.MAX_VALUE]), and PcmCache.evictTo treats any quota greater
+     *  than the on-disk total as a no-op. */
+    const val UNLIMITED: Long = Long.MAX_VALUE
+
+    /** Ordered list — matches the left-to-right order in the Settings
+     *  selector row. */
+    val all: List<Long> = listOf(LIGHT_500MB, DEFAULT_2GB, ROOMY_5GB, UNLIMITED)
+
+    /** Short user-facing label for a tier value. Non-tier values fall
+     *  through to [formatBytes] so the "Currently used / X" indicator
+     *  can render a custom-stored quota cleanly. */
+    fun label(bytes: Long): String = when (bytes) {
+        LIGHT_500MB -> "500 MB"
+        DEFAULT_2GB -> "2 GB"
+        ROOMY_5GB -> "5 GB"
+        UNLIMITED -> "Unlimited"
+        else -> formatBytes(bytes)
+    }
+
+    /**
+     * Snap an arbitrary value to the nearest discrete tier. Used by
+     * the repository setter so a hypothetical future "custom slider"
+     * follow-up can store off-grid values without breaking the radio
+     * UI today. Anything past half of [UNLIMITED] snaps to Unlimited
+     * (the only sane interpretation of a Long-near-max-value).
+     */
+    fun snap(bytes: Long): Long {
+        if (bytes >= UNLIMITED / 2) return UNLIMITED
+        val discrete = listOf(LIGHT_500MB, DEFAULT_2GB, ROOMY_5GB)
+        return discrete.minBy { kotlin.math.abs(it - bytes) }
+    }
+}
+
+/**
+ * Pretty-print a byte count for the cache "Currently used" indicator
+ * and the [CacheQuotaOptions.label] fallback. Rounds GB to one
+ * decimal, MB and KB to zero. Matches the spec example
+ * "Currently used: 1.4 GB / 2 GB".
+ */
+fun formatBytes(bytes: Long): String = when {
+    bytes >= 1024L * 1024 * 1024 -> "%.1f GB".format(bytes / 1024.0 / 1024.0 / 1024.0)
+    bytes >= 1024L * 1024 -> "%.0f MB".format(bytes / 1024.0 / 1024.0)
+    bytes >= 1024L -> "%.0f KB".format(bytes / 1024.0)
+    else -> "$bytes B"
+}
+
+/**
  * Realm-sigil version metadata captured at build time. Surfaced in the
  * Settings → About row. A "fantasy"-realm sigil reads as e.g.
  * "Blazing Crown · ef6a4cf3".
@@ -1381,6 +1467,26 @@ interface SettingsRepositoryUi {
     suspend fun setCatchupPause(enabled: Boolean)
     /** Issue #98 / PR-F (#86) — Mode C toggle. See [UiSettings.fullPrerender]. */
     suspend fun setFullPrerender(enabled: Boolean)
+    /**
+     * PCM cache PR-G (#86). Set the PCM cache quota in bytes. The
+     * impl snaps to the nearest [CacheQuotaOptions] entry, then
+     * persists via `PcmCacheConfig.setQuotaBytes` and runs
+     * `PcmCache.evictToQuota` immediately so a tightened cap is
+     * honored on the spot.
+     *
+     * Setting [CacheQuotaOptions.UNLIMITED] disables eviction entirely
+     * (PcmCacheConfig stores [Long.MAX_VALUE]; PcmCache.evictTo treats
+     * any quota greater than on-disk total as a no-op).
+     */
+    suspend fun setCacheQuotaBytes(bytes: Long)
+    /**
+     * PCM cache PR-G (#86). Wipe the entire PCM cache
+     * (`PcmCache.clearAll`). Triggered by the destructive-action
+     * confirmation in Settings → Performance & buffering. Returns
+     * the number of bytes freed (informational; the Settings UI also
+     * re-polls [CacheStatsRepository] to confirm the wipe).
+     */
+    suspend fun clearCache(): Long
     /** Issue #85 — Voice-Determinism preset. See [UiSettings.voiceSteady]. */
     suspend fun setVoiceSteady(enabled: Boolean)
     suspend fun signIn()
