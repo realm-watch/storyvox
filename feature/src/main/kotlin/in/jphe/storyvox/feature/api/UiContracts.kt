@@ -279,6 +279,25 @@ sealed interface BrowseSource {
      * `GitHubGists`).
      */
     data object GitHubGists : BrowseSource
+
+    /**
+     * Auth-gated `/users/<username>/subscriptions` listing for the
+     * signed-in AO3 user (#426 PR2). Browse → AO3 → My Subscriptions
+     * tab. The repository adapter routes this onto
+     * [`Ao3AuthedSource.subscriptions`][in.jphe.storyvox.source.ao3.Ao3AuthedSource.subscriptions];
+     * the username is read from the captured `auth_cookie.userId`
+     * column for the AO3 row.
+     */
+    data object Ao3MySubscriptions : BrowseSource
+
+    /**
+     * Auth-gated `/users/<username>/readings?show=marked` listing for
+     * the signed-in AO3 user (#426 PR2). Browse → AO3 → Marked for
+     * Later tab. Renders empty when the user has disabled "History"
+     * in their AO3 preferences (AO3 doesn't populate the marked-
+     * for-later list without history enabled).
+     */
+    data object Ao3MarkedForLater : BrowseSource
 }
 
 /** A page-by-page accumulating cursor over a remote fiction listing.

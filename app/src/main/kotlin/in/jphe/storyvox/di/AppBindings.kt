@@ -100,7 +100,8 @@ object AppBindings {
     fun provideBrowseRepositoryUi(
         repo: FictionRepository,
         github: `in`.jphe.storyvox.source.github.GitHubAuthedSource,
-    ): BrowseRepositoryUi = RealBrowseRepositoryUi(repo, github)
+        ao3: `in`.jphe.storyvox.source.ao3.Ao3AuthedSource,
+    ): BrowseRepositoryUi = RealBrowseRepositoryUi(repo, github, ao3)
 
     @Provides @Singleton
     fun providePlaybackControllerUi(
@@ -537,6 +538,12 @@ private fun relativeTime(epochMs: Long?): String {
 private class RealBrowseRepositoryUi(
     private val repo: FictionRepository,
     private val github: `in`.jphe.storyvox.source.github.GitHubAuthedSource,
+    // #426 PR2 — AO3 authed surface for the Browse → AO3 → My
+    // Subscriptions / Marked-for-Later tabs. Mirrors the GitHub
+    // authed-source injection above; routes `BrowseSource.Ao3*`
+    // variants directly onto the [Ao3AuthedSource] surface
+    // without going through the FictionRepository.search path.
+    private val ao3: `in`.jphe.storyvox.source.ao3.Ao3AuthedSource,
 ) : BrowseRepositoryUi {
     override fun paginator(source: BrowseSource, sourceId: String): BrowsePaginator =
         RealBrowsePaginator { page ->
@@ -597,6 +604,14 @@ private class RealBrowseRepositoryUi(
                 // codepath in GitHubSource — not the RR fallback.
                 BrowseSource.GitHubGists ->
                     repo.cacheBrowseListing(github.authenticatedUserGists(page = page))
+                // #426 PR2 — AO3 authed surfaces. Same caching pattern
+                // as the GitHub auth-only variants: rows land in the
+                // DB with `sourceId="ao3"` so tapping a card resolves
+                // through `fictionDetail` on the AO3 codepath.
+                BrowseSource.Ao3MySubscriptions ->
+                    repo.cacheBrowseListing(ao3.subscriptions(page = page))
+                BrowseSource.Ao3MarkedForLater ->
+                    repo.cacheBrowseListing(ao3.markedForLater(page = page))
             }
         }
 

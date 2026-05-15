@@ -1,5 +1,6 @@
 package `in`.jphe.storyvox.source.ao3
 
+import `in`.jphe.storyvox.data.db.dao.AuthDao
 import `in`.jphe.storyvox.data.source.FictionSource
 import `in`.jphe.storyvox.data.source.SourceIds
 import `in`.jphe.storyvox.data.source.plugin.SourceCategory
@@ -85,7 +86,17 @@ import javax.inject.Singleton
 internal class Ao3Source @Inject constructor(
     private val api: Ao3Api,
     @Ao3Cache private val cacheDir: File,
-) : FictionSource, `in`.jphe.storyvox.data.source.UrlMatcher {
+    // #426 PR2 — read the captured AO3 username off the `auth_cookie`
+    // row. The WebView capture path (`AuthViewModel.captureCookies`)
+    // stuffs the username into [AuthCookie.userId] for the AO3
+    // source; subscriptions / Marked-for-Later endpoints are
+    // username-keyed (`/users/<u>/subscriptions`), so this is how
+    // they find the right URL. AuthDao injection avoids reaching
+    // through AuthRepository (which doesn't expose a userId
+    // accessor on its public interface), keeping the PR1 scaffold
+    // untouched while letting PR2 read the data it persisted.
+    private val authDao: AuthDao,
+) : FictionSource, `in`.jphe.storyvox.data.source.UrlMatcher, Ao3AuthedSource {
 
     override val id: String = SourceIds.AO3
     override val displayName: String = "Archive of Our Own"
@@ -251,16 +262,91 @@ internal class Ao3Source @Inject constructor(
     // ─── auth-gated ────────────────────────────────────────────────────
 
     /**
-     * AO3 does have a per-user "Subscriptions" surface, but it's
-     * sign-in-only and v1 ships anonymous-only. Return an empty page
-     * so the Follows tab renders the empty state instead of an
-     * AuthRequired error — sign-in is the follow-up.
+     * AO3's per-user "Subscriptions" surface — works the signed-in
+     * user has subscribed to for update notifications (#426 PR2).
+     *
+     * Pre-PR2 this returned an empty page on purpose (the WebView
+     * sign-in scaffold wasn't built yet). PR2 wires the real
+     * endpoint: `/users/<username>/subscriptions`, paginated, HTML
+     * parsed via [Ao3WorksIndexParser]. The username is captured
+     * by the WebView during sign-in and persisted into the
+     * `auth_cookie.userId` column for the AO3 row; we read it
+     * back here.
+     *
+     * Returns [FictionResult.AuthRequired] when no AO3 session is
+     * captured (no row in `auth_cookie` for `sourceId="ao3"`, or
+     * the row's `userId` is null — defensive against a row that
+     * was written before PR2's userId-capture landed). The UI
+     * renders the brass "Sign in to AO3" CTA on that branch.
      */
     override suspend fun followsList(page: Int): FictionResult<ListPage<FictionSummary>> =
-        FictionResult.Success(ListPage(items = emptyList(), page = 1, hasNext = false))
+        // The "Follows" surface on the FictionSource contract maps to
+        // AO3's subscriptions list (closest analogue). Delegating
+        // through [subscriptions] keeps the implementation in one
+        // place — the Browse → My Subscriptions chip routes here
+        // explicitly via [Ao3AuthedSource.subscriptions], the existing
+        // Follows tab routes through this entry point unchanged.
+        subscriptions(page = page)
 
     override suspend fun setFollowed(fictionId: String, followed: Boolean): FictionResult<Unit> =
+        // AO3 subscriptions are managed inline on the work page (the
+        // "Subscribe" link does a POST under the user's session). v1
+        // keeps Subscribe a no-op so the rest of the AO3 surface
+        // composes cleanly; a follow-up will wire the real toggle
+        // through the same authed client used by
+        // [followsList] / [markedForLater].
         FictionResult.Success(Unit)
+
+    // ─── Ao3AuthedSource ───────────────────────────────────────────────
+
+    override suspend fun subscriptions(page: Int): FictionResult<ListPage<FictionSummary>> {
+        val username = readUsername()
+            ?: return FictionResult.AuthRequired(
+                "Sign in to AO3 to see your subscribed works",
+            )
+        return api.subscriptions(username = username, page = page)
+    }
+
+    /**
+     * AO3's per-user "Marked for Later" surface (#426 PR2) — works
+     * the user has tagged with the eye-icon affordance on a work's
+     * Reading History page.
+     *
+     * Same shape as [subscriptions] — fetches `/users/<u>/readings?show=marked`,
+     * routes the body through [Ao3WorksIndexParser]. Surfaced via
+     * [BrowseTab.Ao3MarkedForLater] in the AO3 chip strip when the
+     * user is signed in.
+     *
+     * AO3 only populates the Marked-for-Later list when the user
+     * has "History" enabled in their preferences. When history is
+     * off, the page renders an empty notice with no `<li class="work
+     * blurb">` cards; the parser returns an empty [ListPage] and
+     * the UI's empty-state copy explains the dependency.
+     */
+    override suspend fun markedForLater(page: Int): FictionResult<ListPage<FictionSummary>> {
+        val username = readUsername()
+            ?: return FictionResult.AuthRequired(
+                "Sign in to AO3 to see your Marked for Later",
+            )
+        return api.markedForLater(username = username, page = page)
+    }
+
+    /**
+     * Read the AO3 username captured during WebView sign-in. Lives
+     * in the `auth_cookie.userId` column for the AO3 row; written
+     * there by [`AuthViewModel.captureCookies`][in.jphe.storyvox.feature.auth.AuthViewModel]
+     * when it splits the captured cookie map's `__storyvox_user`
+     * pseudo-cookie out before hydrating the OkHttp jar.
+     *
+     * Returns null when either:
+     *  - no AO3 session has been captured (anonymous mode), or
+     *  - a pre-PR2 row exists with `userId = null` (the WebView
+     *    capture path didn't persist a username before PR2 landed).
+     *    The UI surfaces both branches as `AuthRequired`; the
+     *    user signs in (again) to populate the column.
+     */
+    private suspend fun readUsername(): String? =
+        authDao.get(SourceIds.AO3)?.userId?.takeIf { it.isNotBlank() }
 
     // ─── helpers ───────────────────────────────────────────────────────
 

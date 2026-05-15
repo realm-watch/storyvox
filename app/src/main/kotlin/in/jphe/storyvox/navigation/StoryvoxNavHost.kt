@@ -27,6 +27,7 @@ import androidx.navigation.navArgument
 import `in`.jphe.storyvox.auth.AuthWebViewScreen
 import `in`.jphe.storyvox.auth.anthropic.AnthropicTeamsSignInScreen
 import `in`.jphe.storyvox.auth.github.GitHubSignInScreen
+import `in`.jphe.storyvox.data.source.SourceIds
 import `in`.jphe.storyvox.source.github.auth.GitHubAuthConfig
 import `in`.jphe.storyvox.feature.browse.BrowseScreen
 import `in`.jphe.storyvox.feature.chat.ChatScreen
@@ -114,7 +115,20 @@ object StoryvoxRoutes {
     /** Settings → About. Version + sigil name + build hash + the
      *  v0.5.00 milestone pill. */
     const val SETTINGS_ABOUT = "settings/about"
-    const val AUTH_WEBVIEW = "auth/webview"
+    /**
+     * Generic WebView sign-in destination, parameterized by sourceId
+     * (#426 PR2). Royal Road = `auth/webview/royalroad`, AO3 =
+     * `auth/webview/ao3`. The screen reads the sourceId arg, picks the
+     * right source-module WebView composable, and routes captured
+     * cookies through [AuthViewModel] with the matching sourceId.
+     *
+     * Callers should use [authWebView] instead of building the path
+     * manually so the helper centralizes the sourceId encoding.
+     */
+    const val AUTH_WEBVIEW = "auth/webview/{sourceId}"
+
+    /** Build a concrete `auth/webview/<sourceId>` path for navigation. */
+    fun authWebView(sourceId: String): String = "auth/webview/$sourceId"
     /** Issue #91 — GitHub Device Flow sign-in modal. */
     const val GITHUB_SIGN_IN = "auth/github/signin"
     /** Issue #181 — Anthropic Teams OAuth sign-in modal. */
@@ -493,8 +507,11 @@ private fun StoryvoxNavHostContent(
                     // Royal Road sign-in; we route to the same shared
                     // sign-in surface used by FictionDetail #211 and
                     // standalone Browse #241.
-                    onOpenRoyalRoadSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
-                    onOpenFollowsSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
+                    onOpenRoyalRoadSignIn = { navController.navigate(StoryvoxRoutes.authWebView(SourceIds.ROYAL_ROAD)) },
+                    onOpenFollowsSignIn = { navController.navigate(StoryvoxRoutes.authWebView(SourceIds.ROYAL_ROAD)) },
+                    // #426 PR2 — AO3 sign-in deep-link from the embedded
+                    // Browse tab's AO3 chip signed-out banner.
+                    onOpenAo3SignIn = { navController.navigate(StoryvoxRoutes.authWebView(SourceIds.AO3)) },
                     // Issue #500 — cloud-icon tap on the Library top
                     // app bar routes to the InstantDB sign-in surface
                     // (the same SyncAuthScreen the onboarding card
@@ -550,7 +567,7 @@ private fun StoryvoxNavHostContent(
             ) {
                 FollowsScreen(
                     onOpenFiction = { id -> navController.navigate(StoryvoxRoutes.fictionDetail(id)) },
-                    onOpenSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
+                    onOpenSignIn = { navController.navigate(StoryvoxRoutes.authWebView(SourceIds.ROYAL_ROAD)) },
                     onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS_HUB) },
                 )
             }
@@ -566,7 +583,9 @@ private fun StoryvoxNavHostContent(
                     // #241 / #211 — RR sign-in CTA shared between Browse
                     // (anonymous-listing CTA) and FictionDetail (Follow
                     // button) and Settings → Royal Road.
-                    onOpenRoyalRoadSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
+                    onOpenRoyalRoadSignIn = { navController.navigate(StoryvoxRoutes.authWebView(SourceIds.ROYAL_ROAD)) },
+                    // #426 PR2 — AO3 sign-in CTA on the Browse → AO3 chip.
+                    onOpenAo3SignIn = { navController.navigate(StoryvoxRoutes.authWebView(SourceIds.AO3)) },
                     onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS_HUB) },
                 )
             }
@@ -584,7 +603,7 @@ private fun StoryvoxNavHostContent(
                     onBack = { navController.popBackStack() },
                     // #211 — Follow on Royal Road button routes to the
                     // shared sign-in WebView when the user is anonymous.
-                    onOpenRoyalRoadSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
+                    onOpenRoyalRoadSignIn = { navController.navigate(StoryvoxRoutes.authWebView(SourceIds.ROYAL_ROAD)) },
                 )
             }
 
@@ -720,7 +739,7 @@ private fun StoryvoxNavHostContent(
                 val ctx = androidx.compose.ui.platform.LocalContext.current
                 SettingsScreen(
                     onOpenVoiceLibrary = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
-                    onOpenSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
+                    onOpenSignIn = { navController.navigate(StoryvoxRoutes.authWebView(SourceIds.ROYAL_ROAD)) },
                     onOpenGitHubSignIn = { navController.navigate(StoryvoxRoutes.GITHUB_SIGN_IN) },
                     onOpenGitHubRevoke = {
                         // Remote revoke deep-link — opens
@@ -876,7 +895,7 @@ private fun StoryvoxNavHostContent(
                 val ctx = androidx.compose.ui.platform.LocalContext.current
                 AccountSettingsScreen(
                     onBack = { navController.popBackStack() },
-                    onOpenSignIn = { navController.navigate(StoryvoxRoutes.AUTH_WEBVIEW) },
+                    onOpenSignIn = { navController.navigate(StoryvoxRoutes.authWebView(SourceIds.ROYAL_ROAD)) },
                     onOpenGitHubSignIn = { navController.navigate(StoryvoxRoutes.GITHUB_SIGN_IN) },
                     onOpenGitHubRevoke = {
                         // Mirrors the SETTINGS legacy page's revoke handler:
@@ -930,12 +949,27 @@ private fun StoryvoxNavHostContent(
             }
             composable(
                 StoryvoxRoutes.AUTH_WEBVIEW,
+                arguments = listOf(
+                    navArgument("sourceId") {
+                        type = NavType.StringType
+                        defaultValue = SourceIds.ROYAL_ROAD
+                    },
+                ),
                 enterTransition = pushEnter,
                 exitTransition = pushExit,
                 popEnterTransition = popEnter,
                 popExitTransition = popExit,
-            ) {
+            ) { backStackEntry ->
+                // #426 PR2 — sourceId arg picks the per-source WebView
+                // (RR vs AO3) inside [AuthWebViewScreen]. Defaults to
+                // ROYAL_ROAD so any pre-PR2 navigation literal that
+                // somehow misses the path-param falls into the legacy
+                // RR path rather than crashing.
+                val sourceId = backStackEntry.arguments
+                    ?.getString("sourceId")
+                    ?: SourceIds.ROYAL_ROAD
                 AuthWebViewScreen(
+                    sourceId = sourceId,
                     onSignedIn = { navController.popBackStack() },
                     onCancelled = { navController.popBackStack() },
                 )

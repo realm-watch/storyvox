@@ -63,10 +63,16 @@ internal object BrowseSourceUi {
     /**
      * Tabs meaningful for [id]. [githubSignedIn] gates the auth-only
      * GitHub tabs (`MyRepos` #200, `Starred` #201, `Gists` #202).
+     * [ao3SignedIn] gates the auth-only AO3 tabs
+     * (`Ao3MySubscriptions` / `Ao3MarkedForLater`, #426 PR2).
      * Unknown ids fall through to a reasonable default of
      * Popular + Search.
      */
-    fun supportedTabs(id: String, githubSignedIn: Boolean = false): List<BrowseTab> = when (id) {
+    fun supportedTabs(
+        id: String,
+        githubSignedIn: Boolean = false,
+        ao3SignedIn: Boolean = false,
+    ): List<BrowseTab> = when (id) {
         SourceIds.ROYAL_ROAD -> listOf(
             BrowseTab.Popular,
             BrowseTab.NewReleases,
@@ -98,7 +104,20 @@ internal object BrowseSourceUi {
         // surface keeps the chip-row consistent across sources that
         // advertise search. The Search tab's empty results will be
         // replaced by a proper AO3 search implementation in a follow-up.
-        SourceIds.AO3 -> listOf(BrowseTab.Popular, BrowseTab.NewReleases, BrowseTab.Search)
+        //
+        // #426 PR2 — when the user has signed in to AO3, the chip
+        // strip gains "My Subscriptions" and "Marked for Later"
+        // entries. Signed-out users see the same 3-tab strip we
+        // shipped pre-#426.
+        SourceIds.AO3 -> buildList {
+            add(BrowseTab.Popular)
+            add(BrowseTab.NewReleases)
+            if (ao3SignedIn) {
+                add(BrowseTab.Ao3MySubscriptions)
+                add(BrowseTab.Ao3MarkedForLater)
+            }
+            add(BrowseTab.Search)
+        }
         SourceIds.STANDARD_EBOOKS -> listOf(BrowseTab.Popular, BrowseTab.NewReleases, BrowseTab.Search)
         SourceIds.WIKIPEDIA -> listOf(BrowseTab.Popular, BrowseTab.Search)
         SourceIds.WIKISOURCE -> listOf(BrowseTab.Popular, BrowseTab.Search)

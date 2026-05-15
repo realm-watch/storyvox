@@ -78,4 +78,53 @@ class Ao3TagUrlTest {
             Ao3Source.FANDOM_TAGS.any { it.second == defaultId },
         )
     }
+
+    // ─── #426 PR2 — authed surface paths ──────────────────────────────
+
+    @Test
+    fun `subscriptionsPath emits the canonical AO3 subscriptions URL`() {
+        assertEquals("/users/alice/subscriptions", Ao3Api.subscriptionsPath("alice", 1))
+        assertEquals("/users/alice/subscriptions?page=3", Ao3Api.subscriptionsPath("alice", 3))
+    }
+
+    @Test
+    fun `subscriptionsPath treats page 0 and negative as page 1`() {
+        // Defensive parity with [tagFeedPath]'s page-0 handling so a
+        // bad caller doesn't get AO3's `?page=0` reject.
+        assertEquals("/users/alice/subscriptions", Ao3Api.subscriptionsPath("alice", 0))
+        assertEquals("/users/alice/subscriptions", Ao3Api.subscriptionsPath("alice", -1))
+    }
+
+    @Test
+    fun `markedForLaterPath uses readings show=marked`() {
+        // AO3's Marked-for-Later lives under the user's readings page
+        // with `show=marked`. The page query stays on a `&page=N`
+        // because `show=marked` is already in the URL.
+        assertEquals(
+            "/users/alice/readings?show=marked",
+            Ao3Api.markedForLaterPath("alice", 1),
+        )
+        assertEquals(
+            "/users/alice/readings?show=marked&page=5",
+            Ao3Api.markedForLaterPath("alice", 5),
+        )
+    }
+
+    @Test
+    fun `looksLikeLogin signals AO3 expired-session HTML body`() {
+        // Detect AO3's `<form id="new_user" class="new_user">` login
+        // surface — a 200 + login HTML means the session lapsed and
+        // the request needs to short-circuit to AuthRequired.
+        assertTrue(
+            Ao3Api.looksLikeLogin("""<form id="new_user" class="new_user">"""),
+        )
+        assertTrue(
+            Ao3Api.looksLikeLogin("""<input name="user[login]" type="text" />"""),
+        )
+        // A real subscriptions page body — no login form markers.
+        assertEquals(
+            false,
+            Ao3Api.looksLikeLogin("""<ol class="work index group"><li class="work blurb">...</li></ol>"""),
+        )
+    }
 }

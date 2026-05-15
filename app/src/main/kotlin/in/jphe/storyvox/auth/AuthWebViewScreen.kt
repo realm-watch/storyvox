@@ -24,31 +24,42 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import `in`.jphe.storyvox.data.source.SourceIds
 import `in`.jphe.storyvox.feature.auth.AuthViewModel
 import `in`.jphe.storyvox.feature.auth.CaptureState
+import `in`.jphe.storyvox.source.ao3.auth.Ao3AuthWebView
 import `in`.jphe.storyvox.source.royalroad.auth.RoyalRoadAuthWebView
 import `in`.jphe.storyvox.ui.a11y.LocalAccessibleTouchTargets
 import `in`.jphe.storyvox.ui.a11y.accessibleSize
 import `in`.jphe.storyvox.ui.component.MagicSpinner
 
 /**
- * Hosts the Royal Road login WebView and pipes captured cookies into
+ * Hosts the per-source login WebView and pipes captured cookies into
  * [AuthViewModel]. Lives in `:app` so it can depend on both `:feature`
- * (for the Hilt-injected ViewModel) and `:source-royalroad` (for the
- * actual WebView Composable). `:feature` stays free of source-specific
+ * (for the Hilt-injected ViewModel) and the source modules (for the
+ * actual WebView Composables). `:feature` stays free of source-specific
  * code.
  *
  * Lifecycle:
- *  - User taps "Sign in" → navigation pushes this screen.
- *  - WebView loads `https://www.royalroad.com/account/login`.
+ *  - User taps "Sign in" → navigation pushes this screen with a
+ *    `sourceId` argument (defaults to Royal Road for legacy call sites).
+ *  - WebView loads the source's sign-in URL — the source-owned composable
+ *    (RoyalRoadAuthWebView / Ao3AuthWebView) owns the URL literals and the
+ *    cookie-capture watch loop.
  *  - User completes the form (or cancels via the back arrow).
- *  - On `.AspNetCore.Identity.Application` cookie appearance, the WebView
- *    fires [AuthViewModel.captureCookies]. Once the VM transitions to
- *    [CaptureState.Captured], we trigger [onSignedIn] which the NavHost
- *    wires to `popBackStack()`.
+ *  - On the source's identity-cookie appearance, the WebView fires
+ *    [AuthViewModel.captureCookies] with the captured map and the
+ *    `sourceId`. Once the VM transitions to [CaptureState.Captured], we
+ *    trigger [onSignedIn] which the NavHost wires to `popBackStack()`.
+ *
+ * #426 PR2 — the `sourceId` arg was added so AO3 sign-in routes through
+ * the same screen. The previous shape (no arg, hardcoded RR) is preserved
+ * via the default value at the route definition in
+ * [`StoryvoxRoutes.AUTH_WEBVIEW`].
  */
 @Composable
 fun AuthWebViewScreen(
+    sourceId: String,
     onSignedIn: () -> Unit,
     onCancelled: () -> Unit,
     viewModel: AuthViewModel = hiltViewModel(),
@@ -60,17 +71,45 @@ fun AuthWebViewScreen(
         if (capture is CaptureState.Captured) {
             // Toast outlives the Composable's destruction, unlike a Snackbar
             // anchored to a Scaffold that's about to be popped.
-            Toast.makeText(context, "Signed in to Royal Road", Toast.LENGTH_SHORT).show()
+            val provider = when (sourceId) {
+                SourceIds.AO3 -> "Archive of Our Own"
+                else -> "Royal Road"
+            }
+            Toast.makeText(context, "Signed in to $provider", Toast.LENGTH_SHORT).show()
             onSignedIn()
         }
     }
 
     Scaffold { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            RoyalRoadAuthWebView(
-                onSession = { session -> viewModel.captureCookies(session.cookies) },
-                onCancelled = onCancelled,
-            )
+            // Per-source WebView dispatch. Each source owns its own
+            // composable with the right URL literals and identity-cookie
+            // watch loop; the AuthViewModel receives the captured map and
+            // routes to the right hydrator via the sourceId we pass back.
+            when (sourceId) {
+                SourceIds.AO3 -> Ao3AuthWebView(
+                    onSession = { session ->
+                        viewModel.captureCookies(
+                            cookies = session.cookies,
+                            sourceId = SourceIds.AO3,
+                        )
+                    },
+                    onCancelled = onCancelled,
+                )
+                // Default to Royal Road for any unknown sourceId — keeps the
+                // pre-#426-PR2 nav-route shape (no arg) bit-identical, since
+                // a missing nav arg resolves to `null` → falls into this
+                // branch and the RR WebView fires.
+                else -> RoyalRoadAuthWebView(
+                    onSession = { session ->
+                        viewModel.captureCookies(
+                            cookies = session.cookies,
+                            sourceId = SourceIds.ROYAL_ROAD,
+                        )
+                    },
+                    onCancelled = onCancelled,
+                )
+            }
 
             // #479 Phase 2: drop the .size(40.dp) so M3's 48dp default
             // applies (clears the WCAG 2.5.5 minimum). #486's

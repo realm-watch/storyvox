@@ -1,6 +1,11 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    // PR2 of #426 — AO3 WebView sign-in lives in this module (mirrors
+    // :source-royalroad). Compose is needed for the [Ao3AuthWebView]
+    // composable; without the plugin we can't expose the @Composable
+    // entry point to :app's [AuthWebViewScreen].
+    alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
     alias(libs.plugins.kotlin.serialization)
@@ -12,6 +17,10 @@ android {
 
     defaultConfig {
         minSdk = 26
+    }
+
+    buildFeatures {
+        compose = true
     }
 
     compileOptions {
@@ -36,6 +45,20 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
+    // PR2 of #426 — parse the authed `/users/<u>/subscriptions` +
+    // `/users/<u>/readings?show=marked` HTML index pages with Jsoup.
+    // AO3 has no JSON API for these surfaces; the index pages are
+    // well-structured `<ol class="work index group">` lists of
+    // `<li class="work blurb group">` cards, same shape RR uses
+    // and the same library RR's parsers already lean on.
+    implementation(libs.jsoup)
+
+    // PR2 of #426 — Compose surface for the AO3 WebView login flow.
+    // Mirrors the :source-royalroad dependency set.
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.foundation)
+    implementation(libs.androidx.webkit)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
