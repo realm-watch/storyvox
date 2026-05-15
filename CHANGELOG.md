@@ -9,6 +9,32 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.40] — 2026-05-14
+
+### Added
+- **Magic-link audiobook** (#475, closes #472) — paste any URL into the Add-by-URL sheet and storyvox routes to the best backend, with a Readability catch-all so **no URL is a dead-end**. New `UrlMatcher` capability interface (separate from `FictionSource` so it stays opt-in); 15 backends implement it (Hacker News, Notion, Outline, Discord, Radio, RSS, EPUB direct-link, Memory Palace, AO3, Gutenberg, Standard Ebooks, PLOS, Wikipedia, Wikisource, arXiv). Royal Road + GitHub keep their existing `UrlRouter` regex bank for the fast path. New `:source-readability` Gradle module (Readability4J extraction, single-chapter library fiction, `defaultEnabled = true`) catches anything else at confidence `0.1f`. **ACTION_SEND share-intent** on MainActivity (text/plain) lets browsers, RSS readers, podcast clients, and social-share menus hand URLs to storyvox directly — the activity routes to Library with the URL surfaced as a query arg via `DeepLinkResolver.libraryWithShare`, and the Library screen opens the Add-by-URL sheet pre-populated. v1 ships with the FAB-launched sheet as the entry point; a dedicated Magic-add card at the top of Library is a follow-up.
+
+### Fixed — QA backlog drain (13 of 14 cleared; #461 verified-already-fixed by #468)
+- **Player back-arrow content-desc was 'Settings'** (#474, closes #437) — `onBack` plumbed end-to-end with proper a11y label.
+- **Notion silently fell back to TechEmpower Resources DB when no token** (#474, closes #443 + #447) — per JP design call, fallback now points at techempower.org's actual Notion content with a clear demo banner in Browse and a "Database ID (TechEmpower demo)" label in Settings; once user adds a token, the plugin switches to their root.
+- **AO3 description showed `&amp;amp;`** (#474, closes #444) — fixed-point HTML entity decoder + 6 regression tests.
+- **Browse Search icon disappeared on AO3 chip** (#474, closes #445) — added `BrowseTab.Search` to AO3's supportedTabs.
+- **'Add by URL' copy was Royal-Road-only** (#474, closes #446) — generalised hint with supported-source one-liner; carries a `TODO(#472)` placeholder that the magic-link PR replaced with the cascade-resolver.
+- **Live Radio timecode stuck at 0:00** (#474, closes #448) — scrubber hidden + pulsing "LIVE" pill when `state.isLiveAudioChapter`.
+- **Radio fiction author rendered as country name** (#474, closes #449) — `author = "Live radio"` with regression test.
+- **Chapter subtitle 'Ch. 0 · Chapter 1' indexing inconsistency** (#474, closes #453) — new `formatChapterLabel(index, title)` helper, 1-indexed + redundant-prefix detection.
+- **Settings 'Save' accepted empty required fields silently** (#474, closes #455) — per JP design call, Outline + Notion Save now show a transient toast naming skipped fields; defaults applied silently to the model. No save-blocking, no Material error chip — lighter touch than full Material 3 supported-error.
+- **Notebook empty-state pointed at a missing Chat CTA** (#474, closes #456) — copy softened.
+- **RSS Browse chip showed empty screen with no helper copy** (#474, closes #458) — explicit empty-state with "Add a feed" CTA.
+- **GitHub: 'The Cartographer's Lantern' showed 0 chapters** (#474, closes #460) — `fictionDetail` now falls back to root `SUMMARY.md` when `src="src"` configuration points elsewhere; regression test added.
+- **GitHub plugin title hierarchy confused repo name vs README title** (#474, closes #463) — byline now prefixed with "by " on FictionDetail.
+
+### Under the hood
+- New `:source-readability` Gradle module with `ReadabilityExtractor`, `ReadabilityFetcher`, and Hilt `ReadabilityModule`. `@SourcePlugin(defaultEnabled = true)` so it auto-registers in the registry without an `:app` build.gradle change.
+- `UrlResolver` cascades through `UrlRouter` → `UrlMatcher` impls → `:source-readability`. `RouteCandidate(confidence: Float, label: String, ...)` lets ranking work when multiple backends both claim a URL.
+- `MultipleMatches` variant on `AddByUrlResult` for the rare ≥2-candidates-above-0.5 case — v1 auto-picks the top; chooser modal is UI follow-up if discoverability needs it.
+- 14-commit QA bundle was rescued via cherry-pick after a parallel-agent branch contamination event (qa-bundle and magic-link both worked the same repo without worktrees and stepped on each other). New `feedback_parallel_agents_need_worktrees` memory captures the lesson; future parallel runs use `isolation: "worktree"` per agent.
+
 ## [0.5.39] — 2026-05-14
 
 ### Added
