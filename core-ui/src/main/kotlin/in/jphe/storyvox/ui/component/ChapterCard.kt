@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import `in`.jphe.storyvox.playback.cache.ChapterCacheState
 import `in`.jphe.storyvox.ui.a11y.A11ySpeakChapterMode
 import `in`.jphe.storyvox.ui.a11y.LocalA11ySpeakChapterMode
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
@@ -39,6 +40,14 @@ data class ChapterCardState(
     val isDownloaded: Boolean,
     val isFinished: Boolean,
     val isCurrent: Boolean,
+    /** PR-H (#86) — PCM cache state for this chapter under the user's
+     *  currently-active voice. Defaults to [ChapterCacheState.None] for
+     *  back-compat with call sites that haven't yet computed cache state
+     *  (previews, tests, the Library card path which doesn't combine in
+     *  the per-chapter inspector flow yet — that's a PR-H follow-up).
+     *  `FictionDetailScreen.toCardState` forwards the real value from
+     *  the view-model's per-fiction cache-state flow. */
+    val cacheState: ChapterCacheState = ChapterCacheState.None,
 )
 
 @Composable
@@ -72,7 +81,18 @@ fun ChapterCard(
             "Chapter ${state.number}, ${state.durationLabel}"
         A11ySpeakChapterMode.TitlesOnly ->
             "${state.title}, ${state.durationLabel}"
-    } + if (state.isDownloaded) ", downloaded" else ""
+    } +
+        // PR-H (#86) — cache-state segment of the chapter row's TalkBack
+        // readout. Order matches the visual layout: cache state first
+        // (closest to the title column), then downloaded. Skipped for
+        // None so a chapter with no cache + no download reads as the
+        // pre-PR-H "Chapter N, Title, M min." with no trailing clauses.
+        when (state.cacheState) {
+            ChapterCacheState.Complete -> ", cached, plays instantly"
+            ChapterCacheState.Partial -> ", caching in progress"
+            ChapterCacheState.None -> ""
+        } +
+        if (state.isDownloaded) ", downloaded" else ""
 
     // Issue #461 — the previous fix (#295) used `Card(onClick = ...)` plus
     // a sibling `Modifier.semantics(mergeDescendants = true)` on the outer
@@ -133,6 +153,15 @@ fun ChapterCard(
                     Text(state.durationLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+            // PR-H (#86) — PCM cache-state badge. Sits BEFORE the
+            // existing downloaded/finished icons so the visual sweep is
+            // cache → downloaded → finished, mirroring the listening
+            // workflow (cache it, mark it offline, finish it). The
+            // composable is invisible for [ChapterCacheState.None]
+            // (zero rendered footprint, no spacing consumed by the
+            // parent Row.spacedBy) so the layout matches the pre-PR-H
+            // card for the common-case empty-cache chapter.
+            ChapterCacheBadge(state = state.cacheState)
             if (state.isDownloaded) {
                 Icon(
                     imageVector = Icons.Filled.OfflineBolt,

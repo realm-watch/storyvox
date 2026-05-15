@@ -808,6 +808,22 @@ private fun VoiceRow(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    // PR-H (#86) — per-voice cached-bytes label. Only
+                    // rendered for voices the user has meaningfully
+                    // used (cache attributed to this voice > 0).
+                    // Voices with `cachedBytes == 0L` skip the line so
+                    // the row collapses to its pre-PR-H 2-line shape
+                    // for the common case (installed voices the user
+                    // hasn't played yet). The label uses labelSmall to
+                    // sit visually beneath the bodySmall subtitle
+                    // without competing for the row's attention.
+                    if (voice.cachedBytes > 0L) {
+                        Text(
+                            text = formatBytes(voice.cachedBytes) + " cached",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 RowAction(
                     voice = voice,

@@ -44,5 +44,15 @@ dependencies {
 
     implementation(libs.coil.compose)
 
+    // PR-H (#86) — `ChapterCacheBadge` consumes the `ChapterCacheState`
+    // enum that lives next to `CacheStateInspector` in `:core-playback`.
+    // Keeping the enum in core-playback (rather than redefining it in
+    // core-ui) means the inspector return type and the UI state type are
+    // literally the same value — no feature-layer mapping, no risk of the
+    // two enums drifting. core-playback already depends on core-data
+    // (one direction); core-ui pulling core-playback is the next link
+    // in the same DAG and doesn't introduce a cycle.
+    implementation(project(":core-playback"))
+
     testImplementation(libs.junit)
 }

@@ -29,6 +29,17 @@ data class UiVoiceInfo(
     val qualityLevel: QualityLevel,
     val engineType: EngineType,
     val gender: VoiceGender = VoiceGender.Unknown,
+    /** PR-H (#86) — bytes of PCM cache attributed to this voice, summed
+     *  across every chapter / fiction the user has played with this
+     *  voice active. 0 when no cache exists for the voice (a fresh
+     *  install, or a voice the user has selected but never actually
+     *  listened with). VoiceLibraryScreen renders this as an "X MB
+     *  cached" subtitle so the user can see which voices they've
+     *  meaningfully used vs which they've merely installed. Defaulted
+     *  to 0 so every catalog-side construction stays source-compatible
+     *  — only the VoiceLibraryViewModel layer threads the real value
+     *  in via [CacheStateInspector.bytesUsedByEveryVoice]. */
+    val cachedBytes: Long = 0L,
 )
 
 /**

@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import `in`.jphe.storyvox.data.db.entity.FictionMemoryEntry
 import `in`.jphe.storyvox.data.repository.FictionMemoryRepository
+import `in`.jphe.storyvox.data.repository.pronunciation.PronunciationDictRepository
 import `in`.jphe.storyvox.feature.api.DownloadMode
 import `in`.jphe.storyvox.feature.api.FictionRepositoryUi
 import `in`.jphe.storyvox.feature.api.PlaybackControllerUi
@@ -15,14 +16,22 @@ import `in`.jphe.storyvox.feature.api.SetFollowedRemoteResult
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.UiChapter
 import `in`.jphe.storyvox.feature.api.UiFiction
+import `in`.jphe.storyvox.playback.cache.CacheStateInspector
+import `in`.jphe.storyvox.playback.cache.ChapterCacheState
+import `in`.jphe.storyvox.playback.cache.PcmCache
+import `in`.jphe.storyvox.playback.tts.CHUNKER_VERSION
+import `in`.jphe.storyvox.playback.voice.VoiceManager
 import `in`.jphe.storyvox.source.epub.writer.EpubExportResult
 import `in`.jphe.storyvox.source.epub.writer.ExportFictionToEpubUseCase
 import javax.inject.Inject
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -86,6 +95,20 @@ class FictionDetailViewModel @Inject constructor(
      *  sub-section showing which characters/places/concepts the AI
      *  has recorded for this book, plus the user's manual notes. */
     private val memoryRepo: FictionMemoryRepository,
+    /** PR-H (#86) — sources for the per-chapter cache-state badge:
+     *  - [cacheInspector] resolves None/Partial/Complete for each chapter
+     *  - [voiceManager] supplies the active voice (cache state is per-voice)
+     *  - [pronunciationDict] supplies the dict content-hash that feeds
+     *    `PcmCacheKey` (issue #135) — without this the lookup would key
+     *    on hash `0` and miss any cache entry rendered after the user
+     *    edited their dictionary
+     *  - [pcmCache] is the writer surface for "Clear fiction cache"
+     *    (per-chapter `deleteAllForChapter` sweep)
+     */
+    private val cacheInspector: CacheStateInspector,
+    private val voiceManager: VoiceManager,
+    private val pronunciationDict: PronunciationDictRepository,
+    private val pcmCache: PcmCache,
     savedState: SavedStateHandle,
 ) : ViewModel() {
 
@@ -108,13 +131,29 @@ class FictionDetailViewModel @Inject constructor(
     /** Issue #117 — export-in-flight flag. Exposed via [FictionDetailUiState.isExportingEpub]
      *  through the combine below. Held outside the combine so the suspend
      *  call site can flip it cleanly around the use-case invocation. */
-    private val isExporting = kotlinx.coroutines.flow.MutableStateFlow(false)
+    private val isExporting = MutableStateFlow(false)
+
+    /** PR-H (#86) — cache-state nudge channel. The view-model recomputes
+     *  per-chapter cache states whenever (chapters, active voice,
+     *  dict-hash) change — but "Clear fiction cache" also needs to
+     *  trigger a recompute even though none of those inputs flipped
+     *  (the filesystem changed under the inspector's nose). Bumping
+     *  this counter via `value++` re-fires the cache-state flow on
+     *  demand without rebuilding the upstream chapter list. */
+    private val cacheStateNudge = MutableStateFlow(0)
 
     val uiState: StateFlow<FictionDetailUiState> = run {
         // Issue #217 — Notebook entries surface in the detail page's
         // mid-section. The combine ceiling is 5 args, so we nest:
         // outer combine merges the core detail flow with the notebook
-        // feed. Keeps each layer flat for readability.
+        // feed AND the per-chapter cache-state map (PR-H #86).
+        //
+        // PR-H (#86) — cache-state flow is built from (chapter list,
+        // active voice, dict hash, nudge counter). The inspector call
+        // is a suspend `withContext(Dispatchers.IO)` doing a few
+        // File.exists per chapter — cheap enough to re-run on every
+        // upstream change. flow's first emission carries the
+        // resolved Map; downstream UI maps it onto each UiChapter.
         val base = combine(
             repo.fictionById(fictionId),
             repo.chaptersFor(fictionId),
@@ -134,8 +173,42 @@ class FictionDetailViewModel @Inject constructor(
                 isExportingEpub = exporting,
             )
         }
-        combine(base, memoryRepo.entitiesForFiction(fictionId)) { state, notebook ->
-            state.copy(notebookEntries = notebook)
+        val cacheStates: kotlinx.coroutines.flow.Flow<Map<String, ChapterCacheState>> = combine(
+            repo.chaptersFor(fictionId),
+            voiceManager.activeVoice,
+            pronunciationDict.dict,
+            cacheStateNudge,
+        ) { chapters, activeVoice, dict, _ ->
+            if (chapters.isEmpty() || activeVoice == null) {
+                emptyMap()
+            } else {
+                cacheInspector.chapterStatesFor(
+                    chapterIds = chapters.map { it.id },
+                    voiceId = activeVoice.id,
+                    chunkerVersion = CHUNKER_VERSION,
+                    pronunciationDictHash = dict.contentHash,
+                )
+            }
+        }
+        combine(
+            base,
+            memoryRepo.entitiesForFiction(fictionId),
+            cacheStates,
+        ) { state, notebook, cacheStateMap ->
+            // PR-H — fold the cache-state map onto each UiChapter. If
+            // the inspector hasn't produced a value for a chapter
+            // (empty map on missing voice, or new chapter not yet in
+            // the batch) default to None so the row renders without a
+            // badge instead of crashing.
+            val chaptersWithCache = if (cacheStateMap.isEmpty()) {
+                state.chapters
+            } else {
+                state.chapters.map { ch ->
+                    val cs = cacheStateMap[ch.id] ?: ChapterCacheState.None
+                    if (ch.cacheState == cs) ch else ch.copy(cacheState = cs)
+                }
+            }
+            state.copy(chapters = chaptersWithCache, notebookEntries = notebook)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FictionDetailUiState())
     }
 
@@ -242,6 +315,38 @@ class FictionDetailViewModel @Inject constructor(
             } finally {
                 isExporting.value = false
             }
+        }
+    }
+
+    /**
+     * PR-H (#86) — destructive action surfaced through the
+     * FictionDetailScreen overflow menu. Wipes every cache entry whose
+     * `meta.json` references one of this fiction's chapter IDs,
+     * including in-flight (Partial) entries from PR-D's tee writer or
+     * PR-F's worker. The sweep is per-chapter so it cuts across every
+     * voice variant + every (speed, pitch, dict-hash) tuple the user
+     * has ever played for this fiction — clearing the cache for
+     * "Mother of Learning" wipes "Cori at 1.0×", "Cori at 1.25×",
+     * "Amy at 1.0×", and the user's-current-dict variant of each.
+     *
+     * Behaviour when a chapter is actively playing: PR-D's appender
+     * resumes writing into a re-created `.pcm` file on the next
+     * `appendSentence`. Clean fall-through; no crash, no playback
+     * interruption — the cache just rebuilds while the user listens.
+     *
+     * Bumps [cacheStateNudge] after the sweep so the badge row flips
+     * from Complete/Partial back to None on the next frame. Without
+     * this nudge the cache-states flow wouldn't re-fire (none of its
+     * upstream values changed) and the badges would lie about state
+     * until the next voice swap or screen-enter.
+     */
+    fun clearFictionCache() {
+        viewModelScope.launch {
+            val chapterIds = uiState.value.chapters.map { it.id }
+            for (id in chapterIds) {
+                runCatching { pcmCache.deleteAllForChapter(id) }
+            }
+            cacheStateNudge.value = cacheStateNudge.value + 1
         }
     }
 
