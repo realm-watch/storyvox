@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -60,13 +62,14 @@ import `in`.jphe.storyvox.ui.theme.LocalSpacing
  *  - Brass-on-warm-dark top-app-bar with back arrow + help icons
  *    (phone for 211 / 988, forum for Discord) on the right.
  *  - Hero: TechEmpower sun-disk logo + mission tagline.
- *  - Brass-edged card grid (4 cards):
+ *  - Brass-edged card grid (5 cards):
  *      1. Browse Resources → opens Browse (Notion's anonymous-mode
  *         four-fiction layout is the default tile set today).
  *      2. Peer Support Discord → ACTION_VIEW Discord invite URL.
- *      3. Call 211 → ACTION_DIAL tel:211 (long-press 988 via the
- *         top-app-bar phone icon).
- *      4. About TechEmpower → drill-down to [TechEmpowerAboutScreen].
+ *      3. Call 211 → ACTION_DIAL tel:211 (United Way social services).
+ *      4. Emergency Help → 3-button card (988 / 211 / 911) — see
+ *         issue #516 and [TechEmpowerEmergencyCard].
+ *      5. About TechEmpower → drill-down to [TechEmpowerAboutScreen].
  *  - Featured guides strip: horizontal row of the 8 hand-curated
  *    TechEmpower guide chapters (read directly off the anonymous
  *    Notion delegate's curated list — keeps this screen plumbing-
@@ -82,6 +85,7 @@ import `in`.jphe.storyvox.ui.theme.LocalSpacing
  * copy), not theme.
  *
  * v0.5.51 — first pass.
+ * v0.5.52 — added Emergency Help card (issue #516).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -155,7 +159,7 @@ fun TechEmpowerHomeScreen(
             item {
                 TechEmpowerCard(
                     title = "Call 211",
-                    body = "Local help — housing, food, utilities, mental health. Long-press the top-bar phone for 988.",
+                    body = "Local help — housing, food, utilities, mental health referrals via United Way.",
                     icon = Icons.Filled.Phone,
                     onClick = {
                         runCatching {
@@ -172,6 +176,15 @@ fun TechEmpowerHomeScreen(
                         }
                     },
                 )
+            }
+            // ─── Emergency Help (issue #516) ──────────────────────
+            // Full-width because the card stacks three brass-edged
+            // sub-buttons vertically; squeezing it into a 160dp grid
+            // cell would push the third number off-screen. Spanning
+            // the full row width keeps the 988 / 211 / 911 trio
+            // visible without scrolling on the Flip3 cover.
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                TechEmpowerEmergencyCard()
             }
             item {
                 TechEmpowerCard(
@@ -289,6 +302,195 @@ private fun TechEmpowerCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 4,
+            )
+        }
+    }
+}
+
+/**
+ * Issue #516 — Emergency Help card. Brass-edged outer container with
+ * three brass-edged sub-buttons (988 / 211 / 911), each dialling its
+ * respective number via `ACTION_DIAL` so the user lands in the system
+ * dialer with the number pre-filled but NOT auto-placed.
+ *
+ * Why a card with three buttons instead of three separate top-level
+ * cards: the trio reads as one cognitive unit ("emergency numbers")
+ * and bundling them under one heading lets the user scan all three
+ * affordances together. Three separate cards would be visually
+ * indistinguishable from the regular brass-edged action cards and
+ * lose the "this is the emergency section" signal.
+ *
+ * Visual ranking is 988 → 211 → 911 (per issue #516 spec, not numeric
+ * order): 988 is the most likely first-touch for someone in immediate
+ * distress, 211 is everyday social services, 911 is true life-or-
+ * limb. 911 last keeps it discoverable without inviting a stray tap
+ * — accidental 911 misdials waste dispatch capacity.
+ *
+ * The outer card has no click handler; only the sub-buttons dial.
+ * Tapping the card's title row or the gap between sub-buttons does
+ * nothing — by design. The user has to land their tap on a specific
+ * number, and the brass edge around each sub-button telegraphs that.
+ *
+ * V1 ships US-only. The number constants live in [TechEmpowerLinks];
+ * localising for CA/UK/AU is a v2 follow-up (see issue #516 + the
+ * [TechEmpowerLinks.EMERGENCY_DISPATCH_NUMBER] kdoc).
+ */
+@Composable
+private fun TechEmpowerEmergencyCard() {
+    val spacing = LocalSpacing.current
+    val brass = MaterialTheme.colorScheme.primary
+    val substrate = MaterialTheme.colorScheme.surfaceContainerHigh
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.large)
+            .background(substrate)
+            .border(
+                width = 1.5.dp,
+                color = brass.copy(alpha = 0.55f),
+                shape = MaterialTheme.shapes.large,
+            )
+            .padding(spacing.md),
+        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+    ) {
+        // Header row: warning icon + title. Warning glyph anchors the
+        // "this is the emergency section" semantic — brass-tinted to
+        // match the card edge, no red-on-red panic colouring (the
+        // Library Nocturne palette doesn't have a panic-red, and the
+        // dialer itself surfaces the call confirmation, so we don't
+        // need to scream the affordance).
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Warning,
+                contentDescription = null,
+                tint = brass,
+                modifier = Modifier.size(28.dp),
+            )
+            Text(
+                text = "Emergency Help",
+                style = MaterialTheme.typography.titleMedium,
+                color = brass,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Text(
+            text = "Three US helplines. Each opens the dialer with the number pre-filled — tap the green button to actually place the call.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        // ─── 988 — Suicide & Crisis Lifeline (top of the list) ────
+        EmergencyDialButton(
+            number = TechEmpowerLinks.CRISIS_HELP_NUMBER,
+            label = "Suicide & Crisis Lifeline",
+            body = "National 24/7 mental health crisis support.",
+        )
+        // ─── 211 — United Way social services ─────────────────────
+        EmergencyDialButton(
+            number = TechEmpowerLinks.PRIMARY_HELP_NUMBER,
+            label = "United Way social services",
+            body = "Housing, food, utilities, mental health referrals.",
+        )
+        // ─── 911 — Emergency dispatch (last on purpose) ───────────
+        EmergencyDialButton(
+            number = TechEmpowerLinks.EMERGENCY_DISPATCH_NUMBER,
+            label = "Emergency dispatch",
+            body = "Life-threatening situations — police, fire, ambulance.",
+        )
+    }
+}
+
+/**
+ * Issue #516 — single brass-edged dial button inside
+ * [TechEmpowerEmergencyCard]. The number renders large-and-brass on
+ * the left (the affordance — it's what the user is looking for and
+ * what they'll tap), with label + body stacked to the right.
+ *
+ * Tap fires `ACTION_DIAL` (not `ACTION_CALL`) — `ACTION_DIAL` works
+ * without the `CALL_PHONE` runtime permission and lands the user in
+ * the system dialer with the number pre-filled but NOT auto-placed.
+ * The user has to hit the green button to actually place the call;
+ * this is the right UX for "emergency menu" affordances where a
+ * stray tap shouldn't dispatch police.
+ *
+ * `runCatching` swallows `ActivityNotFoundException` — a device
+ * without a dialer activity (rare, but tablets without telephony)
+ * just no-ops the button. We don't show a toast because (a) the
+ * other two buttons might still work, and (b) the user can always
+ * find the number written on the card and dial manually from
+ * another device.
+ *
+ * `Role.Button` plus a content description on the icon-less row
+ * gives TalkBack users "988, Suicide and Crisis Lifeline, button" —
+ * matching the visual reading order top-to-bottom.
+ */
+@Composable
+private fun EmergencyDialButton(
+    number: String,
+    label: String,
+    body: String,
+) {
+    val spacing = LocalSpacing.current
+    val context = LocalContext.current
+    val brass = MaterialTheme.colorScheme.primary
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            .border(
+                width = 1.dp,
+                color = brass.copy(alpha = 0.45f),
+                shape = MaterialTheme.shapes.medium,
+            )
+            .clickable(
+                role = Role.Button,
+                onClick = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(
+                                Intent.ACTION_DIAL,
+                                Uri.parse(TechEmpowerLinks.telUri(number)),
+                            ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) },
+                        )
+                    }
+                },
+            )
+            .padding(horizontal = spacing.md, vertical = spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(spacing.md),
+    ) {
+        // The number itself is the primary visual + the tap target's
+        // raison d'être — render it large-and-brass so it reads at a
+        // glance from arm's length. SemiBold (not Bold) because the
+        // Library Nocturne typography ramp tops out at SemiBold for
+        // body-adjacent surfaces; bumping to Bold would clash with the
+        // titleMedium "Emergency Help" header above.
+        Text(
+            text = number,
+            style = MaterialTheme.typography.headlineSmall,
+            color = brass,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.width(56.dp),
+            textAlign = TextAlign.Start,
+        )
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(spacing.xxs),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleSmall,
+                color = brass,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
             )
         }
     }
