@@ -325,11 +325,11 @@ image: /screenshots/03-reader.png
 <section class="recent">
   <h2>What just shipped</h2>
   <p>
-    <strong>v0.5.39</strong> — Nav restructure: Settings becomes a primary nav destination,
+    <strong>v0.5.47</strong> — Nav restructure: Settings becomes a primary nav destination,
     Browse and Follows tuck under Library. InstantDB sync brings settings + secrets across
     devices. The Settings hub gets follow-through — seven remaining hub cards land as dedicated
     subscreens. Four QA findings closed (#450, #452, #459, #461).
-    <a href="https://github.com/techempower-org/storyvox/releases/tag/v0.5.39">Full release notes →</a>
+    <a href="https://github.com/techempower-org/storyvox/releases/tag/v0.5.47">Full release notes →</a>
   </p>
   <p>
     <strong>Earlier in v0.5:</strong> <strong>seventeen fiction backends</strong> behind a
