@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -35,7 +36,32 @@ private object DiscordKeys {
     /** Same-author coalesce window in minutes (slider range 1-30).
      *  Defaults to [DiscordDefaults.DEFAULT_COALESCE_MINUTES] when unset. */
     val COALESCE_MINUTES = intPreferencesKey("pref_discord_coalesce_minutes")
+
+    /** Issue #517 — opt-in for TechEmpower default channel seeds. ON
+     *  by default on fresh installs so the peer-support channel
+     *  surfaces in Browse the moment Discord is configured. Users can
+     *  flip OFF via Settings (UI surface TBD); when OFF, the source's
+     *  `state.pinnedChannelIds` is emitted as an empty list so
+     *  downstream call sites take the same code path as a vanilla
+     *  Discord setup. */
+    val TECHEMPOWER_DEFAULTS_ENABLED = booleanPreferencesKey(
+        "pref_discord_techempower_default_enabled",
+    )
 }
+
+/**
+ * Issue #517 — bundle of plaintext-DataStore-persisted Discord fields,
+ * scoped to this file. Kotlin destructuring caps out at `Triple`, and
+ * we now have four plaintext fields (server id, server name, coalesce
+ * window, TechEmpower-defaults toggle) — a tiny private data class is
+ * cleaner than nested pairs.
+ */
+private data class DiscordPersistedFields(
+    val serverId: String,
+    val serverName: String,
+    val coalesce: Int,
+    val techempowerDefaultsEnabled: Boolean,
+)
 
 /** EncryptedSharedPreferences key for the Discord bot token. Lives
  *  next to the Notion / Outline / palace tokens in `storyvox.secrets`.
@@ -78,23 +104,31 @@ class DiscordConfigImpl(
 
     override val state: Flow<DiscordConfigState> = combine(
         store.data.map { prefs ->
-            Triple(
-                prefs[DiscordKeys.SERVER_ID].orEmpty(),
-                prefs[DiscordKeys.SERVER_NAME].orEmpty(),
-                prefs[DiscordKeys.COALESCE_MINUTES] ?: DiscordDefaults.DEFAULT_COALESCE_MINUTES,
+            DiscordPersistedFields(
+                serverId = prefs[DiscordKeys.SERVER_ID].orEmpty(),
+                serverName = prefs[DiscordKeys.SERVER_NAME].orEmpty(),
+                coalesce = prefs[DiscordKeys.COALESCE_MINUTES] ?: DiscordDefaults.DEFAULT_COALESCE_MINUTES,
+                techempowerDefaultsEnabled = prefs[DiscordKeys.TECHEMPOWER_DEFAULTS_ENABLED]
+                    ?: DiscordDefaults.DEFAULT_TECHEMPOWER_DEFAULTS_ENABLED,
             )
         }.distinctUntilChanged(),
         secretsTick,
-    ) { (serverId, serverName, coalesce), _ ->
+    ) { fields, _ ->
         val token = secrets.getString(DISCORD_BOT_TOKEN_PREF, "") ?: ""
         DiscordConfigState(
             apiToken = token,
-            serverId = serverId,
-            serverName = serverName,
-            coalesceMinutes = coalesce.coerceIn(
+            serverId = fields.serverId,
+            serverName = fields.serverName,
+            coalesceMinutes = fields.coalesce.coerceIn(
                 DiscordDefaults.MIN_COALESCE_MINUTES,
                 DiscordDefaults.MAX_COALESCE_MINUTES,
             ),
+            pinnedChannelIds = if (fields.techempowerDefaultsEnabled) {
+                DiscordDefaults.DEFAULT_PINNED_CHANNEL_IDS
+            } else {
+                emptyList()
+            },
+            techempowerDefaultsEnabled = fields.techempowerDefaultsEnabled,
         )
     }.distinctUntilChanged()
 
@@ -103,11 +137,19 @@ class DiscordConfigImpl(
         val token = secrets.getString(DISCORD_BOT_TOKEN_PREF, "") ?: ""
         val coalesce = (prefs[DiscordKeys.COALESCE_MINUTES] ?: DiscordDefaults.DEFAULT_COALESCE_MINUTES)
             .coerceIn(DiscordDefaults.MIN_COALESCE_MINUTES, DiscordDefaults.MAX_COALESCE_MINUTES)
+        val techempowerDefaultsEnabled = prefs[DiscordKeys.TECHEMPOWER_DEFAULTS_ENABLED]
+            ?: DiscordDefaults.DEFAULT_TECHEMPOWER_DEFAULTS_ENABLED
         return DiscordConfigState(
             apiToken = token,
             serverId = prefs[DiscordKeys.SERVER_ID].orEmpty(),
             serverName = prefs[DiscordKeys.SERVER_NAME].orEmpty(),
             coalesceMinutes = coalesce,
+            pinnedChannelIds = if (techempowerDefaultsEnabled) {
+                DiscordDefaults.DEFAULT_PINNED_CHANNEL_IDS
+            } else {
+                emptyList()
+            },
+            techempowerDefaultsEnabled = techempowerDefaultsEnabled,
         )
     }
 
@@ -160,6 +202,18 @@ class DiscordConfigImpl(
         store.edit { it[DiscordKeys.COALESCE_MINUTES] = safe }
     }
 
+    /**
+     * Issue #517 — persist the TechEmpower-defaults toggle. When ON
+     * (the default), the seed channel surfaces in Browse + on the
+     * TechEmpower Home Featured guides strip (source-iterator
+     * follow-up). When OFF, [DiscordConfigState.pinnedChannelIds] is
+     * emitted as an empty list so callers don't need a second toggle
+     * check.
+     */
+    suspend fun setTechEmpowerDefaultsEnabled(enabled: Boolean) {
+        store.edit { it[DiscordKeys.TECHEMPOWER_DEFAULTS_ENABLED] = enabled }
+    }
+
     /** Wipe server id, server name, coalesce override, and token —
      *  Settings "Forget Discord" path (no UI affordance yet; available
      *  for diagnostics + tests). After this call the source falls
@@ -169,6 +223,10 @@ class DiscordConfigImpl(
             prefs.remove(DiscordKeys.SERVER_ID)
             prefs.remove(DiscordKeys.SERVER_NAME)
             prefs.remove(DiscordKeys.COALESCE_MINUTES)
+            // Issue #517 — explicitly remove the TechEmpower-defaults
+            // toggle on clear() so a re-init falls back to the bundled
+            // default (ON). Same shape as the other plaintext fields.
+            prefs.remove(DiscordKeys.TECHEMPOWER_DEFAULTS_ENABLED)
         }
         secrets.edit().remove(DISCORD_BOT_TOKEN_PREF).apply()
         secretsTick.value = secretsTick.value + 1
