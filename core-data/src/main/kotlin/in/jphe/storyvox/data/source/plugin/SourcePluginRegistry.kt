@@ -1,5 +1,6 @@
 package `in`.jphe.storyvox.data.source.plugin
 
+import `in`.jphe.storyvox.data.source.SourceIds
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -44,12 +45,15 @@ class SourcePluginRegistry @Inject constructor(
     descriptors: Set<@JvmSuppressWildcards SourcePluginDescriptor>,
 ) {
 
-    /** All registered plugins, sorted by category then displayName.
-     *  Stable across builds — the chip row / Settings list order
-     *  doesn't churn. */
+    /** All registered plugins, sorted: Notion pinned first (TechEmpower's
+     *  Notion content is the default landing surface — JP design call,
+     *  2026-05-14), then by category ordinal, then by displayName
+     *  alphabetically. Stable across builds — the chip row / Settings
+     *  list order doesn't churn. */
     val all: List<SourcePluginDescriptor> = descriptors
         .sortedWith(
-            compareBy<SourcePluginDescriptor> { it.category.ordinal }
+            compareBy<SourcePluginDescriptor> { if (it.id == SourceIds.NOTION) 0 else 1 }
+                .thenBy { it.category.ordinal }
                 .thenBy { it.displayName.lowercase() },
         )
 
