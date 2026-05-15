@@ -191,6 +191,97 @@ class AnonymousNotionDelegateTest {
         assertEquals("notion:guides::6c979ba4e43f48d7a4836e0027ea4178", id)
     }
 
+    // ─── cover URL extraction ─────────────────────────────────────────
+
+    @Test
+    fun `readCoverUrl pulls format-page_cover when present`() {
+        val block = parseBlock("""
+            {"type":"page","format":{"page_cover":"https://example.com/banner.jpg"}}
+        """.trimIndent())
+        assertEquals("https://example.com/banner.jpg", readCoverUrl(block))
+    }
+
+    @Test
+    fun `readCoverUrl returns null when format missing or page_cover blank`() {
+        assertNull(readCoverUrl(parseBlock("""{"type":"page"}""")))
+        assertNull(readCoverUrl(parseBlock("""{"type":"page","format":{}}""")))
+        assertNull(readCoverUrl(parseBlock("""{"type":"page","format":{"page_cover":""}}""")))
+    }
+
+    @Test
+    fun `readImageBlockSource prefers format-display_source for signed URLs`() {
+        // Notion-uploaded images: format.display_source is the
+        // signed-S3 rewrite; we prefer it because that's the URL
+        // Notion's own renderer uses.
+        val block = parseBlock("""
+            {
+              "type":"image",
+              "format":{"display_source":"https://aws.notion.so/signed.png"},
+              "properties":{"source":[["https://example.com/raw.png"]]}
+            }
+        """.trimIndent())
+        assertEquals("https://aws.notion.so/signed.png", readImageBlockSource(block))
+    }
+
+    @Test
+    fun `readImageBlockSource falls back to properties-source for external URLs`() {
+        // External-URL images carry the source only in
+        // properties.source (decoration-array form).
+        val block = parseBlock("""
+            {
+              "type":"image",
+              "properties":{"source":[["https://example.com/external.png"]]}
+            }
+        """.trimIndent())
+        assertEquals("https://example.com/external.png", readImageBlockSource(block))
+    }
+
+    @Test
+    fun `readImageBlockSource returns null for non-image blocks`() {
+        // Defensive: caller passes any block; we should only ever
+        // return a URL when type == "image".
+        val text = parseBlock("""
+            {"type":"text","properties":{"source":[["https://example.com/x.png"]]}}
+        """.trimIndent())
+        assertNull(readImageBlockSource(text))
+    }
+
+    @Test
+    fun `readBodyImageUrl returns first image source in display order`() {
+        val rm = recordMapWith(
+            "root" to envelope("""{"type":"page","content":["t1","img1","img2"]}"""),
+            "t1" to envelope("""{"type":"text","properties":{"title":[["Lead."]]}}"""),
+            "img1" to envelope("""{"type":"image","properties":{"source":[["https://example.com/first.png"]]}}"""),
+            "img2" to envelope("""{"type":"image","properties":{"source":[["https://example.com/second.png"]]}}"""),
+        )
+        val root = rm.findBlock("root")!!
+        assertEquals("https://example.com/first.png", readBodyImageUrl(rm, root))
+    }
+
+    @Test
+    fun `readBodyImageUrl returns null when no image blocks exist`() {
+        val rm = recordMapWith(
+            "root" to envelope("""{"type":"page","content":["t1","t2"]}"""),
+            "t1" to envelope("""{"type":"text","properties":{"title":[["Lead."]]}}"""),
+            "t2" to envelope("""{"type":"header","properties":{"title":[["Heading"]]}}"""),
+        )
+        val root = rm.findBlock("root")!!
+        assertNull(readBodyImageUrl(rm, root))
+    }
+
+    @Test
+    fun `readBodyImageUrl skips tombstoned image blocks`() {
+        // alive:false images shouldn't be picked up as the cover —
+        // Notion has already marked them deleted.
+        val rm = recordMapWith(
+            "root" to envelope("""{"type":"page","content":["dead","live"]}"""),
+            "dead" to envelope("""{"type":"image","alive":false,"properties":{"source":[["https://example.com/dead.png"]]}}"""),
+            "live" to envelope("""{"type":"image","properties":{"source":[["https://example.com/live.png"]]}}"""),
+        )
+        val root = rm.findBlock("root")!!
+        assertEquals("https://example.com/live.png", readBodyImageUrl(rm, root))
+    }
+
     // ─── page body rendering ──────────────────────────────────────────
 
     @Test

@@ -223,13 +223,18 @@ internal class AnonymousNotionDelegate @Inject constructor(
         val block = root.recordMap.findBlock(state.rootPageId) ?: return null
         val title = readTitle(block) ?: return null
         val description = readDescriptionFromBlocks(root.recordMap, block)
+        // Cover cascade: page_cover (Notion's banner field) → first body
+        // image (most pages without a banner still lead with a hero
+        // image). When both are null, FictionCoverThumb falls through to
+        // the BrandedCoverTile second-tier fallback in :core-ui.
+        val cover = readCoverUrl(block) ?: readBodyImageUrl(root.recordMap, block)
         return FictionSummary(
             id = notionFictionId(compactRoot),
             sourceId = SourceIds.NOTION,
             title = title,
             author = "Notion",
             description = description,
-            coverUrl = readCoverUrl(block),
+            coverUrl = cover,
             tags = emptyList(),
             status = FictionStatus.ONGOING,
         )
@@ -501,6 +506,56 @@ internal fun readCoverUrl(block: JsonObject): String? {
     val fmt = block["format"] as? JsonObject ?: return null
     val cover = (fmt["page_cover"] as? JsonPrimitive)?.contentOrNull
     return cover?.takeIf { it.isNotBlank() }
+}
+
+/**
+ * Extract the source URL of a Notion `image` block.
+ *
+ * Notion's unofficial API stores the image source in one of two
+ * places depending on how the user added the image:
+ *
+ *  - `format.display_source` — set when Notion has rewritten the URL
+ *    to a signed AWS S3 link (uploaded files, Unsplash). This is the
+ *    URL Notion's own renderer uses, so prefer it when present.
+ *  - `properties.source[0][0]` — set when the image was added as an
+ *    external URL; Notion stores the raw URL in the standard
+ *    decoration-array form like every other Notion text property.
+ *
+ * Returns null when the block isn't an image or carries neither
+ * source — callers fall through to the body-image walk's next
+ * candidate or the branded synthetic cover.
+ */
+internal fun readImageBlockSource(block: JsonObject): String? {
+    if (block.blockType() != "image") return null
+    val fmt = block["format"] as? JsonObject
+    val display = (fmt?.get("display_source") as? JsonPrimitive)?.contentOrNull
+    if (!display.isNullOrBlank()) return display
+    val props = block["properties"] as? JsonObject ?: return null
+    val sourceArr = props["source"] as? JsonArray ?: return null
+    return joinDecorationArray(sourceArr).ifBlank { null }
+}
+
+/**
+ * Walk a page's content blocks for the first usable image source.
+ *
+ * Used as a second-tier cover fallback when [readCoverUrl] returned
+ * null (most Notion pages don't have `format.page_cover` set, but
+ * many lead with a hero image as the first body block). We scan up
+ * to the first 12 content blocks — far enough to cover a callout +
+ * lead paragraph pattern, short enough to avoid pulling a random
+ * inline screenshot from deep in the page.
+ *
+ * Returns null when no image block lives near the top of the page.
+ */
+internal fun readBodyImageUrl(rm: NotionRecordMap, pageBlock: JsonObject): String? {
+    for (childId in pageBlock.contentIds().take(12)) {
+        val child = rm.findBlock(childId) ?: continue
+        val alive = (child["alive"] as? JsonPrimitive)?.booleanOrNull
+        if (alive == false) continue
+        val src = readImageBlockSource(child)
+        if (!src.isNullOrBlank()) return src
+    }
+    return null
 }
 
 /**
