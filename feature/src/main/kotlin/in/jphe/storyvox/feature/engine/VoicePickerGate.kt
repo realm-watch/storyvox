@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -86,6 +87,12 @@ fun VoicePickerGate(
             // foundation API is shorter and we don't need finer gesture
             // control here.
             val swallow = remember { MutableInteractionSource() }
+            // a11y (#481, #482): this clickable is a *tap-swallow* — a
+            // transparent shield that prevents underlying content from
+            // receiving taps while the voice picker overlays it. It
+            // doesn't need (and shouldn't have) a Role; TalkBack should
+            // walk through it to the VoicePickerScreen below. Marked
+            // explicitly so a future Role-sweep doesn't add one.
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -293,7 +300,8 @@ private fun VoiceTile(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(enabled = enabled && !isDownloading) { onPick() }
+            // a11y (#481): Role.Button for the voice-pick tap.
+            .clickable(role = Role.Button, enabled = enabled && !isDownloading) { onPick() }
             .padding(spacing.md),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

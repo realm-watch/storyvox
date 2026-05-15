@@ -3,6 +3,8 @@ package `in`.jphe.storyvox.feature.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -1123,11 +1125,16 @@ private fun AzureSection(
             // they pasted the right thing. Same shape as the palace
             // section's "show" pattern, but inline rather than a
             // trailing-icon button.
+            // a11y (#481): toggleable text — TalkBack reads "Show key, switch, off" / "Hide key, switch, on".
             Text(
                 if (keyVisible) "Hide key" else "Show key",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.clickable { keyVisible = !keyVisible },
+                modifier = Modifier.toggleable(
+                    value = keyVisible,
+                    role = Role.Switch,
+                    onValueChange = { keyVisible = it },
+                ),
             )
         }
 
@@ -1174,10 +1181,13 @@ private fun AzureSection(
                 append("How do I get an Azure Speech key?")
             }
         }
+        // a11y (#481): Role.Button for the inline help link.
         Text(
             annotated,
             style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.clickable { uriHandler.openUri(helpUrl) },
+            modifier = Modifier.clickable(role = Role.Button, onClickLabel = "Open Azure Speech docs") {
+                uriHandler.openUri(helpUrl)
+            },
         )
 
         // ── PR-6 (#185): offline fallback ─────────────────────────
@@ -1201,8 +1211,18 @@ private fun AzureSection(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // a11y (#478): wrap the row in Modifier.toggleable so
+            // TalkBack announces a single Role.Switch node with the
+            // visible label merged in. The Switch itself opts out of
+            // independent click handling (onCheckedChange = null).
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .toggleable(
+                        value = fallbackEnabled,
+                        role = Role.Switch,
+                        onValueChange = onSetFallbackEnabled,
+                    ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -1212,7 +1232,7 @@ private fun AzureSection(
                 )
                 Switch(
                     checked = fallbackEnabled,
-                    onCheckedChange = onSetFallbackEnabled,
+                    onCheckedChange = null,
                 )
             }
             if (fallbackEnabled) {
@@ -1738,8 +1758,12 @@ internal fun SliderTickLabels(
                     text = label,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    // a11y (#481): tick labels are tap-to-snap buttons.
                     modifier = if (onTickTap != null) {
-                        Modifier.clickable { onTickTap(index) }
+                        Modifier.clickable(
+                            role = Role.Button,
+                            onClickLabel = "Snap to $label",
+                        ) { onTickTap(index) }
                     } else {
                         Modifier
                     },

@@ -56,6 +56,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -799,10 +800,13 @@ private fun PlayerOverflowSheet(
         // bookmark" seeks to it. Both fire-and-forget; the controller
         // no-ops gracefully when nothing is loaded / no bookmark exists.
         SheetHeader("Bookmark", null)
+        // a11y (#481): Role.Button for the action rows in the
+        // bookmark / smart-feature sheet — TalkBack reads the title
+        // text via merge, plus the Button role + onClickLabel verb.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onBookmarkHere)
+                .clickable(role = Role.Button, onClickLabel = "Bookmark here", onClick = onBookmarkHere)
                 .padding(vertical = spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(spacing.sm),
@@ -824,7 +828,7 @@ private fun PlayerOverflowSheet(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onJumpToBookmark)
+                .clickable(role = Role.Button, onClickLabel = "Jump to bookmark", onClick = onJumpToBookmark)
                 .padding(vertical = spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(spacing.sm),
@@ -856,7 +860,7 @@ private fun PlayerOverflowSheet(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onRequestRecap)
+                .clickable(role = Role.Button, onClickLabel = "Recap so far", onClick = onRequestRecap)
                 .padding(vertical = spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(spacing.sm),
@@ -885,7 +889,7 @@ private fun PlayerOverflowSheet(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onOpenChat)
+                .clickable(role = Role.Button, onClickLabel = "Open librarian chat", onClick = onOpenChat)
                 .padding(vertical = spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(spacing.sm),

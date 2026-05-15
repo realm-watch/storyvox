@@ -173,10 +173,16 @@ private fun StateBody(
             // is the whole point of this screen.
             Text(
                 text = state.userCode,
+                // a11y (#483): displaySmall is already 36sp on the
+                // typography ramp; drop the redundant `fontSize = 36.sp`
+                // override and let the theme own the value. The
+                // monospace + bold + letter-spacing tweaks stay because
+                // they're load-bearing for the device-code readout
+                // (mono prevents 0/O confusion, the spacing helps the
+                // user read the code over the phone if needed).
                 style = MaterialTheme.typography.displaySmall.copy(
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 36.sp,
                     letterSpacing = 4.sp,
                 ),
                 color = MaterialTheme.colorScheme.primary,

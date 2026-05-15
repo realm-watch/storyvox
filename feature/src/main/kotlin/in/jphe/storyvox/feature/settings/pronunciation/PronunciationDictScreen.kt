@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -35,6 +36,7 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -267,13 +269,24 @@ private fun EntryEditorDialog(
                     }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // a11y (#478): toggleable row so TalkBack announces
+                // "Case-sensitive, switch, on/off" as a single node.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .toggleable(
+                            value = caseSensitive,
+                            role = Role.Switch,
+                            onValueChange = { caseSensitive = it },
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text(
                         "Case-sensitive",
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.weight(1f),
                     )
-                    Switch(checked = caseSensitive, onCheckedChange = { caseSensitive = it })
+                    Switch(checked = caseSensitive, onCheckedChange = null)
                 }
             }
         },

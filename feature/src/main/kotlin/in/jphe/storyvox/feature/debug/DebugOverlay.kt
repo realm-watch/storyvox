@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -98,6 +99,16 @@ private val StatusNeutral = Color(0xFF8B7E6A)
  *  - Numeric values update at 1Hz — the repo is throttled.
  *  - On narrow phones (Flip3, 360dp), the collapsed strip fits without
  *    truncation thanks to compact identifiers + ellipsis on titles.
+ *
+ * **a11y note (#483):** this overlay uses several hard-coded `fontSize`
+ * values (9–11sp monospace) outside the typography ramp. These are
+ * intentional: the overlay's whole job is to surface dense pipeline
+ * diagnostics in the smallest readable form so the chapter text underneath
+ * stays visible. The text *does* scale with system font scale (it's `.sp`,
+ * not `.dp`), so accessibility-aware users still benefit; the ramp
+ * tokens are bypassed because the design intent is "smaller than any
+ * production label" — debug surfaces are explicitly opt-in via the
+ * dev-only Settings → Debug subscreen, never reachable by end users.
  */
 @Composable
 fun DebugOverlay(
@@ -177,10 +188,15 @@ private fun OverlayHeader(
         playback.pipelineRunning -> StatusBrass
         else -> StatusNeutral
     }
+    // a11y (#481): debug overlay collapse/expand header — Role.Button.
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onToggle)
+            .clickable(
+                role = Role.Button,
+                onClickLabel = if (expanded) "Collapse debug overlay" else "Expand debug overlay",
+                onClick = onToggle,
+            )
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
                     if (dragAmount > 18f) onSwipeDown()

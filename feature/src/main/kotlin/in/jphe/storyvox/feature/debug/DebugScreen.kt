@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -46,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -81,6 +83,13 @@ import kotlinx.coroutines.launch
  * card substrate. Reuses the [Card] from M3 with the same
  * `surfaceContainerHigh` substrate the Settings groups use, so the
  * screen feels like a sibling of Settings rather than a console dump.
+ *
+ * **a11y note (#483):** the event-log row at line 492 uses
+ * `fontSize = 11.sp` (monospace clock-time) rather than a typography
+ * ramp token. This is intentional: the dev-only screen must surface
+ * dense diagnostics in a compact tabular form. Text still rides system
+ * font scaling (`.sp`, not `.dp`); the bypass is "smaller than any
+ * production label" by design. Not reachable by end users.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -374,9 +383,16 @@ private fun OverlayToggleCard(enabled: Boolean, onToggle: (Boolean) -> Unit) {
         ),
         shape = MaterialTheme.shapes.large,
     ) {
+        // a11y (#478): toggleable Row so TalkBack announces the
+        // overlay toggle as a single Role.Switch node with the label.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .toggleable(
+                    value = enabled,
+                    role = Role.Switch,
+                    onValueChange = onToggle,
+                )
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -394,7 +410,7 @@ private fun OverlayToggleCard(enabled: Boolean, onToggle: (Boolean) -> Unit) {
             }
             Switch(
                 checked = enabled,
-                onCheckedChange = onToggle,
+                onCheckedChange = null,
                 colors = brassColors,
             )
         }

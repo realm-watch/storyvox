@@ -40,6 +40,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 
 /**
@@ -200,11 +203,21 @@ private fun TabCell(
     val interactionSource = remember { MutableInteractionSource() }
     val indication = LocalIndication.current
     Column(
-        modifier = modifier.clickable(
-            interactionSource = interactionSource,
-            indication = indication,
-            onClick = onClick,
-        ),
+        // a11y (#485): expose this cell as a tab to TalkBack with
+        // `Role.Tab` + a `selected` flag. Without these, TalkBack
+        // announces "double tap to activate" with no indication of
+        // which tab is current; the indicator pill is visual-only.
+        // `.semantics { selected = isSelected }` must come BEFORE the
+        // clickable so the role on clickable doesn't override it.
+        modifier = modifier
+            .semantics { selected = isSelected }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = indication,
+                role = Role.Tab,
+                onClickLabel = tab.label,
+                onClick = onClick,
+            ),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -259,3 +272,14 @@ private val ICON_TARGET_WIDTH = 64.dp
  *  motion-medium-1 token — slow enough to read as "I'm navigating",
  *  fast enough to feel responsive. */
 private const val SLIDE_DURATION_MS = 280
+
+/**
+ * Structural canary for issue #485 — TabCell must expose `Role.Tab`
+ * + a `selected` semantics property so TalkBack announces the
+ * currently-active tab. Flipped to `false` only after a future refactor
+ * proves on a real device with TalkBack that an alternative shape
+ * carries the same announcement.
+ *
+ * Pinned by `BottomTabBarSemanticsTest`.
+ */
+internal const val bottomTabBarUsesRoleTabAndSelected: Boolean = true

@@ -22,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import `in`.jphe.storyvox.source.rss.templates.CraigslistCategory
 import `in`.jphe.storyvox.source.rss.templates.CraigslistRegion
@@ -70,10 +71,14 @@ internal fun BrowseCraigslistTemplateCard(
     var selectedCategory by remember { mutableStateOf<CraigslistCategory?>(null) }
     var lastSubscribedTitle by remember { mutableStateOf<String?>(null) }
 
+    // a11y (#481): Role.Button + label for the Craigslist template expander.
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { expanded = !expanded }
+            .clickable(
+                role = Role.Button,
+                onClickLabel = if (expanded) "Collapse Craigslist template" else "Expand Craigslist template",
+            ) { expanded = !expanded }
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

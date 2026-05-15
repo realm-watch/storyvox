@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ExpandLess
@@ -188,6 +189,21 @@ fun SettingsRow(
 
 // endregion
 
+/**
+ * Structural canary for issue #478 — [SettingsSwitchRow] must apply
+ * `Modifier.toggleable(role = Role.Switch)` on the row (not on a
+ * `Modifier.clickable(role = Role.Button)` inherited from [SettingsRow]),
+ * so TalkBack announces the entire row as a single `Role.Switch` node
+ * with the title merged in.
+ *
+ * Flipped to `false` only after a future refactor proves on a real
+ * device with TalkBack that a different shape carries the same merged
+ * announcement.
+ *
+ * Pinned by `SettingsSwitchRowToggleableTest`.
+ */
+internal const val settingsSwitchRowUsesToggleable: Boolean = true
+
 // region SettingsSwitchRow
 
 /**
@@ -195,6 +211,19 @@ fun SettingsRow(
  * the row toggles the switch (full-row tap target). `checkedThumbColor` =
  * brass primary, `checkedTrackColor` = primaryContainer, giving the switch
  * the brass personality the M3 default lacks.
+ *
+ * **A11y (closes #478):** the entire row uses `Modifier.toggleable(role =
+ * Role.Switch)` so TalkBack announces a single merged node — *"\<title\>,
+ * switch, on/off"* — instead of two siblings (a row labelled "switch" and
+ * an inner Switch with no label). The inner `Switch` passes
+ * `onCheckedChange = null` to opt out of independent click handling; the
+ * toggleable on the row owns the value change. This widens the tap target
+ * from the ~52×47dp Switch hit box to the full row (≥64dp tall × screen
+ * width) at the same time.
+ *
+ * The row deliberately does **not** delegate through [SettingsRow]
+ * (which would apply `Role.Button` to the click) — `toggleable` needs to
+ * be the outermost interaction modifier so its `Role.Switch` wins.
  */
 @Composable
 fun SettingsSwitchRow(
@@ -205,26 +234,50 @@ fun SettingsSwitchRow(
     subtitle: String? = null,
     enabled: Boolean = true,
 ) {
+    val spacing = LocalSpacing.current
     val brassColors = SwitchDefaults.colors(
         checkedThumbColor = MaterialTheme.colorScheme.primary,
         checkedTrackColor = MaterialTheme.colorScheme.primaryContainer,
         checkedBorderColor = MaterialTheme.colorScheme.primary,
         uncheckedThumbColor = MaterialTheme.colorScheme.outline,
     )
-    SettingsRow(
-        title = title,
-        subtitle = subtitle,
-        modifier = modifier,
-        onClick = if (enabled) ({ onCheckedChange(!checked) }) else null,
-        trailing = {
-            Switch(
-                checked = checked,
-                onCheckedChange = onCheckedChange,
-                enabled = enabled,
-                colors = brassColors,
-            )
-        },
-    )
+    val rowModifier = modifier
+        .fillMaxWidth()
+        .heightIn(min = 64.dp)
+        .toggleable(
+            value = checked,
+            enabled = enabled,
+            role = Role.Switch,
+            onValueChange = onCheckedChange,
+        )
+        .padding(horizontal = spacing.md, vertical = spacing.sm)
+
+    Row(
+        modifier = rowModifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.bodyLarge)
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        // `onCheckedChange = null` — the toggleable on the row owns the
+        // value change; the Switch is now a visual indicator that
+        // doesn't claim its own clickable semantics. TalkBack merges
+        // this whole subtree under the row's Role.Switch.
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+            enabled = enabled,
+            colors = brassColors,
+        )
+    }
 }
 
 // endregion

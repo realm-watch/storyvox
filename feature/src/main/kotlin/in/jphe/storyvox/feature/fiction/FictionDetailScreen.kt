@@ -53,6 +53,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -224,8 +228,20 @@ fun FictionDetailScreen(
                             // visible "your tap took effect" indicator on
                             // long exports. The menu is unreachable during
                             // export by design; no need to re-open it.
+                            // a11y (#484): tag the spinner+label row as
+                            // a polite live region so TalkBack announces
+                            // "Loading: Building .epub" when the export
+                            // kicks off and silently re-announces when
+                            // the text changes. Without this the spinner
+                            // is silent — user can't tell the long
+                            // export is actually running.
                             Row(
-                                modifier = Modifier.padding(end = 12.dp),
+                                modifier = Modifier
+                                    .padding(end = 12.dp)
+                                    .semantics(mergeDescendants = true) {
+                                        contentDescription = "Loading: Building .epub"
+                                        liveRegion = LiveRegionMode.Polite
+                                    },
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                             ) {

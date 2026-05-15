@@ -8,6 +8,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -71,6 +72,7 @@ fun AccessibilitySettingsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val spacing = LocalSpacing.current
+    val uriHandler = LocalUriHandler.current
 
     SettingsSubscreenScaffold(title = "Accessibility", onBack = onBack) { padding ->
         val s = state.settings ?: run {
@@ -233,15 +235,17 @@ fun AccessibilitySettingsScreen(
                         "Switch Access, or other accessibility tools. Most adapt automatically " +
                         "when assistive services are detected.",
                 )
+                // a11y (#487): wired to the hosted accessibility doc.
+                // The page catalogs the audit + Phase 1 + Phase 2 fixes,
+                // the verified false positives from the static sweep,
+                // and the partnership-outreach plan. Lives at
+                // /docs/accessibility.md in the repo, hosted at the
+                // GitHub Pages site (storyvox.techempower.org).
                 SettingsLinkRow(
                     title = "Learn more",
-                    subtitle = "Coming with the Phase 2 documentation pass.",
+                    subtitle = "Open the accessibility documentation in your browser.",
                     onClick = {
-                        // TODO — Phase 2 wires this to docs/accessibility.md
-                        // (or its hosted equivalent). Today the doc
-                        // doesn't exist; the link is a visible
-                        // placeholder so reviewers see the affordance
-                        // the section will eventually carry.
+                        uriHandler.openUri("https://storyvox.techempower.org/accessibility")
                     },
                 )
             }

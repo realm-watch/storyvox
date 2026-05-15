@@ -45,6 +45,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -259,7 +262,8 @@ private fun PluginCard(
                 shape = RoundedCornerShape(12.dp),
             )
             .background(MaterialTheme.colorScheme.surface)
-            .clickable(onClick = onTap)
+            // a11y (#481): Role.Button for the card's open-details tap.
+            .clickable(role = Role.Button, onClickLabel = "Open ${row.descriptor.displayName} details", onClick = onTap)
             .padding(spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.sm),
     ) {
@@ -296,10 +300,16 @@ private fun PluginCard(
                     )
                 }
             }
+            // a11y (#478): the outer Column has its own tap (open
+            // details) so we can't make the whole card toggleable. Add
+            // a `contentDescription` to the Switch so TalkBack announces
+            // "Enable <plugin>, switch, on" instead of just "switch, on".
+            val toggleLabel = "Enable ${row.descriptor.displayName}"
             Switch(
                 checked = row.enabled,
                 onCheckedChange = onToggle,
                 colors = brassColors,
+                modifier = Modifier.semantics { contentDescription = toggleLabel },
             )
         }
         // Capability chips
