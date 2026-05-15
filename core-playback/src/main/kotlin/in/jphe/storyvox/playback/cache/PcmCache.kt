@@ -34,13 +34,22 @@ import kotlinx.coroutines.withContext
  * [pcmFileFor] + [indexFileFor].
  */
 @Singleton
-class PcmCache @Inject constructor(
-    @ApplicationContext private val context: Context,
+class PcmCache(
+    private val rootDir: File,
     private val config: PcmCacheConfig,
 ) {
-    private val rootDir: File by lazy {
-        File(context.cacheDir, ROOT_DIR_NAME).apply { mkdirs() }
+    init {
+        rootDir.mkdirs()
     }
+
+    /** Hilt entry point — anchors the cache root at
+     *  `${context.cacheDir}/pcm-cache/`. The primary constructor takes a
+     *  bare [File] so JVM unit tests can point at a temp folder without
+     *  bootstrapping Robolectric. Same seam as [PcmCacheConfig]. */
+    @Inject constructor(
+        @ApplicationContext context: Context,
+        config: PcmCacheConfig,
+    ) : this(File(context.cacheDir, ROOT_DIR_NAME), config)
 
     /** Root directory exposed for tests + the future "Clear cache" UI. */
     fun rootDirectory(): File = rootDir

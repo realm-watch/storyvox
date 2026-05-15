@@ -47,6 +47,7 @@ class SettingsRepositoryVoiceSteadyTest {
             scope = scope,
             produceFile = { file },
         )
+        val pcmBundle = makeFakeCacheBundle(tempFolder.newFolder("pcm_bundle"), scope)
         repo = SettingsRepositoryUiImpl(
             store = store,
             auth = FakeAuth(),
@@ -74,6 +75,9 @@ class SettingsRepositoryVoiceSteadyTest {
             azureClient = makeFakeAzureClient(),
             azureRoster = makeFakeAzureRoster(),
             googleTokenSource = `in`.jphe.storyvox.llm.auth.GoogleOAuthTokenSource(okhttp3.OkHttpClient()),
+            pcmCache = pcmBundle.pcmCache,
+            pcmCacheConfig = pcmBundle.pcmCacheConfig,
+            cacheStats = pcmBundle.cacheStats,
         )
     }
 

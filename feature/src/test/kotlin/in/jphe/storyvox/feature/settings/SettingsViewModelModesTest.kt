@@ -217,6 +217,14 @@ class SettingsViewModelModesTest {
         override suspend fun setFullPrerender(enabled: Boolean) {
             state.value = state.value.copy(fullPrerender = enabled)
         }
+        override suspend fun setCacheQuotaBytes(bytes: Long) {
+            state.value = state.value.copy(cacheQuotaBytes = bytes)
+        }
+        override suspend fun clearCache(): Long {
+            val before = state.value.cacheUsedBytes
+            state.value = state.value.copy(cacheUsedBytes = 0L)
+            return before
+        }
         override suspend fun setVoiceSteady(enabled: Boolean) {
             voiceSteadyWrites += enabled
             state.value = state.value.copy(voiceSteady = enabled)

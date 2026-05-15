@@ -1,6 +1,5 @@
 package `in`.jphe.storyvox.feature.api
 
-import `in`.jphe.storyvox.playback.cache.ChapterCacheState
 import kotlinx.coroutines.flow.Flow
 
 /**
