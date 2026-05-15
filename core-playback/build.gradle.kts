@@ -129,6 +129,15 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
 
+    // PR-F (#86) — background PCM cache pre-render via WorkManager.
+    // ChapterRenderJob is a @HiltWorker that synthesizes a chapter's
+    // PCM into the cache on a background coroutine, scheduled by
+    // PcmRenderScheduler from PrerenderTriggers' lifecycle hooks
+    // (library-add, chapter-natural-end, Mode C flow flip).
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.hilt.work)
+    ksp(libs.androidx.hilt.compiler)
+
     // Compose — for the engine consent dialog atom
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.material3)
