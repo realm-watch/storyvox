@@ -9,6 +9,27 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.41] — 2026-05-14
+
+### Added
+- **Craigslist regional feeds template** (#476, closes #464) — local-marketplace listings as audiobook chapters. Inside `:source-rss`, a curated catalogue of **51 regions** (top-50 US metros + Nevada City) × **7 categories** (all-for-sale, free stuff, cars+trucks, furniture, electronics, apartments, jobs) drives a new collapsible "Craigslist regional feed" template card in the Browse → RSS add sheet. Pick a region chip + a category chip, see the resolved feed URL live, tap Subscribe — the feed enrolls via the existing RSS pipeline (DataStore persistence, polling, FictionDetail rendering). Each region+category becomes a fiction; each listing becomes a chapter. JP's "uninstalled Facebook, would love to browse the local marketplace and have listings read to me" use case, shipped without scraping and without a new Gradle module.
+- **Magic-link claims Craigslist URLs** — `RssSource.matchUrl` recognizes `<region>.craigslist.org/*` for any of the 51 curated regions, returns `RouteMatch(confidence = 0.7f, label = "Craigslist (<region>)")`. Paste a CL URL from a browser share → routes through `RssSource` → opens the Add-by-URL sheet pre-resolved.
+
+### Fixed
+- **RSS parser now handles RDF / RSS 1.0** (#476) — Craigslist serves `<rdf:RDF>` feeds (not `<rss>`), which the previous parser rejected silently. New parser branch handles the RDF root; pinned with a recorded Craigslist fixture in `:source-rss/src/test/resources/`. Unblocks any other publisher still on RSS 1.0.
+
+### Under the hood
+- `CraigslistTemplates.kt` is the single canonical region+category catalogue. `composeFeedUrl(region, category)` formats the URL; 15 parametric tests cover the matrix.
+- `BrowseCraigslistTemplateCard` is a self-contained Compose composable inside `BrowseRssManageSheet` — no new screen, no new top-level Browse chip, no new Hilt graph dependencies.
+- 28 new tests: 15 catalogue + 5 RDF fixture parse + 8 matcher. Pure-JVM (no Robolectric needed).
+
+### Deferred (per #464 v1.5+ scope)
+- Distance / price filters (CL exposes these as query params; just need UI).
+- Saved-search composer for free-form CL queries.
+- Auto-normalize pasted CL URLs to `?format=rss`.
+- Region pinning (favorite a region for one-tap subscribe).
+- Dedupe-miss probe: "Already subscribed" check is on lowercased URL; trailing slash + reordered query args could slip through. Worth a manual probe on tablet next release if it surfaces.
+
 ## [0.5.40] — 2026-05-14
 
 ### Added
