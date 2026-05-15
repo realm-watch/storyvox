@@ -273,6 +273,14 @@ class SecretsSyncer @Inject constructor(
             // history. Synced through InstantDB to the user's other
             // devices so a token paste on one device propagates.
             "pref_source_slack_token",
+            // Issue #457 — Matrix backend access token. Same
+            // `pref_source_*` naming convention as Discord; lives in
+            // EncryptedSharedPreferences (`storyvox.secrets`) and
+            // syncs cross-device so a user who configures Matrix on
+            // their phone gets the same homeserver-token pair on
+            // their tablet without re-running the access-token
+            // create flow on their homeserver.
+            "pref_source_matrix_token",
         )
     }
 }

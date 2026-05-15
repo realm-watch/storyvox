@@ -289,6 +289,13 @@ dependencies {
     // Bot Token auth (xoxb-…). Mirrors :source-telegram's leaf
     // shape; the SlackConfigImpl + DataStore wiring lives in :app.
     implementation(project(":source-slack"))
+    // Issue #457 — Matrix Client-Server API backend. Federated
+    // open-standard chat (rooms-as-fictions, messages-as-chapters);
+    // architectural twin to :source-discord. Default OFF on fresh
+    // installs — the chip is hidden until the user opts in via
+    // Settings → Plugins and pastes both a homeserver URL and an
+    // access token.
+    implementation(project(":source-matrix"))
     // Issue #472 — magic-link Readability catch-all. Must be on the
     // app classpath so its KSP-generated SourcePluginDescriptor binding
     // joins the Hilt multibinding set the registry consumes.

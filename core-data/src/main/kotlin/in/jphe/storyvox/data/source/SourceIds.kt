@@ -143,6 +143,36 @@ object SourceIds {
      *  is high-friction and Discord is a private workspace, not a
      *  public catalog. */
     const val DISCORD: String = "discord"
+    /** Matrix (#457) — third chat-platform backend in the storyvox
+     *  roster (after Discord #403 and Slack #454). Mapping: joined
+     *  room → one fiction, `m.room.message` event → one chapter
+     *  (with same-sender coalescing across a configurable time
+     *  window, parity with Discord). Auth model is user-supplied
+     *  access token + homeserver URL; the user creates a token via
+     *  their homeserver's Element / web client (Settings → Help &
+     *  About → Advanced → "Access Token") and pastes both into
+     *  Settings → Library & Sync → Matrix. No password-login path
+     *  (worse posture — storyvox would hold a recoverable secret),
+     *  no SSO/OIDC (deferred to v2). Default OFF on fresh installs:
+     *  Matrix is opt-in like the rest of the chat-platform backends
+     *  (high-friction token onboarding is not what a fresh-install
+     *  user expects in the picker until they go looking for it).
+     *
+     *  Matrix is **federated**: a user's joined rooms can span
+     *  homeservers (a room on `matrix.org` can contain members
+     *  from `fosdem.org`, `kde.org`, etc.). v1 routes every API
+     *  call through the configured homeserver — homeservers cache
+     *  federated profile data, so cross-server lookups work in
+     *  practice. v2 can add multi-host dispatch for profile
+     *  lookups (parsing the `:homeserver` suffix from each user
+     *  id), at the cost of a multi-host OkHttp pool.
+     *
+     *  E2EE-encrypted rooms are out of scope: v1 surfaces them as
+     *  "(encrypted room — storyvox doesn't decrypt yet)" rather
+     *  than decrypting (Olm/Megolm session-key management is a
+     *  meaningful piece of work; defer to a sibling issue if/when
+     *  the demand surfaces). */
+    const val MATRIX: String = "matrix"
     /** Telegram (#462) — fourth chat-platform backend in the
      *  storyvox roster. Mapping: public channel → one fiction,
      *  channel post → one chapter. Auth model is user-supplied
