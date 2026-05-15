@@ -9,12 +9,53 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
-### Added — Voice bundles in Plugin Manager
-- **Plugin Manager grows a fully-iterated Voice bundles section** (closes #501). Settings → Plugins now lists every installed voice family as a brass-edged card alongside Fiction sources and Audio streams: **Piper** (local neural, per-voice ONNX), **Kokoro** (~330 MB shared model, 53 speakers), **KittenTTS** (~24 MB shared, 8 en_US speakers), **Azure HD voices** (BYOK cloud, surfaces "Configure →" CTA when no key is set), and a **VoxSherpa upstreams** placeholder card signalling future engine-lib additions. Each card has the same shape as Fiction-source cards: brass voice-glyph monogram, On/Off toggle (disabled families are filtered out of the Voice Library), Local/Cloud/BYOK + live voice-count capability chips, and a "Manage voices →" link that deep-links to the Voice Library (Azure unconfigured swaps to "Configure →" routing to Settings → Cloud voices).
-- **`VoiceFamilyRegistry` singleton** in `:core-playback` enumerates the five families with declarative metadata (display name, description, license, size hint, source URL, defaultEnabled, BYOK flag). Adding a new family is one descriptor entry plus an `EngineType.X` case in `voiceFamilyId()`. A future out-of-tree `:source-foo` voice engine can graduate to a Hilt multibinding (or a `@VoiceFamilyPlugin` annotation) without breaking the registry contract.
-- **`voiceFamiliesEnabled` settings map** persists per-family on/off state under `pref_voice_families_enabled_v1` (JSON, schema-revvable). Twin codec `VoiceFamiliesEnabledCodec` mirrors the `sourcePluginsEnabled` shape. Absent ids fall back to each family's `defaultEnabled` so a fresh install sees Piper/Kokoro/Kitten on, Azure off until configured.
-- **Voice Library filter** (in `VoiceLibraryViewModel`): when a family is OFF the picker hides its voices across favourites, installed, and available buckets.
-- **Tests**: codec round-trip (`VoiceFamiliesEnabledCodecTest`, `:core-data`), registry shape + `EngineType.voiceFamilyId()` mapping for every static catalog entry (`VoiceFamilyRegistryTest`, `:core-playback`), filter logic + On/Off/All semantics + placeholder exclusion (`VoiceFamilyFilterTest`, `:feature`).
+## [0.5.49] — 2026-05-15
+
+The five-parallel-agent release. Largest bundle of the session — six features land at once.
+
+### Added — Magical InstantDB sign-in surface (#507, closes #500)
+- The v0.5.39 cross-device sync infrastructure finally gets a discoverable Library-Nocturne-coded UI. **First-launch passphrase flow**: brass-edged dialog at NavHost root, gated on `(activeVoice != null && signedIn == null && !dismissed)` so it lands AFTER VoicePickerGate; EB Garamond word-by-word reveal (`candlelight · brass · vellum · starlight`); skip persists permanently.
+- **Permanent brass cloud icon** in `LibraryScreen.CenterAlignedTopAppBar` — three states via `SyncStatusViewModel.deriveIndicator()`: `CloudDone` (signed in), `Cloud + MagicSpinner` (syncing), `CloudQueue` (signed out). Tap → ModalBottomSheet with signed-out CTA or signed-in per-domain status grid.
+- 15 new tests across `SyncStatusViewModelTest`, `SyncOnboardingViewModelTest`, `PassphraseVisualizerTest`.
+
+### Added — Palace Project library backend (#504, partial close #502)
+- **19th fiction backend.** New `:source-palace` Gradle module. OPDS 1.x Atom feed parser walks `<library>.palaceproject.io` catalogs. Free / non-DRM titles route through the existing `:source-epub` pipeline. DRM'd titles surface in catalog with `FictionStatus.STUB` + `AuthRequired("Open the Palace app to borrow …")` reader CTA. `pickOpenAccessEpub()` is the load-bearing DRM boundary — strictly excludes LCP license MIMEs. UrlMatcher claims `<library>.palaceproject.io/...` URLs through the magic-link cascade.
+- Libby + Hoopla deferred with detailed scope docs in `scratch/libby-hoopla-palace-scope/` — Libby v1 will be audiobook-only (MP3 borrows via `:source-radio`), Hoopla v1 reverse-engineered HLS streaming.
+
+### Added — Voice bundles in Plugin Manager (#505, closes #501)
+- **Plugin Manager grows a fully-iterated Voice bundles section**. Settings → Plugins now lists every installed voice family as a brass-edged card alongside Fiction sources and Audio streams: Piper, Kokoro (~330 MB, 53 speakers), KittenTTS (~24 MB, 8 en_US speakers), Azure HD voices (BYOK cloud, surfaces "Configure →" CTA when no key set), and VoxSherpa upstreams placeholder. Same shape as Fiction-source cards: brass voice-glyph monogram, On/Off toggle, Local/Cloud/BYOK + live voice-count chips, tap-for-details modal, "Manage voices →" deep-link.
+- New **`VoiceFamilyRegistry`** singleton in `:core-playback` with declarative metadata. Adding a new family is one descriptor entry + `EngineType.X` case.
+- **Voice Library filter**: when a family is OFF the picker hides its voices across favourites, installed, and available buckets.
+
+### Added — PCM cache PR F (#503, partial close #86)
+- **WorkManager background pre-render of N+1 / N+2 chapters** while N plays. `PcmRenderScheduler` + `ChapterRenderJob @HiltWorker` with `setForeground` + `DATA_SYNC`. Holds `EngineMutex` per-sentence; handles Piper / Kokoro / Kitten; skips Azure (BYOK + per-character billing). `PlaybackModeConfig.fullPrerender` flow + `PrerenderTriggers` + `FictionLibraryListener` seam.
+- `EngineMutex @Singleton` hoist (#11 race protection) — foreground playback and background render serialize on the same mutex.
+- R8 keep rule for `ChapterRenderJob` (WorkManager's `WorkerFactory` looks up FQN reflectively).
+
+### Added — PCM cache PR G — Settings UI (#508, partial close #86)
+- **Settings → Performance gains three rows**: Full Pre-render switch (Mode C, default OFF), 4-tile BrassButton quota picker (500 MB / 2 GB / 5 GB / Unlimited), live "Currently used: X / Y" indicator + Clear-cache button with confirmation.
+- `pref_full_prerender_v1` on the InstantDB sync allowlist (the per-fiction listening preference). Cache quota stays device-local because storage capacity varies between phone and tablet.
+
+### Added — PCM cache PR H — status icons (#506, closes #86 series)
+- **Brass `ChapterCacheBadge` icons in Fiction Detail chapter rows**: `Icons.Outlined.HourglassTop` (pre-rendering, alpha-pulse) and `Icons.Filled.Bolt` (complete). Per-voice "X MB cached" labels in Voice Library. "Clear fiction cache…" overflow-menu action with confirmation dialog.
+- New `CacheStateInspector` (`:core-playback`, `@Singleton`) wraps `PcmCache.isComplete` / `metaFileFor` / `rootDirectory`. StateFlow plumbing from `FictionDetailViewModel.combine` lands `ChapterCacheState` on each `UiChapter`.
+
+### The 8-PR PCM cache series is complete
+| PR | Lands | What |
+|---|---|---|
+| A+B+C | #100 (2026-05-08) | Filesystem layer |
+| D | v0.5.47 | Streaming-tee writer (cache accumulates) |
+| E | v0.5.48 | Cache-hit playback (instant replays) |
+| **F+G+H** | **v0.5.49 (this release)** | **Background pre-render + Settings UI + status icons** |
+
+### Fixed
+- **NavStructureTest pinned to v0.5.48's 4-tab dock** (`5c037d0`) — the test still asserted v0.5.40's 2-tab contract, failing on every build since v0.5.48. Now pins `[Library, Playing, Voices, Settings]`.
+
+### Under the hood
+- **5 parallel agents** in isolated worktrees + 1 hotfix on main shipped this release in ~3 hours of orchestrator wall-clock. The one cross-contamination incident (PR-G agent worked on main's repo by accident via bare `cd`) was caught + recovered without dropping work.
+- 18 → 19 fiction backends. `:source-palace` joins the registry.
+- `VoiceFamilyRegistry` (`:core-playback`) is the seed for future out-of-tree voice engines.
+- `pref_full_prerender_v1`, `pref_sync_onboarding_dismissed` on the InstantDB sync allowlist.
 
 ## [0.5.48] — 2026-05-15
 
