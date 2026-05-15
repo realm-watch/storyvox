@@ -21,6 +21,29 @@ import kotlinx.coroutines.flow.Flow
  * EncryptedSharedPreferences) under the `pref_source_discord_token`
  * key. Plaintext DataStore holds the non-secret bits: selected
  * server id + coalesce window.
+ *
+ * **Issue #517 — TechEmpower seed channel bot-token UX**: storyvox
+ * does NOT ship a TechEmpower-owned bot token (it'd be a credential-
+ * leak risk and a ToS-posture problem — see commit history for the
+ * security rationale). For the TechEmpower peer-support channel
+ * (id [DiscordDefaults.TECHEMPOWER_PEER_SUPPORT_CHANNEL_ID]) to
+ * render messages, the user must:
+ *
+ *   1. Create their own Discord application at
+ *      discord.com/developers → Applications → New Application.
+ *   2. Add a Bot to it (Bot tab → Add Bot) and copy the token.
+ *   3. Invite the bot to TechEmpower's Discord server with the
+ *      `READ_MESSAGE_HISTORY` scope on the peer-support channel.
+ *      (TechEmpower's server admins maintain a published "storyvox
+ *      reader bot" invite link for users who'd rather not run their
+ *      own bot — see TechEmpower Home → Peer Support card copy.)
+ *   4. Paste the bot token into Settings → Library & Sync → Discord.
+ *
+ * The seed channel surfaces in Browse + on TechEmpower Home as soon
+ * as the token is in. Without a bot invited to the channel, the
+ * chapter list comes back empty (Discord returns []) — storyvox
+ * renders an empty-state with a CTA pointing at TechEmpower Home's
+ * Peer Support card for the documented invite link.
  */
 interface DiscordConfig {
     /** Hot stream of the current config state. */
@@ -71,6 +94,32 @@ data class DiscordConfigState(
      *  than the user config so storyvox + Discord never drift apart
      *  silently across releases. */
     val apiVersion: String = DiscordDefaults.API_VERSION,
+
+    /**
+     * Issue #517 — channel ids that storyvox surfaces as fictions in
+     * the Discord Browse list regardless of which server the user has
+     * picked. Today's seed is the TechEmpower peer-support channel
+     * (see [DiscordDefaults.TECHEMPOWER_PEER_SUPPORT_CHANNEL_ID]); the
+     * list shape lets us extend the seed without a state migration.
+     *
+     * Empty when [techempowerDefaultsEnabled] is false (the user opted
+     * out via Settings) so callers can take an unconditional
+     * `state.pinnedChannelIds` walk without needing a second toggle
+     * check.
+     */
+    val pinnedChannelIds: List<String> = DiscordDefaults.DEFAULT_PINNED_CHANNEL_IDS,
+
+    /**
+     * Issue #517 — opt-in for the TechEmpower default-channel seeds.
+     * Defaults to true on fresh installs (so the peer-support channel
+     * is discoverable the moment Discord is configured); users can
+     * disable via Settings → Library & Sync → Discord.
+     *
+     * When false, [pinnedChannelIds] is emitted as an empty list by
+     * [DiscordConfigImpl] so downstream `popular()` calls don't need
+     * to special-case the toggle.
+     */
+    val techempowerDefaultsEnabled: Boolean = DiscordDefaults.DEFAULT_TECHEMPOWER_DEFAULTS_ENABLED,
 ) {
     /** True when the source can make API calls. Requires both a
      *  configured bot token AND a selected server — without the

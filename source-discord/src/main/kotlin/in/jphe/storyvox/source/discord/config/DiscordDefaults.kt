@@ -48,4 +48,49 @@ object DiscordDefaults {
      *  reach out before banning a misbehaving bot. */
     const val USER_AGENT: String =
         "Storyvox-Discord/1.0 (+https://github.com/techempower-org/storyvox)"
+
+    /**
+     * Issue #517 — Discord channel id for the TechEmpower peer-support
+     * channel. When the user enables Discord AND keeps the TechEmpower-
+     * defaults toggle on (default ON for fresh installs, see
+     * [DEFAULT_TECHEMPOWER_DEFAULTS_ENABLED]), the channel surfaces as
+     * a pinned fiction in the Discord browse list — even before the
+     * user picks a server, because the Discord REST endpoint
+     * `/channels/{id}/messages` is channel-scoped and works as long
+     * as the configured bot has been invited with
+     * `READ_MESSAGE_HISTORY` on the channel.
+     *
+     * Captured from JP 2026-05-15 (see
+     * `scratch/techempower-shared/discord-invite.md`). The channel
+     * lives in TechEmpower's peer-support Discord server reachable via
+     * the [DISCORD_INVITE_URL][in.jphe.storyvox.data.TechEmpowerLinks.DISCORD_INVITE_URL]
+     * invite.
+     */
+    const val TECHEMPOWER_PEER_SUPPORT_CHANNEL_ID: String = "1504888494206484531"
+
+    /**
+     * Issue #517 — default pinned channel ids surfaced as fictions
+     * regardless of which Discord server the user has picked. Today
+     * this is the single TechEmpower peer-support channel; the shape
+     * is a List so future TechEmpower-default-pinning expansions
+     * (multiple peer-support rooms, region-specific channels, etc.)
+     * don't require a config-shape migration.
+     *
+     * Pinned channels appear at the top of [DiscordSource.popular]'s
+     * returned list, marked with a `(TechEmpower)` author label so
+     * users can tell them apart from their own server's channels.
+     */
+    val DEFAULT_PINNED_CHANNEL_IDS: List<String> =
+        listOf(TECHEMPOWER_PEER_SUPPORT_CHANNEL_ID)
+
+    /**
+     * Issue #517 — default value of the per-user "surface TechEmpower
+     * default channels as pinned fictions" toggle. ON for fresh
+     * installs so the peer-support thread is discoverable the moment
+     * a user configures Discord; users can flip it off in
+     * Settings → Library & Sync → Discord (UI surface is a follow-up;
+     * the value is persisted today through
+     * [`in`.jphe.storyvox.data.DiscordConfigImpl.setTechEmpowerDefaultsEnabled]).
+     */
+    const val DEFAULT_TECHEMPOWER_DEFAULTS_ENABLED: Boolean = true
 }

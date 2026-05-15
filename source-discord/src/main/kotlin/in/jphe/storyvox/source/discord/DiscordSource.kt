@@ -111,16 +111,58 @@ internal class DiscordSource @Inject constructor(
                     "Paste a token in Settings → Library & Sync → Discord.",
             )
         }
-        if (state.serverId.isBlank()) {
-            return FictionResult.NotFound(
-                "No Discord server selected. Pick one in Settings → Library & Sync → Discord.",
-            )
-        }
         if (page > 1) {
             return FictionResult.Success(ListPage(items = emptyList(), page = page, hasNext = false))
         }
+
+        // Issue #517 — TechEmpower peer-support channel (and any other
+        // pinned channels) surface at the top of the Browse list even
+        // before the user picks a server. The Discord REST
+        // `/channels/{id}/messages` endpoint is channel-scoped, so we
+        // don't need guild membership to read these — only that the
+        // configured bot has been invited to the channel with the
+        // `READ_MESSAGE_HISTORY` scope (documented in
+        // scratch/techempower-shared/discord-invite.md as the
+        // operational requirement for the seed channel to render).
+        //
+        // We surface pinned channels as FictionSummary stubs with an
+        // explicit `(TechEmpower)` author label so users can tell them
+        // apart from their own server's channels. The chapter list +
+        // chapter body still resolve through the existing
+        // fictionDetail() / chapter() paths — those are channel-id
+        // scoped too, so no extra plumbing is required.
+        //
+        // TODO(#517 surface): TechEmpower Home's "Featured guides"
+        // strip in `feature/.../techempower/TechEmpowerHomeScreen.kt`
+        // is hard-coded to Notion-only guide titles today; a follow-up
+        // PR should either add a "Peer-support" strip there or
+        // refactor the strip into a cross-source TechEmpower-featured
+        // iterator that picks up this Discord seed automatically. Not
+        // touched here because sibling agent #516 (Emergency Help
+        // card) is editing the same screen.
+        val pinnedItems: List<FictionSummary> = state.pinnedChannelIds.map { channelId ->
+            FictionSummary(
+                id = discordFictionId(channelId),
+                sourceId = SourceIds.DISCORD,
+                title = "#peer-support",
+                author = "TechEmpower",
+                description = "TechEmpower's peer-support Discord — listen to past messages from the community.",
+                status = FictionStatus.ONGOING,
+            )
+        }
+
+        // Without a selected server we still show pinned channels so
+        // the TechEmpower peer-support seed is reachable immediately
+        // after the user configures a bot token. The empty-state copy
+        // for the server picker stays in Settings.
+        if (state.serverId.isBlank()) {
+            return FictionResult.Success(
+                ListPage(items = pinnedItems, page = 1, hasNext = false),
+            )
+        }
+
         return api.listChannels(state.serverId).map { channels ->
-            val items = channels
+            val serverItems = channels
                 .filter { it.type == 0 || it.type == 5 }
                 .sortedBy { it.position }
                 .map { channel ->
@@ -137,7 +179,14 @@ internal class DiscordSource @Inject constructor(
                         status = FictionStatus.ONGOING,
                     )
                 }
-            ListPage(items = items, page = 1, hasNext = false)
+            // Pinned-first ordering — peer-support always above the
+            // user's own channels. Dedupe in case a pinned channel
+            // happens to live in the user's selected server (the
+            // FictionSummary id is `discord:<channelId>` so set-based
+            // dedupe is enough).
+            val seen = mutableSetOf<String>()
+            val combined = (pinnedItems + serverItems).filter { seen.add(it.id) }
+            ListPage(items = combined, page = 1, hasNext = false)
         }
     }
 
@@ -224,27 +273,58 @@ internal class DiscordSource @Inject constructor(
      */
     override suspend fun fictionDetail(fictionId: String): FictionResult<FictionDetail> {
         val state = config.current()
-        if (state.apiToken.isBlank() || state.serverId.isBlank()) {
+        if (state.apiToken.isBlank()) {
             return FictionResult.AuthRequired(
-                "Discord token or server not configured.",
+                "Discord token not configured.",
             )
         }
         val channelId = fictionId.toChannelId()
             ?: return FictionResult.NotFound("Discord fiction id not recognized: $fictionId")
 
-        // Look up the channel metadata for the title/description. We
-        // hit `/guilds/{id}/channels` and pick the one matching our
-        // channelId — Discord doesn't expose a single-channel-by-id
-        // endpoint to bots without the MANAGE_CHANNELS scope, which
-        // storyvox doesn't ask for.
-        val channels = when (val r = api.listChannels(state.serverId)) {
-            is FictionResult.Success -> r.value
-            is FictionResult.Failure -> return r
-        }
-        val channel = channels.firstOrNull { it.id == channelId }
-            ?: return FictionResult.NotFound(
-                "Discord channel $channelId not found in server ${state.serverId}",
+        // Issue #517 — pinned channels (e.g. the TechEmpower peer-
+        // support channel) don't necessarily live in the user's
+        // selected server. For those, we skip the `/guilds/{id}/channels`
+        // metadata lookup entirely and render the channel-level
+        // summary from the pinned-channel hardcoded label, then walk
+        // the messages directly.
+        val isPinned = channelId in state.pinnedChannelIds
+        if (!isPinned && state.serverId.isBlank()) {
+            return FictionResult.NotFound(
+                "No Discord server selected. Pick one in Settings → Library & Sync → Discord.",
             )
+        }
+
+        // For non-pinned channels we look up the channel metadata
+        // (title/topic) by walking the configured server's channel
+        // list. Discord doesn't expose a single-channel-by-id endpoint
+        // to bots without the MANAGE_CHANNELS scope, which storyvox
+        // doesn't ask for.
+        val channelName: String
+        val channelTopic: String?
+        val channelAuthor: String
+        if (isPinned) {
+            // Pinned channels: stable label (the peer-support label is
+            // the same one rendered in popular()). If we ever expose a
+            // pinned channel from a server the user IS in, the dedupe
+            // in popular() collapses the duplicate; here we still
+            // surface it as the TechEmpower-branded entry so the
+            // detail screen matches the Browse tile.
+            channelName = "peer-support"
+            channelTopic = "TechEmpower's peer-support Discord — listen to past messages from the community."
+            channelAuthor = "TechEmpower"
+        } else {
+            val channels = when (val r = api.listChannels(state.serverId)) {
+                is FictionResult.Success -> r.value
+                is FictionResult.Failure -> return r
+            }
+            val channel = channels.firstOrNull { it.id == channelId }
+                ?: return FictionResult.NotFound(
+                    "Discord channel $channelId not found in server ${state.serverId}",
+                )
+            channelName = channel.name
+            channelTopic = channel.topic?.ifBlank { null }
+            channelAuthor = state.serverName.ifBlank { "Discord" }
+        }
 
         val messages = when (val r = api.listMessages(channelId, before = null, limit = 100)) {
             is FictionResult.Success -> r.value
@@ -271,9 +351,9 @@ internal class DiscordSource @Inject constructor(
         val summary = FictionSummary(
             id = fictionId,
             sourceId = SourceIds.DISCORD,
-            title = "#${channel.name}",
-            author = state.serverName.ifBlank { "Discord" },
-            description = channel.topic?.ifBlank { null },
+            title = "#$channelName",
+            author = channelAuthor,
+            description = channelTopic,
             status = FictionStatus.ONGOING,
             chapterCount = chapters.size,
         )
@@ -295,13 +375,24 @@ internal class DiscordSource @Inject constructor(
         chapterId: String,
     ): FictionResult<ChapterContent> {
         val state = config.current()
-        if (state.apiToken.isBlank() || state.serverId.isBlank()) {
+        if (state.apiToken.isBlank()) {
             return FictionResult.AuthRequired(
-                "Discord token or server not configured.",
+                "Discord token not configured.",
             )
         }
         val channelId = fictionId.toChannelId()
             ?: return FictionResult.NotFound("Discord fiction id not recognized: $fictionId")
+        // Issue #517 — pinned channels (e.g. TechEmpower peer-support)
+        // can be read without a selected server because the messages
+        // endpoint is channel-scoped. Other channel ids still require
+        // a selected server (the popular() / fictionDetail() paths
+        // wouldn't have surfaced them otherwise).
+        val isPinned = channelId in state.pinnedChannelIds
+        if (!isPinned && state.serverId.isBlank()) {
+            return FictionResult.NotFound(
+                "No Discord server selected. Pick one in Settings → Library & Sync → Discord.",
+            )
+        }
         val headMessageId = chapterId.substringAfterLast("::msg-", "")
             .takeIf { it.isNotBlank() }
             ?: return FictionResult.NotFound("Discord chapter id not recognized: $chapterId")
