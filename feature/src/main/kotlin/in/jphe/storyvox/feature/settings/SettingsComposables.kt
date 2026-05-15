@@ -189,6 +189,21 @@ fun SettingsRow(
 
 // endregion
 
+/**
+ * Structural canary for issue #478 — [SettingsSwitchRow] must apply
+ * `Modifier.toggleable(role = Role.Switch)` on the row (not on a
+ * `Modifier.clickable(role = Role.Button)` inherited from [SettingsRow]),
+ * so TalkBack announces the entire row as a single `Role.Switch` node
+ * with the title merged in.
+ *
+ * Flipped to `false` only after a future refactor proves on a real
+ * device with TalkBack that a different shape carries the same merged
+ * announcement.
+ *
+ * Pinned by `SettingsSwitchRowToggleableTest`.
+ */
+internal const val settingsSwitchRowUsesToggleable: Boolean = true
+
 // region SettingsSwitchRow
 
 /**

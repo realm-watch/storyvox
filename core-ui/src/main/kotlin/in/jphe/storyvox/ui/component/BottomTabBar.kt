@@ -272,3 +272,14 @@ private val ICON_TARGET_WIDTH = 64.dp
  *  motion-medium-1 token — slow enough to read as "I'm navigating",
  *  fast enough to feel responsive. */
 private const val SLIDE_DURATION_MS = 280
+
+/**
+ * Structural canary for issue #485 — TabCell must expose `Role.Tab`
+ * + a `selected` semantics property so TalkBack announces the
+ * currently-active tab. Flipped to `false` only after a future refactor
+ * proves on a real device with TalkBack that an alternative shape
+ * carries the same announcement.
+ *
+ * Pinned by `BottomTabBarSemanticsTest`.
+ */
+internal const val bottomTabBarUsesRoleTabAndSelected: Boolean = true
