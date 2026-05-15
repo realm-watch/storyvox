@@ -52,10 +52,35 @@ import javax.inject.Singleton
 @Singleton
 internal class EpubSource @Inject constructor(
     private val config: EpubConfig,
-) : FictionSource {
+) : FictionSource, `in`.jphe.storyvox.data.source.UrlMatcher {
 
     override val id: String = SourceIds.EPUB
     override val displayName: String = "Local Books"
+
+    /** Issue #472 — direct `.epub` URLs. The source-epub backend's
+     *  primary surface is SAF-imported local files; a direct-download
+     *  URL is a v1.1 follow-up. The matcher claims at high confidence
+     *  so the user gets a clear "EPUB direct download" route in the
+     *  Magic-add preview row even before the download-and-import wire
+     *  is in. v1's [fictionDetail] returns AuthRequired-equivalent
+     *  guidance pointing at SAF import. */
+    override fun matchUrl(url: String): `in`.jphe.storyvox.data.source.RouteMatch? {
+        val trimmed = url.trim()
+        if (!trimmed.startsWith("http://", ignoreCase = true) &&
+            !trimmed.startsWith("https://", ignoreCase = true)
+        ) return null
+        if (!trimmed.substringBefore('?').substringBefore('#').lowercase().endsWith(".epub")) return null
+        val hash = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(trimmed.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+            .take(16)
+        return `in`.jphe.storyvox.data.source.RouteMatch(
+            sourceId = SourceIds.EPUB,
+            fictionId = "${SourceIds.EPUB}:url:$hash",
+            confidence = 0.9f,
+            label = "EPUB direct download",
+        )
+    }
 
     // ─── browse ────────────────────────────────────────────────────────
 

@@ -75,10 +75,25 @@ import javax.inject.Singleton
 @Singleton
 internal class ArxivSource @Inject constructor(
     private val api: ArxivApi,
-) : FictionSource {
+) : FictionSource, `in`.jphe.storyvox.data.source.UrlMatcher {
 
     override val id: String = SourceIds.ARXIV
     override val displayName: String = "arXiv"
+
+    /** Issue #472 — claim `arxiv.org/abs/<id>` and `arxiv.org/pdf/<id>`
+     *  URLs at high confidence. Anchored on the host so an outbound
+     *  link to arxiv from a blog post doesn't accidentally claim a
+     *  pasted blog URL. */
+    override fun matchUrl(url: String): `in`.jphe.storyvox.data.source.RouteMatch? {
+        val m = ARXIV_URL_PATTERN.matchEntire(url.trim()) ?: return null
+        val arxivId = m.groupValues[1]
+        return `in`.jphe.storyvox.data.source.RouteMatch(
+            sourceId = SourceIds.ARXIV,
+            fictionId = arxivFictionId(arxivId),
+            confidence = 0.95f,
+            label = "arXiv paper",
+        )
+    }
 
     // ─── browse ────────────────────────────────────────────────────────
 
@@ -216,6 +231,15 @@ internal class ArxivSource @Inject constructor(
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────
+
+/** Issue #472 — arXiv URL pattern for the magic-link resolver.
+ *  Matches `arxiv.org/abs/<id>` (the canonical landing page) and
+ *  `arxiv.org/pdf/<id>` (PDF direct link). The id captures both the
+ *  new-style `2401.12345` and old-style `cs/0501001` forms. */
+internal val ARXIV_URL_PATTERN: Regex = Regex(
+    """^https?://(?:www\.)?arxiv\.org/(?:abs|pdf)/([\w./-]+?)(?:v\d+)?(?:\.pdf)?(?:/.*)?$""",
+    RegexOption.IGNORE_CASE,
+)
 
 /** Compose a stable arXiv fiction id from the bare arxiv-id. */
 internal fun arxivFictionId(arxivId: String): String =

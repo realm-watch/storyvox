@@ -69,10 +69,26 @@ import javax.inject.Singleton
 @Singleton
 internal class WikipediaSource @Inject constructor(
     private val api: WikipediaApi,
-) : FictionSource {
+) : FictionSource, `in`.jphe.storyvox.data.source.UrlMatcher {
 
     override val id: String = SourceIds.WIKIPEDIA
     override val displayName: String = "Wikipedia"
+
+    /** Issue #472 — claim any `*.wikipedia.org/wiki/<title>` URL. The
+     *  language prefix is captured separately so the resolver could
+     *  later thread it through to the per-language Wikipedia config;
+     *  v1 trusts the source's own existing language wiring and just
+     *  uses the title slug as the fictionId payload. */
+    override fun matchUrl(url: String): `in`.jphe.storyvox.data.source.RouteMatch? {
+        val m = WIKIPEDIA_URL_PATTERN.matchEntire(url.trim()) ?: return null
+        val title = m.groupValues[2].trim().ifBlank { return null }
+        return `in`.jphe.storyvox.data.source.RouteMatch(
+            sourceId = SourceIds.WIKIPEDIA,
+            fictionId = wikipediaFictionId(java.net.URLDecoder.decode(title, Charsets.UTF_8)),
+            confidence = 0.95f,
+            label = "Wikipedia article",
+        )
+    }
 
     // ─── browse ────────────────────────────────────────────────────────
 
@@ -213,6 +229,16 @@ internal class WikipediaSource @Inject constructor(
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────
+
+/** Issue #472 — Wikipedia article URL pattern. Captures the language
+ *  subdomain (group 1) so a future per-language route can use it, and
+ *  the article title (group 2). Accepts the canonical `/wiki/<title>`
+ *  path; `?action=` mirror URLs from the read-only API are out of
+ *  scope (they're not paste-shaped). */
+internal val WIKIPEDIA_URL_PATTERN: Regex = Regex(
+    """^https?://([a-z]{2,3}(?:-[a-z]+)?)\.(?:m\.)?wikipedia\.org/wiki/([^?#]+)(?:[?#].*)?$""",
+    RegexOption.IGNORE_CASE,
+)
 
 /** Compose a stable Wikipedia fiction id from the article title. */
 internal fun wikipediaFictionId(title: String): String =

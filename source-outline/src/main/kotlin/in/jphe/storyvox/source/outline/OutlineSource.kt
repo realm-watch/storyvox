@@ -47,10 +47,36 @@ import javax.inject.Singleton
 @Singleton
 internal class OutlineSource @Inject constructor(
     private val api: OutlineApi,
-) : FictionSource {
+    private val config: `in`.jphe.storyvox.source.outline.config.OutlineConfig,
+) : FictionSource, `in`.jphe.storyvox.data.source.UrlMatcher {
 
     override val id: String = SourceIds.OUTLINE
     override val displayName: String = "Outline"
+
+    /** Issue #472 — Outline doc URLs are `<configured-host>/doc/<slug>`.
+     *  Returns null when no host is configured — the Readability
+     *  catch-all (0.1) then takes the URL. */
+    override fun matchUrl(url: String): `in`.jphe.storyvox.data.source.RouteMatch? {
+        val host = runCatching {
+            kotlinx.coroutines.runBlocking { config.current().host }
+        }.getOrNull()?.trim()
+            ?.removePrefix("https://")
+            ?.removePrefix("http://")
+            ?.trimEnd('/')
+            ?: return null
+        if (host.isBlank()) return null
+        val pattern = Regex(
+            """^https?://${Regex.escape(host)}/doc/([\w-]+)(?:[?#].*)?$""",
+            RegexOption.IGNORE_CASE,
+        )
+        val m = pattern.matchEntire(url.trim()) ?: return null
+        return `in`.jphe.storyvox.data.source.RouteMatch(
+            sourceId = SourceIds.OUTLINE,
+            fictionId = "${SourceIds.OUTLINE}:${m.groupValues[1]}",
+            confidence = 0.85f,
+            label = "Outline document",
+        )
+    }
 
     // ─── browse ────────────────────────────────────────────────────────
 

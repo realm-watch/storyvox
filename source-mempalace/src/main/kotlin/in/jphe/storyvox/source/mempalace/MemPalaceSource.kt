@@ -64,10 +64,26 @@ import javax.inject.Singleton
 @Singleton
 internal class MemPalaceSource @Inject constructor(
     private val api: PalaceDaemonApi,
-) : FictionSource {
+) : FictionSource, `in`.jphe.storyvox.data.source.UrlMatcher {
 
     override val id: String = SourceIds.MEMPALACE
     override val displayName: String = "Memory Palace"
+
+    /** Issue #472 — `mempalace.realm.watch/wing/<wing>/<room>` URLs.
+     *  Restricted to the canonical MP daemon host so a paste from
+     *  any non-MP URL doesn't get claimed. */
+    override fun matchUrl(url: String): `in`.jphe.storyvox.data.source.RouteMatch? {
+        val m = Regex(
+            """^https?://mempalace(?:\.realm\.watch|\.jphe\.in|\.local)/(?:wing|room)/([\w./-]+)(?:[?#].*)?$""",
+            RegexOption.IGNORE_CASE,
+        ).matchEntire(url.trim()) ?: return null
+        return `in`.jphe.storyvox.data.source.RouteMatch(
+            sourceId = SourceIds.MEMPALACE,
+            fictionId = "${SourceIds.MEMPALACE}:${m.groupValues[1]}",
+            confidence = 0.95f,
+            label = "Memory Palace",
+        )
+    }
 
     override suspend fun popular(page: Int): FictionResult<ListPage<FictionSummary>> {
         if (page > 1) return FictionResult.Success(emptyPage(page))

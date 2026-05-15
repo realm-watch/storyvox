@@ -68,6 +68,13 @@ fun LibraryScreen(
     onOpenReader: (String, String) -> Unit,
     onOpenSettings: () -> Unit = {},
     /**
+     * Issue #472 — when non-null, opens the Magic-add sheet pre-filled
+     * with this URL on first composition. Set by the share-intent path
+     * via `DeepLinkResolver.ARG_SHARED_URL`. Default null (normal
+     * Library open).
+     */
+    sharedUrl: String? = null,
+    /**
      * Issue #383 — Inbox row tap. Carries a fully-resolved deep-link URI
      * string (`storyvox://reader/<fid>/<cid>` or `storyvox://fiction/<fid>`).
      * The host decodes it. Default no-op so existing call sites that

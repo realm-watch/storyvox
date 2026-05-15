@@ -56,10 +56,41 @@ import javax.inject.Singleton
 internal class RssSource @Inject constructor(
     private val config: RssConfig,
     private val fetcher: RssFetcher,
-) : FictionSource {
+) : FictionSource, `in`.jphe.storyvox.data.source.UrlMatcher {
 
     override val id: String = SourceIds.RSS
     override val displayName: String = "RSS"
+
+    /** Issue #472 — RSS / Atom feed URLs. Matched by path/extension
+     *  heuristics: `.rss`, `.atom`, `.xml`, or paths containing
+     *  `/feed/` or `/rss/`. Confidence 0.7 — host+path matchers from
+     *  other backends always win, but a URL that looks like a feed
+     *  outranks the Readability fallback. */
+    override fun matchUrl(url: String): `in`.jphe.storyvox.data.source.RouteMatch? {
+        val trimmed = url.trim()
+        if (!trimmed.startsWith("http://", ignoreCase = true) &&
+            !trimmed.startsWith("https://", ignoreCase = true)
+        ) return null
+        val lower = trimmed.lowercase()
+        val looksLikeFeed = lower.contains("/feed") ||
+            lower.contains("/rss") ||
+            lower.contains("/atom") ||
+            lower.endsWith(".rss") ||
+            lower.endsWith(".atom") ||
+            lower.endsWith(".xml")
+        if (!looksLikeFeed) return null
+        // Hash the URL so the fictionId is stable across re-paste.
+        val hash = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(trimmed.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+            .take(16)
+        return `in`.jphe.storyvox.data.source.RouteMatch(
+            sourceId = SourceIds.RSS,
+            fictionId = "${SourceIds.RSS}:$hash",
+            confidence = 0.7f,
+            label = "RSS / Atom feed",
+        )
+    }
 
     // ─── browse ────────────────────────────────────────────────────────
 

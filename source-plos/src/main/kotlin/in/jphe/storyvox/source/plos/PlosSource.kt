@@ -76,10 +76,25 @@ import javax.inject.Singleton
 @Singleton
 internal class PlosSource @Inject constructor(
     private val api: PlosApi,
-) : FictionSource {
+) : FictionSource, `in`.jphe.storyvox.data.source.UrlMatcher {
 
     override val id: String = SourceIds.PLOS
     override val displayName: String = "PLOS"
+
+    /** Issue #472 — PLOS journal article URLs carry the DOI in the
+     *  query string: `journals.plos.org/<journal>/article?id=10.1371/journal.<...>`.
+     *  We match host + extract id. */
+    override fun matchUrl(url: String): `in`.jphe.storyvox.data.source.RouteMatch? {
+        val m = PLOS_ARTICLE_URL_PATTERN.matchEntire(url.trim()) ?: return null
+        val doi = m.groupValues[1].trim()
+        if (doi.isBlank()) return null
+        return `in`.jphe.storyvox.data.source.RouteMatch(
+            sourceId = SourceIds.PLOS,
+            fictionId = plosFictionId(doi),
+            confidence = 0.95f,
+            label = "PLOS article",
+        )
+    }
 
     // ─── browse ────────────────────────────────────────────────────────
 
@@ -238,6 +253,15 @@ internal class PlosSource @Inject constructor(
 
 /** Compose a stable PLOS fiction id from a DOI. */
 internal fun plosFictionId(doi: String): String = "plos:" + doi.trim()
+
+/** Issue #472 — PLOS journals article URL. The id query parameter is the
+ *  DOI; we capture it from `?id=<doi>` and use it as the fictionId payload.
+ *  Trailing/leading whitespace + URL-encoded slashes are normalised at
+ *  the [PlosSource.matchUrl] site. */
+internal val PLOS_ARTICLE_URL_PATTERN: Regex = Regex(
+    """^https?://journals\.plos\.org/[\w./-]+/article\?(?:[^=&]*=[^&]*&)*id=([^&]+).*$""",
+    RegexOption.IGNORE_CASE,
+)
 
 /** Compose the single chapter id for an article: `plos:<doi>::body`. */
 internal fun chapterIdFor(fictionId: String): String = "${fictionId}::${PlosSource.BODY_CHAPTER_KEY}"

@@ -85,10 +85,21 @@ import javax.inject.Singleton
 internal class Ao3Source @Inject constructor(
     private val api: Ao3Api,
     @Ao3Cache private val cacheDir: File,
-) : FictionSource {
+) : FictionSource, `in`.jphe.storyvox.data.source.UrlMatcher {
 
     override val id: String = SourceIds.AO3
     override val displayName: String = "Archive of Our Own"
+
+    /** Issue #472 — `archiveofourown.org/works/<id>` URL. */
+    override fun matchUrl(url: String): `in`.jphe.storyvox.data.source.RouteMatch? {
+        val m = AO3_URL_PATTERN.matchEntire(url.trim()) ?: return null
+        return `in`.jphe.storyvox.data.source.RouteMatch(
+            sourceId = SourceIds.AO3,
+            fictionId = "ao3:${m.groupValues[1]}",
+            confidence = 0.95f,
+            label = "AO3 work",
+        )
+    }
 
     /**
      * In-memory cache of parsed EpubBook keyed by fictionId. AO3
@@ -371,6 +382,12 @@ internal class Ao3Source @Inject constructor(
         const val DEFAULT_TAG_ID: Long = 414093L
     }
 }
+
+/** Issue #472 — AO3 work URL pattern. Captures the numeric work id. */
+internal val AO3_URL_PATTERN: Regex = Regex(
+    """^https?://(?:www\.)?archiveofourown\.org/works/(\d+)(?:/.*)?(?:\?.*)?$""",
+    RegexOption.IGNORE_CASE,
+)
 
 /** `ao3:12345` → `12345`; returns null on malformed input. */
 private fun parseAo3Id(fictionId: String): Long? =

@@ -71,10 +71,24 @@ internal class NotionSource @Inject constructor(
     private val api: NotionApi,
     private val anonymous: AnonymousNotionDelegate,
     private val config: NotionConfig,
-) : FictionSource {
+) : FictionSource, `in`.jphe.storyvox.data.source.UrlMatcher {
 
     override val id: String = SourceIds.NOTION
     override val displayName: String = "Notion"
+
+    /** Issue #472 — `*.notion.so/<workspace>/<slug-with-32-hex-id>` or
+     *  bare `notion.so/<32-hex-id>`. The pageId is the trailing 32-char
+     *  hex blob with hyphens stripped. */
+    override fun matchUrl(url: String): `in`.jphe.storyvox.data.source.RouteMatch? {
+        val m = NOTION_URL_PATTERN.matchEntire(url.trim()) ?: return null
+        val pageId = m.groupValues[1].replace("-", "")
+        return `in`.jphe.storyvox.data.source.RouteMatch(
+            sourceId = SourceIds.NOTION,
+            fictionId = "${SourceIds.NOTION}:$pageId",
+            confidence = 0.85f,
+            label = "Notion page",
+        )
+    }
 
     // ─── browse ────────────────────────────────────────────────────────
 
@@ -249,6 +263,15 @@ internal class NotionSource @Inject constructor(
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────
+
+/** Issue #472 — Notion page URL. The pageId is a 32-char hex blob,
+ *  optionally hyphenated as `8-4-4-4-12`. We accept both forms. The
+ *  pattern matches both bare workspace.notion.so/{id} and the
+ *  slug+id form workspace.notion.so/{slug-with-id-at-end}. */
+internal val NOTION_URL_PATTERN: Regex = Regex(
+    """^https?://(?:[\w-]+\.)?notion\.(?:so|site)/(?:[\w-]+/)?(?:[\w-]*-)?([0-9a-f]{32}|(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}))(?:[?#].*)?$""",
+    RegexOption.IGNORE_CASE,
+)
 
 /** Compose a stable Notion fiction id from a page id. */
 internal fun notionFictionId(pageId: String): String =

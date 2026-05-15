@@ -72,9 +72,25 @@ import javax.inject.Singleton
 internal class DiscordSource @Inject constructor(
     private val api: DiscordApi,
     private val config: DiscordConfig,
-) : FictionSource {
+) : FictionSource, `in`.jphe.storyvox.data.source.UrlMatcher {
 
     override val id: String = SourceIds.DISCORD
+
+    /** Issue #472 — `discord.com/channels/<guild>/<channel>` URL. */
+    override fun matchUrl(url: String): `in`.jphe.storyvox.data.source.RouteMatch? {
+        val m = Regex(
+            """^https?://(?:www\.|ptb\.|canary\.)?discord\.com/channels/(\d+)/(\d+)(?:/.*)?$""",
+            RegexOption.IGNORE_CASE,
+        ).matchEntire(url.trim()) ?: return null
+        val guildId = m.groupValues[1]
+        val channelId = m.groupValues[2]
+        return `in`.jphe.storyvox.data.source.RouteMatch(
+            sourceId = SourceIds.DISCORD,
+            fictionId = "${SourceIds.DISCORD}:$guildId/$channelId",
+            confidence = 0.9f,
+            label = "Discord channel",
+        )
+    }
     override val displayName: String = "Discord"
     override val supportsFollow: Boolean = false
 

@@ -126,6 +126,15 @@ object StoryvoxRoutes {
     // which break single-segment route matching. Compose Navigation auto-decodes
     // when reading args from SavedStateHandle, so encoding only at the call site is safe.
     fun fictionDetail(fictionId: String) = "fiction/${Uri.encode(fictionId)}"
+
+    /** Issue #472 — Library tab opened with a Magic-add prefill payload.
+     *  The shared URL is URL-encoded so Compose Navigation can carry it
+     *  through the query-string; the LibraryScreen decodes and hands
+     *  it to the viewmodel on first composition. We deliberately use
+     *  a query parameter (not a path segment) so a bare /library hit
+     *  still matches and a missing `sharedUrl` is null at the receiver. */
+    fun libraryWithShare(sharedUrl: String): String =
+        "$LIBRARY?${DeepLinkResolver.ARG_SHARED_URL}=${Uri.encode(sharedUrl)}"
     fun reader(fictionId: String, chapterId: String) = "reader/${Uri.encode(fictionId)}/${Uri.encode(chapterId)}"
     fun audiobook(fictionId: String, chapterId: String) = "audiobook/${Uri.encode(fictionId)}/${Uri.encode(chapterId)}"
     /** Build a chat route. `prefill` (optional, #188) seeds the chat
@@ -399,13 +408,29 @@ private fun StoryvoxNavHostContent(
                 )
             }
             composable(
-                StoryvoxRoutes.LIBRARY,
+                // Issue #472 — Library route accepts an optional
+                // `sharedUrl` query param so a system share-intent can
+                // route a URL into the Magic-add sheet. Default null;
+                // the LibraryScreen reads the arg via the
+                // [DeepLinkResolver.ARG_SHARED_URL] key.
+                "${StoryvoxRoutes.LIBRARY}?${DeepLinkResolver.ARG_SHARED_URL}={${DeepLinkResolver.ARG_SHARED_URL}}",
+                arguments = listOf(
+                    androidx.navigation.navArgument(DeepLinkResolver.ARG_SHARED_URL) {
+                        type = androidx.navigation.NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
                 enterTransition = homeEnter,
                 exitTransition = homeExit,
                 popEnterTransition = homeEnter,
                 popExitTransition = homeExit,
-            ) {
+            ) { backStackEntry ->
+                val sharedUrl = backStackEntry.arguments
+                    ?.getString(DeepLinkResolver.ARG_SHARED_URL)
+                    ?.let { Uri.decode(it) }
                 LibraryScreen(
+                    sharedUrl = sharedUrl,
                     onOpenFiction = { id -> navController.navigate(StoryvoxRoutes.fictionDetail(id)) },
                     onOpenReader = { f, c -> navController.navigate(StoryvoxRoutes.reader(f, c)) },
                     onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS_HUB) },
@@ -863,12 +888,33 @@ object DeepLinkResolver {
     const val EXTRA_OPEN_READER_FICTION_ID = "storyvox.open_reader.fiction_id"
     const val EXTRA_OPEN_READER_CHAPTER_ID = "storyvox.open_reader.chapter_id"
 
+    /** Issue #472 — query-string carried on the Library route when a
+     *  shared URL needs to land in the Magic-add sheet. The Library
+     *  screen pulls this off the nav arguments on first composition
+     *  and pre-fills the sheet via `viewModel.openAddByUrlPrefilled`. */
+    const val ARG_SHARED_URL = "sharedUrl"
+
     fun resolve(intent: Intent): String? {
         // Notification tap → reader for the currently-playing chapter.
         val rf = intent.getStringExtra(EXTRA_OPEN_READER_FICTION_ID)
         val rc = intent.getStringExtra(EXTRA_OPEN_READER_CHAPTER_ID)
         if (!rf.isNullOrBlank() && !rc.isNullOrBlank()) {
             return StoryvoxRoutes.reader(rf, rc)
+        }
+        // Issue #472 — ACTION_SEND share-intent path. Any app (browser,
+        // podcast client, RSS reader, social share menu) can share a
+        // URL into storyvox; the activity routes to Library with the
+        // URL surfaced as a query arg, and LibraryScreen opens the
+        // Magic-add sheet pre-populated. The resolver itself doesn't
+        // run UrlResolver here — that decision is the viewmodel's
+        // job and would couple this pure-function helper to Hilt-
+        // resolved deps.
+        if (intent.action == Intent.ACTION_SEND) {
+            val shared = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim().orEmpty()
+            if (shared.isNotBlank() && looksLikeUrl(shared)) {
+                return StoryvoxRoutes.libraryWithShare(shared)
+            }
+            return null
         }
         // Open-with deep link from royalroad.com.
         if (intent.action != Intent.ACTION_VIEW) return null
@@ -880,5 +926,25 @@ object DeepLinkResolver {
         val match = FICTION_PATH.matchEntire(path) ?: return null
         val id = match.groupValues[1]
         return StoryvoxRoutes.fictionDetail(id)
+    }
+
+    /** Lightweight URL sniffer — accepts http(s) URLs only. Apps that
+     *  share plaintext frequently emit "title\nURL" or "URL extra
+     *  text" via Intent.EXTRA_TEXT; we extract the first http(s)
+     *  token if the body is multi-line, otherwise require the whole
+     *  string to look like a URL. */
+    private fun looksLikeUrl(text: String): Boolean {
+        if (text.startsWith("http://", ignoreCase = true) ||
+            text.startsWith("https://", ignoreCase = true)
+        ) return true
+        // Multi-line share — find the first http(s) token.
+        return text.lineSequence()
+            .mapNotNull { line ->
+                line.split(' ', '\t', '\n').firstOrNull { tok ->
+                    tok.startsWith("http://", ignoreCase = true) ||
+                        tok.startsWith("https://", ignoreCase = true)
+                }
+            }
+            .firstOrNull() != null
     }
 }

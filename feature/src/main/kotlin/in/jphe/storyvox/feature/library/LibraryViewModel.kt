@@ -392,18 +392,18 @@ class LibraryViewModel @Inject constructor(
         _addByUrlState.value = AddByUrlSheetState.Hidden
     }
 
-    fun submitAddByUrl(url: String) {
+    fun submitAddByUrl(url: String, preferredSourceId: String? = null) {
         if (_addByUrlState.value === AddByUrlSheetState.Submitting) return
         _addByUrlState.value = AddByUrlSheetState.Submitting
         viewModelScope.launch {
-            when (val result = uiRepo.addByUrl(url)) {
+            when (val result = uiRepo.addByUrl(url, preferredSourceId)) {
                 is UiAddByUrlResult.Success -> {
                     _addByUrlState.value = AddByUrlSheetState.Hidden
                     _events.send(LibraryUiEvent.OpenFiction(result.fictionId))
                 }
                 UiAddByUrlResult.UnrecognizedUrl -> {
                     _addByUrlState.value = AddByUrlSheetState.Open(
-                        error = "That URL doesn't look like a Royal Road or GitHub address.",
+                        error = "That doesn't look like a URL. Paste an http(s):// link.",
                     )
                 }
                 is UiAddByUrlResult.UnsupportedSource -> {
@@ -415,6 +415,22 @@ class LibraryViewModel @Inject constructor(
                     _addByUrlState.value = AddByUrlSheetState.Open(
                         error = result.message.ifBlank { "Could not load that fiction. Try again." },
                     )
+                }
+                is UiAddByUrlResult.MultipleMatches -> {
+                    // Issue #472 — v1 picks the top candidate
+                    // automatically. The chooser-modal UX is wired in
+                    // LibraryViewModel.Chooser state (see follow-up
+                    // PR) so the user can override; v1's resolver
+                    // already disambiguates most paste scenarios via
+                    // the dominance threshold in FictionRepositoryImpl.
+                    val top = result.candidates.firstOrNull()
+                    if (top != null) {
+                        submitAddByUrl(url, preferredSourceId = top.sourceId)
+                    } else {
+                        _addByUrlState.value = AddByUrlSheetState.Open(
+                            error = "Could not pick a backend for that URL.",
+                        )
+                    }
                 }
             }
         }

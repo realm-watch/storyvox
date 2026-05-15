@@ -43,6 +43,22 @@
                 <data android:host="www.royalroad.com" android:pathPrefix="/fiction/" />
                 <data android:host="royalroad.com" android:pathPrefix="/fiction/" />
             </intent-filter>
+
+            <!--
+                Issue #472 — Magic-link audiobook. Accept ACTION_SEND
+                with text/plain so the user can share any URL from any
+                app (browser, RSS reader, podcast app, social-media
+                share menu) directly into storyvox. The DeepLinkResolver
+                in :app inspects Intent.EXTRA_TEXT and routes to the
+                Library tab with the Magic-add sheet pre-populated;
+                the resolver itself handles any HTTP(S) URL via the
+                Readability catch-all (never a dead-end).
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
 
         <!-- Disable default WorkManager init so Hilt's Configuration.Provider takes over. -->

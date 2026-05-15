@@ -143,4 +143,14 @@ object SourceIds {
      *  is high-friction and Discord is a private workspace, not a
      *  public catalog. */
     const val DISCORD: String = "discord"
+    /** Readability4J catch-all (#472, magic-link audiobook) — the
+     *  always-on last-resort matcher for the paste-anything flow. Any
+     *  HTTP(S) URL that none of the 17 specialized backends claim
+     *  falls through to here, where Readability4J's Mozilla-Readability
+     *  port extracts the article body and renders it as a single-
+     *  chapter fiction. Confidence is pinned to 0.1f in
+     *  [UrlMatcher][in.jphe.storyvox.data.source.UrlMatcher], so this
+     *  source never wins when a specialized backend also claims the URL
+     *  — it's a safety net, not a competitor. */
+    const val READABILITY: String = "readability"
 }

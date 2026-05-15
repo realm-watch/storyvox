@@ -7,8 +7,9 @@ import `in`.jphe.storyvox.data.db.entity.ChapterDownloadState
 import `in`.jphe.storyvox.data.db.entity.DownloadMode
 import `in`.jphe.storyvox.data.db.entity.Fiction
 import `in`.jphe.storyvox.data.source.FictionSource
+import `in`.jphe.storyvox.data.source.RouteMatch
 import `in`.jphe.storyvox.data.source.SourceIds
-import `in`.jphe.storyvox.data.source.UrlRouter
+import `in`.jphe.storyvox.data.source.UrlResolver
 import `in`.jphe.storyvox.data.source.model.ChapterInfo
 import `in`.jphe.storyvox.data.source.model.FictionDetail
 import `in`.jphe.storyvox.data.source.model.FictionResult
@@ -104,12 +105,35 @@ interface FictionRepository {
      * persist a stub row, and refresh its detail. Returns the resolved
      * `fictionId` on success so the UI can navigate to the detail screen.
      *
-     * Recognised-but-unsupported sources (GitHub today) return
+     * Recognised-but-unsupported sources return
      * [AddByUrlResult.UnsupportedSource] so the UI can surface a
      * "coming soon" message without the user thinking they pasted
      * something invalid.
+     *
+     * Issue #472 — when multiple backends claim the same URL with high
+     * confidence (≥0.5), the repository returns
+     * [AddByUrlResult.MultipleMatches] and the UI shows a chooser. The
+     * caller then re-invokes with [preferredSourceId] set to the user's
+     * picked backend to bypass the resolver and commit the route.
+     *
+     * @param preferredSourceId Optional override that skips the
+     *  resolver's ranking and routes directly to the named source. Used
+     *  by the chooser flow described above.
      */
-    suspend fun addByUrl(url: String): AddByUrlResult
+    suspend fun addByUrl(
+        url: String,
+        preferredSourceId: String? = null,
+    ): AddByUrlResult
+
+    /**
+     * Issue #472 — preview the routes a paste-anything URL would
+     * resolve to without committing to any. Powers the debounced
+     * preview row in the Magic-add sheet (icon, source, fiction-title
+     * hint). Returns an empty list when the URL doesn't parse at all;
+     * a single-element list when one backend claims it; multiple when
+     * the chooser modal is warranted.
+     */
+    fun previewUrl(url: String): List<RouteMatch>
 }
 
 /** Outcome of [FictionRepository.addByUrl]. */
@@ -117,7 +141,10 @@ sealed class AddByUrlResult {
     /** URL parsed, source supported, detail fetched + persisted. */
     data class Success(val fictionId: String) : AddByUrlResult()
 
-    /** No source's URL pattern matched the input. */
+    /** No source's URL pattern matched the input. Should be rare post-#472
+     *  because the Readability catch-all claims any HTTP(S) URL at low
+     *  confidence — only non-URL inputs (empty string, garbage text)
+     *  reach this branch. */
     data object UnrecognizedUrl : AddByUrlResult()
 
     /** Pattern matched a known source that is wired but not yet implemented. */
@@ -125,6 +152,12 @@ sealed class AddByUrlResult {
 
     /** Source-layer failure (network, 404, auth, rate limit, Cloudflare, ...). */
     data class SourceFailure(val failure: FictionResult.Failure) : AddByUrlResult()
+
+    /** Issue #472 — several backends claimed the URL at chooser-eligible
+     *  confidence (≥0.5). The UI shows a chooser modal and re-invokes
+     *  `addByUrl(url, preferredSourceId = picked)` with the user's
+     *  choice. */
+    data class MultipleMatches(val candidates: List<RouteMatch>) : AddByUrlResult()
 }
 
 @Singleton
@@ -132,6 +165,13 @@ class FictionRepositoryImpl @Inject constructor(
     private val sources: Map<String, @JvmSuppressWildcards FictionSource>,
     private val fictionDao: FictionDao,
     private val chapterDao: ChapterDao,
+    /** Issue #472 — magic-link resolver. Walks every registered
+     *  plugin's [in.jphe.storyvox.data.source.UrlMatcher] capability
+     *  to route a pasted URL to the best backend. Optional in
+     *  constructor signature so older tests that build the impl with
+     *  a stub `Map<String, FictionSource>` keep compiling — they pass
+     *  the empty resolver factory below. */
+    private val urlResolver: UrlResolver? = null,
 ) : FictionRepository {
 
     /**
@@ -308,10 +348,32 @@ class FictionRepositoryImpl @Inject constructor(
             }
         }
 
-    override suspend fun addByUrl(url: String): AddByUrlResult = withContext(Dispatchers.IO) {
-        val match = UrlRouter.route(url) ?: return@withContext AddByUrlResult.UnrecognizedUrl
-        val src = sources[match.sourceId]
-            ?: return@withContext AddByUrlResult.UnsupportedSource(match.sourceId)
+    override suspend fun addByUrl(
+        url: String,
+        preferredSourceId: String?,
+    ): AddByUrlResult = withContext(Dispatchers.IO) {
+        // Issue #472 — Resolver-first routing. When the [urlResolver]
+        // dep is present (production graph) we walk every plugin's
+        // [UrlMatcher]; when absent (legacy unit tests that pre-date
+        // the resolver injection) we fall back to the established
+        // [UrlRouter] regex bank so RoyalRoad / GitHub still resolve.
+        val candidates: List<RouteMatch> = urlResolver?.resolve(url)
+            ?: legacyResolveFallback(url)
+
+        if (candidates.isEmpty()) return@withContext AddByUrlResult.UnrecognizedUrl
+
+        // Pick: either the user's preferred source (chooser modal flow)
+        // or the highest-confidence candidate. If preferredSourceId is
+        // set but no candidate matches it, treat it as a routing bug
+        // and fall back to the top candidate — the UI shouldn't be
+        // sending an id we don't know about.
+        val picked: RouteMatch = preferredSourceId
+            ?.let { hint -> candidates.firstOrNull { it.sourceId == hint } }
+            ?: maybeMultipleMatchesOr(candidates)
+            ?: return@withContext AddByUrlResult.MultipleMatches(candidates)
+
+        val src = sources[picked.sourceId]
+            ?: return@withContext AddByUrlResult.UnsupportedSource(picked.sourceId)
 
         // Pre-write a stub row carrying sourceId so refreshDetail (and any
         // subsequent setFollowedRemote / ChapterDownloadWorker) can route
@@ -319,11 +381,11 @@ class FictionRepositoryImpl @Inject constructor(
         // upsert only seeds fields we know from the URL; richer fields are
         // filled in by upsertDetail on success.
         val now = System.currentTimeMillis()
-        if (fictionDao.get(match.fictionId) == null) {
+        if (fictionDao.get(picked.fictionId) == null) {
             fictionDao.upsert(
                 Fiction(
-                    id = match.fictionId,
-                    sourceId = match.sourceId,
+                    id = picked.fictionId,
+                    sourceId = picked.sourceId,
                     title = "",
                     author = "",
                     firstSeenAt = now,
@@ -332,13 +394,62 @@ class FictionRepositoryImpl @Inject constructor(
             )
         }
 
-        when (val r = src.fictionDetail(match.fictionId)) {
+        when (val r = src.fictionDetail(picked.fictionId)) {
             is FictionResult.Success -> {
                 upsertDetail(r.value)
-                AddByUrlResult.Success(match.fictionId)
+                AddByUrlResult.Success(picked.fictionId)
             }
             is FictionResult.Failure -> AddByUrlResult.SourceFailure(r)
         }
+    }
+
+    override fun previewUrl(url: String): List<RouteMatch> =
+        urlResolver?.resolve(url) ?: legacyResolveFallback(url)
+
+    /**
+     * When [urlResolver] is null (legacy unit-test path), walk the
+     * pre-#472 [in.jphe.storyvox.data.source.UrlRouter] regex bank so
+     * RoyalRoad/GitHub tests still pass. Wrapped to return the same
+     * shape ([RouteMatch] list) as the resolver to keep the calling
+     * site uniform.
+     */
+    private fun legacyResolveFallback(url: String): List<RouteMatch> {
+        val m = `in`.jphe.storyvox.data.source.UrlRouter.route(url) ?: return emptyList()
+        return listOf(
+            RouteMatch(
+                sourceId = m.sourceId,
+                fictionId = m.fictionId,
+                confidence = 1.0f,
+                label = m.sourceId,
+            ),
+        )
+    }
+
+    /**
+     * Returns the single best candidate when one route dominates, or
+     * null when the chooser modal should appear. "Dominates" = top
+     * candidate is at least [DOMINANT_GAP] more confident than the
+     * second-best candidate, OR is the only chooser-eligible entry
+     * (≥0.5). The Readability catch-all (0.1) doesn't count as a
+     * competing route — when it sits beneath a single mid/high
+     * confidence backend, that backend wins outright.
+     */
+    private fun maybeMultipleMatchesOr(candidates: List<RouteMatch>): RouteMatch? {
+        val top = candidates.firstOrNull() ?: return null
+        val chooserEligible = candidates.filter { it.confidence >= CHOOSER_THRESHOLD }
+        // Single chooser-eligible entry (or none — Readability-only
+        // case) → top wins outright.
+        if (chooserEligible.size <= 1) return top
+        // Two+ chooser-eligible entries: dominance test on the top
+        // pair. If top is meaningfully more confident than runner-up,
+        // pick it; otherwise surface the chooser.
+        val runnerUp = chooserEligible[1]
+        return if (top.confidence - runnerUp.confidence >= DOMINANT_GAP) top else null
+    }
+
+    private companion object {
+        const val CHOOSER_THRESHOLD: Float = 0.5f
+        const val DOMINANT_GAP: Float = 0.2f
     }
 
     // ─── helpers ──────────────────────────────────────────────────────────
