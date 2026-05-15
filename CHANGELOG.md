@@ -9,6 +9,36 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.43] — 2026-05-14
+
+### Added — Accessibility Phase 2: everything from the audit, wired
+
+- **High-contrast theme variant** (#493, closes #486 part 1) — `brass-on-near-black` Library Nocturne. Backgrounds `#1a1410` → `#000000`; brass `#b88746` → `#ffc14a`. Hits WCAG **AAA** (~14:1+ body text) without abandoning the brand. New `LibraryNocturneHighContrastTheme` toggled by `pref_a11y_high_contrast` OR `accessibilityState.isTalkBackActive` (the bridge auto-detects). Light variant: pure-white inverse with darker brass for AAA on white.
+- **Reduced-motion fold-in** (#493, closes #486 part 2 + #480) — new `LocalReduceMotion` CompositionLocal in `:core-ui`, set from `pref_a11y_reduced_motion || accessibilityState.isReduceMotionRequested` (the bridge tracks `Settings.Global.ANIMATOR_DURATION_SCALE`). 8 animation sites fold the flag in: `AnimatedVisibility` snap-rather-than-fade, `tween()` → `snap()`, `animateFloatAsState` / `animateDpAsState` → `spring(stiffness=High)`, `Crossfade` skip. Per JP design call: auto-on when system "Remove animations" is on; user override in the subscreen always wins.
+- **Touch-target widener** (#493, closes #479 + #486 part 3) — new `Modifier.accessibleSize()` helper in `:core-ui/a11y/` that returns 48dp baseline, 64dp when `LocalAccessibleTouchTargets.current` is true (set from `pref_a11y_larger_touch_targets || accessibilityState.isSwitchAccessActive`). Applied at the 3 auth-WebView buttons + the VoiceLibrary favorite-star (previously 36dp → below WCAG 2.5.5 minimum).
+- **TalkBack inter-sentence pacing** (#493, closes #486 part 4) — `EngineStreamingSource` adds `pref_a11y_screen_reader_pause_ms` ms of silence between sentences (slider 0–1500ms, default 500ms) **only when** `accessibilityState.isTalkBackActive`. Speed-scaled so 2× playback doubles the effective pause budget. 3 producer paths touched.
+- **Chapter-header readout branching** (#493, closes #486 part 5) — `ChapterCard` content-description respects `pref_a11y_speak_chapter_mode` (`Both` / `NumbersOnly` / `TitlesOnly`). New `LocalA11ySpeakChapterMode` CompositionLocal.
+- **Font-scale typography pipeline** (#493, closes #486 part 6) — `scaledTypography` multiplies `LibraryNocturneTypography` font sizes by `pref_a11y_font_scale_override` (0.85–1.5×, default 1.0) on top of system font scale. Applied via `MaterialTheme(typography = scaledTypography)`.
+- **Reading-direction at NavHost root** (#493, closes #486 part 7) — when `pref_a11y_reading_direction != FollowSystem`, the entire `StoryvoxNavHost` is wrapped in `CompositionLocalProvider(LocalLayoutDirection provides Ltr|Rtl)`. Escape hatch for RTL testing.
+- **TalkBack-install nudge** (#493, closes #488) — when the user touches a screen-reader-related a11y row but TalkBack isn't running, a dismissible brass-edged info card appears: "TalkBack isn't running — these settings activate when you turn on TalkBack in Android Settings → Accessibility." Persists dismissal via the new `pref_a11y_talkback_nudge_dismissed` flag (on the InstantDB sync allowlist).
+- **`docs/accessibility.md`** (#492, closes #487) — canonical accessibility reference at `storyvox.techempower.org/accessibility` covering: audit method, Phase 1+2 scope, design calls, partnership-outreach plan. Settings → Accessibility "Learn more" row opens it via `LocalUriHandler`.
+
+### Fixed — Accessibility Phase 2: static labels + Roles + content descriptions
+
+- **Switch primitive labeled** (#492, closes #478) — `SettingsSwitchRow` refactored to `Modifier.toggleable(role = Role.Switch)`. Covers 4 of 7 unlabeled-Switch sites at once; the other 3 (`SettingsScreen.kt:1204`, `PronunciationDictScreen.kt`, `ManageShelvesSheet.kt`, `DebugScreen.kt`, `VoiceQuickSheet`) given the same shape. `PluginManagerScreen.kt:299` gets `contentDescription` on the Switch instead because the surrounding card has its own tap.
+- **BottomTabBar Role.Tab + selected** (#492, closes #485) — each `TabCell` now declares `Modifier.semantics { selected = isSelected }` + `Modifier.clickable(role = Role.Tab, onClickLabel = tab.label)`. New `BottomTabBarSemanticsTest` pins the contract.
+- **Progress indicator semantics** (#492, closes #484) — `SyncAuthScreen.InProgress` + `FictionDetailScreen`'s epub-export spinner get `contentDescription = "Loading: <label>"` + `liveRegion = Polite`.
+- **27 bare clickable callsites swept** (#492, closes #481) — `Role.Button` / `Role.Checkbox` / `Role.Switch` + `onClickLabel` added across 13 files. `VoicePickerGate`'s intentionally Role-less tap-swallow annotated.
+- **Hard-coded fontSize cleanup** (#492, closes #483) — `MilestoneDialog` (12 sites) + `GitHubSignInScreen` (1) rebound to typography ramp tokens (`titleMedium`/`bodyMedium`/`titleLarge`/`bodyLarge`/`displaySmall`). `DebugOverlay` + `DebugScreen` get kdoc notes explaining intentional bypass for the px-pinned debug HUD.
+- **Default-theme contrast tweaks** (#493, closes #477) — `plum500`, `errorContainer` (dark), and both `outlineVariant` lifted to clear **WCAG AA-normal** (4.5:1+) within the existing Library Nocturne aesthetic. AAA on body text contract-tested across every surface tier.
+- **Icon contentDescription verify-sweep** (#492, closes #482) — 36 `cd=null` + 28 `IconButton:MISSING` callsites audited; all confirmed correctly decorative or labeled via inner-Icon semantic merge. Documented in `docs/accessibility.md`.
+
+### Under the hood
+- 8 new contract tests: `HighContrastThemeTest`, `TypographyScaleTest`, `AccessibleTouchTargetTest`, `ReduceMotionTest`, `EnginePlayerTalkBackPacingTest`, `ReadingDirectionMappingTest`, `SettingsSwitchRowToggleableTest`, `BottomTabBarSemanticsTest`.
+- New `LocalReduceMotion`, `LocalAccessibleTouchTargets`, `LocalA11ySpeakChapterMode`, `LocalIsTalkBackActive` CompositionLocals in `:core-ui/a11y/`. The state bridge from #489 stays the single source of truth; CompositionLocals are read-side fan-out.
+- 7 prefs from #489 are now load-bearing — every consumer reads the `pref || detected` fold.
+- 12 of 12 a11y audit findings (#477–#488) now closed.
+
 ## [0.5.42] — 2026-05-14
 
 ### Added
