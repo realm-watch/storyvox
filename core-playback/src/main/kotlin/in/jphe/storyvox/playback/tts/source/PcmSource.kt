@@ -1,21 +1,24 @@
 package `in`.jphe.storyvox.playback.tts.source
 
 import `in`.jphe.storyvox.playback.SentenceRange
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Source of PCM chunks for the EnginePlayer consumer to write to AudioTrack.
  *
- * Two impls (PR-A only ships [EngineStreamingSource]; `CacheFileSource`
- * follows in PR-E):
+ * Two impls:
  *  - [EngineStreamingSource] runs the VoxSherpa engine on a worker
  *    coroutine, putting generated PCM into a queue. [nextChunk] blocks
  *    on `queue.take`. Subject to producer-can't-keep-up underrun on
  *    slow voice + slow device combos (Piper-high on Tab A7 Lite).
- *  - `CacheFileSource` (PR-E) mmap-reads a pre-rendered chapter PCM file.
- *    Never blocks for long.
+ *  - [CacheFileSource] (PR-E) mmap-reads a pre-rendered chapter PCM
+ *    file. Never blocks meaningfully.
  *
- * The consumer treats both uniformly. When the source is exhausted
- * (chapter end), [nextChunk] returns null.
+ * The consumer treats both uniformly via this sealed interface — the
+ * dispatch from streaming → cache lives in
+ * [`in`.jphe.storyvox.playback.tts.EnginePlayer.startPlaybackPipeline].
+ * When the source is exhausted (chapter end), [nextChunk] returns null.
  */
 sealed interface PcmSource {
 
@@ -95,6 +98,45 @@ sealed interface PcmSource {
      *  sources report their `queueCapacity`; cache sources report 0
      *  (no queue). The overlay renders `depth/capacity`. */
     fun producerQueueCapacity(): Int = 0
+
+    /**
+     * PR-E (#86) — total ms of audio queued but not yet consumed.
+     * [EngineStreamingSource] tracks this dynamically as the producer
+     * puts and consumer takes; [CacheFileSource] reports
+     * [Long.MAX_VALUE] (cached chapters can't underrun, so the
+     * buffer-low UI gating in `EnginePlayer.startPlaybackPipeline`
+     * never fires for them).
+     *
+     * Hoisted to the interface in PR-E so the consumer thread can
+     * type its `source` reference as [PcmSource] and read this
+     * property without an `is`/`as` cast in the hot loop.
+     *
+     * Default impl returns a [StateFlow] holding [Long.MAX_VALUE].
+     * Subclasses with real producer/consumer flow accounting
+     * override with a live flow.
+     */
+    val bufferHeadroomMs: StateFlow<Long>
+        get() = MAX_HEADROOM
+
+    /**
+     * PR-E (#86) — mark the in-progress cache write (if any) complete.
+     * [EngineStreamingSource] uses this to land its index sidecar on
+     * natural end-of-chapter (PR-D); [CacheFileSource] has no cache
+     * write to finalize, so its impl is a no-op.
+     *
+     * Called from `EnginePlayer.startPlaybackPipeline`'s consumer
+     * thread on the natural-end branch. Idempotent — multiple calls
+     * are safe; the streaming impl nulls out its appender field
+     * after the first call.
+     */
+    fun finalizeCache() {}
+
+    private companion object {
+        /** Shared singleton "infinity" headroom for non-streaming sources.
+         *  Allocated once at class load so the default getter doesn't
+         *  churn a StateFlow per source instance. */
+        val MAX_HEADROOM: StateFlow<Long> = MutableStateFlow(Long.MAX_VALUE)
+    }
 }
 
 /**

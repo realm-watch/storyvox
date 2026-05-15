@@ -46,6 +46,7 @@ import `in`.jphe.storyvox.playback.TtsVolumeRamp
 import `in`.jphe.storyvox.playback.cache.PcmAppender
 import `in`.jphe.storyvox.playback.cache.PcmCache
 import `in`.jphe.storyvox.playback.cache.PcmCacheKey
+import `in`.jphe.storyvox.playback.tts.source.CacheFileSource
 import `in`.jphe.storyvox.playback.tts.source.EngineStreamingSource
 import `in`.jphe.storyvox.playback.tts.source.PcmSource
 import `in`.jphe.storyvox.playback.voice.EngineType
@@ -1348,59 +1349,105 @@ class EnginePlayer @AssistedInject constructor(
             )
         } else null
 
-        // Open the appender. If a partial entry exists from a prior
-        // killed render (meta.json on disk, idx.json absent), wipe it
-        // first — PR-D's resume policy is "abandon, restart". Resuming
-        // mid-chapter PCM across boots adds verification complexity
-        // (is the .pcm file's tail aligned to a sentence boundary?
-        // What sentence index do we restart from?) for negligible
-        // payoff: the kill-mid-render case is rare, and a fresh render
-        // takes the same wall time as a partial-resume would after
-        // verification.
+        // PR-E (#86) — cache-hit dispatch. If the cache for this key
+        // is COMPLETE (the .idx.json sidecar landed from a previous
+        // play's natural end), open a CacheFileSource and skip the
+        // engine pipeline entirely. The consumer thread treats the
+        // source uniformly via the PcmSource interface; cached
+        // chapters get instant first-byte + zero inter-sentence gaps.
         //
-        // If the entry is COMPLETE (idx.json present), don't wipe —
-        // PR-E will short-circuit before this branch ever runs by
-        // constructing a CacheFileSource instead. PR-D-only world: a
-        // complete entry means the user replayed the chapter and the
-        // streaming source overwrites it with identical bytes (same
-        // key → same content). The overwrite is wasted work but
-        // harmless. PR-E removes this waste.
+        // Touch the .pcm mtime so LRU eviction in PcmCache.evictTo
+        // prefers genuinely-cold entries (sort key: mtime ascending
+        // within (isAzure) groups).
         //
-        // runBlocking is acceptable here: startPlaybackPipeline is
-        // already called synchronously from a coroutine (or from
-        // suspend functions like loadAndPlay), so the blocking wait
-        // for pcmCache.delete is brief (a few File.delete syscalls on
-        // Dispatchers.IO — single-digit ms). Lifting startPlaybackPipeline
-        // to suspend is a bigger refactor punted to a follow-up.
-        val appender: PcmAppender? = cacheKey?.let { key ->
+        // On CacheFileSource.open failure (corrupt index, truncated
+        // pcm) we fall through to the streaming path. The next
+        // natural-end finalize will overwrite the bad entry with
+        // fresh bytes; a corrupt cache is a re-render trigger, not
+        // a crash. We log the failure so the cache-hit/miss ratio
+        // observability stays meaningful in logcat — adb run-as is
+        // gone post-isDebuggable=false, so logcat is the primary
+        // verification surface for cache behavior on the tablet.
+        val cacheHitSource: PcmSource? = cacheKey?.let { key ->
             runBlocking {
-                if (pcmCache.metaFileFor(key).exists() && !pcmCache.isComplete(key)) {
-                    // Stale partial — wipe before opening fresh.
-                    pcmCache.delete(key)
-                }
-                pcmCache.appender(key, sampleRate = sampleRate)
+                if (!pcmCache.isComplete(key)) return@runBlocking null
+                pcmCache.touch(key)
+                runCatching {
+                    CacheFileSource.open(
+                        pcmFile = pcmCache.pcmFileFor(key),
+                        indexFile = pcmCache.indexFileFor(key),
+                        startSentenceIndex = currentSentenceIndex,
+                    )
+                }.onSuccess {
+                    android.util.Log.i(
+                        "EnginePlayer",
+                        "pcm-cache HIT chapter=${key.chapterId} voice=${key.voiceId} " +
+                            "speed=${key.speedHundredths} pitch=${key.pitchHundredths} " +
+                            "fromSentence=$currentSentenceIndex base=${key.fileBaseName().take(12)}",
+                    )
+                }.onFailure { t ->
+                    android.util.Log.w(
+                        "EnginePlayer",
+                        "pcm-cache hit-open FAILED chapter=${key.chapterId} " +
+                            "base=${key.fileBaseName().take(12)} — falling back to streaming",
+                        t,
+                    )
+                }.getOrNull()
             }
         }
 
-        val source = EngineStreamingSource(
-            sentences = sentences,
-            startSentenceIndex = currentSentenceIndex,
-            engine = activeVoiceEngineHandle(engineType),
-            speed = currentSpeed,
-            pitch = currentPitch,
-            engineMutex = engineMutex,
-            cacheAppender = appender,
-            punctuationPauseMultiplier = currentPunctuationPauseMultiplier,
-            // #486 / #488 — TalkBack inter-sentence pad. Snapshot at
-            // pipeline-construction time; mid-listen slider edits take
-            // effect on next rebuild (matches the other live-config
-            // knobs). The volatile cache is kept in sync by
-            // [observeA11yPacing].
-            extraA11ySilenceMs = cachedA11yExtraSilenceMs,
-            queueCapacity = queueCapacity,
-            pronunciationDictApply = pronunciationDict::apply,
-            secondaryEngines = secondaryHandles,
-        )
+        val source: PcmSource = if (cacheHitSource != null) {
+            cacheHitSource
+        } else {
+            // Cache miss (or hit-open failed) — streaming source +
+            // tee appender path (PR-D). If a partial entry exists
+            // from a prior killed render (meta.json on disk,
+            // idx.json absent), wipe it first; PR-D's resume policy
+            // is "abandon, restart".
+            //
+            // runBlocking is acceptable here: startPlaybackPipeline
+            // is already called synchronously from a coroutine
+            // (or from suspend functions like loadAndPlay), so the
+            // blocking wait for pcmCache.delete is brief (a few
+            // File.delete syscalls on Dispatchers.IO — single-digit
+            // ms).
+            val appender: PcmAppender? = cacheKey?.let { key ->
+                runBlocking {
+                    if (pcmCache.metaFileFor(key).exists() && !pcmCache.isComplete(key)) {
+                        // Stale partial — wipe before opening fresh.
+                        pcmCache.delete(key)
+                    }
+                    pcmCache.appender(key, sampleRate = sampleRate)
+                }
+            }
+            cacheKey?.let { key ->
+                android.util.Log.i(
+                    "EnginePlayer",
+                    "pcm-cache MISS chapter=${key.chapterId} voice=${key.voiceId} " +
+                        "speed=${key.speedHundredths} pitch=${key.pitchHundredths} " +
+                        "fromSentence=$currentSentenceIndex base=${key.fileBaseName().take(12)}",
+                )
+            }
+            EngineStreamingSource(
+                sentences = sentences,
+                startSentenceIndex = currentSentenceIndex,
+                engine = activeVoiceEngineHandle(engineType),
+                speed = currentSpeed,
+                pitch = currentPitch,
+                engineMutex = engineMutex,
+                cacheAppender = appender,
+                punctuationPauseMultiplier = currentPunctuationPauseMultiplier,
+                // #486 / #488 — TalkBack inter-sentence pad. Snapshot
+                // at pipeline-construction time; mid-listen slider
+                // edits take effect on next rebuild (matches the
+                // other live-config knobs). The volatile cache is
+                // kept in sync by [observeA11yPacing].
+                extraA11ySilenceMs = cachedA11yExtraSilenceMs,
+                queueCapacity = queueCapacity,
+                pronunciationDictApply = pronunciationDict::apply,
+                secondaryEngines = secondaryHandles,
+            )
+        }
         pcmSource = source
         pipelineRunning.set(true)
         // Issue #290 — reset the frames-written tally so the debug

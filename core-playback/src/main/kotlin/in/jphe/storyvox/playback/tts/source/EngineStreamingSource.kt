@@ -257,7 +257,7 @@ class EngineStreamingSource(
      * experience the gap as a clean pause rather than dribbling silence
      * out of an underrunning AudioTrack ring buffer.
      */
-    val bufferHeadroomMs: StateFlow<Long> = _bufferHeadroomMs.asStateFlow()
+    override val bufferHeadroomMs: StateFlow<Long> = _bufferHeadroomMs.asStateFlow()
 
     /**
      * Issue #290 — PcmSource interface overrides. Surfaces queue depth +
@@ -382,7 +382,7 @@ class EngineStreamingSource(
      * `.tmp` due to ENOSPC) shouldn't break a chapter that the listener
      * just heard end-to-end. Next play will see incomplete cache + re-render.
      */
-    fun finalizeCache() {
+    override fun finalizeCache() {
         val ap = cacheAppender ?: return
         cacheAppender = null
         runCatching { ap.finalize() }
