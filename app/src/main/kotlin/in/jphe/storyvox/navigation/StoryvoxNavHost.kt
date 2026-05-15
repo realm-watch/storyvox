@@ -172,7 +172,14 @@ object StoryvoxRoutes {
      * to the LIBRARY pill since that's the umbrella destination now.
      */
     private val HOME_ROUTES = setOf(PLAYING, LIBRARY, FOLLOWS, BROWSE, VOICE_LIBRARY, SETTINGS_HUB, SETTINGS)
-    fun isHome(route: String?) = route in HOME_ROUTES
+    /** Strip any nav query-arg suffix before checking — PR #475 (magic-link)
+     *  registered LIBRARY as `library?sharedUrl={sharedUrl}`, so
+     *  `currentBackStackEntryAsState()` reports `destination.route` with the
+     *  full pattern attached, not the bare LIBRARY constant. Without this
+     *  substring, the bottom nav vanishes the moment the user is on the
+     *  Library tab — the home surface this set is supposed to govern.
+     *  Reported on tablet + Flip3 v0.5.47. */
+    fun isHome(route: String?) = route?.substringBefore("?") in HOME_ROUTES
 
     /** Issue #267 — Reader / Audiobook routes ARE the player surface, just
      *  reached via drill-down from a chapter row instead of via the
