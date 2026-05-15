@@ -1,9 +1,11 @@
 package `in`.jphe.storyvox.source.royalroad.di
 
+import `in`.jphe.storyvox.data.auth.AuthSource
 import `in`.jphe.storyvox.data.auth.SessionHydrator
 import `in`.jphe.storyvox.data.source.FictionSource
 import `in`.jphe.storyvox.data.source.SourceIds
 import `in`.jphe.storyvox.source.royalroad.RoyalRoadSource
+import `in`.jphe.storyvox.source.royalroad.auth.RoyalRoadAuthSource
 import `in`.jphe.storyvox.source.royalroad.auth.RoyalRoadSessionHydrator
 import `in`.jphe.storyvox.source.royalroad.model.RoyalRoadIds
 import `in`.jphe.storyvox.source.royalroad.net.RateLimitedClient
@@ -87,4 +89,21 @@ internal abstract class RoyalRoadBindings {
     @Binds
     @Singleton
     abstract fun bindSessionHydrator(impl: RoyalRoadSessionHydrator): SessionHydrator
+
+    /**
+     * Contributes [RoyalRoadAuthSource] into the cross-source
+     * `Map<String, AuthSource>` consumed by
+     * [`in`.jphe.storyvox.data.repository.AuthRepository] (#426).
+     *
+     * PR2 will add an analogous binding in `:source-ao3` keyed by
+     * [SourceIds.AO3]. The legacy single-source binding in
+     * [`in`.jphe.storyvox.data.repository.AuthRepositoryImpl] is
+     * replaced by the map; this binding is what keeps the RR sign-in
+     * flow finding its WebView configuration after the refactor.
+     */
+    @Binds
+    @Singleton
+    @IntoMap
+    @StringKey(SourceIds.ROYAL_ROAD)
+    abstract fun bindAuthSource(impl: RoyalRoadAuthSource): AuthSource
 }
