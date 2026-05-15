@@ -83,10 +83,16 @@ import androidx.compose.ui.unit.dp
  *
  * Four tabs now in the dock: `{Library, Playing, Voices, Settings}`.
  */
+// Order matters — entries' ordinal positions the sliding indicator
+// pill left-to-right in the bar. JP final on 2026-05-15 (after one
+// earlier flip-flop): Playing leads the dock since it's the
+// most-touched destination during a listening session. Library stays
+// second + remains the cold-launch landing (NavHost startDestination
+// is independent of dock order).
 @Immutable
 enum class HomeTab(val label: String, val filled: ImageVector, val outlined: ImageVector) {
-    Library("Library", Icons.Filled.AutoStories, Icons.Outlined.AutoStories),
     Playing("Playing", Icons.Filled.PlayArrow, Icons.Outlined.PlayArrow),
+    Library("Library", Icons.Filled.AutoStories, Icons.Outlined.AutoStories),
     Voices("Voices", Icons.Filled.RecordVoiceOver, Icons.Outlined.RecordVoiceOver),
     Settings("Settings", Icons.Filled.Settings, Icons.Outlined.Settings),
 }

@@ -47,14 +47,16 @@ class NavStructureTest {
     }
 
     @Test
-    fun `bottom nav primary destinations are Library Playing Voices Settings`() {
+    fun `bottom nav primary destinations are Playing Library Voices Settings`() {
         // Order matters — BottomTabBar uses ordinal to position the
-        // indicator pill. v0.5.48 order (JP final revision): Library
-        // first (cold-launch landing), then Playing, then Voices, then
-        // Settings. Earlier attempt put Playing first; JP reverted.
+        // indicator pill. v0.5.50 final order (after a v0.5.48 flip-
+        // flop): Playing leads since it's the most-touched destination
+        // during a listening session. Library remains the cold-launch
+        // landing (NavHost startDestination is independent of dock
+        // ordinal).
         val labels = HomeTab.entries.map { it.label }
-        assertEquals(listOf("Library", "Playing", "Voices", "Settings"), labels)
-        assertEquals(HomeTab.Library, HomeTab.entries.first())
+        assertEquals(listOf("Playing", "Library", "Voices", "Settings"), labels)
+        assertEquals(HomeTab.Playing, HomeTab.entries.first())
         assertEquals(HomeTab.Settings, HomeTab.entries.last())
     }
 
