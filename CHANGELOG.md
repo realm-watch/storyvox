@@ -9,6 +9,25 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.42] — 2026-05-14
+
+### Added
+- **Telegram backend** (#490, closes #462) — public-channel reader via Bot API. New `:source-telegram` Gradle module + Settings card (mirrors Discord). 17 → 18 fiction backends. Architectural caveat documented in PR body: Telegram Bot API gives bots no access to message history that predates their invitation to a channel — v1 accumulates posts in-memory via `getUpdates` polling on each Browse refresh; user sees zero chapters until the channel admin posts something new post-invite. Bot token stays device-local (no InstantDB sync until follow-up coordination with the `:core-sync` allowlist).
+- **Accessibility Settings scaffold** (#489, Phase 1 of the #486 epic) — new `Settings → Accessibility` subscreen with 7 functional rows (high-contrast toggle, reduced-motion toggle, larger-touch-targets toggle, screen-reader-pause slider 0–1500 ms, font-scale slider 0.85–1.5×, speak-chapter-mode selector, reading-direction selector) plus an "About these settings" info card. All wire through `SettingsViewModel` to 7 new `pref_a11y_*` DataStore keys on the InstantDB sync allowlist. **New `AccessibilityStateBridge`** in `:feature` (real impl in `:app`) exposes `(isTalkBackActive, isSwitchAccessActive, isReduceMotionRequested)` as a hot `callbackFlow` from `AccessibilityManager` + `Settings.Global.ANIMATOR_DURATION_SCALE`. **Phase 1 ships toggles + state-bridge only** — Phase 2 wires the behaviors (high-contrast theme swap, reduced-motion fold-in for `AnimatedVisibility`/`tween`, 48dp→64dp `clickable` widener, TalkBack inter-sentence pacing, chapter-header readout branching, font-scale typography pipeline, `LayoutDirection` at NavHost root). TODO/Phase-2 comments at every consumer site.
+
+### Fixed
+- **Bottom tab bar no longer blocks the Android home swipe** (`46262b0`) — `BottomTabBar.kt` called `Modifier.systemGestureExclusion()` on each tab cell to claim the ~64 dp `mandatorySystemGestures` rect for taps. That worked for tap reliability but blocked the OS swipe-up-home and long-press-up-recents gestures entirely — they hit our exclusion rect and never reached the system. Fix drops the exclusion entirely; `Modifier.windowInsetsPadding(WindowInsets.navigationBars)` already lifts cells above the visible gesture pill, which is enough for tap reliability in practice.
+- **Notion pinned to first chip** (`9370b39`) — per JP design call, TechEmpower's Notion content is the default Browse landing surface when no user-Notion token is configured. `SourcePluginRegistry` sort now puts Notion at position 0 before the existing category-then-alphabetical fallback, which also makes it the default-selected chip on Browse open (`BrowseViewModel` picks `descriptors.firstOrNull { it.defaultEnabled }`).
+
+### Closed (stale)
+- **#447** Notion prefilled DB id on fresh install — closed citing #474 (the v0.5.40 design-call fallback already covers this).
+- **#442** Gutenberg chapter playback hung at 0:00 — closed citing #467 (the v0.5.38 `stripTags` + zero-sentences guard already fixed this).
+- **#440** Settings gear icon dumped users into Voice & Playback — closed citing #467 + the v0.5.39 SettingsHubScreen.
+- **#438** Library had two adjacent tab rows with overlapping labels — closed citing #467 + the v0.5.39 nav restructure (#469).
+
+### A11y audit findings filed (Phase 2 targets, not fixed in this release)
+- **12 new accessibility issues filed (#477–#488)** by the a11y-audit agent. Body-text contrast is **AAA** (12-15:1) across both themes; failures concentrate in *secondary* colors (plum 3.31:1, error-container 4.00:1, brass-on-light-highest 4.33:1, outlineVariant 1.58-1.60:1 in both themes). 9 unlabeled clickables all trace to a shared `SettingsComposables.kt` Switch primitive — `~10` LOC fix kills 4 of 7 sites at once (#478). 0 RTL violations, 0 empty `contentDescription` strings, AudiobookView transport controls are exemplary. Phase 2 targets are #478 → #485 → #486 (the subscreen epic, now unblocked by #489).
+
 ## [0.5.41] — 2026-05-14
 
 ### Added
