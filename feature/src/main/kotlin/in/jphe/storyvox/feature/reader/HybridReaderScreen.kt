@@ -46,12 +46,18 @@ fun HybridReaderScreen(
      * naturally swaps the prompt for the player view in place.
      */
     onBrowse: () -> Unit = {},
-    /** Open the Settings screen. Surfaced as a leading gear in the
-     *  AudiobookView top bar — matches the per-screen Settings
-     *  affordance on Library/Browse/Follows/Voices. Default no-op for
-     *  previews/tests; production callsites pass a real
-     *  `navController.navigate(SETTINGS)`. */
+    /** Open the Settings screen. Kept on the surface for source-compat
+     *  with existing call sites; the player's top-bar gear icon was
+     *  replaced by a Back arrow in v0.5.40 (#437) and Settings now
+     *  lives in primary nav (#469). Default no-op for previews/tests. */
     onOpenSettings: () -> Unit = {},
+    /** Issue #437 — pop the player back to whichever surface launched
+     *  it (FictionDetail, Library, Browse, Follows, History). Wired
+     *  by [`in`.jphe.storyvox.navigation.StoryvoxNavHost] to
+     *  `navController.popBackStack()` with a fallback to LIBRARY when
+     *  the back stack is empty (deep-link / cold-launch into the
+     *  player). Default no-op for previews. */
+    onBack: () -> Unit = {},
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -176,6 +182,7 @@ fun HybridReaderScreen(
                     playbackState.fictionId?.let { onOpenChat(it, null) }
                 },
                 onOpenSettings = onOpenSettings,
+                onBack = onBack,
                 // Issue #278 — surface loading-phase + retry path. The
                 // view decides what to render based on phase (regular /
                 // slow-hint at 10s / full error block at 30s).

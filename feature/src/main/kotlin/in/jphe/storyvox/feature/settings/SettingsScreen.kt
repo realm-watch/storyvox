@@ -93,6 +93,8 @@ import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.SkeletonBlock
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.delay
 
 @Composable
@@ -3043,6 +3045,7 @@ private fun abbreviateSafUri(raw: String): String {
 private fun OutlineConfigRow(viewModel: SettingsViewModel) {
     val host by viewModel.outlineHost.collectAsStateWithLifecycle()
     val spacing = LocalSpacing.current
+    val context = LocalContext.current
     var hostDraft by remember(host) { mutableStateOf(host) }
     var apiKeyDraft by remember { mutableStateOf("") }
 
@@ -3085,10 +3088,28 @@ private fun OutlineConfigRow(viewModel: SettingsViewModel) {
                 label = "Save",
                 onClick = {
                     val trimmedHost = hostDraft.trim()
+                    // Issue #455 — empty required fields used to silently
+                    // no-op the Save action with no feedback. JP design
+                    // (issue comment): apply defaults silently to the
+                    // model but surface a transient toast naming the
+                    // skipped field(s) so the user sees that something
+                    // was missing. Lighter than Material 3 supported-
+                    // error chips, no save-blocking.
+                    val skipped = buildList {
+                        if (trimmedHost.isEmpty()) add("Outline host")
+                        if (apiKeyDraft.isBlank()) add("API token")
+                    }
                     if (trimmedHost.isNotEmpty()) viewModel.setOutlineHost(trimmedHost)
                     if (apiKeyDraft.isNotBlank()) {
                         viewModel.setOutlineApiKey(apiKeyDraft)
                         apiKeyDraft = ""
+                    }
+                    if (skipped.isNotEmpty()) {
+                        Toast.makeText(
+                            context,
+                            "Saved. Skipped (defaults applied): ${skipped.joinToString(", ")}",
+                            Toast.LENGTH_SHORT,
+                        ).show()
                     }
                 },
                 variant = BrassButtonVariant.Primary,
@@ -3184,9 +3205,17 @@ private fun NotionConfigRow(
     onApiTokenChange: (String?) -> Unit,
 ) {
     val spacing = LocalSpacing.current
+    val context = LocalContext.current
     var dbDraft by remember(databaseId) { mutableStateOf(databaseId) }
     var tokenDraft by remember { mutableStateOf("") }
 
+    // Issue #447 — the prefilled Database ID ("2a3d70…") read as
+    // either a leaked infrastructure id or a confusing placeholder.
+    // Detect when the field is still at the TechEmpower default and
+    // surface a clear label so the user knows it's a public DB they
+    // can replace with their own.
+    val techempowerDefaultId = "2a3d706803c649409e74e9ce5ccd4c4b"
+    val isDefaultDatabaseId = databaseId == techempowerDefaultId
     Column(modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm)) {
         Text(
             "Notion integration",
@@ -3195,12 +3224,20 @@ private fun NotionConfigRow(
             modifier = Modifier.padding(bottom = spacing.xs),
         )
         Text(
-            text = if (tokenConfigured)
-                "Token configured. Paste a new token to replace it."
-            else
-                "Paste a Notion Internal Integration Token. " +
-                    "Create one at notion.so/my-integrations, then share " +
-                    "your database with the integration.",
+            text = when {
+                tokenConfigured ->
+                    "Token configured. Paste a new token to replace it, " +
+                        "or clear it to switch back to the anonymous TechEmpower demo content."
+                isDefaultDatabaseId ->
+                    "No token configured — Browse → Notion shows TechEmpower's public " +
+                        "Notion content as a demo. Paste a Notion Internal Integration " +
+                        "Token from notion.so/my-integrations to read your own database; " +
+                        "replace the Database ID below with your own."
+                else ->
+                    "Paste a Notion Internal Integration Token. " +
+                        "Create one at notion.so/my-integrations, then share " +
+                        "your database with the integration."
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = spacing.sm),
@@ -3208,9 +3245,25 @@ private fun NotionConfigRow(
         androidx.compose.material3.OutlinedTextField(
             value = dbDraft,
             onValueChange = { dbDraft = it.trim().take(64) },
-            label = { Text("Database ID") },
+            label = {
+                Text(
+                    if (dbDraft == techempowerDefaultId)
+                        "Database ID (TechEmpower demo)"
+                    else
+                        "Database ID",
+                )
+            },
             placeholder = { Text("32-hex or hyphenated UUID") },
             singleLine = true,
+            supportingText = {
+                if (dbDraft == techempowerDefaultId) {
+                    Text(
+                        "Default points at TechEmpower's public Resources DB. " +
+                            "Replace with your own DB id to read a personal database.",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            },
             modifier = Modifier.fillMaxWidth(),
         )
         androidx.compose.material3.OutlinedTextField(
@@ -3229,10 +3282,28 @@ private fun NotionConfigRow(
             BrassButton(
                 label = "Save",
                 onClick = {
+                    // Issue #455 — empty required fields produce a toast
+                    // so the user sees that something was missing.
+                    // Database ID has a baked-in default (TechEmpower),
+                    // so an "empty Database ID at save time" already
+                    // applies that default silently — the toast still
+                    // names it so the user knows the demo content will
+                    // be what they see in Browse → Notion.
+                    val skipped = buildList {
+                        if (dbDraft.isBlank()) add("Database ID")
+                        if (tokenDraft.isBlank() && !tokenConfigured) add("Integration token")
+                    }
                     if (dbDraft != databaseId) onDatabaseIdChange(dbDraft)
                     if (tokenDraft.isNotBlank()) {
                         onApiTokenChange(tokenDraft)
                         tokenDraft = ""
+                    }
+                    if (skipped.isNotEmpty()) {
+                        Toast.makeText(
+                            context,
+                            "Saved. Skipped (defaults applied): ${skipped.joinToString(", ")}",
+                            Toast.LENGTH_SHORT,
+                        ).show()
                     }
                 },
                 variant = BrassButtonVariant.Primary,

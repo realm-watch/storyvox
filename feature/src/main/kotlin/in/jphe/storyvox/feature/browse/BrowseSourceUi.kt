@@ -88,7 +88,17 @@ internal object BrowseSourceUi {
         SourceIds.EPUB -> listOf(BrowseTab.Popular, BrowseTab.Search)
         SourceIds.OUTLINE -> listOf(BrowseTab.Popular, BrowseTab.Search)
         SourceIds.GUTENBERG -> listOf(BrowseTab.Popular, BrowseTab.NewReleases, BrowseTab.Search)
-        SourceIds.AO3 -> listOf(BrowseTab.Popular, BrowseTab.NewReleases)
+        // Issue #445 — AO3 declared `supportsSearch = true` on its
+        // plugin manifest but the tab list omitted BrowseTab.Search,
+        // so the icon disappeared on the chip → users had no way to
+        // search a 50-deep Popular feed and concluded the capability
+        // was missing. The underlying Ao3Source.search() returns empty
+        // for v0.5.40 (the feed-keyed catalog doesn't expose a search
+        // endpoint AO3 will accept anonymously), but adding the tab
+        // surface keeps the chip-row consistent across sources that
+        // advertise search. The Search tab's empty results will be
+        // replaced by a proper AO3 search implementation in a follow-up.
+        SourceIds.AO3 -> listOf(BrowseTab.Popular, BrowseTab.NewReleases, BrowseTab.Search)
         SourceIds.STANDARD_EBOOKS -> listOf(BrowseTab.Popular, BrowseTab.NewReleases, BrowseTab.Search)
         SourceIds.WIKIPEDIA -> listOf(BrowseTab.Popular, BrowseTab.Search)
         SourceIds.WIKISOURCE -> listOf(BrowseTab.Popular, BrowseTab.Search)

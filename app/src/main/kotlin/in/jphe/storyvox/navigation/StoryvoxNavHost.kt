@@ -383,6 +383,19 @@ private fun StoryvoxNavHostContent(
                             launchSingleTop = true
                         }
                     },
+                    // Issue #437 — Back arrow on the PLAYING destination.
+                    // When PLAYING was entered directly (notification tap,
+                    // bottom-nav tap, deep link) there's nothing to pop
+                    // back to; fall back to LIBRARY (the v0.5.39 start
+                    // destination) so the back arrow always feels active.
+                    onBack = {
+                        if (!navController.popBackStack()) {
+                            navController.navigate(StoryvoxRoutes.LIBRARY) {
+                                popUpTo(StoryvoxRoutes.LIBRARY) { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        }
+                    },
                 )
             }
             composable(
@@ -503,6 +516,17 @@ private fun StoryvoxNavHostContent(
                     onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
                     onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS_HUB) },
                     onOpenChat = { fId, prefill -> navController.navigate(StoryvoxRoutes.chat(fId, prefill)) },
+                    // Issue #437 — Back arrow on deep-linked reader /
+                    // audiobook destinations. Falls back to LIBRARY if
+                    // the back stack was empty (cold-launch deep link).
+                    onBack = {
+                        if (!navController.popBackStack()) {
+                            navController.navigate(StoryvoxRoutes.LIBRARY) {
+                                popUpTo(StoryvoxRoutes.LIBRARY) { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        }
+                    },
                 )
             }
 
@@ -522,6 +546,17 @@ private fun StoryvoxNavHostContent(
                     onOpenAiSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
                     onOpenSettings = { navController.navigate(StoryvoxRoutes.SETTINGS_HUB) },
                     onOpenChat = { fId, prefill -> navController.navigate(StoryvoxRoutes.chat(fId, prefill)) },
+                    // Issue #437 — Back arrow on deep-linked reader /
+                    // audiobook destinations. Falls back to LIBRARY if
+                    // the back stack was empty (cold-launch deep link).
+                    onBack = {
+                        if (!navController.popBackStack()) {
+                            navController.navigate(StoryvoxRoutes.LIBRARY) {
+                                popUpTo(StoryvoxRoutes.LIBRARY) { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        }
+                    },
                 )
             }
 

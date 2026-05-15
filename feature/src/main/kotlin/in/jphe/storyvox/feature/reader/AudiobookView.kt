@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.ripple
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Replay30
 import androidx.compose.material.icons.filled.Pause
@@ -118,10 +119,18 @@ fun AudiobookView(
      *  fictionId on the playback state, so callees can rely on it
      *  being a fully-routed navigation. */
     onOpenChat: () -> Unit = {},
-    /** Open the Settings screen. Surfaced as a leading gear icon in the
-     *  top bar so playback's per-screen Settings affordance matches the
-     *  other home screens (Library/Browse/Follows/Voices). */
+    /** Open the Settings screen. Kept on the surface for source-compat
+     *  with HybridReaderScreen's existing plumbing. The player's leading
+     *  gear icon was replaced by a Back arrow in v0.5.40 (#437) — see
+     *  [onBack]. Default no-op for previews / tests. */
     onOpenSettings: () -> Unit = {},
+    /** Issue #437 — pop the player back to whichever surface launched
+     *  it (FictionDetail, Library, Browse). Replaces the leading
+     *  Settings gear that TalkBack used to announce as "Settings" while
+     *  sighted users perceived it as a back arrow with the wrong label.
+     *  Default no-op for previews / tests; production callsites pass a
+     *  real `navController.popBackStack()`. */
+    onBack: () -> Unit = {},
     /** Issue #278 — loading-phase from the ReaderViewModel. Drives the
      *  soft "Still working…" hint at 10s and the hard timeout/retry
      *  error block at 30s. Defaults to NotLoading so previews / tests
@@ -222,11 +231,24 @@ fun AudiobookView(
                     .fillMaxWidth()
                     .padding(vertical = spacing.xs),
             ) {
+                // Issue #437 — leading top-bar icon was a Settings
+                // gear opening the Settings screen, but (a) TalkBack
+                // announced it as "Settings" while sighted users
+                // perceived it as a back arrow (only nav-shaped icon
+                // in the player's top strip), and (b) v0.5.39's nav
+                // restructure (#469) moved Settings into primary nav
+                // so the gear here is redundant. Swap for a Back
+                // arrow: the a11y label matches the icon's perceived
+                // shape and there's a fast escape from the player
+                // without reaching for the system Back button.
                 IconButton(
-                    onClick = onOpenSettings,
+                    onClick = onBack,
                     modifier = Modifier.align(Alignment.CenterStart),
                 ) {
-                    Icon(Icons.Outlined.Settings, contentDescription = "Settings")
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                    )
                 }
                 Column(
                     modifier = Modifier
@@ -404,13 +426,26 @@ fun AudiobookView(
                 )
             }
             Spacer(Modifier.height(spacing.xs))
-            BrassProgressTrack(
-                positionMs = state.positionMs,
-                durationMs = state.durationMs,
-                onSeekTo = onSeekTo,
-                modifier = Modifier.fillMaxWidth(),
-                loading = showSpinner,
-            )
+            // Issue #448 — for live audio chapters (Radio plugin's
+            // streams via Media3) the position/duration counters stay
+            // at 0:00/0:00 even though the stream is actively decoding,
+            // because there's no end-of-content to measure against.
+            // Showing the scrubber reads as "playback is stuck" — the
+            // user toggles play/pause to recover, then concludes the
+            // app is broken. Replace the scrubber with a "LIVE" badge
+            // for live chapters; the rest of the transport (play/pause,
+            // chapter prev/next, voice settings) stays the same.
+            if (state.isLiveAudioChapter) {
+                LiveStreamBadge()
+            } else {
+                BrassProgressTrack(
+                    positionMs = state.positionMs,
+                    durationMs = state.durationMs,
+                    onSeekTo = onSeekTo,
+                    modifier = Modifier.fillMaxWidth(),
+                    loading = showSpinner,
+                )
+            }
             if (state.sleepTimerRemainingMs != null) {
                 SleepTimerCountdownChip(remainingMs = state.sleepTimerRemainingMs, onCancel = onCancelSleepTimer)
             }
@@ -571,6 +606,60 @@ fun AudiobookView(
                     },
                 )
             }
+        }
+    }
+}
+
+/**
+ * Issue #448 — pill-shaped "LIVE" indicator for live-audio chapters
+ * (Radio plugin / KVMR). Replaces the BrassProgressTrack scrubber on
+ * the player surface because position/duration counters don't apply
+ * to a live stream — showing the scrubber stuck at 0:00 reads as a
+ * stalled playback bug. The pill has a subtle pulsing dot so the
+ * user reads "alive" at a glance.
+ */
+@Composable
+private fun LiveStreamBadge() {
+    val spacing = LocalSpacing.current
+    val reducedMotion = LocalReducedMotion.current
+    val infinite = rememberInfiniteTransition(label = "live-pulse")
+    val pulseAlpha by infinite.animateFloat(
+        initialValue = if (reducedMotion) 0.95f else 0.45f,
+        targetValue = if (reducedMotion) 0.95f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = androidx.compose.animation.core.LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "live-pulse-alpha",
+    )
+    val errorColor = MaterialTheme.colorScheme.error
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = spacing.md),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(horizontal = spacing.lg, vertical = spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .alpha(pulseAlpha),
+            ) {
+                androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                    drawCircle(errorColor)
+                }
+            }
+            Text(
+                "LIVE",
+                style = MaterialTheme.typography.labelLarge,
+                color = errorColor,
+            )
         }
     }
 }

@@ -328,11 +328,37 @@ internal class GitHubSource @Inject constructor(
         // repo root (or wherever book.json's structure.summary
         // points). guessSrcDir reads book.toml; for HonKit we
         // fetch "SUMMARY.md" at root.
+        //
+        // Issue #460 — the "Cartographer's Lantern" test repo
+        // (jphein/example-fiction) advertises `src = "src"` in
+        // book.toml (so mdbook will compile content from `src/*.md`)
+        // but keeps SUMMARY.md at the repo *root*, not under `src/`.
+        // mdbook's docs strictly require SUMMARY.md under `src/`, but
+        // many real-world repos drift from the spec — and the
+        // "FictionDetail shows 0 ch" outcome reads as a broken plugin,
+        // not a malformed repo. Try the src-relative path first, then
+        // fall back to repo root when the first attempt 404s. Two
+        // ranging fetches in the bare-fallback case (one extra HTTP
+        // call) is cheaper than a wrong "0 ch" verdict; on the happy
+        // path (well-formed mdbook), the first fetch succeeds and we
+        // never make the second call.
         val srcDirGuess = guessSrcDir(bookTomlOpt.text)
         val isHonKit = bookTomlOpt.text.isNullOrBlank() &&
             !bookJsonOpt?.text.isNullOrBlank()
-        val summaryPath = if (isHonKit) "SUMMARY.md" else "$srcDirGuess/SUMMARY.md"
-        val summaryMdOpt = fetchOptionalText(owner, repo, summaryPath, branch)
+        val summaryMdOpt: OptionalText = if (isHonKit) {
+            fetchOptionalText(owner, repo, "SUMMARY.md", branch)
+        } else {
+            val srcRelative = fetchOptionalText(owner, repo, "$srcDirGuess/SUMMARY.md", branch)
+            if (srcRelative.text.isNullOrBlank() && srcRelative.failureOrNull == null) {
+                // src-relative SUMMARY.md doesn't exist; fall back to repo
+                // root. The fallback is for mixed-convention repos like
+                // jphein/example-fiction (src=src for content + root
+                // SUMMARY.md for chapter list).
+                fetchOptionalText(owner, repo, "SUMMARY.md", branch)
+            } else {
+                srcRelative
+            }
+        }
         summaryMdOpt.failureOrNull?.let { return it }
 
         val bookToml = bookTomlOpt.text

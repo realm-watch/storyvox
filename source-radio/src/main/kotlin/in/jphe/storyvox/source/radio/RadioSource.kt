@@ -219,7 +219,19 @@ internal class RadioSource @Inject constructor(
             id = fictionIdFor(this),
             sourceId = SourceIds.RADIO,
             title = displayName,
-            author = country.ifBlank { "Live radio" },
+            // Issue #449 — using the Radio Browser API's `country`
+            // field as the author label produced "by United States"
+            // bylines on Library / Resume / History cards, which read
+            // as broken data ("authored by a country?"). The byline
+            // for a live stream maps cleanly onto "Live radio" — the
+            // country still surfaces on the FictionDetail screen via
+            // tags + description, so we don't lose the data, we just
+            // stop pretending it's an author. Stations with a real
+            // "broadcaster" / "owner" field (a separate Radio Browser
+            // facet) could in theory populate this with a true byline
+            // later; for v0.5.40 the conservative one-string label is
+            // the right floor.
+            author = "Live radio",
             description = description,
             coverUrl = null,
             tags = tags,

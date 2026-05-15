@@ -73,9 +73,27 @@ fun AddByUrlSheet(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(top = spacing.sm),
             )
+            // Issue #446 — copy used to read "Paste a Royal Road
+            // fiction or chapter URL", which implied RR was the only
+            // accepted source. The URL router resolves Royal Road +
+            // GitHub today and the parallel magic-link work (#472)
+            // adds AO3 / Gutenberg / arXiv / RSS / Wikipedia / Plos /
+            // Wikisource / Standard Ebooks / a Readability catch-all.
+            // Generalize the hint so any pasted URL feels welcome; the
+            // detection-failure message handles the unrecognised case.
+            // TODO(#472): the magic-link agent owns the multi-match
+            // chooser UI that will replace this single-string entry
+            // point; once that lands, this sheet either gets replaced
+            // wholesale or grows a candidate-preview row.
             Text(
-                "Paste a Royal Road fiction or chapter URL.",
+                "Paste a fiction URL — we'll auto-detect the source.",
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "Supported: Royal Road · AO3 · GitHub · Gutenberg · arXiv · " +
+                    "RSS · Wikipedia · direct EPUB",
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
@@ -83,7 +101,7 @@ fun AddByUrlSheet(
                 value = input,
                 onValueChange = { input = it },
                 label = { Text("URL") },
-                placeholder = { Text("https://www.royalroad.com/fiction/…") },
+                placeholder = { Text("https://…") },
                 isError = error != null,
                 singleLine = true,
                 enabled = !isSubmitting,

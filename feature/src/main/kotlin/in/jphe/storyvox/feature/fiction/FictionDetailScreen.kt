@@ -543,7 +543,19 @@ private fun Hero(fiction: UiFiction) {
             verticalArrangement = Arrangement.spacedBy(spacing.xxs),
         ) {
             Text(fiction.title, style = MaterialTheme.typography.headlineSmall, maxLines = 3)
-            Text(fiction.author, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // Issue #463 — without an explicit "by" prefix, the author
+            // line read as a subtitle of the title (especially for
+            // GitHub fictions whose book.toml authors[] can carry an
+            // ambiguous string like a repo-name-shaped label). Adding
+            // "by" anchors the byline role unambiguously, matching the
+            // pattern used on Library Resume cards and Browse listing.
+            if (fiction.author.isNotBlank()) {
+                Text(
+                    "by ${fiction.author}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Spacer(Modifier.height(spacing.xxs))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(spacing.xxs)) {
                 Icon(Icons.Filled.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
@@ -647,9 +659,17 @@ private fun NotebookSection(
             )
         }
         if (entries.isEmpty() && !addOpen) {
+            // Issue #456 — copy promised "as you chat about this book"
+            // but FictionDetail has no Chat button (the chat surface
+            // only opens from the player's options sheet). Soften the
+            // copy so the empty state matches the affordances actually
+            // present on this screen — Listen + Add note + AI-driven
+            // discovery during playback — instead of pointing at a CTA
+            // that doesn't exist here.
             Text(
-                "The AI hasn't recorded anyone yet. As you chat about this book, " +
-                    "characters and places will accumulate here.",
+                "Characters and places appear here as you listen — the AI " +
+                    "extracts them from chapter context. Tap Add note to " +
+                    "record an entry by hand.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

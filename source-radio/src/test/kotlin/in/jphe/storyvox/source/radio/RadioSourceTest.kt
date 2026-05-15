@@ -107,6 +107,26 @@ class RadioSourceTest {
         assertFalse(result.value.hasNext)
     }
 
+    @Test fun `radio summaries report Live radio as author (not the country field)`() = runTest {
+        // Issue #449 — the previous mapping used the Radio Browser
+        // `country` field as the author label, producing "by United
+        // States" on Library / Resume / History cards (and on the
+        // FictionDetail byline). This test pins the new shape: every
+        // radio summary's author is the literal "Live radio" so
+        // bylines downstream never claim a country authored the
+        // station. A regression to `country.ifBlank { … }` fails here
+        // before users see "by United States" on the Flip3.
+        val result = source().popular(page = 1) as FictionResult.Success
+        assertTrue(result.value.items.isNotEmpty())
+        for (summary in result.value.items) {
+            assertEquals(
+                "Radio summary $summary should report Live radio author",
+                "Live radio",
+                summary.author,
+            )
+        }
+    }
+
     @Test fun `popular surfaces starred imports after the curated set`() = runTest {
         val starred = RadioStation(
             id = "rb:test-uuid",

@@ -30,6 +30,8 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -291,6 +293,17 @@ fun BrowseScreen(
             )
         }
 
+        // Issue #443 — when the Notion chip is active and the user
+        // has no integration token configured, the source falls back
+        // to TechEmpower's public Notion content via the anonymous
+        // reader. Surface that as a labeled demo so users don't see
+        // "Notion" → TechEmpower cards and conclude the source is
+        // broken / mis-wired. JP design (issue comment): keep the
+        // fallback, add a clear demo label + a Settings deep-link.
+        if (state.sourceId == SourceIds.NOTION && state.notionAnonymousActive) {
+            NotionDemoBanner(onOpenSettings = onOpenSettings)
+        }
+
         when {
             // Issue #241 — RR listings are gated on sign-in. CTA sits ahead
             // of the SkeletonGrid branch so the user never sees a loading
@@ -303,6 +316,18 @@ fun BrowseScreen(
             state.isLoading && state.items.isEmpty() -> SkeletonGrid()
             state.tab == BrowseTab.Search && state.query.isBlank() && !state.isFilterActive ->
                 SearchHint(state.sourceId, state.visibleSources)
+            // Issue #458 — RSS chip on a fresh install shows the Popular
+            // tab with no subscribed feeds, which used to render as a
+            // blank screen with just a FAB at the corner. Users tapped
+            // RSS, saw nothing, missed the FAB, and concluded the source
+            // was broken. Surface an explicit empty state with copy + a
+            // primary "Add a feed" CTA that opens the same manage sheet.
+            state.sourceId == SourceIds.RSS &&
+                state.tab != BrowseTab.Search &&
+                state.items.isEmpty() &&
+                !state.isLoading &&
+                state.error == null ->
+                RssEmptyState(onAdd = { showRssManageSheet = true })
             // First-load failure with no cached items: full-screen error.
             // Retry triggers viewModel.loadMore() which the paginator
             // resolves to the same page that failed.
@@ -561,6 +586,92 @@ private fun SkeletonGrid() {
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         items(12) { FictionCardSkeleton(modifier = Modifier.fillMaxWidth()) }
+    }
+}
+
+/**
+ * Issue #443 — demo-content banner for the Notion chip when no
+ * integration token is configured. The Notion source falls back to
+ * the TechEmpower public Notion content via the anonymous-public
+ * reader (#393), which surfaces TechEmpower's Guides / Resources /
+ * About / Donate as fictions. Without a banner the user reads the
+ * cards as "Notion is broken — why is it showing TechEmpower?". The
+ * banner names the demo state explicitly and routes to Settings →
+ * Notion for the user's own token.
+ */
+@Composable
+private fun NotionDemoBanner(onOpenSettings: () -> Unit) {
+    val spacing = LocalSpacing.current
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = spacing.md, vertical = spacing.xs),
+    ) {
+        Column(modifier = Modifier.padding(spacing.md)) {
+            Text(
+                "Demo content",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                "You're browsing TechEmpower's public Notion site. " +
+                    "Add a Notion integration token to read your own database.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = spacing.xxs),
+            )
+            androidx.compose.material3.TextButton(
+                onClick = onOpenSettings,
+                modifier = Modifier.padding(top = spacing.xs),
+            ) { Text("Set up Notion in Settings") }
+        }
+    }
+}
+
+/**
+ * Issue #458 — Browse → RSS first-tap empty state. Replaces the
+ * blank-with-FAB-only screen that read as a broken source. Headline +
+ * one-line explanation of how the source works + a primary "Add a
+ * feed" CTA that opens the same `BrowseRssManageSheet` the FAB does.
+ */
+@Composable
+private fun RssEmptyState(onAdd: () -> Unit) {
+    val spacing = LocalSpacing.current
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            modifier = Modifier.padding(horizontal = spacing.xl),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(48.dp),
+            )
+            Text(
+                "Add your first RSS feed",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                "Paste any feed URL — blog posts, podcasts, news. Each entry " +
+                    "becomes a chapter storyvox can read to you.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(spacing.md))
+            BrassButton(
+                label = "Add a feed",
+                onClick = onAdd,
+                variant = BrassButtonVariant.Primary,
+            )
+        }
     }
 }
 
