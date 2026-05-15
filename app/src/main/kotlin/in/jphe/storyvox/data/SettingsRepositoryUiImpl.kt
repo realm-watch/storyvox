@@ -53,8 +53,12 @@ import `in`.jphe.storyvox.source.azure.AzureError
 import `in`.jphe.storyvox.source.azure.AzureRegion
 import `in`.jphe.storyvox.source.azure.AzureSpeechClient
 import `in`.jphe.storyvox.source.azure.AzureVoiceRoster
+import `in`.jphe.storyvox.feature.api.CacheQuotaOptions
 import `in`.jphe.storyvox.feature.api.UiSettings
 import `in`.jphe.storyvox.feature.api.UiSigil
+import `in`.jphe.storyvox.playback.cache.CacheStatsRepository
+import `in`.jphe.storyvox.playback.cache.PcmCache
+import `in`.jphe.storyvox.playback.cache.PcmCacheConfig
 import `in`.jphe.storyvox.source.github.auth.GitHubAuthRepository
 import `in`.jphe.storyvox.source.github.auth.GitHubScopePreferences
 import `in`.jphe.storyvox.source.github.auth.GitHubSession
@@ -742,6 +746,19 @@ class SettingsRepositoryUiImpl(
      *  who swaps their SA in Settings would keep using the old token
      *  until process restart. */
     private val googleTokenSource: GoogleOAuthTokenSource,
+    /** PCM cache PR-G (#86) — Settings UI's "Clear cache" button calls
+     *  through to [PcmCache.clearAll], and quota tightening calls
+     *  [PcmCache.evictToQuota] to honor the new cap immediately. */
+    private val pcmCache: PcmCache,
+    /** PCM cache PR-G (#86) — [SettingsRepositoryUi.setCacheQuotaBytes]
+     *  snaps to a discrete tier and persists via this config object's
+     *  own DataStore (`pcm_cache_config`), separate from the main
+     *  settings store. */
+    private val pcmCacheConfig: PcmCacheConfig,
+    /** PCM cache PR-G (#86) — 5-second polling Flow of cache size +
+     *  quota, combined into the [settings] flow so the Settings UI's
+     *  "Currently used: 1.4 GB / 2 GB" row stays live. */
+    private val cacheStats: CacheStatsRepository,
 ) : SettingsRepositoryUi,
     PlaybackBufferConfig,
     PlaybackModeConfig,
@@ -781,6 +798,9 @@ class SettingsRepositoryUiImpl(
         azureClient: AzureSpeechClient,
         azureRoster: AzureVoiceRoster,
         googleTokenSource: GoogleOAuthTokenSource,
+        pcmCache: PcmCache,
+        pcmCacheConfig: PcmCacheConfig,
+        cacheStats: CacheStatsRepository,
     ) : this(
         context.settingsDataStore, auth, hydrator,
         palaceConfig, palaceApi, llmCreds, githubAuth, teamsAuth, rssConfig, epubConfig,
@@ -789,6 +809,7 @@ class SettingsRepositoryUiImpl(
         suggestedFeedsRegistry,
         azureCreds, azureClient, azureRoster,
         googleTokenSource,
+        pcmCache, pcmCacheConfig, cacheStats,
     )
 
     /**
@@ -806,24 +827,43 @@ class SettingsRepositoryUiImpl(
      *  bundled into a single combine so the outer combine stays
      *  inside the 5-arg overload. Palace + Wikipedia + Notion +
      *  Discord + Telegram ride together; each re-emits independently
-     *  when its respective store changes. */
+     *  when its respective store changes.
+     *
+     *  PCM cache PR-G (#86) added [cacheStats] to this bundle for the
+     *  same reason — the Settings UI's "Currently used: 1.4 GB / 2 GB"
+     *  indicator subscribes through the main [settings] flow, and the
+     *  bundle lets us add a sixth observable without bumping the outer
+     *  combine to a vararg form. */
     private data class NonPrefsConfigs(
         val palace: `in`.jphe.storyvox.source.mempalace.config.PalaceConfigState,
         val wikipedia: `in`.jphe.storyvox.source.wikipedia.config.WikipediaConfigState,
         val notion: `in`.jphe.storyvox.source.notion.config.NotionConfigState,
         val discord: `in`.jphe.storyvox.source.discord.config.DiscordConfigState,
         val telegram: `in`.jphe.storyvox.source.telegram.config.TelegramConfigState,
+        val cacheStats: CacheStatsRepository.CacheStats,
     )
 
     private val nonPrefsConfigs: Flow<NonPrefsConfigs> =
         combine(
-            palaceConfig.state,
-            wikipediaConfig.state,
-            notionConfig.state,
-            discordConfig.state,
-            telegramConfig.state,
-        ) { palace, wiki, notion, discord, telegram ->
-            NonPrefsConfigs(palace, wiki, notion, discord, telegram)
+            combine(
+                palaceConfig.state,
+                wikipediaConfig.state,
+                notionConfig.state,
+                discordConfig.state,
+                telegramConfig.state,
+            ) { palace, wiki, notion, discord, telegram ->
+                arrayOf(palace, wiki, notion, discord, telegram)
+            },
+            cacheStats.observe(),
+        ) { sourceStates, stats ->
+            NonPrefsConfigs(
+                palace = sourceStates[0] as `in`.jphe.storyvox.source.mempalace.config.PalaceConfigState,
+                wikipedia = sourceStates[1] as `in`.jphe.storyvox.source.wikipedia.config.WikipediaConfigState,
+                notion = sourceStates[2] as `in`.jphe.storyvox.source.notion.config.NotionConfigState,
+                discord = sourceStates[3] as `in`.jphe.storyvox.source.discord.config.DiscordConfigState,
+                telegram = sourceStates[4] as `in`.jphe.storyvox.source.telegram.config.TelegramConfigState,
+                cacheStats = stats,
+            )
         }
 
     override val settings: Flow<UiSettings> = combine(
@@ -868,6 +908,13 @@ class SettingsRepositoryUiImpl(
             warmupWait = prefs[Keys.WARMUP_WAIT] ?: false,
             catchupPause = prefs[Keys.CATCHUP_PAUSE] ?: true,
             fullPrerender = prefs[Keys.FULL_PRERENDER] ?: false,
+            // PCM cache PR-G (#86) — live cache stats pulled from
+            // CacheStatsRepository's 5 s polling flow (combined into
+            // NonPrefsConfigs above). The "Currently used" indicator
+            // in Settings reads these; we re-poll on demand after
+            // Clear cache so the wipe lands faster than a 5 s tick.
+            cacheUsedBytes = configs.cacheStats.usedBytes,
+            cacheQuotaBytes = configs.cacheStats.quotaBytes,
             voiceSteady = prefs[Keys.VOICE_STEADY] ?: true,
             palace = UiPalaceConfig(host = palace.host, apiKey = palace.apiKey),
             github = githubSession.toUi(),
@@ -1202,6 +1249,37 @@ class SettingsRepositoryUiImpl(
     /** PR-F (#86) — Mode C toggle. See [UiSettings.fullPrerender]. */
     override suspend fun setFullPrerender(enabled: Boolean) {
         store.edit { it[Keys.FULL_PRERENDER] = enabled }
+    }
+
+    /**
+     * PCM cache PR-G (#86) — Settings UI's cache-quota picker calls
+     * this. Snaps to the discrete [CacheQuotaOptions] tier, persists
+     * via PcmCacheConfig (its own DataStore), then runs evictToQuota
+     * so a tightened cap is honored immediately. evictToQuota is
+     * idempotent on a no-change quota and a no-op when the new quota
+     * is larger than current size, so the unconditional call is safe.
+     *
+     * Pinned set is empty: the Settings screen is in the foreground
+     * which means no chapter is actively rendering on the streaming
+     * tee path; the only thing that could collide is PR-F's background
+     * worker (which pulls a fresh quota on next finalize anyway).
+     */
+    override suspend fun setCacheQuotaBytes(bytes: Long) {
+        val snapped = CacheQuotaOptions.snap(bytes)
+        pcmCacheConfig.setQuotaBytes(snapped)
+        runCatching { pcmCache.evictToQuota() }
+    }
+
+    /**
+     * PCM cache PR-G (#86) — Settings UI's "Clear cache" button calls
+     * this after the destructive-action confirmation. Returns
+     * bytes-freed for the optional toast and any logging; the UI also
+     * re-polls CacheStatsRepository to confirm the wipe landed.
+     */
+    override suspend fun clearCache(): Long {
+        val before = pcmCache.totalSizeBytes()
+        pcmCache.clearAll()
+        return before
     }
 
     override suspend fun setVoiceSteady(enabled: Boolean) {
@@ -2182,6 +2260,12 @@ class SettingsRepositoryUiImpl(
             "pref_voice_steady_v1",
             "pref_warmup_wait_v1",
             "pref_catchup_pause_v1",
+            // PR-F (#86) — Mode C (full pre-render) flips between
+            // "render N+1/N+2 only" and "render every chapter". User
+            // intent, not device-specific, so sync it. Cache quota is
+            // intentionally NOT synced (device-local — storage capacity
+            // varies between a 32 GB phone and a 256 GB tablet).
+            "pref_full_prerender_v1",
             "pref_playback_buffer_chunks_v1",
             // Parallel synth.
             "pref_experimental_parallel_synth",
@@ -2299,6 +2383,7 @@ class SettingsRepositoryUiImpl(
             "pref_voice_steady_v1" to SyncedType.BOOLEAN,
             "pref_warmup_wait_v1" to SyncedType.BOOLEAN,
             "pref_catchup_pause_v1" to SyncedType.BOOLEAN,
+            "pref_full_prerender_v1" to SyncedType.BOOLEAN,
             "pref_experimental_parallel_synth" to SyncedType.BOOLEAN,
             "pref_download_wifi_only" to SyncedType.BOOLEAN,
             "pref_ai_foundry_serverless" to SyncedType.BOOLEAN,

@@ -279,6 +279,38 @@ internal fun makeFakeAzureRoster(): `in`.jphe.storyvox.source.azure.AzureVoiceRo
     )
 
 /**
+ * Bundle the three PR-G cache deps the settings tests need to satisfy
+ * the [SettingsRepositoryUiImpl] constructor. One temp folder per
+ * bundle keeps tests isolated; tests that don't exercise the cache
+ * surface (the majority) can ignore the contents and let the bundle
+ * carry the wiring.
+ *
+ * The helpers use the real production classes via PR-G's secondary
+ * constructors (PcmCache(File, ...) / PcmCacheConfig(DataStore)) so
+ * the cache calls in [SettingsRepositoryUiImpl.setCacheQuotaBytes] and
+ * [SettingsRepositoryUiImpl.clearCache] go through the real code path
+ * — just against a temp folder instead of `Context.cacheDir`.
+ */
+internal data class FakeCacheBundle(
+    val pcmCacheConfig: `in`.jphe.storyvox.playback.cache.PcmCacheConfig,
+    val pcmCache: `in`.jphe.storyvox.playback.cache.PcmCache,
+    val cacheStats: `in`.jphe.storyvox.playback.cache.CacheStatsRepository,
+)
+
+internal fun makeFakeCacheBundle(
+    storeDir: File,
+    scope: CoroutineScope,
+): FakeCacheBundle {
+    val cfgFile = File(storeDir, "pcm_cache_config.preferences_pb")
+    val store = PreferenceDataStoreFactory.create(scope = scope, produceFile = { cfgFile })
+    val config = `in`.jphe.storyvox.playback.cache.PcmCacheConfig(store)
+    val rootDir = File(storeDir, "pcm-cache").apply { mkdirs() }
+    val cache = `in`.jphe.storyvox.playback.cache.PcmCache(rootDir, config)
+    val stats = `in`.jphe.storyvox.playback.cache.CacheStatsRepository(cache, config)
+    return FakeCacheBundle(config, cache, stats)
+}
+
+/**
  * Minimal SharedPreferences stub — only `getString` / `edit` are reached
  * by the palace code paths the test fixtures touch.
  */

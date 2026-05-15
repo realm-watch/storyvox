@@ -233,6 +233,8 @@ class RealPlaybackControllerUiTest {
         override suspend fun setWarmupWait(enabled: Boolean) = Unit
         override suspend fun setCatchupPause(enabled: Boolean) = Unit
         override suspend fun setFullPrerender(enabled: Boolean) = Unit
+        override suspend fun setCacheQuotaBytes(bytes: Long) = Unit
+        override suspend fun clearCache(): Long = 0L
         override suspend fun setVoiceSteady(enabled: Boolean) = Unit
         override suspend fun signIn() = Unit
         override suspend fun signOut() = Unit

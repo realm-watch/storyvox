@@ -26,10 +26,18 @@ import kotlinx.coroutines.flow.map
  * itself does no enforcement.
  */
 @Singleton
-class PcmCacheConfig @Inject constructor(
-    @ApplicationContext private val context: Context,
+class PcmCacheConfig(
+    private val store: DataStore<Preferences>,
 ) {
-    private val store: DataStore<Preferences> = context.pcmCacheConfigStore
+    /** Hilt entry point — pulls the production DataStore from the app
+     *  context. The primary constructor takes the store directly so
+     *  JVM unit tests (no Robolectric) can swap in a
+     *  `PreferenceDataStoreFactory.create(file)`-backed instance
+     *  against a `TemporaryFolder`. Same seam as
+     *  [SettingsRepositoryUiImpl]'s @Inject constructor. */
+    @Inject constructor(
+        @ApplicationContext context: Context,
+    ) : this(context.pcmCacheConfigStore)
 
     suspend fun quotaBytes(): Long =
         store.data.map { it[QUOTA_KEY] ?: DEFAULT_QUOTA_BYTES }.first()

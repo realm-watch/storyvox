@@ -140,6 +140,23 @@ class SettingsViewModel @Inject constructor(
     fun setWarmupWait(enabled: Boolean) = viewModelScope.launch { repo.setWarmupWait(enabled) }
     /** Issue #98 — Mode B toggle. */
     fun setCatchupPause(enabled: Boolean) = viewModelScope.launch { repo.setCatchupPause(enabled) }
+    /** PCM cache PR-F (#86) — Mode C (Full Pre-render) toggle. PR-G surfaces
+     *  this in [PerformanceSettingsScreen]; flipping ON drives PR-F's
+     *  PrerenderModeWatcher to fan out background renders across every
+     *  library fiction. */
+    fun setFullPrerender(enabled: Boolean) =
+        viewModelScope.launch { repo.setFullPrerender(enabled) }
+    /** PCM cache PR-G (#86) — picker for the four discrete tiers. The
+     *  repository snaps to the nearest tier and runs evictToQuota
+     *  immediately so a tightened cap is honored on the spot. */
+    fun setCacheQuotaBytes(bytes: Long) =
+        viewModelScope.launch { repo.setCacheQuotaBytes(bytes) }
+    /** PCM cache PR-G (#86) — destructive "Clear cache" affordance. The
+     *  confirm dialog in [PerformanceSettingsScreen] gates this; here
+     *  we forward without inspecting the bytes-freed return value
+     *  (the live "Currently used" indicator surfaces the new state on
+     *  the next 5 s poll). */
+    fun clearCache() = viewModelScope.launch { repo.clearCache() }
     /** Issue #85 — Voice-Determinism preset (Steady / Expressive). */
     fun setVoiceSteady(enabled: Boolean) = viewModelScope.launch { repo.setVoiceSteady(enabled) }
     fun signIn() = viewModelScope.launch { repo.signIn() }
