@@ -45,7 +45,16 @@ object RssParser {
         return when (parser.name) {
             "rss" -> parseRss(parser)
             "feed" -> parseAtom(parser)
-            else -> throw ParseException("Not an RSS or Atom feed (root=${parser.name})", 0)
+            // Issue #464 — Craigslist's `?format=rss` endpoint emits RSS 1.0
+            // / RDF (root: `<rdf:RDF>`), not RSS 2.0. The shape is similar
+            // but `<item>` siblings live OUTSIDE `<channel>`. Without this
+            // branch, every Craigslist feed would error out with "Not an
+            // RSS or Atom feed (root=RDF)". Generic RDF is a small but
+            // real corner of the wider feed ecosystem (Slashdot, some
+            // university feeds, older WordPress installs) — supporting it
+            // here is the simplest unblock for the marketplace template.
+            "RDF" -> parseRdf(parser)
+            else -> throw ParseException("Not an RSS, Atom, or RDF feed (root=${parser.name})", 0)
         }
     }
 
@@ -127,6 +136,111 @@ object RssParser {
             link = link?.trim(),
             author = author?.trim(),
             publishedAtEpochMs = pubDate?.let(::parseDate),
+        )
+    }
+
+    // ── RDF / RSS 1.0 (Craigslist, Slashdot, etc.) ───────────────
+
+    /**
+     * Issue #464 — parses an RDF / RSS 1.0 document. The root is
+     * `<rdf:RDF>` instead of `<rss>`; `<channel>` carries the feed
+     * metadata; and crucially `<item>` siblings live OUTSIDE the
+     * `<channel>` element rather than nested inside it (the inverse of
+     * RSS 2.0). Date metadata is typically `<dc:date>` (Dublin Core
+     * ISO 8601) rather than `<pubDate>`.
+     *
+     * We accept the same per-item fields as RSS 2.0 and additionally
+     * `<dc:date>` and `<dc:creator>` since RDF feeds in the wild
+     * favour those.
+     */
+    private fun parseRdf(parser: XmlPullParser): RssFeed {
+        parser.require(XmlPullParser.START_TAG, null, "RDF")
+        var feedTitle = ""
+        var feedLink: String? = null
+        var feedDescription: String? = null
+        var feedAuthor: String? = null
+        val items = mutableListOf<RssItem>()
+
+        while (parser.next() != XmlPullParser.END_DOCUMENT) {
+            if (parser.eventType == XmlPullParser.END_TAG && parser.name == "RDF") break
+            if (parser.eventType != XmlPullParser.START_TAG) continue
+            when (parser.name) {
+                "channel" -> {
+                    // RDF <channel> usually only carries title/link/
+                    // description + an <items><rdf:Seq>...</rdf:Seq></items>
+                    // table of contents. We grab the metadata and
+                    // skip the toc — siblings <item>...</item> come
+                    // next.
+                    while (parser.next() != XmlPullParser.END_DOCUMENT) {
+                        if (parser.eventType == XmlPullParser.END_TAG && parser.name == "channel") break
+                        if (parser.eventType != XmlPullParser.START_TAG) continue
+                        when (parser.name) {
+                            "title" -> feedTitle = readText(parser)
+                            "link" -> feedLink = readText(parser)
+                            "description" -> feedDescription = readText(parser)
+                            "creator", "managingEditor" -> feedAuthor = readText(parser)
+                            else -> skip(parser)
+                        }
+                    }
+                }
+                "item" -> items += parseRdfItem(parser)
+                else -> skip(parser)
+            }
+        }
+        if (feedTitle.isBlank()) throw ParseException("RDF feed has no <channel><title>", 0)
+        return RssFeed(
+            title = feedTitle.trim(),
+            link = feedLink?.trim(),
+            description = feedDescription?.trim(),
+            author = feedAuthor?.trim(),
+            items = items,
+        )
+    }
+
+    private fun parseRdfItem(parser: XmlPullParser): RssItem {
+        var title = ""
+        var description: String? = null
+        var contentEncoded: String? = null
+        var link: String? = null
+        // RDF items typically expose `rdf:about="<url>"` on the
+        // element itself as the canonical id. Use it as a fallback
+        // when no explicit <link> appears (which is rare).
+        var rdfAbout: String? = null
+        val attrCount = parser.attributeCount
+        for (i in 0 until attrCount) {
+            if (parser.getAttributeName(i) == "about") rdfAbout = parser.getAttributeValue(i)
+        }
+        var author: String? = null
+        var dcDate: String? = null
+        var pubDate: String? = null
+
+        while (parser.next() != XmlPullParser.END_DOCUMENT) {
+            if (parser.eventType == XmlPullParser.END_TAG && parser.name == "item") break
+            if (parser.eventType != XmlPullParser.START_TAG) continue
+            when (parser.name) {
+                "title" -> title = readText(parser)
+                "description" -> description = readText(parser)
+                "encoded" -> contentEncoded = readText(parser)
+                "link" -> link = readText(parser)
+                "creator", "author" -> author = readText(parser)
+                "date" -> dcDate = readText(parser)
+                "pubDate" -> pubDate = readText(parser)
+                else -> skip(parser)
+            }
+        }
+
+        val body = (contentEncoded ?: description ?: "").trim()
+        val resolvedLink = link?.takeIf { it.isNotBlank() } ?: rdfAbout
+        val id = resolvedLink?.takeIf { it.isNotBlank() }
+            ?: ("rdf:" + (title.hashCode().toString(16)))
+        val date = (dcDate ?: pubDate)?.let(::parseDate)
+        return RssItem(
+            id = id,
+            title = title.trim(),
+            htmlBody = body,
+            link = resolvedLink?.trim(),
+            author = author?.trim(),
+            publishedAtEpochMs = date,
         )
     }
 
