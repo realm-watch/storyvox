@@ -155,6 +155,17 @@ object SourceIds {
      *  high-friction. v1 ships no search (Bot API has no
      *  full-text search endpoint). */
     const val TELEGRAM: String = "telegram"
+    /** Slack (#454) — fifth chat-platform backend in the storyvox
+     *  roster. Mapping: workspace → token scope (one token = one
+     *  workspace), channel → one fiction, message → one chapter.
+     *  Auth model is user-supplied Slack Bot Token (`xoxb-…`) — the
+     *  user creates a Slack app at api.slack.com, installs to a
+     *  workspace, copies the Bot User OAuth Token, and pastes it
+     *  in Settings. No bundled default token, no auto-join, no
+     *  legacy-token / xoxc cookie automation. Default OFF on fresh
+     *  installs because bot-token onboarding is high-friction and
+     *  Slack workspaces are private by default. */
+    const val SLACK: String = "slack"
     /** Palace Project (#502) — first library-borrowing backend. The
      *  Palace Project is open-source library management software backing
      *  many US public libraries (NYPL, BPL, etc.); the "Palace" mobile

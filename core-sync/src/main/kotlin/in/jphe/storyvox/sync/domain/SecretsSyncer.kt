@@ -267,6 +267,12 @@ class SecretsSyncer @Inject constructor(
          */
         val SECRET_KEY_NAMES: Set<String> = setOf(
             "pref_source_discord_token",
+            // Issue #454 — Slack Bot Token (xoxb-…). Same posture as
+            // the Discord token: high-sensitivity workspace-scoped
+            // credential whose leak would expose the user's channel
+            // history. Synced through InstantDB to the user's other
+            // devices so a token paste on one device propagates.
+            "pref_source_slack_token",
         )
     }
 }

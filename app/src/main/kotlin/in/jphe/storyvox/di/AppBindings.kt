@@ -209,6 +209,17 @@ object AppBindings {
     @Provides @Singleton
     fun provideTelegramConfig(impl: `in`.jphe.storyvox.data.TelegramConfigImpl): `in`.jphe.storyvox.source.telegram.config.TelegramConfig = impl
 
+    /** Bridges source-slack SlackConfig (#454) to the app-side
+     *  DataStore + EncryptedSharedPreferences impl. Bot token
+     *  encrypted under `pref_source_slack_token` in the shared
+     *  `storyvox.secrets` store (also listed in
+     *  [`in`.jphe.storyvox.sync.domain.SecretsSyncer.SECRET_KEY_NAMES]
+     *  so it syncs cross-device via InstantDB). Workspace name +
+     *  URL cached in plaintext DataStore for empty-state copy
+     *  without an extra `auth.test` round-trip. */
+    @Provides @Singleton
+    fun provideSlackConfig(impl: `in`.jphe.storyvox.data.SlackConfigImpl): `in`.jphe.storyvox.source.slack.config.SlackConfig = impl
+
     /**
      * Same singleton instance as [provideSettingsRepositoryUi], exposed under
      * the [PlaybackBufferConfig] contract so `core-playback`'s [EnginePlayer]

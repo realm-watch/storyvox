@@ -69,6 +69,12 @@ include(":source-discord")
 // twin to :source-discord but simpler — no thread coalescing, no
 // search, no server picker.
 include(":source-telegram")
+// Issue #454 — Slack Web API backend. Channels-as-fictions /
+// messages-as-chapters, mirrors :source-telegram's leaf shape but
+// with Slack's cursor-based pagination. Bot Token (xoxb-…) auth via
+// Settings. Default OFF on fresh installs because workspaces are
+// private and bot-token onboarding is high-friction.
+include(":source-slack")
 // Issue #472 — Readability4J catch-all for the magic-link paste flow.
 // Always-on, lowest-confidence match (0.1) so any HTTP(S) URL not
 // otherwise claimed by one of the 17 specialized backends still
