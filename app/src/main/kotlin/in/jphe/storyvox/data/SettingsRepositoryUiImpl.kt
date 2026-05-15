@@ -408,6 +408,13 @@ private object Keys {
      *  behavior on mid-stream underrun; OFF lets the consumer drain through
      *  underruns without raising the "Buffering…" UI. */
     val CATCHUP_PAUSE = booleanPreferencesKey("pref_catchup_pause_v1")
+    /** Issue #98 / PR-F (#86) — Mode C. Default false. When true, the
+     *  PCM cache pre-render scheduler expands library-add scheduling
+     *  from "chapters 1-3" to "all chapters in the fiction", and a flow
+     *  collector in `:app` ([PrerenderModeWatcher]) catches the false→true
+     *  flip and enqueues remaining chapters across every library fiction.
+     *  PR-F adds the persistence; PR-G surfaces the Settings toggle. */
+    val FULL_PRERENDER = booleanPreferencesKey("pref_full_prerender_v1")
     /** Issue #85 — Voice-Determinism preset. Default true = Steady, which
      *  preserves the pre-#85 calmed VITS defaults (0.35 / 0.667). false =
      *  Expressive (sherpa-onnx upstream Piper defaults 0.667 / 0.8 — more
@@ -849,6 +856,7 @@ class SettingsRepositoryUiImpl(
             // default back on (perf — see UiSettings.catchupPause kdoc).
             warmupWait = prefs[Keys.WARMUP_WAIT] ?: false,
             catchupPause = prefs[Keys.CATCHUP_PAUSE] ?: true,
+            fullPrerender = prefs[Keys.FULL_PRERENDER] ?: false,
             voiceSteady = prefs[Keys.VOICE_STEADY] ?: true,
             palace = UiPalaceConfig(host = palace.host, apiKey = palace.apiKey),
             github = githubSession.toUi(),
@@ -1173,6 +1181,11 @@ class SettingsRepositoryUiImpl(
         store.edit { it[Keys.CATCHUP_PAUSE] = enabled }
     }
 
+    /** PR-F (#86) — Mode C toggle. See [UiSettings.fullPrerender]. */
+    override suspend fun setFullPrerender(enabled: Boolean) {
+        store.edit { it[Keys.FULL_PRERENDER] = enabled }
+    }
+
     override suspend fun setVoiceSteady(enabled: Boolean) {
         store.edit { it[Keys.VOICE_STEADY] = enabled }
     }
@@ -1190,8 +1203,13 @@ class SettingsRepositoryUiImpl(
 
     override val warmupWait: Flow<Boolean> = store.data.map { it[Keys.WARMUP_WAIT] ?: false }
     override val catchupPause: Flow<Boolean> = store.data.map { it[Keys.CATCHUP_PAUSE] ?: true }
+    /** PR-F (#86) — see [PlaybackModeConfig.fullPrerender] kdoc for semantics.
+     *  Default false to keep the new-install footprint small. */
+    override val fullPrerender: Flow<Boolean> =
+        store.data.map { it[Keys.FULL_PRERENDER] ?: false }
     override suspend fun currentWarmupWait(): Boolean = warmupWait.first()
     override suspend fun currentCatchupPause(): Boolean = catchupPause.first()
+    override suspend fun currentFullPrerender(): Boolean = fullPrerender.first()
 
     // --- VoiceTuningConfig (issue #85, consumed by core-playback's EnginePlayer) ---
 
