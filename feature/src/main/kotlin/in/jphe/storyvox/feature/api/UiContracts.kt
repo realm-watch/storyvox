@@ -1884,3 +1884,55 @@ sealed class AzureProbeResult {
     /** No key configured — Test button still fires this for clarity. */
     object NotConfigured : AzureProbeResult()
 }
+
+/**
+ * Issue #178 — UI-side facade for Royal Road's saved-tags ↔
+ * storyvox-followed-tags two-way mirror. Lives in `:feature/api`
+ * (this file) so the Settings → Account composable can consume
+ * the surface without `:feature` depending on `:source-royalroad`.
+ *
+ * Implementation lives in `:app`'s
+ * [`in.jphe.storyvox.di.RealRoyalRoadTagSyncUi`], which bridges
+ * to the `:source-royalroad`'s `RoyalRoadTagSyncCoordinator` and
+ * `FollowedTagsStore`. Same shape as the existing
+ * [SettingsRepositoryUi] / [FictionRepositoryUi] split.
+ */
+interface RoyalRoadTagSyncUi {
+    /** Hot stream of the `pref_rr_tag_sync_enabled` toggle. */
+    val syncEnabled: Flow<Boolean>
+
+    /** Hot stream of the `pref_rr_tag_sync_last_synced_at` Long
+     *  (epoch ms), or `0L` if no sync has happened yet. */
+    val lastSyncedAt: Flow<Long>
+
+    /** Toggle the periodic + per-action sync on or off. Default
+     *  true once the user is signed in to Royal Road. */
+    suspend fun setSyncEnabled(enabled: Boolean)
+
+    /** Fire a single sync round-trip immediately. Used by the
+     *  "Sync now" brass button. Returns a UI-visible outcome
+     *  so the row can render a one-shot status line. */
+    suspend fun syncNow(): UiTagSyncOutcome
+}
+
+/** UI-side projection of `RoyalRoadTagSyncCoordinator.Outcome`. */
+sealed interface UiTagSyncOutcome {
+    data class Ok(
+        val tagsPulledIn: Int,
+        val tagsPushedOut: Int,
+        val tagsRemovedLocally: Int,
+        val tagsRemovedRemotely: Int,
+        val syncedAt: Long,
+    ) : UiTagSyncOutcome
+
+    /** User isn't signed in to RR — skipped silently. */
+    data object NotAuthenticated : UiTagSyncOutcome
+
+    /** User disabled sync. */
+    data object Disabled : UiTagSyncOutcome
+
+    /** Network or parser failure. Spec #178: don't surface these
+     *  as toasts; the Settings row shows a dim status line and
+     *  the next 24h periodic retries silently. */
+    data class Failed(val message: String) : UiTagSyncOutcome
+}

@@ -61,6 +61,10 @@ fun AccountSettingsScreen(
                             )
                         },
                     )
+                    // Issue #178 — two-way tag-sync row. Only
+                    // surfaces when signed in to RR because the
+                    // affordance is meaningless without a session.
+                    RoyalRoadTagSyncRow()
                 } else {
                     SettingsRow(
                         title = "Royal Road",

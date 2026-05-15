@@ -299,6 +299,29 @@ object AppBindings {
         impl: SettingsRepositoryUiImpl,
     ): `in`.jphe.storyvox.data.repository.sync.SettingsSnapshotSource = impl
 
+    /**
+     * Issue #178 — followed-tags store binding. The impl lives in
+     * `:app` (`FollowedTagsStoreImpl`) because it owns a DataStore
+     * file, and the interface is in `:core-data` so
+     * `:source-royalroad`'s tag-sync coordinator can consume it
+     * without depending on `:app`.
+     */
+    @Provides @Singleton
+    fun provideFollowedTagsStore(
+        impl: `in`.jphe.storyvox.data.FollowedTagsStoreImpl,
+    ): `in`.jphe.storyvox.data.repository.sync.FollowedTagsStore = impl
+
+    /**
+     * Issue #178 — feature-api facade for the Settings tag-sync
+     * row. The implementation glues `:core-data`'s store +
+     * `:source-royalroad`'s coordinator together; the row in
+     * `:feature` only sees this UI-shaped interface.
+     */
+    @Provides @Singleton
+    fun provideRoyalRoadTagSyncUi(
+        impl: RealRoyalRoadTagSyncUi,
+    ): `in`.jphe.storyvox.feature.api.RoyalRoadTagSyncUi = impl
+
     // Tier 2 secrets sync (this PR — extends #360): all three tokens
     // (Notion / Discord / Outline) actually live in
     // EncryptedSharedPreferences already (Notion: `notion.api_token`,
