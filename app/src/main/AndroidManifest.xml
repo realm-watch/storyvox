@@ -7,6 +7,14 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- PR-F (#86) — ChapterRenderJob runs a foreground service with the
+         DATA_SYNC type while pre-rendering a chapter's PCM into the
+         cache. Local synthesis isn't a media playback workload (no
+         user-visible Media3 session) and isn't a download workload
+         (no network); DATA_SYNC is the closest WorkManager-supported
+         type per AOSP docs. Required on API 34+ to avoid the
+         "Missing foregroundServiceType" SecurityException. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
