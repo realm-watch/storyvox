@@ -9,6 +9,32 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.52] — 2026-05-15
+
+The four-parallel-agent bundle — AO3 personal subscriptions, Royal Road two-way tag sync, Discord-as-fiction wiring, and an Emergency Help card surfacing all three crisis numbers together.
+
+### Added — Emergency Help card on TechEmpower Home (#516)
+- **5th brass-edged card** on TechEmpower Home titled "Emergency Help" — three brass-edged sub-buttons stacked **988** (Suicide & Crisis Lifeline), **211** (United Way social services), **911** (Emergency dispatch). Each sub-button dials via `Intent.ACTION_DIAL` with `tel:<n>` (not `ACTION_CALL` — no `CALL_PHONE` permission, no accidental dispatch). Card-level click is intentionally inert.
+- **Visual ranking** is 988 → 211 → 911 (most-likely first-response on top, true-emergency last but discoverable) — not numeric order.
+- **`EMERGENCY_DISPATCH_NUMBER = "911"`** added to `TechEmpowerLinks` alongside existing `CRISIS_HELP_NUMBER` (988) and `PRIMARY_HELP_NUMBER` (211).
+- Drops the now-redundant "long-press for 988" hint from the existing Call 211 card body. Top-app-bar phone icon (tap=211, long-press=988) untouched — both surfaces coexist per spec.
+- **`EmergencyHelpCardContractTest`** (7 cases) pins the three constants, `telUri` shape (no `tel://` double-slash that breaks Samsung's stock dialer), distinctness (so a copy-paste regression can't route 911 taps to 988), and that the host composable still loads by reflection.
+- **US-only v1.** CA/UK/AU localization queued for v2.
+
+### Added — Discord channel-as-fiction wiring for TechEmpower (#517)
+- **Auto-seed** the TechEmpower peer-support Discord channel (`1504888494206484531`) as a default-pinned fiction when the Discord backend is enabled. `DiscordConfigState` gains `pinnedChannelIds` + `techempowerDefaultsEnabled` (both default ON).
+- **`DiscordSource.popular()`** now prepends pinned channels with `author="TechEmpower"` *even before the user picks a server* — Discord's `/channels/{id}/messages` is channel-scoped, so a serverless seed renders end-to-end. `fictionDetail()` + `chapter()` paths relax the `serverId` gate for pinned-channel ids.
+- **Bot-token UX (option b)** — documented in `DiscordConfig` kdoc: users supply their own Discord bot via discord.com/developers OR accept a server-published bot invite. **No TechEmpower-owned credentials shipped.** Empty-state when bot isn't invited.
+- **Tests** — 4 new cases in `DiscordTechEmpowerSeedTest` pin the channel id to JP's captured value, fresh-install defaults (toggle ON + seed in list), and the opt-out state shape.
+
+### Added — Royal Road two-way tag sync (#178)
+- **`RoyalRoadTagSyncCoordinator`** mirrors RR's "Saved tags" filter ↔ storyvox's follow-filter store. Triggers: (1) immediate first-sync on the Anonymous→Authenticated edge in `StoryvoxApp.onCreate`, (2) 24h `WorkManager` periodic with `CONNECTED` + `RequiresBatteryNotLow` constraints, (3) "Sync now" brass button in **Settings → Account → Royal Road tag sync**.
+- **RR endpoints** — GET `/fictions/search?globalFilters=true` (read — parses `button.search-tag.selected` + `__RequestVerificationToken`) and POST `/fictions/search` with `tagsAdd=` repeated + `saveAsFilter=true` (write). Live-probed 2026-05-15. Writer treats 4xx other than 401 as "endpoint shape changed, retry next 24h" since RR doesn't publish a documented API.
+- **`TagSyncMerge`** — pure-Kotlin merge so it's testable against a fixed clock. Union-of-adds, last-write-wins-on-removes, with a 5-minute prefer-local window (`PREFER_LOCAL_WINDOW_MS`).
+- **DataStore schema** — `pref_rr_tag_sync_enabled` (Boolean, default ON when signed in), `pref_rr_tag_sync_last_synced_at` (Long epoch ms). Both round-trip across devices via the `:core-sync` allowlist.
+- **Settings UI** — new `RoyalRoadTagSyncRow` showing "Last synced with RR: \<relative\>", a Switch, and a "Sync now" brass button. Failures render a dim status line, never a toast (#178 spec: "we don't surface them").
+- **Tests** — 12 new cases: 6 in `TagSyncMergeTest` (union, tombstone-newer-than-last-sync, 5-min-window-wins, stale-tombstone-loses, empty, identical-noop), 6 in `SavedTagsParserTest` (selected-class, aria-pressed, unauthed-redirect, inline-login-form, empty-selected, missing-CSRF).
+
 ### Added — AO3 WebView login + personal subscriptions (#426 PR2)
 - **`Ao3AuthSource`** in `:source-ao3/auth/` — contributes the AO3 sign-in URL (`/users/login`), identity cookie name (`_otwarchive_session` — AO3 runs on Rails), and cookie host (`archiveofourown.org`) into the cross-source `Map<String, AuthSource>` introduced by PR1. Hilt-bound `@IntoMap @StringKey(AO3)`.
 - **`Ao3AuthWebView`** composable — mirrors `RoyalRoadAuthWebView`. Watches both page-start and page-finish for the identity cookie, scrapes the AO3 username from the post-login redirect URL (`/users/<username>`) and threads it through the capture map under the `__storyvox_user` pseudo-cookie key. Reserved AO3 routes (`/users/login`, `/users/logout`, etc.) are rejected as username candidates.
