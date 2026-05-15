@@ -47,6 +47,7 @@ import `in`.jphe.storyvox.playback.cache.EngineMutex
 import `in`.jphe.storyvox.playback.cache.PcmAppender
 import `in`.jphe.storyvox.playback.cache.PcmCache
 import `in`.jphe.storyvox.playback.cache.PcmCacheKey
+import `in`.jphe.storyvox.playback.cache.PrerenderTriggers
 import `in`.jphe.storyvox.playback.tts.source.CacheFileSource
 import `in`.jphe.storyvox.playback.tts.source.EngineStreamingSource
 import `in`.jphe.storyvox.playback.tts.source.PcmSource
@@ -161,6 +162,13 @@ class EnginePlayer @AssistedInject constructor(
      *  concurrent with `loadAndPlay`'s `loadModel` — the issue #11
      *  SIGSEGV race. */
     private val engineMutexHolder: EngineMutex,
+    /** PR-F (#86) — chapter-natural-end trigger source. The streaming
+     *  pipeline's consumer thread calls [handleChapterDone] when the
+     *  end-of-stream pill arrives; that path forwards to
+     *  [PrerenderTriggers.onChapterCompleted] so the scheduler enqueues
+     *  the N+2 render (N+1 was scheduled when N started or is already
+     *  in flight). */
+    private val prerenderTriggers: PrerenderTriggers,
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
 
     @AssistedFactory
@@ -2096,6 +2104,15 @@ class EnginePlayer @AssistedInject constructor(
         val fictionId = _observableState.value.currentFictionId
         persistPosition()
         if (chapterId != null) chapterRepo.markChapterPlayed(chapterId)
+        // PR-F (#86) — schedule chapter N+2's background render. N+1 is
+        // either already cached, in flight as the previous chapter-done
+        // trigger's enqueue, or about to be teed by PR-D as the user
+        // taps Next. Wrapped in runCatching so a scheduler hiccup
+        // doesn't block the natural-end flow (advanceChapter, history
+        // marker, ChapterDone event).
+        if (chapterId != null) {
+            runCatching { prerenderTriggers.onChapterCompleted(chapterId) }
+        }
         // Issue #158 — piggyback the History `completed` flag on the
         // existing end-of-chapter event. Mirrors `markChapterPlayed`
         // above; both fire on the same trigger (chapter naturally

@@ -7,6 +7,7 @@ import androidx.work.Configuration
 import dagger.Lazy
 import dagger.hilt.android.HiltAndroidApp
 import `in`.jphe.storyvox.BuildConfig
+import `in`.jphe.storyvox.data.PrerenderModeWatcher
 import `in`.jphe.storyvox.data.auth.SessionHydrator
 import `in`.jphe.storyvox.data.db.StoryvoxDatabase
 import `in`.jphe.storyvox.data.repository.AuthRepository
@@ -81,6 +82,11 @@ class StoryvoxApp : Application(), Configuration.Provider {
     @Inject lateinit var shelfRepository: Lazy<ShelfRepository>
     @Inject lateinit var playbackPositionRepository: Lazy<PlaybackPositionRepository>
 
+    /** PR-F (#86) — Mode C (fullPrerender) flow collector. `Lazy<>` so
+     *  the singleton isn't materialised on the cold-launch main thread;
+     *  initScope's coroutine pulls it on IO and calls [start()]. */
+    @Inject lateinit var prerenderModeWatcher: Lazy<PrerenderModeWatcher>
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
@@ -143,6 +149,14 @@ class StoryvoxApp : Application(), Configuration.Provider {
         // once [Lazy.get] materialises it on IO.
         initScope.launch {
             syncCoordinator.get().initialize()
+        }
+        // PR-F (#86) — Mode C flow collector. Started on IO so the
+        // PrerenderTriggers + FictionRepository + DataStore graph is
+        // materialised off the cold-launch critical path; start()
+        // launches its own long-running collector inside the watcher's
+        // singleton scope.
+        initScope.launch {
+            prerenderModeWatcher.get().start()
         }
     }
 

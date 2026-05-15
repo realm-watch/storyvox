@@ -172,6 +172,12 @@ class FictionRepositoryImpl @Inject constructor(
      *  a stub `Map<String, FictionSource>` keep compiling — they pass
      *  the empty resolver factory below. */
     private val urlResolver: UrlResolver? = null,
+    /** PR-F (#86) — listener that the playback layer's PrerenderTriggers
+     *  binds to. Defaults to [FictionLibraryListener.NoOp] so tests
+     *  and library-only consumers that don't run the playback layer
+     *  don't need to stub. `:app`'s CacheBindingsModule overrides
+     *  the binding to PrerenderTriggers in production. */
+    private val libraryListener: FictionLibraryListener = FictionLibraryListener.NoOp,
 ) : FictionRepository {
 
     /**
@@ -317,6 +323,12 @@ class FictionRepositoryImpl @Inject constructor(
         if (existing == null) refreshDetail(id) // best-effort; ignore failure
         fictionDao.setInLibrary(id, true, System.currentTimeMillis())
         if (mode != null) fictionDao.setDownloadMode(id, mode)
+        // PR-F (#86) — notify the playback layer so it can pre-render
+        // chapters 1-N (or all, in Mode C). runCatching guards against
+        // a listener that throws — library add must always succeed
+        // from the user's perspective even if pre-render scheduling
+        // hiccups.
+        runCatching { libraryListener.onLibraryAdded(id) }
         Unit
     }
 
@@ -325,6 +337,11 @@ class FictionRepositoryImpl @Inject constructor(
         // Eviction policy: keep the metadata around (no auto-evict per spec).
         // Caller may explicitly purge transient rows via deleteIfTransient.
         fictionDao.deleteIfTransient(id)
+        // PR-F (#86) — cancel any background pre-renders for this
+        // fiction. Listener is non-suspending so this is fire-and-
+        // forget from the repo's perspective; WorkManager's
+        // cancelAllWorkByTag is itself async internally.
+        runCatching { libraryListener.onLibraryRemoved(id) }
         Unit
     }
 
