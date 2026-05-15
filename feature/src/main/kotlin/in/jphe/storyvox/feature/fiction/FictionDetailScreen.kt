@@ -68,6 +68,7 @@ import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.ChapterCard
 import `in`.jphe.storyvox.ui.component.ChapterCardState
+import `in`.jphe.storyvox.ui.component.coverSourceFamilyFor
 import `in`.jphe.storyvox.ui.component.ErrorBlock
 import `in`.jphe.storyvox.ui.component.ErrorPlacement
 import `in`.jphe.storyvox.ui.component.friendlyErrorMessage
@@ -615,6 +616,8 @@ private fun Hero(fiction: UiFiction) {
             coverUrl = fiction.coverUrl,
             title = fiction.title,
             monogram = fictionMonogram(fiction.author, fiction.title),
+            author = fiction.author,
+            sourceFamily = coverSourceFamilyFor(fiction.sourceId),
             modifier = Modifier.size(width = 120.dp, height = 180.dp),
         )
         Column(

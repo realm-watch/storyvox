@@ -23,16 +23,46 @@ import coil.compose.SubcomposeAsyncImage
 import kotlin.math.min
 
 /**
- * Async cover image with a brass-tinted sigil placeholder.
+ * Async cover image with a multi-tier fallback cascade.
  *
- * When [coverUrl] is null or fails to load, draws a static Library
- * Nocturne sigil — faint brass ring + six-pointed star encircling the
- * fiction's [monogram]. The same visual family as [MagicSkeletonTile]
- * but static: a sigil reads as "this fiction is bound to this mark",
- * not "we're conjuring something". Callers compute [monogram] via
- * [fictionMonogram] which prefers author → title → brass star, so RSS
- * feeds and other coverless-and-authorless fictions still render an
- * intentional Library Nocturne mark rather than a `?` (#322).
+ * The cascade (v0.5.51, #notion-beautiful-covers):
+ *
+ *  1. **Remote cover URL** — `SubcomposeAsyncImage(coverUrl)` if
+ *     [coverUrl] is non-null. Loaded with [contentScale] (default
+ *     `Crop`) which biases focal-center, so Notion banner-aspect
+ *     covers (~5:1) crop to the middle band of the image — the most
+ *     consistent place to find the page's hero illustration. Coil's
+ *     disk cache + retry handles transient network failures; S3-signed
+ *     URL expiry falls through to the branded fallback below.
+ *
+ *  2. **Branded synthetic cover** ([BrandedCoverTile]) — if [coverUrl]
+ *     is null OR the load errors out AND [title] is non-blank. Renders
+ *     a hand-designed-looking jacket with [author] line and a
+ *     family-specific watermark ([sourceFamily]). Pure-composable, no
+ *     network, so it shows instantly and survives any image-load
+ *     failure mode.
+ *
+ *  3. **Brass-sigil monogram tile** — if [title] is blank (RSS feeds
+ *     where only the index was parsed, first-cold-launch entries with
+ *     no title yet). [monogram] comes from `fictionMonogram(author,
+ *     title)` which falls back to the brass star glyph (#322).
+ *
+ * The loading slot still uses the monogram tile rather than the
+ * branded cover so it's clearly differentiable from the terminal
+ * fallback — a sigil reads as "this fiction is bound to this mark",
+ * not "we gave up trying to load."
+ *
+ * @param coverUrl Remote image URL; null skips straight to the
+ *   branded fallback.
+ * @param title Used for the branded tile's title and as the cover's
+ *   content description.
+ * @param monogram One- or two-letter mark used by the third-tier
+ *   sigil tile when title is blank.
+ * @param author Optional — rendered as a brass label on the branded
+ *   tile. Skipped when null/blank.
+ * @param sourceFamily Which watermark glyph the branded tile uses.
+ *   Defaults to [CoverSourceFamily.Generic] for backwards-compatible
+ *   call sites that don't yet know their source family.
  */
 @Composable
 fun FictionCoverThumb(
@@ -41,6 +71,8 @@ fun FictionCoverThumb(
     monogram: String,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
+    author: String? = null,
+    sourceFamily: CoverSourceFamily = CoverSourceFamily.Generic,
 ) {
     Box(
         modifier = modifier
@@ -48,14 +80,35 @@ fun FictionCoverThumb(
             .clip(MaterialTheme.shapes.medium)
             .semantics { contentDescription = "Cover for $title" },
     ) {
-        SubcomposeAsyncImage(
-            model = coverUrl,
-            contentDescription = null,
-            contentScale = contentScale,
-            modifier = Modifier.fillMaxSize(),
-            loading = { MonogramSigilTile(monogram = monogram) },
-            error = { MonogramSigilTile(monogram = monogram) },
-        )
+        val brandedOrMonogram: @Composable () -> Unit = {
+            if (title.isNotBlank()) {
+                BrandedCoverTile(
+                    title = title,
+                    author = author,
+                    sourceFamily = sourceFamily,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                MonogramSigilTile(monogram = monogram)
+            }
+        }
+
+        if (coverUrl.isNullOrBlank()) {
+            // Skip the AsyncImage round-trip entirely when we already
+            // know there's no URL — render the branded fallback
+            // straight away rather than briefly showing the loading
+            // sigil and then crossfading.
+            brandedOrMonogram()
+        } else {
+            SubcomposeAsyncImage(
+                model = coverUrl,
+                contentDescription = null,
+                contentScale = contentScale,
+                modifier = Modifier.fillMaxSize(),
+                loading = { MonogramSigilTile(monogram = monogram) },
+                error = { brandedOrMonogram() },
+            )
+        }
     }
 }
 
