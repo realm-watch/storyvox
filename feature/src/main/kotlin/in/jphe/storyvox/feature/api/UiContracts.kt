@@ -788,6 +788,19 @@ data class UiSettings(
      *  separate UX call. */
     val catchupPause: Boolean = true,
     /**
+     * Issue #98 / PCM cache PR-F (#86). Mode C — Full Pre-render. When
+     * true, the background pre-render scheduler treats every chapter
+     * of a library fiction as a candidate; when false (default), it
+     * only renders chapters 1-3 on library-add and chapter N+2 on
+     * natural-end. Off by default because a 40-chapter fiction at
+     * Piper-high (~70 MB/chapter) blows past the 2 GB quota and
+     * thrashes the LRU.
+     *
+     * PR-F adds the persistence + plumbing; PR-G adds the Settings
+     * toggle. Field is invisible to users until PR-G ships.
+     */
+    val fullPrerender: Boolean = false,
+    /**
      * Issue #85 — Voice-Determinism preset for the VoxSherpa engine. When
      * true (default), the engine runs with VoxSherpa's calmed VITS defaults
      * (`noise_scale = 0.35`, `noise_scale_w = 0.667`); identical text
@@ -1350,6 +1363,8 @@ interface SettingsRepositoryUi {
     suspend fun setWarmupWait(enabled: Boolean)
     /** Issue #98 — Mode B toggle. See [UiSettings.catchupPause]. */
     suspend fun setCatchupPause(enabled: Boolean)
+    /** Issue #98 / PR-F (#86) — Mode C toggle. See [UiSettings.fullPrerender]. */
+    suspend fun setFullPrerender(enabled: Boolean)
     /** Issue #85 — Voice-Determinism preset. See [UiSettings.voiceSteady]. */
     suspend fun setVoiceSteady(enabled: Boolean)
     suspend fun signIn()
