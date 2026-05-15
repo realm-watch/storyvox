@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import `in`.jphe.storyvox.playback.cache.CacheStateInspector
 import `in`.jphe.storyvox.playback.voice.EngineKey
 import `in`.jphe.storyvox.playback.voice.EngineType
 import `in`.jphe.storyvox.playback.voice.QualityLevel
@@ -113,11 +114,22 @@ class VoiceLibraryViewModel @Inject constructor(
      *  Works. The actual key + region stay encrypted in
      *  [AzureCredentials]; this VM only needs the boolean. */
     private val settingsRepo: SettingsRepositoryUi,
+<<<<<<< HEAD
     /** #501 — voice-family registry; the Voice Library filters voices
      *  whose family is disabled in `voiceFamiliesEnabled`. The registry
      *  carries each family's `defaultEnabled` so an absent key falls
      *  through to the right default. */
     private val voiceFamilyRegistry: VoiceFamilyRegistry,
+=======
+    /** PR-H (#86) — per-voice cached-bytes lookup. Polled once per
+     *  [installedVoices] emission (cheap: one directory walk + N meta
+     *  JSON parses). The resulting Map<voiceId, Long> is folded into
+     *  each [UiVoiceInfo] via [UiVoiceInfo.copy(cachedBytes=...)] so
+     *  the screen's "X MB cached" subtitle reflects current cache
+     *  state. No live re-poll — cache changes between screen visits
+     *  show up on the next entry. */
+    private val cacheInspector: CacheStateInspector,
+>>>>>>> b52e410 (feat(voicelibrary): per-voice cached-MB indicator (PR-H #86))
 ) : ViewModel() {
 
     private val _currentDownload = MutableStateFlow<DownloadingVoice?>(null)
@@ -165,6 +177,16 @@ class VoiceLibraryViewModel @Inject constructor(
             voiceFamiliesEnabled = s.voiceFamiliesEnabled,
         )
     }
+
+    /** PR-H (#86) — per-voice cached-bytes map. Side-band StateFlow so
+     *  it folds into the existing 4-arg [uiState] combine without
+     *  pushing the unfiltered-state inner combine past its 5-slot
+     *  ceiling. Recomputed in an [init] block coroutine on every
+     *  [installedVoices] emission — cheap (one directory walk + N
+     *  meta JSON parses; single-digit ms even at 5 GB cache). Default
+     *  empty map means a brand-new install with no cache yet renders
+     *  every voice row without the "X MB cached" subtitle. */
+    private val cachedBytesByVoice = MutableStateFlow<Map<String, Long>>(emptyMap())
 
     /** Debounced query for the filter pipeline. 200 ms matches the
      *  spec from #264 — long enough to swallow burst-typing on Flip3
@@ -283,6 +305,7 @@ class VoiceLibraryViewModel @Inject constructor(
         debouncedQuery,
         _selectedLanguage.asStateFlow(),
         perVoiceOverrides,
+<<<<<<< HEAD
     ) { state, q, lang, overrides ->
         // #501 — voice-family filter. Family ids absent from the
         // settings map fall back to each family's `defaultEnabled` in
@@ -306,6 +329,23 @@ class VoiceLibraryViewModel @Inject constructor(
             }.filterValues { it.isNotEmpty() },
         )
         val withOverrides = familyFiltered.copy(
+=======
+        cachedBytesByVoice,
+    ) { state, q, lang, overrides, cachedBytes ->
+        // PR-H (#86) — fold cached-bytes onto each UiVoiceInfo. Done
+        // BEFORE the filter pipeline so the "X MB cached" subtitle is
+        // present on filtered rows too (a user searching "cori" should
+        // still see Cori's cached-MB line). Skip the map when the
+        // bytes map is empty (cold launch, fresh install) — every
+        // UiVoiceInfo already carries `cachedBytes = 0L` per the data-
+        // class default, so the no-op fast path is correct.
+        val withCachedBytes = if (cachedBytes.isEmpty()) state else state.copy(
+            favorites = state.favorites.withCachedBytes(cachedBytes),
+            installedByEngine = state.installedByEngine.withCachedBytes(cachedBytes),
+            availableByEngine = state.availableByEngine.withCachedBytes(cachedBytes),
+        )
+        val withOverrides = withCachedBytes.copy(
+>>>>>>> b52e410 (feat(voicelibrary): per-voice cached-MB indicator (PR-H #86))
             voiceLexiconOverrides = overrides.lexicon,
             voicePhonemizerLangOverrides = overrides.phonemizerLang,
         )
@@ -319,6 +359,23 @@ class VoiceLibraryViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), VoiceLibraryUiState())
 
     private var downloadJob: Job? = null
+
+    init {
+        // PR-H (#86) — re-poll the inspector on every installedVoices
+        // emission so cached-bytes labels track install/delete events.
+        // collectLatest cancels an in-flight poll if a new emission
+        // races in (e.g. delete + immediate refresh); the directory
+        // walk is cheap but the cancellation contract keeps the flow
+        // tidy. Failures fall back to the previous value rather than
+        // wiping the labels — a transient filesystem hiccup shouldn't
+        // erase the user's "X MB cached" line for every voice.
+        viewModelScope.launch {
+            voiceManager.installedVoices.collect { _ ->
+                runCatching { cacheInspector.bytesUsedByEveryVoice() }
+                    .onSuccess { cachedBytesByVoice.value = it }
+            }
+        }
+    }
 
     fun toggleFavorite(voiceId: String) {
         viewModelScope.launch { voiceFavorites.toggle(voiceId) }
@@ -640,4 +697,27 @@ internal fun List<UiVoiceInfo>.groupByEngineThenTier(): Map<VoiceEngine, Map<Qua
         if (tierMap.isNotEmpty()) out[engine] = tierMap
     }
     return out
+}
+
+/** PR-H (#86) — fold a `Map<voiceId, Long>` of cached-bytes onto each
+ *  voice. Returns a new list with `cachedBytes` set per row; voices
+ *  not in the map keep their existing value (default 0L for fresh
+ *  rows). Pulled out as an extension on `List<UiVoiceInfo>` so the
+ *  three-bucket fold in [VoiceLibraryViewModel.uiState] stays
+ *  one-liner-per-bucket. */
+private fun List<UiVoiceInfo>.withCachedBytes(
+    cachedBytes: Map<String, Long>,
+): List<UiVoiceInfo> = map { v ->
+    val bytes = cachedBytes[v.id] ?: return@map v
+    if (v.cachedBytes == bytes) v else v.copy(cachedBytes = bytes)
+}
+
+/** PR-H (#86) — same fold for the engine/tier nested map. The inner
+ *  list-of-voices is rebuilt only when at least one row carries fresh
+ *  bytes; otherwise the original reference is returned so Compose's
+ *  remember/key invariants stay stable for unchanged tiers. */
+private fun Map<VoiceEngine, Map<QualityLevel, List<UiVoiceInfo>>>.withCachedBytes(
+    cachedBytes: Map<String, Long>,
+): Map<VoiceEngine, Map<QualityLevel, List<UiVoiceInfo>>> = mapValues { (_, tiers) ->
+    tiers.mapValues { (_, voices) -> voices.withCachedBytes(cachedBytes) }
 }
