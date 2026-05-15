@@ -878,6 +878,22 @@ data class UiSettings(
      * migration completes still surfaces the right default-on chips.
      */
     val sourcePluginsEnabled: Map<String, Boolean> = emptyMap(),
+    /**
+     * Plugin-seam Phase 4 (#501) — per-voice-family on/off keyed by
+     * stable family id (`voice_piper`, `voice_kokoro`, `voice_kitten`,
+     * `voice_azure`). Twin of [sourcePluginsEnabled] for the Plugin
+     * Manager's Voice bundles section.
+     *
+     * When a family id maps to `false`, voices belonging to that
+     * family are filtered out of the Voice Library and the picker.
+     * Missing ids fall through to each family's `defaultEnabled` in
+     * [`in.jphe.storyvox.playback.voice.VoiceFamilyRegistry`].
+     *
+     * Reads: a fresh install sees an empty map and every family
+     * resolves to its declared default; subsequent toggles route
+     * through `SettingsRepositoryUi.setVoiceFamilyEnabled(id, enabled)`.
+     */
+    val voiceFamiliesEnabled: Map<String, Boolean> = emptyMap(),
     /** Notion database id (#233 + #390). Defaults to the baked-in
      *  techempower.org placeholder from `NotionDefaults`; existing
      *  users with a different stored value keep it. Notion accepts
@@ -1472,6 +1488,16 @@ interface SettingsRepositoryUi {
      * collapsed into this one entry point.
      */
     suspend fun setSourcePluginEnabled(id: String, enabled: Boolean)
+
+    /**
+     * Plugin-seam Phase 4 (#501) — toggle a voice family by its stable
+     * id (`voice_piper`, `voice_kokoro`, `voice_kitten`, `voice_azure`).
+     * Updates [UiSettings.voiceFamiliesEnabled]; the Voice Library
+     * projection filters voices whose engine type maps to a disabled
+     * family. Unknown ids are still written so a future family that
+     * pre-toggles its state before its registry entry lands round-trips.
+     */
+    suspend fun setVoiceFamilyEnabled(id: String, enabled: Boolean)
 
     /** Issue #245 — Outline self-hosted-wiki backend config. */
     val outlineHost: Flow<String>

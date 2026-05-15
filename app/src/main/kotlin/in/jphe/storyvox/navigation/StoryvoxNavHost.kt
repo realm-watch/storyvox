@@ -706,6 +706,14 @@ private fun StoryvoxNavHostContent(
             ) {
                 `in`.jphe.storyvox.feature.settings.plugins.PluginManagerScreen(
                     onNavigateBack = { navController.popBackStack() },
+                    // #501 — Voice bundles section deep-links into the
+                    // Voice Library for per-family voice management and
+                    // into the long-scroll Settings for Azure BYOK key
+                    // entry. The long-scroll page anchors the Azure
+                    // card; a future dedicated Settings → Cloud Voices
+                    // subscreen would replace this target.
+                    onOpenVoiceLibrary = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
+                    onOpenAzureSettings = { navController.navigate(StoryvoxRoutes.SETTINGS) },
                 )
             }
             composable(

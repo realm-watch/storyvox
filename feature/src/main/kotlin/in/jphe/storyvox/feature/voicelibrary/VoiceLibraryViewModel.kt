@@ -10,6 +10,8 @@ import `in`.jphe.storyvox.playback.voice.QualityLevel
 import `in`.jphe.storyvox.playback.voice.UiVoiceInfo
 import `in`.jphe.storyvox.playback.voice.VoiceCatalog
 import `in`.jphe.storyvox.playback.voice.VoiceEngineId
+import `in`.jphe.storyvox.playback.voice.VoiceFamilyRegistry
+import `in`.jphe.storyvox.playback.voice.voiceFamilyId
 import `in`.jphe.storyvox.playback.voice.VoiceFavorites
 import `in`.jphe.storyvox.playback.voice.VoiceLibraryCollapse
 import `in`.jphe.storyvox.playback.voice.VoiceLibrarySection
@@ -111,6 +113,11 @@ class VoiceLibraryViewModel @Inject constructor(
      *  Works. The actual key + region stay encrypted in
      *  [AzureCredentials]; this VM only needs the boolean. */
     private val settingsRepo: SettingsRepositoryUi,
+    /** #501 — voice-family registry; the Voice Library filters voices
+     *  whose family is disabled in `voiceFamiliesEnabled`. The registry
+     *  carries each family's `defaultEnabled` so an absent key falls
+     *  through to the right default. */
+    private val voiceFamilyRegistry: VoiceFamilyRegistry,
 ) : ViewModel() {
 
     private val _currentDownload = MutableStateFlow<DownloadingVoice?>(null)
@@ -151,6 +158,11 @@ class VoiceLibraryViewModel @Inject constructor(
         PerVoiceOverrides(
             lexicon = s.voiceLexiconOverrides,
             phonemizerLang = s.voicePhonemizerLangOverrides,
+            // #501 — voice-family on/off keyed by family id
+            // (`voice_piper`, `voice_kokoro`, ...). When a family is
+            // OFF its voices are filtered out of every bucket here so
+            // the picker / library never surfaces them.
+            voiceFamiliesEnabled = s.voiceFamiliesEnabled,
         )
     }
 
@@ -272,7 +284,28 @@ class VoiceLibraryViewModel @Inject constructor(
         _selectedLanguage.asStateFlow(),
         perVoiceOverrides,
     ) { state, q, lang, overrides ->
-        val withOverrides = state.copy(
+        // #501 — voice-family filter. Family ids absent from the
+        // settings map fall back to each family's `defaultEnabled` in
+        // the registry, so a fresh install (empty map) shows every
+        // default-on family's voices. Only voices whose family
+        // resolves to OFF are excluded.
+        val familyEnabled: (UiVoiceInfo) -> Boolean = { v ->
+            val familyId = v.engineType.voiceFamilyId()
+            val explicit = overrides.voiceFamiliesEnabled[familyId]
+            explicit ?: (voiceFamilyRegistry.byId(familyId)?.defaultEnabled ?: true)
+        }
+        val familyFiltered = state.copy(
+            favorites = state.favorites.filter(familyEnabled),
+            installedByEngine = state.installedByEngine.mapValues { (_, tierMap) ->
+                tierMap.mapValues { (_, voices) -> voices.filter(familyEnabled) }
+                    .filterValues { it.isNotEmpty() }
+            }.filterValues { it.isNotEmpty() },
+            availableByEngine = state.availableByEngine.mapValues { (_, tierMap) ->
+                tierMap.mapValues { (_, voices) -> voices.filter(familyEnabled) }
+                    .filterValues { it.isNotEmpty() }
+            }.filterValues { it.isNotEmpty() },
+        )
+        val withOverrides = familyFiltered.copy(
             voiceLexiconOverrides = overrides.lexicon,
             voicePhonemizerLangOverrides = overrides.phonemizerLang,
         )
@@ -433,6 +466,10 @@ class VoiceLibraryViewModel @Inject constructor(
 private data class PerVoiceOverrides(
     val lexicon: Map<String, String>,
     val phonemizerLang: Map<String, String>,
+    /** #501 — voice-family on/off map. Empty = every family enabled
+     *  by default; an explicit `false` removes the family's voices
+     *  from the picker. */
+    val voiceFamiliesEnabled: Map<String, Boolean> = emptyMap(),
 )
 
 /** Engine grouping discriminator used by the voice library UI. The

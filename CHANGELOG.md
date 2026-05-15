@@ -9,6 +9,13 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+### Added — Voice bundles in Plugin Manager
+- **Plugin Manager grows a fully-iterated Voice bundles section** (closes #501). Settings → Plugins now lists every installed voice family as a brass-edged card alongside Fiction sources and Audio streams: **Piper** (local neural, per-voice ONNX), **Kokoro** (~330 MB shared model, 53 speakers), **KittenTTS** (~24 MB shared, 8 en_US speakers), **Azure HD voices** (BYOK cloud, surfaces "Configure →" CTA when no key is set), and a **VoxSherpa upstreams** placeholder card signalling future engine-lib additions. Each card has the same shape as Fiction-source cards: brass voice-glyph monogram, On/Off toggle (disabled families are filtered out of the Voice Library), Local/Cloud/BYOK + live voice-count capability chips, and a "Manage voices →" link that deep-links to the Voice Library (Azure unconfigured swaps to "Configure →" routing to Settings → Cloud voices).
+- **`VoiceFamilyRegistry` singleton** in `:core-playback` enumerates the five families with declarative metadata (display name, description, license, size hint, source URL, defaultEnabled, BYOK flag). Adding a new family is one descriptor entry plus an `EngineType.X` case in `voiceFamilyId()`. A future out-of-tree `:source-foo` voice engine can graduate to a Hilt multibinding (or a `@VoiceFamilyPlugin` annotation) without breaking the registry contract.
+- **`voiceFamiliesEnabled` settings map** persists per-family on/off state under `pref_voice_families_enabled_v1` (JSON, schema-revvable). Twin codec `VoiceFamiliesEnabledCodec` mirrors the `sourcePluginsEnabled` shape. Absent ids fall back to each family's `defaultEnabled` so a fresh install sees Piper/Kokoro/Kitten on, Azure off until configured.
+- **Voice Library filter** (in `VoiceLibraryViewModel`): when a family is OFF the picker hides its voices across favourites, installed, and available buckets.
+- **Tests**: codec round-trip (`VoiceFamiliesEnabledCodecTest`, `:core-data`), registry shape + `EngineType.voiceFamilyId()` mapping for every static catalog entry (`VoiceFamilyRegistryTest`, `:core-playback`), filter logic + On/Off/All semantics + placeholder exclusion (`VoiceFamilyFilterTest`, `:feature`).
+
 ## [0.5.48] — 2026-05-15
 
 ### Fixed

@@ -783,6 +783,7 @@ private class FakeSettingsRepo(
         override suspend fun probeTelegramBot(): String? = null
         override suspend fun fetchTelegramChannels(): List<Pair<String, String>> = emptyList()
         override suspend fun setSourcePluginEnabled(id: String, enabled: Boolean) = Unit
+        override suspend fun setVoiceFamilyEnabled(id: String, enabled: Boolean) = Unit
         override suspend fun setNotionDatabaseId(id: String) = Unit
         override suspend fun setNotionApiToken(token: String?) = Unit
         override val outlineHost: kotlinx.coroutines.flow.Flow<String> = kotlinx.coroutines.flow.flowOf("")
