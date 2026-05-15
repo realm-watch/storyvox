@@ -626,6 +626,22 @@ private object Keys {
      *  dialog. */
     val V0500_CONFETTI_SHOWN = booleanPreferencesKey("pref_v0500_confetti_shown")
 
+    /** Issue #517 — gate for the TechEmpower Home onboarding state.
+     *  Flips to true the first time the user opens the dedicated
+     *  TechEmpower Home screen (via the brass-edged Library hero
+     *  card). Today it's set-only — no UI reads it back yet — but
+     *  surfaces a future one-time onboarding nudge (e.g., "tap the
+     *  brass hero to explore TechEmpower's resources") without
+     *  needing to add a fresh DataStore key in that follow-up.
+     *
+     *  Unlike [V0500_MILESTONE_SEEN] / [V0500_CONFETTI_SHOWN], this
+     *  flag IS synced across devices so a user who visits TechEmpower
+     *  Home on their phone doesn't get re-nudged on their tablet — a
+     *  cross-device "have you discovered this section?" flag carries
+     *  the right semantics for sync. See the per-key entry in
+     *  [SYNC_ALLOWLIST] + [SYNC_KEY_TYPES]. */
+    val TECHEMPOWER_HOME_SEEN = booleanPreferencesKey("pref_techempower_home_seen")
+
     // ── Inbox per-source mute toggles (issue #383) ─────────────────
     // Added at the END of Keys to minimize merge conflicts with the
     // other agents touching this file (Vertex SA, plugin seam).
@@ -2367,6 +2383,8 @@ class SettingsRepositoryUiImpl(
             "pref_a11y_speak_chapter_mode",
             "pref_a11y_font_scale_override",
             "pref_a11y_reading_direction",
+            // Issue #517 — TechEmpower Home onboarding gate.
+            "pref_techempower_home_seen",
         )
 
         /**
@@ -2455,6 +2473,8 @@ class SettingsRepositoryUiImpl(
             "pref_a11y_speak_chapter_mode" to SyncedType.STRING,
             "pref_a11y_font_scale_override" to SyncedType.FLOAT,
             "pref_a11y_reading_direction" to SyncedType.STRING,
+            // Issue #517 — TechEmpower Home onboarding gate.
+            "pref_techempower_home_seen" to SyncedType.BOOLEAN,
         )
     }
 
