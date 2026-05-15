@@ -93,27 +93,60 @@ android {
 
     buildTypes {
         debug {
-            isMinifyEnabled = false
+            // R8 minification + tree-shaking (#409 part 3). Storyvox
+            // ships a single sideload APK signed with the checked-in
+            // debug cert (see signingConfigs comment above) — there is
+            // no separate release flavor today, so the "debug" build
+            // type IS the shipped artifact. Flipping isMinifyEnabled
+            // here is what actually delivers the R8 win to users.
+            //
+            // Resource shrinking stays OFF on debug because
+            // androidTest / instrumentation runs reference resources by
+            // name and the shrinker would strip them. The release
+            // build (which nothing currently consumes) has it on.
+            //
+            // Comprehensive `app/proguard-rules.pro` carries keep rules
+            // for every reflection surface in the app: KSP-generated
+            // SourcePluginModule factories, kotlinx-serialization
+            // synthesised serializers, Hilt entry points, Room
+            // entities/DAOs, Jsoup, OkHttp. See that file's header for
+            // the per-rule rationale.
+            isMinifyEnabled = true
+            isShrinkResources = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
             // No applicationIdSuffix / versionNameSuffix: the build is
             // marketed and tested as the real app. The label "debug"
             // here is just AGP-internal terminology for "debuggable,
-            // non-minified, signed with the dev cert" — there's no
-            // separate release flavor being shipped, and forcing
-            // ".debug" / "-debug" into the package id and version
-            // string was just visual noise on a sideload-only app.
+            // signed with the dev cert" — there's no separate release
+            // flavor being shipped, and forcing ".debug" / "-debug"
+            // into the package id and version string was just visual
+            // noise on a sideload-only app. (Pre-#409 part 3 this
+            // build was also non-minified; that's no longer true.)
             signingConfig = signingConfigs.getByName("debug")
         }
         release {
-            isMinifyEnabled = false
-            isShrinkResources = false
-            // Same single-keystore stance as the debug build — see
-            // signingConfigs comment above. Without this, AGP refuses
-            // to assemble the release variant for the
-            // BaselineProfile producer (it can't sign the APK), and
-            // `./gradlew :baselineprofile:assembleNonMinifiedRelease`
-            // fails before the generator gets a chance to run.
+            // Release build type isn't shipped today (sideload via the
+            // debug build) — kept as a forward-looking placeholder for
+            // when storyvox graduates to Play Store / F-Droid (issue
+            // #16 / v1.0 prerequisite). R8 stays on; the BaselineProfile
+            // producer overrides per-variant (its `nonMinifiedRelease`
+            // variant disables R8 specifically so the generator sees
+            // un-AOT'd code paths during profile capture).
+            // The single-keystore signingConfig reuse mirrors the debug
+            // block — without it, AGP refuses to assemble the release
+            // variant for the BaselineProfile producer (`./gradlew
+            // :baselineprofile:assembleNonMinifiedRelease` fails at
+            // signing time).
+            isMinifyEnabled = true
+            isShrinkResources = true
             signingConfig = signingConfigs.getByName("debug")
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
         // Issue #409 — Macrobenchmark target build type. Non-debuggable
         // (so ART honors the installed Baseline Profile), no R8 (JP's
