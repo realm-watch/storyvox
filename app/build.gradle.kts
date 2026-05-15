@@ -7,6 +7,15 @@ plugins {
     // Issue #417 — :app needs kotlinx-serialization to JSON-encode the
     // user's starred radio stations in RadioConfigImpl.
     alias(libs.plugins.kotlin.serialization)
+    // Issue #409 — consumer side of the Baseline Profile plugin pair.
+    // Pulls the generated `baseline-prof.txt` from :baselineprofile into
+    // `app/src/main/baseline-prof.txt` so it's packaged into the APK.
+    // The producer (`:baselineprofile`) emits the profile via
+    // `BaselineProfileRule`; the plugin wires
+    // `:app:generateBaselineProfile` → that producer task and copies
+    // the result into :app's main sourceSet. ProfileInstaller (added
+    // below as a runtime dep) compiles the profile at install time.
+    alias(libs.plugins.androidx.baselineprofile)
 }
 
 /**
@@ -97,7 +106,46 @@ android {
         release {
             isMinifyEnabled = false
             isShrinkResources = false
+            // Same single-keystore stance as the debug build — see
+            // signingConfigs comment above. Without this, AGP refuses
+            // to assemble the release variant for the
+            // BaselineProfile producer (it can't sign the APK), and
+            // `./gradlew :baselineprofile:assembleNonMinifiedRelease`
+            // fails before the generator gets a chance to run.
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+        // Issue #409 — Macrobenchmark target build type. Non-debuggable
+        // (so ART honors the installed Baseline Profile), no R8 (JP's
+        // design call queued separately), debug-signed (single
+        // keystore). Mirrors release; the BaselineProfile plugin uses
+        // this as the producer side's target variant. The output APK
+        // is NOT what we ship — sideload distribution still rides the
+        // `debug` build type. This variant exists so:
+        //   1. The BaselineProfileGenerator can install a
+        //      non-debuggable target and measure AOT-compiled cold
+        //      launch (ART skips profile compilation for debuggable
+        //      builds, which would invalidate the with-profile number).
+        //   2. The StartupBenchmark gets honest "with profile" /
+        //      "without profile" comparisons.
+        // The generated `baseline-prof.txt` still gets copied into
+        // :app/src/main/ so it's bundled into the debug APK as well,
+        // ready to apply when/if storyvox switches its shipped build
+        // type to a non-debuggable one.
+        create("benchmark") {
+            initWith(getByName("release"))
+            // signingConfig already inherited from release.initWith.
+            // `debuggable = false` already set by initWith too. Adding
+            // matchingFallbacks so libraries with only debug/release
+            // variants resolve cleanly when consumed from benchmark.
+            matchingFallbacks += listOf("release")
+            // Profile-enabled but explicitly NOT minified — the JP
+            // R8 design call is a separate batch.
+            isMinifyEnabled = false
+            isShrinkResources = false
+            isProfileable = true
+            // Skip the BaselineProfile auto-wiring for this build type
+            // itself — we don't want a self-referential dependency.
         }
     }
 
@@ -243,4 +291,18 @@ dependencies {
     testImplementation(libs.robolectric)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+
+    // Issue #409 — ProfileInstaller compiles the bundled
+    // `baseline-prof.txt` at first-run on devices that don't go through
+    // a Play Store install (sideload APKs from GitHub Releases). Without
+    // this dep the profile is dead code: it ships inside the APK but
+    // never reaches the ART compiler. ProfileInstaller wakes up on
+    // first app launch, queues the AOT compile on a background thread,
+    // and the next cold-launch benefits.
+    implementation(libs.androidx.profileinstaller)
+
+    // Tells the AndroidX Baseline Profile Gradle plugin which producer
+    // module owns the generator task. Pair-matches the
+    // `targetProjectPath = ":app"` declaration in :baselineprofile.
+    "baselineProfile"(project(":baselineprofile"))
 }
