@@ -43,6 +43,9 @@ import `in`.jphe.storyvox.playback.SPEED_BASELINE_CHARS_PER_SECOND
 import `in`.jphe.storyvox.playback.SentenceRange
 import `in`.jphe.storyvox.playback.SleepTimer
 import `in`.jphe.storyvox.playback.TtsVolumeRamp
+import `in`.jphe.storyvox.playback.cache.PcmAppender
+import `in`.jphe.storyvox.playback.cache.PcmCache
+import `in`.jphe.storyvox.playback.cache.PcmCacheKey
 import `in`.jphe.storyvox.playback.tts.source.EngineStreamingSource
 import `in`.jphe.storyvox.playback.tts.source.PcmSource
 import `in`.jphe.storyvox.playback.voice.EngineType
@@ -144,6 +147,11 @@ class EnginePlayer @AssistedInject constructor(
      *  it emits 0 and the producer's existing punctuation-pause path
      *  keeps the audiobook-tuned default. */
     private val a11yPacingConfig: `in`.jphe.storyvox.data.repository.playback.A11yPacingConfig,
+    /** PR-D (#86) — on-disk PCM cache. EnginePlayer is the only thing
+     *  that knows the (chapter, voice, speed, pitch, dict) identity at
+     *  pipeline-construction time, so it owns key construction here.
+     *  The cache itself is a `@Singleton` injected by Hilt. */
+    private val pcmCache: PcmCache,
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
 
     @AssistedFactory
@@ -1318,6 +1326,62 @@ class EnginePlayer @AssistedInject constructor(
             }
             else -> emptyList()
         }
+        // PR-D (#86) — build the cache key for this (chapter, voice,
+        // speed, pitch, dict) tuple. All five pieces of identity must
+        // be known; if any is null we skip the cache write entirely
+        // (the source gets cacheAppender = null and behaves as
+        // pre-PR-D). Captured here at pipeline-construction time so a
+        // mid-pipeline state mutation can't shift the key out from
+        // under the live appender.
+        val chapterIdForCache = _observableState.value.currentChapterId
+        val voiceIdForCache = loadedVoiceId
+        val cacheKey: PcmCacheKey? = if (
+            chapterIdForCache != null && voiceIdForCache != null
+        ) {
+            PcmCacheKey(
+                chapterId = chapterIdForCache,
+                voiceId = voiceIdForCache,
+                speedHundredths = PcmCacheKey.quantize(currentSpeed),
+                pitchHundredths = PcmCacheKey.quantize(currentPitch),
+                chunkerVersion = CHUNKER_VERSION,
+                pronunciationDictHash = pronunciationDict.contentHash,
+            )
+        } else null
+
+        // Open the appender. If a partial entry exists from a prior
+        // killed render (meta.json on disk, idx.json absent), wipe it
+        // first — PR-D's resume policy is "abandon, restart". Resuming
+        // mid-chapter PCM across boots adds verification complexity
+        // (is the .pcm file's tail aligned to a sentence boundary?
+        // What sentence index do we restart from?) for negligible
+        // payoff: the kill-mid-render case is rare, and a fresh render
+        // takes the same wall time as a partial-resume would after
+        // verification.
+        //
+        // If the entry is COMPLETE (idx.json present), don't wipe —
+        // PR-E will short-circuit before this branch ever runs by
+        // constructing a CacheFileSource instead. PR-D-only world: a
+        // complete entry means the user replayed the chapter and the
+        // streaming source overwrites it with identical bytes (same
+        // key → same content). The overwrite is wasted work but
+        // harmless. PR-E removes this waste.
+        //
+        // runBlocking is acceptable here: startPlaybackPipeline is
+        // already called synchronously from a coroutine (or from
+        // suspend functions like loadAndPlay), so the blocking wait
+        // for pcmCache.delete is brief (a few File.delete syscalls on
+        // Dispatchers.IO — single-digit ms). Lifting startPlaybackPipeline
+        // to suspend is a bigger refactor punted to a follow-up.
+        val appender: PcmAppender? = cacheKey?.let { key ->
+            runBlocking {
+                if (pcmCache.metaFileFor(key).exists() && !pcmCache.isComplete(key)) {
+                    // Stale partial — wipe before opening fresh.
+                    pcmCache.delete(key)
+                }
+                pcmCache.appender(key, sampleRate = sampleRate)
+            }
+        }
+
         val source = EngineStreamingSource(
             sentences = sentences,
             startSentenceIndex = currentSentenceIndex,
@@ -1325,6 +1389,7 @@ class EnginePlayer @AssistedInject constructor(
             speed = currentSpeed,
             pitch = currentPitch,
             engineMutex = engineMutex,
+            cacheAppender = appender,
             punctuationPauseMultiplier = currentPunctuationPauseMultiplier,
             // #486 / #488 — TalkBack inter-sentence pad. Snapshot at
             // pipeline-construction time; mid-listen slider edits take
@@ -1570,6 +1635,33 @@ class EnginePlayer @AssistedInject constructor(
                     }
                 }
                 if (naturalEnd && pipelineRunning.get()) {
+                    // PR-D (#86) — finalize the cache on natural end so
+                    // the index sidecar lands and the cache is complete
+                    // for next play. Must happen BEFORE the chapter-done
+                    // coroutine because handleChapterDone advances and
+                    // calls loadAndPlay → startPlaybackPipeline, which
+                    // constructs a NEW source and overwrites the field.
+                    // We call finalizeCache on the SAME `source` local
+                    // captured by the Thread closure, so the field
+                    // reassignment doesn't affect us.
+                    runCatching { source.finalizeCache() }
+                    // Eviction runs AFTER finalize so the just-finalized
+                    // entry isn't visible to evictTo as an oldest LRU
+                    // candidate (it has the freshest mtime). The pinned
+                    // set is the just-finalized basename — defense in
+                    // depth in case mtime granularity makes it look
+                    // "old" relative to a same-second-finalized
+                    // neighbor. Runs on scope (Main+SupervisorJob); the
+                    // suspend body delegates to Dispatchers.IO inside
+                    // PcmCache.evictTo.
+                    scope.launch {
+                        runCatching {
+                            pcmCache.evictToQuota(
+                                pinnedBasenames = cacheKey?.let { setOf(it.fileBaseName()) }
+                                    ?: emptySet(),
+                            )
+                        }
+                    }
                     scope.launch {
                         sleepTimer.signalChapterEnd()
                         handleChapterDone()
