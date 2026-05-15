@@ -306,3 +306,42 @@ dependencies {
     // `targetProjectPath = ":app"` declaration in :baselineprofile.
     "baselineProfile"(project(":baselineprofile"))
 }
+
+/**
+ * Issue #409 — Baseline Profile consumer-side config.
+ *
+ * `mergeIntoMain = true` makes the plugin write the generated profile
+ * to `app/src/main/generated/baselineProfiles/baseline-prof.txt`
+ * rather than the default per-variant path
+ * (`app/src/release/generated/baselineProfiles/`). Because storyvox
+ * ships its `debug` build type (sideload-only, see signingConfigs
+ * comment above), a release-only profile wouldn't actually reach
+ * users. Merging into `main` makes the profile available to every
+ * variant — debug, release, benchmark.
+ *
+ * `saveInSrc = true` means the profile is checked into git (default
+ * behavior in 1.4.x). Without this the profile would land in the
+ * build directory only, forcing a regenerate on every clean CI run.
+ * We want it committed so the debug APK has it from the start.
+ *
+ * `automaticGenerationDuringBuild = false` keeps the BaselineProfile
+ * generation OFF the critical-path build. CI's `:app:assembleDebug`
+ * path needs to stay fast (~2 min); profile regeneration is an
+ * instrumented test (~6 min on Tab A7 Lite) so we run it manually on
+ * tag pushes or when the nav graph changes.
+ *
+ * NOTE: ProfileInstaller will only AOT-compile the bundled profile on
+ * NON-debuggable APKs. The current `debug` build type IS debuggable,
+ * so the profile bundles but doesn't activate at run time for the
+ * shipped APK as of v0.5.43. The win this PR captures lands when:
+ *   (a) storyvox switches the shipped build type to non-debuggable
+ *       (the new `benchmark` variant is ready), OR
+ *   (b) JP's separate R8 design call resolves and a release flavor
+ *       starts shipping.
+ * The infrastructure is fully wired ahead of either of those.
+ */
+baselineProfile {
+    mergeIntoMain = true
+    saveInSrc = true
+    automaticGenerationDuringBuild = false
+}
