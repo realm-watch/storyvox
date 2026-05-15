@@ -15,9 +15,15 @@ storyvox is currently distributed by sideloading. CI builds debug APKs on every 
 3. On the device, enable **Install unknown apps** for whichever browser or file manager you used.
 4. Open the APK to install.
 5. Launch storyvox. You'll be asked for **notification permission** (used for the lock-screen tile during playback).
-6. The voice picker appears on first launch — pick a Piper voice for a quick first chapter (~14–30 MB) or Kokoro if you want the multi-speaker model (~330 MB).
+6. The voice picker appears on first launch — pick a Piper voice for a quick first chapter (~14–30 MB), Kokoro for the multi-speaker model (~330 MB), or KittenTTS for the lightest tier (~24 MB, designed for slow devices).
 
-That's it. There's no account requirement. Anonymous browsing works for all public Royal Road fictions and every GitHub-sourced fiction.
+That's it. There's no account requirement. Anonymous browsing works for all public Royal Road fictions, every GitHub-sourced fiction, and the TechEmpower-default Notion library (Guides, Resources, About, Donate).
+
+## First-launch UX
+
+When the app opens you'll see the four-tab dock at the bottom of the screen — **Playing · Library · Voices · Settings** — and Library is the default landing tab. The brass TechEmpower hero card sits at the top of Library: tap it to open **TechEmpower Home** (Discord peer support, dial 211, browse the library, About). The currently-listening rail sits below the hero with smart-resume progress per fiction.
+
+The dock layout settled in v0.5.50 after the v0.5.40 nav restructure (which lifted Settings to a primary destination and tucked Browse and Follows under Library). Earlier sideloaded versions show a two-tab Library / Settings dock — upgrading in place preserves your library and switches to the new dock automatically.
 
 ## System requirements
 
@@ -30,6 +36,7 @@ That's it. There's no account requirement. Anonymous browsing works for all publ
 | Free storage (APK + Kokoro) | ~470 MB |
 | RAM | 2 GB+ recommended; tested on 3 GB Tab A7 Lite |
 | Network | Wi-Fi for first launch and voice download; chapters cache locally |
+| Cold launch | **~0.8 s on Tab A7 Lite** (release build, v0.5.46+ — R8 + Baseline Profile) |
 
 The TTS engine runs in storyvox's own process via the
 [VoxSherpa-TTS](https://github.com/techempower-org/VoxSherpa-TTS) `:engine-lib` AAR, so there's no second
