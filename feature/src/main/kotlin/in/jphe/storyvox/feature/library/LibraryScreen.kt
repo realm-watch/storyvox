@@ -40,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -623,9 +624,10 @@ private fun HistoryList(
 private fun HistoryRow(entry: HistoryEntry, onClick: () -> Unit) {
     val spacing = LocalSpacing.current
     Card(
+        // a11y (#481): Role.Button for the history-row open tap.
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .clickable(role = Role.Button, onClick = onClick),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             contentColor = MaterialTheme.colorScheme.onSurface,
@@ -826,9 +828,10 @@ private fun InboxList(
 private fun InboxRow(event: InboxEvent, onClick: () -> Unit) {
     val spacing = LocalSpacing.current
     Card(
+        // a11y (#481): Role.Button for the inbox-row open tap.
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .clickable(role = Role.Button, onClick = onClick),
         colors = CardDefaults.cardColors(
             // Quiet visual cue: unread events sit slightly brighter so
             // a quick scan tells the user where to look.

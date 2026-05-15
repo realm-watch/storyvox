@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -300,7 +301,8 @@ private fun FollowCardSkeleton() {
 private fun FollowCard(follow: UiFollow, onClick: () -> Unit) {
     val spacing = LocalSpacing.current
     Card(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() },
+        // a11y (#481): Role.Button for the card-level tap target.
+        modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { onClick() },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         shape = MaterialTheme.shapes.medium,
     ) {

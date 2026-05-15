@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -177,10 +178,15 @@ private fun OverlayHeader(
         playback.pipelineRunning -> StatusBrass
         else -> StatusNeutral
     }
+    // a11y (#481): debug overlay collapse/expand header — Role.Button.
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onToggle)
+            .clickable(
+                role = Role.Button,
+                onClickLabel = if (expanded) "Collapse debug overlay" else "Expand debug overlay",
+                onClick = onToggle,
+            )
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
                     if (dragAmount > 18f) onSwipeDown()

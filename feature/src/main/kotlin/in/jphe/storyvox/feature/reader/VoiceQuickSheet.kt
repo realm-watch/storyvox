@@ -128,10 +128,11 @@ internal fun VoiceQuickSheetContent(
         // (matches the established Player Options sheet pattern; the
         // previous IconButton-only target was undersized at 36 dp).
         QuickSheetHeader("Voice", null)
+        // a11y (#481): Role.Button + label for the voice-picker row.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onPickVoice)
+                .clickable(role = Role.Button, onClickLabel = "Pick voice", onClick = onPickVoice)
                 .padding(vertical = spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(spacing.sm),
@@ -194,10 +195,14 @@ internal fun VoiceQuickSheetContent(
         // rich UI in the quick sheet would bloat the surface; the
         // link-row keeps the v0.5.30 features discoverable from the
         // player without duplicating the picker UI.
+        // a11y (#481): Role.Button + label for the Advanced expander.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { advancedOpen = !advancedOpen }
+                .clickable(
+                    role = Role.Button,
+                    onClickLabel = if (advancedOpen) "Collapse advanced" else "Expand advanced",
+                ) { advancedOpen = !advancedOpen }
                 .padding(vertical = spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(spacing.sm),
@@ -228,7 +233,11 @@ internal fun VoiceQuickSheetContent(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(onClick = onOpenAdvancedVoice)
+                        .clickable(
+                            role = Role.Button,
+                            onClickLabel = "Open per-voice lexicon and Kokoro language",
+                            onClick = onOpenAdvancedVoice,
+                        )
                         .padding(vertical = spacing.xs),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(spacing.sm),

@@ -53,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -622,11 +623,18 @@ private fun EngineSubHeader(
         // emoji to know what's cloud vs local.
         VoiceEngine.Azure -> "Azure (Cloud)"
     }
+    // a11y (#481): engine sub-header expand/collapse — Role.Button with
+    // an explicit click label so TalkBack reads "Expand <label>" /
+    // "Collapse <label>" rather than the generic "double tap".
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onToggle)
+            .clickable(
+                role = Role.Button,
+                onClickLabel = if (isCollapsed) "Expand $label" else "Collapse $label",
+                onClick = onToggle,
+            )
             .padding(top = 6.dp, bottom = 2.dp),
     ) {
         Text(
@@ -843,11 +851,18 @@ private fun FavoriteToggle(
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
+    // a11y (#481): the favorite star is a toggleable Role.Checkbox —
+    // tap toggles the starred state. The icon's contentDescription
+    // doubles as the announcement TalkBack reads.
     Box(
         modifier = Modifier
             .size(36.dp)
             .clip(CircleShape)
-            .clickable(onClick = onToggle),
+            .clickable(
+                role = Role.Checkbox,
+                onClickLabel = if (isFavorite) "Remove from starred" else "Add to starred",
+                onClick = onToggle,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -1115,10 +1130,14 @@ internal fun VoiceAdvancedExpander(
                 )
                 .padding(horizontal = spacing.sm, vertical = spacing.xs),
         ) {
+            // a11y (#481): expand/collapse — Role.Button + label.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { expanded = !expanded }
+                    .clickable(
+                        role = Role.Button,
+                        onClickLabel = if (expanded) "Collapse advanced settings" else "Expand advanced settings",
+                    ) { expanded = !expanded }
                     .padding(vertical = spacing.xxs),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(spacing.xs),

@@ -56,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -688,7 +689,8 @@ private fun ChatInput(
                                 MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
                                 CircleShape,
                             )
-                            .clickable { onClearImage() },
+                            // a11y (#481): Role.Button for the clear-image x.
+                            .clickable(role = Role.Button, onClickLabel = "Remove image") { onClearImage() },
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(

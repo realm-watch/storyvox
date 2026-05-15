@@ -58,6 +58,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -414,7 +415,11 @@ fun BrowseScreen(
                                 .fillMaxWidth()
                                 .animateItem()
                                 .cascadeReveal(index = index, key = fiction.id)
-                                .clickable { onOpenFiction(fiction.id) },
+                                // a11y (#481): Role.Button + label for the fiction-card tap.
+                                .clickable(
+                                    role = Role.Button,
+                                    onClickLabel = "Open ${fiction.title}",
+                                ) { onOpenFiction(fiction.id) },
                             verticalArrangement = Arrangement.spacedBy(spacing.xs),
                         ) {
                             FictionCoverThumb(
