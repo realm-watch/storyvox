@@ -155,6 +155,31 @@ object SourceIds {
      *  high-friction. v1 ships no search (Bot API has no
      *  full-text search endpoint). */
     const val TELEGRAM: String = "telegram"
+    /** Palace Project (#502) — first library-borrowing backend. The
+     *  Palace Project is open-source library management software backing
+     *  many US public libraries (NYPL, BPL, etc.); the "Palace" mobile
+     *  app is the user-facing client and the backend speaks OPDS 1.x
+     *  catalog feeds (Atom-flavoured XML, fully open spec) with LCP DRM
+     *  on most borrowed titles.
+     *
+     *  v1 storyvox scope is **non-DRM titles only**. The OPDS walker
+     *  enumerates a user-configured library's catalog; titles whose
+     *  acquisition link is a free EPUB download route through the
+     *  existing `:source-epub` pipeline. Titles whose acquisition link
+     *  is `application/vnd.readium.lcp.license.v1.0+json` (the LCP
+     *  license-acquisition MIME) surface greyed-out with an
+     *  "Open in Palace app to borrow" deep-link CTA. No LCP
+     *  implementation in storyvox today — see scratch
+     *  `libby-hoopla-palace-scope/lcp-drm-scope.md` for the deferred
+     *  plan.
+     *
+     *  Default OFF on fresh installs (defaultEnabled=false in the
+     *  `@SourcePlugin` descriptor) because the catalog needs a
+     *  user-supplied library URL before it can return anything — adding
+     *  a default-on row to the picker that just says "configure a
+     *  library URL" is worse UX than hiding the row until the user
+     *  opts in via Settings → Library & Sync → Palace Project. */
+    const val PALACE: String = "palace"
     /** Readability4J catch-all (#472, magic-link audiobook) — the
      *  always-on last-resort matcher for the paste-anything flow. Any
      *  HTTP(S) URL that none of the 17 specialized backends claim

@@ -74,6 +74,12 @@ include(":source-telegram")
 // otherwise claimed by one of the 17 specialized backends still
 // produces a single-chapter "article" fiction. "No URL is a dead-end."
 include(":source-readability")
+// Issue #502 — Palace Project library backend (OPDS catalog walker).
+// First library-borrowing backend in the storyvox roster; ships
+// non-DRM titles only in this PR (LCP DRM is explicitly deferred —
+// see scratch/libby-hoopla-palace-scope/lcp-drm-scope.md). Libby +
+// Hoopla follow-ups defer to their own PRs (see sibling scope notes).
+include(":source-palace")
 include(":core-sync")
 include(":feature")
 // Issue #409 — Baseline Profile producer module. Pure test APK
