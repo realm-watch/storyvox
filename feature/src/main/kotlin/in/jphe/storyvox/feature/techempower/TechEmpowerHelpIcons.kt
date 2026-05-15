@@ -106,25 +106,15 @@ fun TechEmpowerHelpIcons() {
     // ─── Open peer-support Discord ───────────────────────────────────
     // The Forum icon is the most thematically-correct standard Material
     // icon for "community chat" (Discord-specific icons aren't in the
-    // M3 set). ACTION_VIEW with the Discord invite URL hands off to
-    // the Discord app if installed (Discord registers the discord.gg
-    // host as a deep-link target) or falls through to the user's
-    // browser, which shows Discord's "Open in app or browser" page.
+    // M3 set). Two-step launcher: tries `discord://invite/{slug}` first
+    // so installed Discord apps open native, falls back to the HTTPS
+    // URL otherwise. See [launchDiscord] for the rationale.
     Box(
         modifier = Modifier
             .size(48.dp)
             .clickable(
                 role = Role.Button,
-                onClick = {
-                    runCatching {
-                        context.startActivity(
-                            Intent(
-                                Intent.ACTION_VIEW,
-                                Uri.parse(TechEmpowerLinks.DISCORD_INVITE_URL),
-                            ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) },
-                        )
-                    }
-                },
+                onClick = { launchDiscord(context) },
             ),
         contentAlignment = Alignment.Center,
     ) {

@@ -47,6 +47,8 @@ import `in`.jphe.storyvox.feature.settings.SettingsHubScreen
 import `in`.jphe.storyvox.feature.settings.SettingsScreen
 import `in`.jphe.storyvox.feature.settings.VoiceAndPlaybackSettingsScreen
 import `in`.jphe.storyvox.feature.settings.pronunciation.PronunciationDictScreen
+import `in`.jphe.storyvox.feature.techempower.TechEmpowerAboutScreen
+import `in`.jphe.storyvox.feature.techempower.TechEmpowerHomeScreen
 import `in`.jphe.storyvox.feature.voicelibrary.VoiceLibraryScreen
 import `in`.jphe.storyvox.ui.component.BottomTabBar
 import `in`.jphe.storyvox.ui.component.HomeTab
@@ -123,6 +125,22 @@ object StoryvoxRoutes {
      *  affordance in the Library top app bar. Lives at /auth/sync so
      *  it sits alongside the other auth destinations. */
     const val SYNC = "auth/sync"
+
+    /**
+     * Issue #517 — TechEmpower-as-default-use-case landing screen.
+     * Reached via the brass-edged TechEmpower hero card pinned at the
+     * top of the Library grid. Drill-down depth (no bottom-bar
+     * destination) so the cold-launch Library landing isn't disrupted
+     * — TechEmpower Home is *opt-in via tap*, not a default route.
+     */
+    const val TECHEMPOWER_HOME = "techempower/home"
+
+    /**
+     * Issue #517 — "About TechEmpower" sub-screen with mission
+     * statement, donate flow, partnerships contact, 501(c)(3)
+     * attribution. Drill-down from TechEmpower Home.
+     */
+    const val TECHEMPOWER_ABOUT = "techempower/about"
     /** Q&A chat about a fiction (#81 follow-up). One chat history per
      *  fictionId; the screen pulls fiction title + current chapter
      *  context internally for the system prompt.
@@ -482,6 +500,11 @@ private fun StoryvoxNavHostContent(
                     // (the same SyncAuthScreen the onboarding card
                     // opens). One destination, one mental model.
                     onOpenSync = { navController.navigate(StoryvoxRoutes.SYNC) },
+                    // Issue #517 — TechEmpower hero card tap. Routes
+                    // to the dedicated TechEmpower Home drill-down.
+                    onOpenTechEmpower = {
+                        navController.navigate(StoryvoxRoutes.TECHEMPOWER_HOME)
+                    },
                     // Issue #383 — Inbox row tap deep-link. The URI is a
                     // pre-resolved `storyvox://reader/<fid>/<cid>` or
                     // `storyvox://fiction/<fid>` string. Decode here and
@@ -956,6 +979,54 @@ private fun StoryvoxNavHostContent(
             ) {
                 `in`.jphe.storyvox.feature.sync.SyncAuthScreen(
                     onClose = { navController.popBackStack() },
+                )
+            }
+            // Issue #517 — TechEmpower as default use case. Two new
+            // drill-down destinations reached from the brass-edged
+            // TechEmpower hero card pinned at the top of Library.
+            // Drill-down depth (push enter/exit transitions) — not a
+            // bottom-bar destination — so cold-launch still lands on
+            // Library and TechEmpower Home is opt-in via tap.
+            composable(
+                StoryvoxRoutes.TECHEMPOWER_HOME,
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+            ) {
+                TechEmpowerHomeScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenBrowse = {
+                        // Browse Resources tap routes to standalone
+                        // Browse — same destination as the empty-state
+                        // "Browse the realms" CTA on Playing. The
+                        // anonymous-mode Notion source is the v0.5.48
+                        // position-1 plugin in the Browse tab strip,
+                        // so users land on TechEmpower's four-fiction
+                        // tile set (Guides / Resources / About /
+                        // Donate) immediately.
+                        navController.navigate(StoryvoxRoutes.BROWSE) {
+                            popUpTo(StoryvoxRoutes.LIBRARY)
+                            launchSingleTop = true
+                        }
+                    },
+                    onOpenAbout = {
+                        navController.navigate(StoryvoxRoutes.TECHEMPOWER_ABOUT)
+                    },
+                    onOpenFiction = { fictionId ->
+                        navController.navigate(StoryvoxRoutes.fictionDetail(fictionId))
+                    },
+                )
+            }
+            composable(
+                StoryvoxRoutes.TECHEMPOWER_ABOUT,
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+            ) {
+                TechEmpowerAboutScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
         }

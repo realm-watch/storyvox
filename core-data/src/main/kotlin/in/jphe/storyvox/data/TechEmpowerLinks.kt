@@ -80,22 +80,25 @@ object TechEmpowerLinks {
     const val PARTNERSHIPS_EMAIL: String = "partnerships@techempower.org"
 
     /**
-     * Peer-support Discord invite URL. **PLACEHOLDER** — JP confirms
-     * the canonical URL in the PR review for `feat/techempower-default`.
-     *
-     * If TechEmpower doesn't have a Discord yet at PR-review time, the
-     * decision space is:
-     *   a) JP creates one, swaps in the real invite (1-line change).
-     *   b) Substitute another channel (Slack, forum) — swap the URL
-     *      and the icon (Discord-specific) in the top-app-bar.
-     *   c) Hide the Discord surface entirely (gate via a build-time
-     *      flag — extra plumbing, last resort).
-     *
-     * The placeholder URL below is structured as a real Discord invite
-     * so the ACTION_VIEW intent code doesn't need a special-case
-     * empty-string branch.
+     * Peer-support Discord invite URL — confirmed by JP 2026-05-15
+     * during PR development. HTTPS form (browser fallback for users
+     * without the Discord app installed).
      */
-    const val DISCORD_INVITE_URL: String = "https://discord.gg/techempower"
+    const val DISCORD_INVITE_URL: String = "https://discord.gg/j3SVttxw7k"
+
+    /**
+     * Discord deep-link form of the same invite — tried FIRST by the
+     * intent-launcher so the Discord app opens directly if installed.
+     * If no activity resolves the `discord://` scheme (Discord not
+     * installed), the launcher falls back to [DISCORD_INVITE_URL]
+     * which opens in the browser → Discord's "Open in app or join via
+     * web" landing page.
+     *
+     * The slug after `discord.gg/` and `discord://invite/` is the
+     * same value; pulled out as a separate constant so the two
+     * URL shapes stay in sync — change one, change both.
+     */
+    const val DISCORD_INVITE_DEEPLINK: String = "discord://invite/j3SVttxw7k"
 
     /**
      * Primary helpline surfaced in the top-app-bar phone icon and on

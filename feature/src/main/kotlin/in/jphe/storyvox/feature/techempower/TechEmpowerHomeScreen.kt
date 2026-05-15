@@ -149,16 +149,7 @@ fun TechEmpowerHomeScreen(
                     title = "Peer Support",
                     body = "Join our Discord community. Real people, no scripts.",
                     icon = Icons.Filled.Forum,
-                    onClick = {
-                        runCatching {
-                            context.startActivity(
-                                Intent(
-                                    Intent.ACTION_VIEW,
-                                    Uri.parse(TechEmpowerLinks.DISCORD_INVITE_URL),
-                                ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) },
-                            )
-                        }
-                    },
+                    onClick = { launchDiscord(context) },
                 )
             }
             item {
