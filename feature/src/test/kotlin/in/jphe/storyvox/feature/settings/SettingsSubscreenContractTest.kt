@@ -73,13 +73,23 @@ class SettingsSubscreenContractTest {
         assertComposableExists("AboutSettingsScreen")
     }
 
+    @Test
+    fun `AccessibilitySettingsScreen composable is present`() {
+        // Phase 1 scaffold landed in v0.5.42 — the composable exists
+        // as a placeholder shell that persists 7 toggles + sliders +
+        // radios to DataStore. Phase 2 wires the behavior; this pin
+        // catches a rename/deletion regression.
+        assertComposableExists("AccessibilitySettingsScreen")
+    }
+
     /**
      * The hub still names every section that has a dedicated subscreen
-     * (Voice & Playback, Reading, Performance, AI, Account, Memory
-     * Palace, About) in [SettingsHubSections]. A misspelling or
-     * accidental drop in the catalog would silently bury a card; pin
-     * the seven titles here independently of [SettingsHubSectionsTest]
-     * so a regression surfaces in the subscreen suite too.
+     * (Voice & Playback, Reading, Performance, AI, Accessibility,
+     * Account, Memory Palace, About) in [SettingsHubSections]. A
+     * misspelling or accidental drop in the catalog would silently bury
+     * a card; pin the eight titles here independently of
+     * [SettingsHubSectionsTest] so a regression surfaces in the
+     * subscreen suite too.
      */
     @Test
     fun `hub catalog still names every section that owns a subscreen`() {
@@ -88,6 +98,7 @@ class SettingsSubscreenContractTest {
             "Reading",
             "Performance",
             "AI",
+            "Accessibility",
             "Account",
             "Memory Palace",
             "About",

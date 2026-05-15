@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.outlined.Accessibility
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.AutoStories
@@ -53,6 +54,7 @@ import `in`.jphe.storyvox.ui.theme.LocalSpacing
  *  - Reading → [ReadingSettingsScreen]
  *  - Performance → [PerformanceSettingsScreen]
  *  - AI → [AiSettingsScreen]
+ *  - Accessibility → [AccessibilitySettingsScreen] (Phase 1 scaffold)
  *  - AI sessions → [SessionsScreen][in.jphe.storyvox.feature.sessions.SessionsScreen]
  *  - Plugins → [PluginManagerScreen][in.jphe.storyvox.feature.settings.plugins.PluginManagerScreen]
  *  - Pronunciation dictionary → [PronunciationDictScreen][in.jphe.storyvox.feature.settings.pronunciation.PronunciationDictScreen]
@@ -76,14 +78,15 @@ import `in`.jphe.storyvox.ui.theme.LocalSpacing
  * 3. Reading — theme, sleep timer.
  * 4. Performance — buffering, parallel synth, decoder choice.
  * 5. AI — chat model, grounding, recap.
- * 6. AI sessions — dedicated subscreen.
- * 7. Plugins — registry-driven plugin manager (#404 surface).
- * 8. Pronunciation dictionary — dedicated subscreen.
- * 9. Account — Royal Road / GitHub sign-ins.
- * 10. Memory Palace — daemon host config + probe.
- * 11. Developer — Debug screen + advanced toggles.
- * 12. About — version sigil + open-source notices.
- * 13. All settings (legacy long page) — escape hatch.
+ * 6. Accessibility — TalkBack / Switch Access scaffolding (Phase 1).
+ * 7. AI sessions — dedicated subscreen.
+ * 8. Plugins — registry-driven plugin manager (#404 surface).
+ * 9. Pronunciation dictionary — dedicated subscreen.
+ * 10. Account — Royal Road / GitHub sign-ins.
+ * 11. Memory Palace — daemon host config + probe.
+ * 12. Developer — Debug screen + advanced toggles.
+ * 13. About — version sigil + open-source notices.
+ * 14. All settings (legacy long page) — escape hatch.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,6 +102,7 @@ fun SettingsHubScreen(
     onOpenReading: () -> Unit,
     onOpenPerformance: () -> Unit,
     onOpenAi: () -> Unit,
+    onOpenAccessibility: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenMemoryPalace: () -> Unit,
     onOpenAbout: () -> Unit,
@@ -169,6 +173,15 @@ fun SettingsHubScreen(
                     title = "AI",
                     subtitle = "Chat model, grounding, recap.",
                     onClick = onOpenAi,
+                )
+                // Accessibility — Phase 1 scaffold (v0.5.42). Positioned
+                // between AI and AI sessions per spec: user-facing tier,
+                // not buried with the advanced rows further down.
+                SettingsHubRow(
+                    icon = Icons.Outlined.Accessibility,
+                    title = "Accessibility",
+                    subtitle = "TalkBack, contrast, motion, font scale.",
+                    onClick = onOpenAccessibility,
                 )
                 SettingsHubRow(
                     icon = Icons.Outlined.AutoStories,
@@ -286,6 +299,8 @@ val SettingsHubSections: List<SettingsHubSection> = listOf(
     SettingsHubSection("Reading", "Theme, sleep timer."),
     SettingsHubSection("Performance", "Buffer, parallel synth, decoder choice."),
     SettingsHubSection("AI", "Chat model, grounding, recap."),
+    // Phase 1 scaffold — v0.5.42. Phase 2 wires the actual behavior.
+    SettingsHubSection("Accessibility", "TalkBack, contrast, motion, font scale."),
     SettingsHubSection("AI sessions", "Review past chats and delete history."),
     SettingsHubSection("Plugins", "Toggle backends — Fiction, Audio streams, Voice bundles."),
     SettingsHubSection("Pronunciation dictionary", "Per-word phonetic overrides."),

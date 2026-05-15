@@ -6,7 +6,9 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import `in`.jphe.storyvox.feature.api.AzureProbeResult
 import `in`.jphe.storyvox.feature.api.PalaceProbeResult
+import `in`.jphe.storyvox.feature.api.ReadingDirection
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
+import `in`.jphe.storyvox.feature.api.SpeakChapterMode
 import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiLlmProvider
 import `in`.jphe.storyvox.feature.api.UiSettings
@@ -391,6 +393,25 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repo.setInboxNotifyKvmr(enabled) }
     fun setInboxNotifyWikipedia(enabled: Boolean) =
         viewModelScope.launch { repo.setInboxNotifyWikipedia(enabled) }
+
+    // ── Accessibility scaffold (Phase 1) ───────────────────────────
+    // Phase 1 forwards the user's intent to the repo; no behavior is
+    // wired yet. Phase 2 agents read [UiSettings.a11y*] + the
+    // [AccessibilityStateBridge] flow to actually adapt the app.
+    fun setA11yHighContrast(enabled: Boolean) =
+        viewModelScope.launch { repo.setA11yHighContrast(enabled) }
+    fun setA11yReducedMotion(enabled: Boolean) =
+        viewModelScope.launch { repo.setA11yReducedMotion(enabled) }
+    fun setA11yLargerTouchTargets(enabled: Boolean) =
+        viewModelScope.launch { repo.setA11yLargerTouchTargets(enabled) }
+    fun setA11yScreenReaderPauseMs(ms: Int) =
+        viewModelScope.launch { repo.setA11yScreenReaderPauseMs(ms) }
+    fun setA11ySpeakChapterMode(mode: SpeakChapterMode) =
+        viewModelScope.launch { repo.setA11ySpeakChapterMode(mode) }
+    fun setA11yFontScaleOverride(scale: Float) =
+        viewModelScope.launch { repo.setA11yFontScaleOverride(scale) }
+    fun setA11yReadingDirection(direction: ReadingDirection) =
+        viewModelScope.launch { repo.setA11yReadingDirection(direction) }
 }
 
 /** Map the feature-layer enum to the :core-llm enum. The two are

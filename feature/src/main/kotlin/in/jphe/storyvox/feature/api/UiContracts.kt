@@ -1037,6 +1037,37 @@ data class UiSettings(
     val inboxNotifyRoyalRoad: Boolean = true,
     val inboxNotifyKvmr: Boolean = true,
     val inboxNotifyWikipedia: Boolean = true,
+    /**
+     * Accessibility scaffold (Phase 1) — opt-in switches that adapt
+     * storyvox for users on TalkBack, Switch Access, or other
+     * assistive services. The toggles persist user intent here in
+     * [UiSettings]; the actual behavior wiring (theme swap, animation
+     * suppression, touch-target bump, TTS pacing) lands in Phase 2
+     * agents that consume these fields.
+     *
+     * Each default is the no-op state — turning the toggle off keeps
+     * storyvox's current behavior bit-identical, so a Phase 1 install
+     * is indistinguishable from an upgrade without the new fields
+     * persisted yet. Phase 2 introduces a separate "auto-on when
+     * assistive service detected" overlay that reads
+     * [`AccessibilityState`] without flipping these stored prefs —
+     * the prefs remain the user's explicit intent, the live state
+     * remains the device's current reality, and Phase 2's adapter
+     * uses `prefs OR detected` as the effective flag.
+     */
+    val a11yHighContrast: Boolean = false,
+    val a11yReducedMotion: Boolean = false,
+    val a11yLargerTouchTargets: Boolean = false,
+    /** Extra inter-sentence pause when TalkBack is active. 0..1500 ms,
+     *  default 500ms. Phase 2 consumes this when a TalkBack session is
+     *  detected; outside TalkBack the slider is inert. */
+    val a11yScreenReaderPauseMs: Int = 500,
+    /** Controls how chapter headers read out under TalkBack. */
+    val a11ySpeakChapterMode: SpeakChapterMode = SpeakChapterMode.Both,
+    /** Font scale override applied on top of Android's system font scale.
+     *  0.85..1.5; 1.0 = no extra scaling. */
+    val a11yFontScaleOverride: Float = 1.0f,
+    val a11yReadingDirection: ReadingDirection = ReadingDirection.FollowSystem,
 ) {
     /** Speed value the engine should run at right now — the active
      *  voice's override if set, otherwise the global default (#195). */
@@ -1226,6 +1257,32 @@ data class UiSigil(
 }
 
 enum class ThemeOverride { System, Dark, Light }
+
+/**
+ * Accessibility scaffold (Phase 1) — chapter-header read-out preference
+ * for TalkBack. The values render verbatim as the user-facing radio
+ * labels in [`AccessibilitySettingsScreen`]; renaming any of these is a
+ * UI-visible change.
+ *
+ * Phase 2 (the TalkBack adapter agent) consumes the selected value when
+ * a chapter header is about to be announced; outside TalkBack the
+ * setting is inert. See [UiSettings.a11ySpeakChapterMode].
+ */
+enum class SpeakChapterMode { Both, NumbersOnly, TitlesOnly }
+
+/**
+ * Accessibility scaffold (Phase 1) — system reading-direction escape
+ * hatch. `FollowSystem` defers to the device locale (the v0.5.41
+ * behavior); `ForceLtr` / `ForceRtl` flip the layout direction
+ * unconditionally so a developer can audit RTL rendering without
+ * switching the system locale, and so a user on a mismatched-locale
+ * device (LTR content on an RTL-defaulted handset, or the reverse)
+ * can override.
+ *
+ * Phase 2 wires this into `LayoutDirection` at the NavHost root; today
+ * the radio group only persists the user's intent.
+ */
+enum class ReadingDirection { FollowSystem, ForceLtr, ForceRtl }
 
 interface SettingsRepositoryUi {
     val settings: Flow<UiSettings>
@@ -1528,6 +1585,26 @@ interface SettingsRepositoryUi {
     suspend fun setInboxNotifyRoyalRoad(enabled: Boolean) {}
     suspend fun setInboxNotifyKvmr(enabled: Boolean) {}
     suspend fun setInboxNotifyWikipedia(enabled: Boolean) {}
+
+    // ── Accessibility scaffold (Phase 1) ───────────────────────────
+    /**
+     * Setters for the new Accessibility subscreen toggles. Phase 1
+     * only persists the user's intent — no behavior is wired yet.
+     * Phase 2 agents (high-contrast theme, TalkBack adapter,
+     * reduced-motion enforcer) consume [UiSettings.a11y*] and the
+     * Hilt-provided `Flow<AccessibilityState>` to actually adapt the
+     * app.
+     *
+     * Defaults are no-ops so existing test fakes don't have to
+     * implement them; the real DataStore impl in `:app` overrides.
+     */
+    suspend fun setA11yHighContrast(enabled: Boolean) {}
+    suspend fun setA11yReducedMotion(enabled: Boolean) {}
+    suspend fun setA11yLargerTouchTargets(enabled: Boolean) {}
+    suspend fun setA11yScreenReaderPauseMs(ms: Int) {}
+    suspend fun setA11ySpeakChapterMode(mode: SpeakChapterMode) {}
+    suspend fun setA11yFontScaleOverride(scale: Float) {}
+    suspend fun setA11yReadingDirection(direction: ReadingDirection) {}
 }
 
 /**
