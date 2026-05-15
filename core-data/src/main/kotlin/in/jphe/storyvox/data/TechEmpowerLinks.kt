@@ -117,12 +117,30 @@ object TechEmpowerLinks {
      * who needs the social-services line (the much-more-common case)
      * doesn't have to scroll past a crisis-line option to reach it.
      *
-     * 911 is intentionally NOT on the top-app-bar — accidental 911
-     * misfires are costly, and storyvox isn't an emergency app. A
-     * dedicated "Emergency" card on TechEmpower Home is the right
-     * surface if/when JP wants 911 reachable in-app.
+     * Also surfaced as the *top* button on the TechEmpower Home
+     * Emergency Help card (issue #516) — the card is the discoverable
+     * companion to the hidden long-press affordance.
      */
     const val CRISIS_HELP_NUMBER: String = "988"
+
+    /**
+     * Issue #516 — **911 emergency dispatch**, surfaced ONLY on the
+     * TechEmpower Home Emergency Help card. Intentionally NOT on the
+     * top-app-bar phone icon: a stray tap on a top-bar shortcut that
+     * dials emergency services is the wrong UX (accidental misdials
+     * waste dispatch capacity). On the card surface, the user has
+     * already chosen "I'm looking at emergency numbers" — context-
+     * aware enough that a tap-to-dial affordance is appropriate.
+     *
+     * `ACTION_DIAL` (not `ACTION_CALL`) keeps storyvox out of the
+     * permission-requiring path; the user lands in the system dialer
+     * with `911` pre-filled and has to hit the green button to
+     * actually place the call.
+     *
+     * V1 is US-only. CA/UK/AU have different emergency numbers
+     * (999/000/etc.) — localisation is a v2 issue (see #516).
+     */
+    const val EMERGENCY_DISPATCH_NUMBER: String = "911"
 
     /**
      * Building a `tel:` URI for [Intent.ACTION_DIAL]. Returns a String
