@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Slack Web API at slack.com over HTTPS — needs INTERNET. No
+         background-network surface; all calls happen on user-driven
+         flows (Browse fetch, fiction-detail open, chapter open). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+</manifest>

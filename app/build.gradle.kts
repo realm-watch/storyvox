@@ -285,6 +285,10 @@ dependencies {
     implementation(project(":source-plos"))
     implementation(project(":source-discord"))
     implementation(project(":source-telegram"))
+    // Issue #454 — Slack Web API backend. Channels-as-fictions via
+    // Bot Token auth (xoxb-…). Mirrors :source-telegram's leaf
+    // shape; the SlackConfigImpl + DataStore wiring lives in :app.
+    implementation(project(":source-slack"))
     // Issue #472 — magic-link Readability catch-all. Must be on the
     // app classpath so its KSP-generated SourcePluginDescriptor binding
     // joins the Hilt multibinding set the registry consumes.
