@@ -9,6 +9,18 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.50] — 2026-05-15
+
+### Changed
+- **Playing leads the bottom dock** (`a8d8eb0`) — JP final on 2026-05-15. New dock order: `{Playing, Library, Voices, Settings}` (was `{Library, Playing, Voices, Settings}` since v0.5.48). Playing is the most-touched destination during a listening session and now sits in the leftmost cell. The NavHost startDestination is independent of HomeTab's ordinal — cold-launch still lands on Library, the dock just shifts which pill is leftmost.
+
+### Out-of-app (no APK impact, captured here for the trail)
+- **Tablet OS gestures restored** — Tab A7 Lite was missing swipe-up-home and long-press-up-recents. Root cause: Samsung Android 14 SystemUI hardcodes its QuickStep binding to `com.sec.android.app.launcher/.globalgesture.TouchInteractionService` (the Samsung One UI Launcher's path). Third-party launchers can register `QUICKSTEP_SERVICE` but Samsung SystemUI silently ignores them. The Samsung One UI Launcher had been uninstalled-for-user but was still on the system partition; restored via `adb shell cmd package install-existing com.sec.android.app.launcher`, set as HOME role, nav-mode toggle rebinds. Captured in `feedback_samsung_launcher_gestures` memory so future debugging skips the launcher-shuffle.
+- **TalkBack installed on both devices** — Android Accessibility Suite (`com.google.android.marvin.talkback`) now on R83W80CAFZB + R5CRB0W66MK. The v0.5.41 audit had treated "not installed by default on Samsung tablets" as "cannot install" and substituted uiautomator-XML inspection; this was wrong. Future TalkBack swipe-through audits can run on either device. Captured in `feedback_talkback_installable` memory.
+
+### Awaiting (deferred for separate ship)
+- **PR #491** by `adminlip` (first external PR — accessibility-label improvements) sits open. The diff is good but it's bot-authored; JP deferred the merge decision.
+
 ## [0.5.49] — 2026-05-15
 
 The five-parallel-agent release. Largest bundle of the session — six features land at once.
