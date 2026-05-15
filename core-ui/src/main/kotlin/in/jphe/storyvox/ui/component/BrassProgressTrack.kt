@@ -31,6 +31,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import `in`.jphe.storyvox.ui.theme.LocalReducedMotion
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 import kotlin.math.roundToLong
 
@@ -65,25 +66,40 @@ fun BrassProgressTrack(
     // the thumb glows softer-then-brighter) and radius (a subtle 8→11dp
     // breath). At 1100ms it's fast enough to feel alive but slow enough not
     // to look like a fault indicator.
+    //
+    // #486 Phase 2 / #480 — under LocalReducedMotion the pulse goes
+    // static (alpha=1f, radius boost=0). The thumb still renders at
+    // a clear, slightly-brighter resting state so the user can tell
+    // the rail is loading-vs-active without the breath animation
+    // (which can trigger vestibular discomfort).
+    val reducedMotion = LocalReducedMotion.current
     val pulse = rememberInfiniteTransition(label = "thumb-pulse")
-    val pulseAlpha by pulse.animateFloat(
-        initialValue = 0.55f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1100, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "alpha",
-    )
-    val pulseRadiusBoost by pulse.animateFloat(
-        initialValue = 0f,
-        targetValue = 3f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1100, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "radius",
-    )
+    val pulseAlpha by if (reducedMotion) {
+        remember { mutableFloatStateOf(1f) }
+    } else {
+        pulse.animateFloat(
+            initialValue = 0.55f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1100, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "alpha",
+        )
+    }
+    val pulseRadiusBoost by if (reducedMotion) {
+        remember { mutableFloatStateOf(0f) }
+    } else {
+        pulse.animateFloat(
+            initialValue = 0f,
+            targetValue = 3f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1100, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "radius",
+        )
+    }
 
     Box(
         modifier = modifier.semantics {

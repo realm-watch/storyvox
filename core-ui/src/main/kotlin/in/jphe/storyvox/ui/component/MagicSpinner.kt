@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import `in`.jphe.storyvox.ui.theme.LocalReducedMotion
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
 /**
@@ -55,16 +56,29 @@ fun MagicSpinner(
     color: Color = MaterialTheme.colorScheme.primary,
 ) {
     val brass = color
+    // #486 Phase 2 / #480 — MagicSpinner is the universal "we're
+    // waiting on something" affordance. Under reduced motion the
+    // rotation freezes at a steady angle (135°) so it still reads
+    // as a magical-sigil glyph rather than disappearing. Functional
+    // signal (something is loading) is preserved by the spinner's
+    // existence and the accompanying "Loading…" text (callers always
+    // pair it with status copy).
+    val reducedMotion = LocalReducedMotion.current
     val transition = rememberInfiniteTransition(label = "magic-spinner")
-    val angle by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMs, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "rotation",
-    )
+    val angle: Float = if (reducedMotion) {
+        135f
+    } else {
+        val animated by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMs, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "rotation",
+        )
+        animated
+    }
 
     Canvas(modifier = modifier.rotate(angle)) {
         val stroke = strokeWidth.toPx()

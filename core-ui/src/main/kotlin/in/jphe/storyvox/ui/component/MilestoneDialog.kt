@@ -36,6 +36,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import `in`.jphe.storyvox.ui.theme.BrassRamp
 import `in`.jphe.storyvox.ui.theme.LibraryNocturneTheme
+import `in`.jphe.storyvox.ui.theme.LocalReducedMotion
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 import `in`.jphe.storyvox.ui.theme.PlumRamp
 
@@ -81,13 +82,21 @@ fun MilestoneDialog(
             usePlatformDefaultWidth = false,
         ),
     ) {
+        // #486 Phase 2 / #480 — fade+scale enter under reduced motion
+        // collapses to a snap. The dialog still appears, just without
+        // the 400ms ease-in.
+        val reducedMotion = LocalReducedMotion.current
         AnimatedVisibility(
             visible = visible,
-            enter = fadeIn(animationSpec = tween(durationMillis = 400, easing = LinearOutSlowInEasing)) +
-                scaleIn(
-                    initialScale = 0.95f,
-                    animationSpec = tween(durationMillis = 400, easing = LinearOutSlowInEasing),
-                ),
+            enter = if (reducedMotion) {
+                androidx.compose.animation.EnterTransition.None
+            } else {
+                fadeIn(animationSpec = tween(durationMillis = 400, easing = LinearOutSlowInEasing)) +
+                    scaleIn(
+                        initialScale = 0.95f,
+                        animationSpec = tween(durationMillis = 400, easing = LinearOutSlowInEasing),
+                    )
+            },
         ) {
             Surface(
                 modifier = Modifier

@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import `in`.jphe.storyvox.ui.theme.LocalReducedMotion
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -41,6 +42,13 @@ import kotlin.math.sin
  */
 @Composable
 fun shimmerAlpha(): Float {
+    // #486 Phase 2 / #480 — under reduced motion the shimmer
+    // collapses to a static mid-alpha (0.6 — between min 0.35 and
+    // max 0.85). The skeleton still reads as a placeholder rectangle;
+    // we just don't animate the breathing pulse, which is the
+    // decorative bit a vestibular-sensitive user wants out of their
+    // peripheral vision.
+    if (LocalReducedMotion.current) return 0.6f
     val transition = rememberInfiniteTransition(label = "skeleton-shimmer")
     val alpha by transition.animateFloat(
         initialValue = 0.35f,
@@ -90,34 +98,46 @@ fun MagicSkeletonTile(
     shape: Shape = MaterialTheme.shapes.medium,
     glyphSize: Dp = 56.dp,
 ) {
+    // #486 Phase 2 / #480 — under reduced motion the sigil freezes
+    // at a deliberate resting pose (outer 0°, inner 30°, full pulse).
+    // The brass glyph still reads as a placeholder; the rotating
+    // parallax goes away.
+    val reducedMotion = LocalReducedMotion.current
     val transition = rememberInfiniteTransition(label = "skeleton-sigil")
-    // Outer ring rotates clockwise; the inner star rotates counter-clockwise
-    // at a different period for visual depth.
-    val outerRotation by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 12_000, easing = LinearEasing),
-        ),
-        label = "outer",
-    )
-    val innerRotation by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = -360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 18_000, easing = LinearEasing),
-        ),
-        label = "inner",
-    )
-    val pulse by transition.animateFloat(
-        initialValue = 0.55f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1800, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "pulse",
-    )
+    val outerRotation: Float = if (reducedMotion) 0f else {
+        val v by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 12_000, easing = LinearEasing),
+            ),
+            label = "outer",
+        )
+        v
+    }
+    val innerRotation: Float = if (reducedMotion) 30f else {
+        val v by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = -360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 18_000, easing = LinearEasing),
+            ),
+            label = "inner",
+        )
+        v
+    }
+    val pulse: Float = if (reducedMotion) 1.0f else {
+        val v by transition.animateFloat(
+            initialValue = 0.55f,
+            targetValue = 1.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1800, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "pulse",
+        )
+        v
+    }
 
     val brass = MaterialTheme.colorScheme.primary
     val brassDim = brass.copy(alpha = 0.45f)

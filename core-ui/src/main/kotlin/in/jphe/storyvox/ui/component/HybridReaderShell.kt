@@ -1,6 +1,7 @@
 package `in`.jphe.storyvox.ui.component
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -19,6 +20,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
 import `in`.jphe.storyvox.ui.theme.LocalMotion
+import `in`.jphe.storyvox.ui.theme.LocalReducedMotion
 import kotlin.math.roundToInt
 
 enum class ReaderView { Audiobook, Reader }
@@ -45,6 +47,12 @@ fun HybridReaderShell(
     modifier: Modifier = Modifier,
 ) {
     val motion = LocalMotion.current
+    // #486 Phase 2 / #480 — settle-spring is functional (it's how the
+    // user knows the swipe "completed" into the next pane), so we
+    // keep it on, just with a snap spec instead of a 360ms ease.
+    // Snap-to-target preserves the structural feedback (the pane
+    // does settle) while removing the lateral motion.
+    val reducedMotion = LocalReducedMotion.current
 
     var width by remember { mutableFloatStateOf(0f) }
     var dragOffset by remember { mutableFloatStateOf(0f) }
@@ -58,7 +66,7 @@ fun HybridReaderShell(
 
     val animatedOffset by animateFloatAsState(
         targetValue = if (isDragging) dragOffset else target,
-        animationSpec = tween(motion.swipeDurationMs, easing = motion.swipeEasing),
+        animationSpec = if (reducedMotion) snap() else tween(motion.swipeDurationMs, easing = motion.swipeEasing),
         label = "shellOffset",
     )
 

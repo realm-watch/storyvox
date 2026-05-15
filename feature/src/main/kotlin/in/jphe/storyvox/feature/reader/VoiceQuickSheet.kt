@@ -39,6 +39,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import `in`.jphe.storyvox.feature.api.UiPlaybackState
+import `in`.jphe.storyvox.ui.theme.LocalReducedMotion
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
 /**
@@ -224,10 +225,14 @@ internal fun VoiceQuickSheetContent(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        // #486 Phase 2 / #480 — expand/collapse snaps under reduced
+        // motion (structural state change preserved; the easing curve
+        // doesn't play).
+        val reducedMotion = LocalReducedMotion.current
         AnimatedVisibility(
             visible = advancedOpen,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically(),
+            enter = if (reducedMotion) androidx.compose.animation.EnterTransition.None else fadeIn() + expandVertically(),
+            exit = if (reducedMotion) androidx.compose.animation.ExitTransition.None else fadeOut() + shrinkVertically(),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
                 Row(

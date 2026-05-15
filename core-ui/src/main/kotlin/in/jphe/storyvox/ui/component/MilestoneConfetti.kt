@@ -21,6 +21,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import `in`.jphe.storyvox.ui.theme.BrassRamp
 import `in`.jphe.storyvox.ui.theme.LibraryNocturneTheme
+import `in`.jphe.storyvox.ui.theme.LocalReducedMotion
 import `in`.jphe.storyvox.ui.theme.PlumRamp
 import kotlinx.coroutines.delay
 import kotlin.math.sin
@@ -54,6 +55,17 @@ fun MilestoneConfetti(
     onFinished: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // #486 Phase 2 / #480 — confetti is pure decoration. Under
+    // reduced motion we skip the 3.5s drift entirely and fire
+    // onFinished on the next frame so the host gate flips and the
+    // surface returns to the player immediately. The milestone
+    // dialog (mounted separately by [MilestoneDialogHost]) still
+    // surfaces the brass thank-you card — the user gets the
+    // celebration message without the moving particles.
+    if (LocalReducedMotion.current) {
+        LaunchedEffect(Unit) { onFinished() }
+        return
+    }
     // Stable seed pinned at first composition. The randoms below
     // re-seed from this on every recomposition so the particle
     // pattern doesn't shuffle when the parent's animation tick
