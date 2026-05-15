@@ -21,8 +21,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.AutoStories
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -60,9 +64,30 @@ import androidx.compose.ui.unit.dp
  *    icons. Voices is reached via Settings → Voices; Browse / Follows live
  *    under Library; Playing returns when a player surface (#267) is needed.
  */
+/**
+ * Bottom-nav destinations.
+ *
+ * **v0.5.40 restructure** collapsed to `{Library, Settings}` with Browse +
+ * Follows + Inbox + History folded into Library sub-tabs.
+ *
+ * **v0.5.48 partial revert** (JP feedback 2026-05-15) — Playing + Voices
+ * restored as primary nav destinations alongside Library + Settings.
+ * Browse + Follows + Inbox + History stay as Library sub-tabs (the user
+ * liked that part of the restructure); the two destinations being added
+ * back are the ones the user reaches often enough that the gear-menu
+ * detour was friction:
+ *  - **Playing** — currently-playing chapter transport. Returns the
+ *    Apple-Books pattern of "tap-and-you're-back-in-audio".
+ *  - **Voices** — Voice Library, was at Settings → Voices in the
+ *    restructure; JP reaches it often enough to deserve the dock.
+ *
+ * Four tabs now in the dock: `{Library, Playing, Voices, Settings}`.
+ */
 @Immutable
 enum class HomeTab(val label: String, val filled: ImageVector, val outlined: ImageVector) {
     Library("Library", Icons.Filled.AutoStories, Icons.Outlined.AutoStories),
+    Playing("Playing", Icons.Filled.PlayArrow, Icons.Outlined.PlayArrow),
+    Voices("Voices", Icons.Filled.RecordVoiceOver, Icons.Outlined.RecordVoiceOver),
     Settings("Settings", Icons.Filled.Settings, Icons.Outlined.Settings),
 }
 

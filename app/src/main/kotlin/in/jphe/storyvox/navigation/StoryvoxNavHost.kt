@@ -255,25 +255,27 @@ private fun StoryvoxNavHostContent(
         bottomBar = {
             if (showBottomBar) {
                 BottomTabBar(
-                    selected = when (currentRoute) {
-                        // Restructure (v0.5.40) — Settings is the second
-                        // primary destination. Both the hub and the
-                        // legacy long-scroll page (reached from inside
-                        // the hub) light the Settings pill.
+                    // v0.5.48 — `{Library, Playing, Voices, Settings}`
+                    // dock per JP feedback restoring Playing + Voices
+                    // alongside the v0.5.40 Settings primary slot. The
+                    // base-route stripping handles PR #475's magic-link
+                    // query-arg suffix (`library?sharedUrl=...`).
+                    selected = when (currentRoute?.substringBefore("?")) {
                         StoryvoxRoutes.SETTINGS_HUB,
                         StoryvoxRoutes.SETTINGS -> HomeTab.Settings
-                        // Everything else — Library, Browse, Follows,
-                        // Voice Library, Playing, Reader, Audiobook —
-                        // lights the Library pill since Library is now
-                        // the umbrella destination for all of those
-                        // surfaces (Browse / Follows live as Library
-                        // sub-tabs; Reader / Audiobook are drill-downs
-                        // from a Library entry).
+                        StoryvoxRoutes.VOICE_LIBRARY -> HomeTab.Voices
+                        StoryvoxRoutes.PLAYING -> HomeTab.Playing
+                        // Library + Browse + Follows + Inbox + History
+                        // sub-tabs and Reader / Audiobook drill-downs
+                        // all light the Library pill — Library is
+                        // still the umbrella for that whole tree.
                         else -> HomeTab.Library
                     },
                     onSelect = { tab ->
                         val target = when (tab) {
                             HomeTab.Library -> StoryvoxRoutes.LIBRARY
+                            HomeTab.Playing -> StoryvoxRoutes.PLAYING
+                            HomeTab.Voices -> StoryvoxRoutes.VOICE_LIBRARY
                             HomeTab.Settings -> StoryvoxRoutes.SETTINGS_HUB
                         }
                         if (target != currentRoute) {
