@@ -2,6 +2,7 @@ package `in`.jphe.storyvox.playback.tts.source
 
 import android.os.Process as AndroidProcess
 import `in`.jphe.storyvox.playback.SentenceRange
+import `in`.jphe.storyvox.playback.cache.PcmAppender
 import `in`.jphe.storyvox.playback.tts.Sentence
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
@@ -73,6 +74,28 @@ class EngineStreamingSource(
      *  loadModel().destroy() while the prior source's generator is still
      *  inside the JNI generate(...) call, corrupting native state. */
     private val engineMutex: Mutex,
+    /**
+     * PR-D (#86) — optional write-through to the on-disk PCM cache. When
+     * non-null, every sentence the producer generates is mirrored into
+     * this appender via [PcmAppender.appendSentence]. On [close] (which
+     * fires on user pause + pipeline teardown, voice swap, and
+     * seek-induced restart) the appender is [PcmAppender.abandon]'d so
+     * the partial files don't lie around looking like a complete cache.
+     * On natural end-of-chapter (the consumer thread reaches the
+     * END_PILL), the consumer calls [finalizeCache] which writes the
+     * index sidecar and marks the cache complete for PR-E's
+     * `CacheFileSource` to pick up on next play.
+     *
+     * Null in tests that don't care about the cache, and in pre-cache
+     * environments where the feature flag is off (PR-F gates).
+     *
+     * Note: NOT a `val` — we shadow it as a private mutable field below
+     * so that abandon-on-seek / abandon-on-close can null it out and
+     * subsequent tee writes from a restarted producer no-op safely.
+     * Reassigning a constructor `val` parameter is a compile error in
+     * Kotlin, hence the shadow.
+     */
+    cacheAppender: PcmAppender? = null,
     private val punctuationPauseMultiplier: Float = 1f,
     /**
      * Accessibility scaffold Phase 2 (#486 / #488, v0.5.43) — extra
@@ -197,7 +220,31 @@ class EngineStreamingSource(
     private val running = AtomicBoolean(true)
     private val queue = LinkedBlockingQueue<Item>(queueCapacity)
 
+    /**
+     * PR-D (#86) — mutable shadow of the constructor's `cacheAppender`
+     * param so [seekToCharOffset] and [close] can null it out after
+     * abandon. Volatile because the producer reads it on the dedicated
+     * producer thread while [seekToCharOffset] / [close] runs on the
+     * caller's thread.
+     */
+    @Volatile private var cacheAppender: PcmAppender? = cacheAppender
+
     private val _bufferHeadroomMs = MutableStateFlow(0L)
+
+    private val _cacheTeeErrors = MutableStateFlow(0)
+
+    /**
+     * PR-D (#86) — count of cache-tee write failures since this source
+     * was constructed. Exposed for diagnostic logging — the cache writes
+     * are best-effort (a write failure doesn't block playback) so a
+     * non-zero value indicates the on-disk cache for THIS chapter run
+     * won't be usable. The next play will see `isComplete = false` and
+     * re-render fresh.
+     *
+     * Stays at 0 in normal operation; spikes signal full storage or a
+     * permissions regression on the cache directory.
+     */
+    val cacheTeeErrors: StateFlow<Int> = _cacheTeeErrors.asStateFlow()
 
     /**
      * Total ms of audio currently buffered in the queue (sum of pcm
@@ -268,6 +315,13 @@ class EngineStreamingSource(
             .takeIf { it >= 0 } ?: 0
         producerJob.cancel()
         queue.clear()
+        // PR-D (#86) — abandon the in-progress cache. A sparse cache
+        // (sentences 0-3 then 12+ because the user seeked forward) is
+        // worse than no cache; PR-E's CacheFileSource expects sequential
+        // byte offsets. Null the field so the restarted producer below
+        // sees no appender and the tee no-ops.
+        runCatching { cacheAppender?.abandon() }
+        cacheAppender = null
         producerJob = startProducer(target)
     }
 
@@ -277,6 +331,13 @@ class EngineStreamingSource(
         queue.clear()
         // Wake any consumer blocked in take() so nextChunk returns null.
         queue.offer(END_PILL)
+        // PR-D (#86) — abandon any partial cache. If the consumer
+        // already called [finalizeCache] on natural end, the appender
+        // has been nulled out and abandon() is a no-op. Idempotent
+        // either way — [PcmAppender.abandon] no-ops on a closed
+        // appender too.
+        runCatching { cacheAppender?.abandon() }
+        cacheAppender = null
         scope.cancel()
         // Tier 2 (#87) — shut the dedicated producer executor down so
         // the daemon thread exits and isn't leaked across pipeline
@@ -300,6 +361,32 @@ class EngineStreamingSource(
         runCatching {
             producerExecutor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)
         }
+    }
+
+    /**
+     * PR-D (#86) — mark the cache entry for this run complete. Called
+     * from the consumer thread's natural-end-of-chapter branch in
+     * [`in`.jphe.storyvox.playback.tts.EnginePlayer.startPlaybackPipeline]'s
+     * consumer loop, AFTER the AudioTrack write loop has drained the
+     * last chunk and the END_PILL surfaced from [nextChunk]. Idempotent
+     * — calling on a null appender (no cache configured, or after a
+     * previous finalize / abandon nulled it out) is a no-op.
+     *
+     * MUST be called BEFORE [close] for the cache write to land. After
+     * [close] (or after the abandoning behavior triggered by
+     * [seekToCharOffset]), the appender has been nulled out and this
+     * method silently no-ops.
+     *
+     * Wrapped in runCatching for the same reason the tee write is —
+     * a finalize-time disk failure (e.g. atomic rename can't write the
+     * `.tmp` due to ENOSPC) shouldn't break a chapter that the listener
+     * just heard end-to-end. Next play will see incomplete cache + re-render.
+     */
+    fun finalizeCache() {
+        val ap = cacheAppender ?: return
+        cacheAppender = null
+        runCatching { ap.finalize() }
+            .onFailure { _cacheTeeErrors.update { it + 1 } }
     }
 
     private fun startProducer(fromIndex: Int): Job =
@@ -479,6 +566,27 @@ class EngineStreamingSource(
                     it + pcmDurationMs(chunk.pcm.size) +
                         pcmDurationMs(chunk.trailingSilenceBytes)
                 }
+                // PR-D (#86) — tee write FROM THE SEQUENCER. Workers in
+                // [runParallelWorker] complete out of order (sentence 3
+                // may finish before sentence 1); writing the cache from
+                // a worker would record non-monotonic byte offsets and
+                // produce a sparse / mis-ordered PCM file. The sequencer
+                // drains the `completed` map in monotonic `next` order,
+                // matching the order the consumer sees, which is the
+                // same invariant PR-E's CacheFileSource will expect on
+                // read-back.
+                //
+                // Best-effort like the serial path — disk failures
+                // increment cacheTeeErrors and the cache for this run
+                // won't complete, but playback continues.
+                if (running.get()) {
+                    cacheAppender?.let { ap ->
+                        val s = sentences[next]
+                        val totalPauseMs = pcmDurationMs(chunk.trailingSilenceBytes).toInt()
+                        runCatching { ap.appendSentence(s, chunk.pcm, totalPauseMs) }
+                            .onFailure { _cacheTeeErrors.update { it + 1 } }
+                    }
+                }
                 next++
             }
             // Natural end — push pill once all workers are drained.
@@ -584,7 +692,8 @@ class EngineStreamingSource(
                 // value is 0 outside TalkBack and v0.5.42's math is
                 // preserved bit-identical for sighted listeners.
                 val a11yPadMs = extraA11ySilenceMs.toFloat() / speed.coerceAtLeast(0.5f)
-                val silenceBytes = silenceBytesFor((basePauseMs + a11yPadMs).toInt(), sampleRate)
+                val totalPauseMs = (basePauseMs + a11yPadMs).toInt()
+                val silenceBytes = silenceBytesFor(totalPauseMs, sampleRate)
                 val chunk = PcmChunk(
                     sentenceIndex = i,
                     range = SentenceRange(s.index, s.startChar, s.endChar),
@@ -594,6 +703,27 @@ class EngineStreamingSource(
                 runInterruptible { queue.put(Item(chunk)) }
                 _bufferHeadroomMs.update {
                     it + pcmDurationMs(pcm.size) + pcmDurationMs(silenceBytes)
+                }
+                // PR-D (#86) — tee write. Mirror every generated
+                // sentence into the on-disk cache. Synchronous, on the
+                // producer's dedicated thread. The appender's
+                // FileOutputStream.write+flush is microseconds compared
+                // to the generateAudioPCM call (Piper-high synthesis is
+                // the slow path; disk I/O on internal flash is
+                // >100 MB/s). Wrapped in runCatching because a transient
+                // I/O failure (storage full, parent dir wiped) shouldn't
+                // take down the playback pipeline — the listener still
+                // hears the sentence; the cache simply won't complete
+                // this run.
+                //
+                // `totalPauseMs` is the same value passed to
+                // silenceBytesFor — recorded here so PR-E's
+                // CacheFileSource can replay the cadence without
+                // recomputing trailingPauseMs.
+                if (!running.get()) return@launch
+                cacheAppender?.let { ap ->
+                    runCatching { ap.appendSentence(s, pcm, totalPauseMs) }
+                        .onFailure { _cacheTeeErrors.update { it + 1 } }
                 }
             }
             // Natural end-of-chapter: push the pill so the consumer's
