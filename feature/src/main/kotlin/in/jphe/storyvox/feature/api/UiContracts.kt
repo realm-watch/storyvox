@@ -1806,6 +1806,27 @@ interface SettingsRepositoryUi {
      * resets, but a Settings → Accessibility tap won't).
      */
     suspend fun setA11yTalkBackNudgeDismissed(dismissed: Boolean) {}
+
+    // ── InstantDB magical sign-in onboarding (#500) ────────────────
+    /**
+     * Issue #500 — has the user dismissed (or accepted) the first-
+     * launch InstantDB sync onboarding card? Default false; the
+     * onboarding card mounted at the app root checks this flow to
+     * decide whether to render. Flips to true once via
+     * [markSyncOnboardingDismissed] and stays there for the life of
+     * this install — per the issue's "Skip is fully respected — never
+     * re-prompt this flow" requirement.
+     *
+     * Default emits true so test fakes never accidentally show the
+     * card; the real DataStore impl in `:app` overrides with the
+     * persisted value (defaulting to false on first launch).
+     */
+    val syncOnboardingDismissed: Flow<Boolean>
+        get() = kotlinx.coroutines.flow.flowOf(true)
+
+    /** Flip the sync-onboarding-dismissed flag to true. Idempotent.
+     *  Default no-op for fakes; the DataStore impl persists. */
+    suspend fun markSyncOnboardingDismissed() {}
 }
 
 /**
