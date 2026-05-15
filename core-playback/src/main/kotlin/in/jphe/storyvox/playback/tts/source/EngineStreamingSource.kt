@@ -74,6 +74,19 @@ class EngineStreamingSource(
      *  inside the JNI generate(...) call, corrupting native state. */
     private val engineMutex: Mutex,
     private val punctuationPauseMultiplier: Float = 1f,
+    /**
+     * Accessibility scaffold Phase 2 (#486 / #488, v0.5.43) — extra
+     * silence (ms) spliced after each sentence's PCM IN ADDITION to
+     * the punctuation-pause. Already gated by TalkBack-active by the
+     * upstream `A11yPacingConfig`; outside TalkBack this is 0 and
+     * the pause behavior is unchanged from v0.5.42.
+     *
+     * Scales with speed the same way [punctuationPauseMultiplier]
+     * does (a 2× listener gets a proportionally shorter pad), so
+     * the slider value reads as "pause length the user wants to
+     * hear at 1× speed".
+     */
+    private val extraA11ySilenceMs: Int = 0,
     private val queueCapacity: Int = 8,
     private val pronunciationDictApply: (String) -> String = { it },
     /**
@@ -341,9 +354,12 @@ class EngineStreamingSource(
                 val spokenText = pronunciationDictApply(s.text)
                 val range = SentenceRange(s.index, s.startChar, s.endChar)
                 val mult = punctuationPauseMultiplier.coerceAtLeast(0f)
-                val pauseMs =
+                val basePauseMs =
                     (trailingPauseMs(s.text) * mult) / speed.coerceAtLeast(0.5f)
-                val silenceBytes = silenceBytesFor(pauseMs.toInt(), sampleRate)
+                // #486 / #488 — TalkBack a11y inter-sentence pad
+                // (streaming/Azure path).
+                val a11yPadMs = extraA11ySilenceMs.toFloat() / speed.coerceAtLeast(0.5f)
+                val silenceBytes = silenceBytesFor((basePauseMs + a11yPadMs).toInt(), sampleRate)
 
                 var emittedAny = false
                 try {
@@ -506,8 +522,12 @@ class EngineStreamingSource(
                 } ?: continue
                 if (!running.get()) break
                 val mult = punctuationPauseMultiplier.coerceAtLeast(0f)
-                val pauseMs = (trailingPauseMs(s.text) * mult) / speed.coerceAtLeast(0.5f)
-                val silenceBytes = silenceBytesFor(pauseMs.toInt(), sampleRate)
+                val basePauseMs = (trailingPauseMs(s.text) * mult) / speed.coerceAtLeast(0.5f)
+                // #486 / #488 — TalkBack a11y pad (already gated by
+                // `isTalkBackActive` upstream; outside TalkBack this
+                // is 0 and the result equals the v0.5.42 math).
+                val a11yPadMs = extraA11ySilenceMs.toFloat() / speed.coerceAtLeast(0.5f)
+                val silenceBytes = silenceBytesFor((basePauseMs + a11yPadMs).toInt(), sampleRate)
                 completed[i] = PcmChunk(
                     sentenceIndex = i,
                     range = SentenceRange(s.index, s.startChar, s.endChar),
@@ -557,9 +577,14 @@ class EngineStreamingSource(
                 // already coerces non-positive durations to 0 but we also
                 // want the toInt() floor to behave.
                 val mult = punctuationPauseMultiplier.coerceAtLeast(0f)
-                val pauseMs =
+                val basePauseMs =
                     (trailingPauseMs(s.text) * mult) / speed.coerceAtLeast(0.5f)
-                val silenceBytes = silenceBytesFor(pauseMs.toInt(), sampleRate)
+                // #486 / #488 — TalkBack a11y inter-sentence pad.
+                // Already gated by `isTalkBackActive` upstream so the
+                // value is 0 outside TalkBack and v0.5.42's math is
+                // preserved bit-identical for sighted listeners.
+                val a11yPadMs = extraA11ySilenceMs.toFloat() / speed.coerceAtLeast(0.5f)
+                val silenceBytes = silenceBytesFor((basePauseMs + a11yPadMs).toInt(), sampleRate)
                 val chunk = PcmChunk(
                     sentenceIndex = i,
                     range = SentenceRange(s.index, s.startChar, s.endChar),

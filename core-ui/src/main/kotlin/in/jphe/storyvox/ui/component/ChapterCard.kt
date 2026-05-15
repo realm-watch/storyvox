@@ -26,6 +26,8 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import `in`.jphe.storyvox.ui.a11y.A11ySpeakChapterMode
+import `in`.jphe.storyvox.ui.a11y.LocalA11ySpeakChapterMode
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
 @Immutable
@@ -53,6 +55,25 @@ fun ChapterCard(
         )
     else CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
 
+    // #486 Phase 2 — TalkBack chapter-header readout branching. The
+    // sighted-listener content description always includes both
+    // (numbers help the listener orient: "I'm on chapter 6 of 38").
+    // TalkBack users have a per-app preference for one of:
+    //  - Both: "Chapter 6, The Brass Sigil, 28 minutes"
+    //  - NumbersOnly: "Chapter 6, 28 minutes"
+    //  - TitlesOnly: "The Brass Sigil, 28 minutes"
+    // The pref is shared across screens; here we read it once and the
+    // chapter-row semantics block branches the description.
+    val speakMode = LocalA11ySpeakChapterMode.current
+    val chapterDescription = when (speakMode) {
+        A11ySpeakChapterMode.Both ->
+            "Chapter ${state.number}, ${state.title}, ${state.durationLabel}"
+        A11ySpeakChapterMode.NumbersOnly ->
+            "Chapter ${state.number}, ${state.durationLabel}"
+        A11ySpeakChapterMode.TitlesOnly ->
+            "${state.title}, ${state.durationLabel}"
+    } + if (state.isDownloaded) ", downloaded" else ""
+
     // Issue #461 — the previous fix (#295) used `Card(onClick = ...)` plus
     // a sibling `Modifier.semantics(mergeDescendants = true)` on the outer
     // surface. That works in isolation but regressed in Compose Material3
@@ -74,8 +95,7 @@ fun ChapterCard(
             )
             .semantics(mergeDescendants = true) {
                 role = Role.Button
-                contentDescription = "Chapter ${state.number}, ${state.title}, ${state.durationLabel}" +
-                    if (state.isDownloaded) ", downloaded" else ""
+                contentDescription = chapterDescription
                 onClick(label = "Open chapter") { onClick(); true }
             },
         colors = highlight,

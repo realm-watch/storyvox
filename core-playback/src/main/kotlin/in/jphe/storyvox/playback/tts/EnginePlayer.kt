@@ -138,6 +138,12 @@ class EnginePlayer @AssistedInject constructor(
      *  so a mid-chapter flip doesn't half-construct a second engine
      *  with no cleanup; takes effect on next pipeline rebuild. */
     private val parallelSynthConfig: `in`.jphe.storyvox.data.repository.playback.ParallelSynthConfig,
+    /** Accessibility scaffold Phase 2 (#486 / #488, v0.5.43) — extra
+     *  inter-sentence silence applied when TalkBack is active. The
+     *  flow is already gated by `isTalkBackActive`; outside TalkBack
+     *  it emits 0 and the producer's existing punctuation-pause path
+     *  keeps the audiobook-tuned default. */
+    private val a11yPacingConfig: `in`.jphe.storyvox.data.repository.playback.A11yPacingConfig,
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
 
     @AssistedFactory
@@ -266,6 +272,21 @@ class EnginePlayer @AssistedInject constructor(
     @Volatile
     private var cachedPronunciationDict: PronunciationDict = PronunciationDict.EMPTY
 
+    /**
+     * Accessibility scaffold Phase 2 (#486 / #488, v0.5.43) — current
+     * extra inter-sentence silence in ms. Folds the TalkBack-active
+     * signal with the user's slider; the [A11yPacingConfig] flow
+     * emits 0 whenever TalkBack is off (so the producer's existing
+     * punctuation-pause is the only gap during sighted playback).
+     *
+     * Volatile because the writer is the collector coroutine on
+     * `scope` and the reader is [EngineStreamingSource] (producer
+     * worker thread). Mid-pipeline flips take effect on the next
+     * sentence boundary — same lifecycle as [currentPunctuationPauseMultiplier].
+     */
+    @Volatile
+    private var cachedA11yExtraSilenceMs: Int = 0
+
     init {
         observeActiveVoice()
         observeBufferConfig()
@@ -274,6 +295,22 @@ class EnginePlayer @AssistedInject constructor(
         observePronunciationDict()
         observeAzureErrors()
         observeAzureFallbackConfig()
+        observeA11yPacing()
+    }
+
+    /**
+     * #486 / #488 — keep [cachedA11yExtraSilenceMs] fresh so the
+     * producer's per-sentence pause adds the TalkBack pad without
+     * suspending. The flow only emits non-zero when TalkBack is
+     * actually active; outside TalkBack we stay at 0 and the
+     * existing punctuation-pause math is unchanged.
+     */
+    private fun observeA11yPacing() {
+        scope.launch {
+            a11yPacingConfig.extraSilenceMs.collect { ms ->
+                cachedA11yExtraSilenceMs = ms.coerceIn(0, 1500)
+            }
+        }
     }
 
     /** PR-6 (#185) — keep [azureFallbackEnabled] / [azureFallbackVoiceId]
@@ -1289,6 +1326,12 @@ class EnginePlayer @AssistedInject constructor(
             pitch = currentPitch,
             engineMutex = engineMutex,
             punctuationPauseMultiplier = currentPunctuationPauseMultiplier,
+            // #486 / #488 — TalkBack inter-sentence pad. Snapshot at
+            // pipeline-construction time; mid-listen slider edits take
+            // effect on next rebuild (matches the other live-config
+            // knobs). The volatile cache is kept in sync by
+            // [observeA11yPacing].
+            extraA11ySilenceMs = cachedA11yExtraSilenceMs,
             queueCapacity = queueCapacity,
             pronunciationDictApply = pronunciationDict::apply,
             secondaryEngines = secondaryHandles,
@@ -2353,6 +2396,10 @@ class EnginePlayer @AssistedInject constructor(
             pitch = currentPitch,
             engineMutex = engineMutex,
             punctuationPauseMultiplier = currentPunctuationPauseMultiplier,
+            // #486 / #488 — recap utterances honor the same TalkBack pad
+            // (a TalkBack user hearing "Here's where you left off…"
+            // benefits from the same inter-sentence breathing room).
+            extraA11ySilenceMs = cachedA11yExtraSilenceMs,
             queueCapacity = cachedBufferChunks.coerceIn(2, 3000),
             pronunciationDictApply = cachedPronunciationDict::apply,
         )

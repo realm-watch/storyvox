@@ -1074,6 +1074,15 @@ data class UiSettings(
      *  0.85..1.5; 1.0 = no extra scaling. */
     val a11yFontScaleOverride: Float = 1.0f,
     val a11yReadingDirection: ReadingDirection = ReadingDirection.FollowSystem,
+    /**
+     * Accessibility scaffold Phase 2 (#488, v0.5.43) — one-shot
+     * "TalkBack isn't running" nudge dismissed-flag. The
+     * Accessibility subscreen surfaces a brass-edged card prompting
+     * the user to enable TalkBack in Android Settings the first time
+     * the user interacts with a screen-reader-related row without
+     * TalkBack active; dismissal flips this true forever.
+     */
+    val a11yTalkBackNudgeDismissed: Boolean = false,
 ) {
     /** Speed value the engine should run at right now — the active
      *  voice's override if set, otherwise the global default (#195). */
@@ -1636,6 +1645,13 @@ interface SettingsRepositoryUi {
     suspend fun setA11ySpeakChapterMode(mode: SpeakChapterMode) {}
     suspend fun setA11yFontScaleOverride(scale: Float) {}
     suspend fun setA11yReadingDirection(direction: ReadingDirection) {}
+    /**
+     * Accessibility scaffold Phase 2 (#488, v0.5.43) — flip the
+     * TalkBack-install nudge dismissed flag. One-way: once true, the
+     * card never reappears for this install (a fresh DataStore wipe
+     * resets, but a Settings → Accessibility tap won't).
+     */
+    suspend fun setA11yTalkBackNudgeDismissed(dismissed: Boolean) {}
 }
 
 /**

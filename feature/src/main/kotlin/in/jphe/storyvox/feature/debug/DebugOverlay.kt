@@ -52,6 +52,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import `in`.jphe.storyvox.feature.api.DebugEventKind
 import `in`.jphe.storyvox.feature.api.DebugSnapshot
 import `in`.jphe.storyvox.ui.theme.LibraryNocturneTheme
+import `in`.jphe.storyvox.ui.theme.LocalReducedMotion
 
 /**
  * Library Nocturne brass accent for the overlay's hairline border.
@@ -131,16 +132,28 @@ internal fun DebugOverlayContent(
     val coroutineScope = rememberCoroutineScope()
     var dismissed by remember { mutableStateOf(false) }
 
+    // #486 Phase 2 / #480 — debug overlay slide-in collapses to a snap
+    // under reduced motion. Visibility flip still works; the slide
+    // doesn't play.
+    val reducedMotion = LocalReducedMotion.current
     AnimatedVisibility(
         visible = !dismissed,
-        enter = fadeIn(tween(220)) + slideInVertically(
-            animationSpec = tween(260),
-            initialOffsetY = { -it / 2 },
-        ),
-        exit = fadeOut(tween(180)) + slideOutVertically(
-            animationSpec = tween(220),
-            targetOffsetY = { -it / 2 },
-        ),
+        enter = if (reducedMotion) {
+            androidx.compose.animation.EnterTransition.None
+        } else {
+            fadeIn(tween(220)) + slideInVertically(
+                animationSpec = tween(260),
+                initialOffsetY = { -it / 2 },
+            )
+        },
+        exit = if (reducedMotion) {
+            androidx.compose.animation.ExitTransition.None
+        } else {
+            fadeOut(tween(180)) + slideOutVertically(
+                animationSpec = tween(220),
+                targetOffsetY = { -it / 2 },
+            )
+        },
         modifier = modifier,
     ) {
         Column(
@@ -166,8 +179,8 @@ internal fun DebugOverlayContent(
             )
             AnimatedVisibility(
                 visible = expanded,
-                enter = fadeIn(tween(260)),
-                exit = fadeOut(tween(180)),
+                enter = if (reducedMotion) androidx.compose.animation.EnterTransition.None else fadeIn(tween(260)),
+                exit = if (reducedMotion) androidx.compose.animation.ExitTransition.None else fadeOut(tween(180)),
             ) {
                 OverlayBody(snapshot = snapshot)
             }

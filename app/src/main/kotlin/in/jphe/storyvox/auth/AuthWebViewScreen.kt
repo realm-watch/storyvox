@@ -27,6 +27,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import `in`.jphe.storyvox.feature.auth.AuthViewModel
 import `in`.jphe.storyvox.feature.auth.CaptureState
 import `in`.jphe.storyvox.source.royalroad.auth.RoyalRoadAuthWebView
+import `in`.jphe.storyvox.ui.a11y.LocalAccessibleTouchTargets
+import `in`.jphe.storyvox.ui.a11y.accessibleSize
 import `in`.jphe.storyvox.ui.component.MagicSpinner
 
 /**
@@ -70,9 +72,20 @@ fun AuthWebViewScreen(
                 onCancelled = onCancelled,
             )
 
+            // #479 Phase 2: drop the .size(40.dp) so M3's 48dp default
+            // applies (clears the WCAG 2.5.5 minimum). #486's
+            // accessibleSize() additionally upgrades to 64dp when the
+            // user toggles "Larger touch targets" or Switch Access is
+            // active.
             FilledIconButton(
                 onClick = onCancelled,
-                modifier = Modifier.align(Alignment.TopStart).padding(12.dp).size(40.dp),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(12.dp)
+                    .accessibleSize(
+                        enlargedFlag = LocalAccessibleTouchTargets.current,
+                        base = 48.dp,
+                    ),
                 shape = CircleShape,
                 colors = IconButtonDefaults.filledIconButtonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
