@@ -8,13 +8,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Restructure (v0.5.40) — bottom-nav + primary-destination contract.
+ * Restructure (v0.5.40 + v0.5.48 partial revert) — bottom-nav + primary-
+ * destination contract.
  *
- * JP directive: "put settings in the main nav bar, and put follows and
- * browse into the library tab." This collapses the bottom nav to two
- * primary destinations (Library + Settings) and demotes Browse /
- * Follows / Playing / Voices to deep routes reached from inside Library
- * (sub-tabs) or via drill-down.
+ * v0.5.40 directive: "put settings in the main nav bar, and put follows
+ * and browse into the library tab." Collapsed bottom nav to two primary
+ * destinations (Library + Settings) and demoted Browse / Follows / Playing
+ * / Voices to deep routes reached from inside Library (sub-tabs) or
+ * drill-down.
+ *
+ * v0.5.48 partial revert (JP feedback 2026-05-15): Playing + Voices
+ * restored as primary destinations. Browse + Follows stay as Library
+ * sub-tabs (that part of the v0.5.40 restructure stuck). Dock is now
+ * `Playing | Library | Voices | Settings`.
  *
  * These tests pin the new contract so a future refactor that re-adds a
  * Browse pill to the bottom bar or that removes the Settings
@@ -25,21 +31,24 @@ import org.junit.Test
 class NavStructureTest {
 
     @Test
-    fun `bottom nav exposes exactly two primary destinations`() {
-        // Library + Settings. Going past two needs a UX review — the
-        // sliding indicator pill in BottomTabBar is centered per-cell,
-        // and three cells is the next step that would split the bar
-        // visually.
-        assertEquals(2, HomeTab.entries.size)
+    fun `bottom nav exposes exactly four primary destinations`() {
+        // v0.5.48 — Playing + Library + Voices + Settings. v0.5.40 had
+        // collapsed to {Library, Settings} but JP feedback restored
+        // Playing + Voices as primary destinations. Going past four
+        // needs a UX review — the sliding indicator pill in
+        // BottomTabBar is centered per-cell and five cells starts
+        // crowding label rendering on the Flip3's compact cover width.
+        assertEquals(4, HomeTab.entries.size)
     }
 
     @Test
-    fun `bottom nav primary destinations are Library and Settings`() {
+    fun `bottom nav primary destinations are Library Playing Voices Settings`() {
         // Order matters — BottomTabBar uses ordinal to position the
-        // indicator pill. Library is the landing destination (first),
-        // Settings sits to the right (second).
+        // indicator pill. v0.5.48 order (JP final revision): Library
+        // first (cold-launch landing), then Playing, then Voices, then
+        // Settings. Earlier attempt put Playing first; JP reverted.
         val labels = HomeTab.entries.map { it.label }
-        assertEquals(listOf("Library", "Settings"), labels)
+        assertEquals(listOf("Library", "Playing", "Voices", "Settings"), labels)
         assertEquals(HomeTab.Library, HomeTab.entries.first())
         assertEquals(HomeTab.Settings, HomeTab.entries.last())
     }
