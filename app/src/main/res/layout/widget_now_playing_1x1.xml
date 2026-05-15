@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  1x1 layout — cover only. Bucket selected by NowPlayingWidgetProvider
+  when the host reports a target cell smaller than 2x1 (see
+  pickLayout()). Tapping the cover routes through the same
+  EXTRA_OPEN_READER_* deep-link the notification uses; the receiver
+  resolves to the audiobook screen for whatever's currently playing
+  (or MainActivity → Library when nothing is loaded).
+
+  RemoteViews limits: every interactive surface must be a child of a
+  PendingIntent-wrapped view. The root FrameLayout carries the open-
+  reader intent; transport controls don't fit at 1x1 so we drop them
+  entirely rather than miniaturize them past a tappable target.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:padding="8dp">
+
+    <ImageView
+        android:id="@+id/widget_cover"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:src="@drawable/ic_widget_book_placeholder"
+        android:contentDescription="@string/widget_now_playing_label" />
+</FrameLayout>

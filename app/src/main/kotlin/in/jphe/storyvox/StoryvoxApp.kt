@@ -18,6 +18,7 @@ import `in`.jphe.storyvox.data.work.WorkScheduler
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.playback.VoiceEngineQualityBridge
 import `in`.jphe.storyvox.sync.coordinator.SyncCoordinator
+import `in`.jphe.storyvox.widget.WidgetStateObserver
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -86,6 +87,13 @@ class StoryvoxApp : Application(), Configuration.Provider {
      *  the singleton isn't materialised on the cold-launch main thread;
      *  initScope's coroutine pulls it on IO and calls [start()]. */
     @Inject lateinit var prerenderModeWatcher: Lazy<PrerenderModeWatcher>
+
+    /** Issue #159 — push-driven RemoteViews refresher for the home-
+     *  screen now-playing widget. Subscribes to PlaybackController.state
+     *  and broadcasts a refresh to NowPlayingWidgetProvider on every
+     *  user-visible change. Started off the cold-launch main thread
+     *  via the [Lazy] wrapper. */
+    @Inject lateinit var widgetStateObserver: Lazy<WidgetStateObserver>
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -157,6 +165,14 @@ class StoryvoxApp : Application(), Configuration.Provider {
         // singleton scope.
         initScope.launch {
             prerenderModeWatcher.get().start()
+        }
+        // Issue #159 — start the widget state observer once the Hilt
+        // graph is warm. The observer is a thin coroutine that
+        // re-broadcasts when PlaybackController.state changes; doing
+        // it on IO means no cold-launch frame budget impact even on
+        // P22T-class hardware. Idempotent — re-starting is a no-op.
+        initScope.launch {
+            widgetStateObserver.get().start()
         }
     }
 

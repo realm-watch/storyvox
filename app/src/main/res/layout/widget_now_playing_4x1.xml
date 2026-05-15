@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  4x1 layout — cover + title + Play/Pause + Next. Selected by
+  pickLayout() when the host reports `targetCellHeight == 1` (or a
+  legacy AppWidgetOptions minHeight < 110dp).
+
+  Sleep-timer toggle is dropped at 4x1 because it's the least-used of
+  the four controls; users who arm a sleep timer typically do so from
+  the audiobook screen or via a bluetooth long-press. Bumping up to
+  4x2 reveals it (and the chapter line). All three remaining surfaces
+  (cover, title block, transport row) are PendingIntent-wired
+  separately so each tap target hits the right action.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:background="@drawable/widget_background"
+    android:padding="10dp"
+    android:gravity="center_vertical">
+
+    <ImageView
+        android:id="@+id/widget_cover"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:scaleType="centerCrop"
+        android:src="@drawable/ic_widget_book_placeholder"
+        android:contentDescription="@string/widget_now_playing_label" />
+
+    <LinearLayout
+        android:id="@+id/widget_text_block"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="10dp"
+        android:layout_marginEnd="6dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/widget_book_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="@color/widget_on_surface"
+            android:maxLines="1"
+            android:ellipsize="end"
+            tools:ignore="UnusedAttribute"
+            android:text="@string/widget_idle_title" />
+
+        <TextView
+            android:id="@+id/widget_chapter_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="@color/widget_on_surface_variant"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:text="@string/widget_idle_body" />
+    </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/widget_btn_play_pause"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="@drawable/widget_button_background"
+        android:src="@drawable/ic_widget_play"
+        android:scaleType="centerInside"
+        android:padding="8dp"
+        android:contentDescription="@string/widget_action_play" />
+
+    <ImageButton
+        android:id="@+id/widget_btn_next"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_marginStart="6dp"
+        android:background="@drawable/widget_button_background"
+        android:src="@drawable/ic_widget_next"
+        android:scaleType="centerInside"
+        android:padding="8dp"
+        android:contentDescription="@string/widget_action_next" />
+</LinearLayout>

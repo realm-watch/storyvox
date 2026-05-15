@@ -82,6 +82,47 @@
         </provider>
 
         <!--
+            Issue #159 — home-screen now-playing widget. Adaptive
+            RemoteViews provider (1x1 / 4x1 / 4x2 buckets), Material You
+            tinted on Android 12+. The receiver also handles transport-
+            button broadcasts (ACTION_PLAY_PAUSE / ACTION_NEXT_CHAPTER /
+            ACTION_SLEEP_TOGGLE) from the widget's own PendingIntents —
+            those land in-process, but exported="true" is required for
+            the launcher / AppWidgetHost (a different process) to fire
+            APPWIDGET_UPDATE.
+
+            android:exported="true" is the AppWidget contract; the
+            framework itself is the broadcaster. Custom-action
+            broadcasts are scoped to our own package via explicit
+            ComponentName in every PendingIntent
+            (NowPlayingWidgetProvider builds them with
+            `Intent(context, NowPlayingWidgetProvider::class.java)`),
+            so a third-party app cannot fire our transport actions
+            even though the receiver is exported.
+
+            R8 keep-rule: `-keep class
+            in.jphe.storyvox.widget.NowPlayingWidgetProvider { *; }`
+            in proguard-rules.pro — Android system instantiates this
+            class by FQN reflection from the manifest, an edge R8's
+            tree-shake doesn't see.
+        -->
+        <receiver
+            android:name=".widget.NowPlayingWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_now_playing_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="in.jphe.storyvox.widget.action.PLAY_PAUSE" />
+                <action android:name="in.jphe.storyvox.widget.action.NEXT_CHAPTER" />
+                <action android:name="in.jphe.storyvox.widget.action.SLEEP_TOGGLE" />
+                <action android:name="in.jphe.storyvox.widget.action.REFRESH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_now_playing_info" />
+        </receiver>
+
+        <!--
             Issue #117 — FileProvider for EPUB exports. Grants ACTION_SEND
             recipients (and SAF ACTION_CREATE_DOCUMENT target apps) read
             access to files we write under cacheDir/exports/. The authority

@@ -1,0 +1,14 @@
+<!--
+  Widget transport — Pause. Material Symbols "pause" filled at 24dp.
+  Two solid bars; tint behavior identical to ic_widget_play.xml.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M6,5H10V19H6V5ZM14,5H18V19H14V5Z" />
+</vector>

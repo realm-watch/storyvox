@@ -1,0 +1,28 @@
+<!--
+  Widget palette — brass-on-cream fallback values used pre-Android-12
+  and as the light-mode source-of-truth on Android 12+ launchers that
+  don't extract a Material You accent. Values mirror the
+  `:core-ui` Library Nocturne palette (BrassRamp / SurfaceTokens.Light)
+  so the widget reads as part of the same app even with no dynamic
+  color in play.
+
+  On Android 12+ the AppWidgetProvider overrides these with
+  `android.R.color.system_accent1_*` references at runtime so the
+  widget tracks the user's wallpaper. See
+  NowPlayingWidgetProvider.applyMaterialYouTint.
+
+  Light-mode (this file) — paper-cream surfaces, deep brass text.
+  Night-mode counterpart at values-night/widget_colors.xml.
+-->
+<resources>
+    <!-- BrassRamp.Brass500 (#B48C5A) — primary accent. -->
+    <color name="widget_accent">#FFB48C5A</color>
+    <!-- SurfaceTokens.SurfaceContainerLight — widget chrome. -->
+    <color name="widget_surface">#FFEBE2D3</color>
+    <!-- SurfaceTokens.SurfaceContainerHighLight — button chip. -->
+    <color name="widget_button_surface">#FFE5DCCB</color>
+    <!-- SurfaceTokens.OnSurfaceLight — title/body text. -->
+    <color name="widget_on_surface">#FF1A1614</color>
+    <!-- SurfaceTokens.OnSurfaceVariantLight — secondary text (chapter title). -->
+    <color name="widget_on_surface_variant">#FF4A4338</color>
+</resources>

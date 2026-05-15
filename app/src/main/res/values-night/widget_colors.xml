@@ -1,0 +1,24 @@
+<!--
+  Widget palette — dark-mode counterpart to values/widget_colors.xml.
+  Pre-Android-12 night fallback: BrassRamp.Brass400 (slightly brighter
+  for AA contrast on the warm-dark surface) and SurfaceTokens dark
+  values.
+
+  Android 12+ launchers running in night mode get the dynamic
+  Material You tint instead (NowPlayingWidgetProvider re-binds the
+  accent at render time). These values only apply where the launcher
+  doesn't honor the wallpaper accent — e.g. a pre-31 device or a
+  third-party launcher running its own theme engine.
+-->
+<resources>
+    <!-- BrassRamp.Brass400 (#C9A774) — brighter on dark for AA. -->
+    <color name="widget_accent">#FFC9A774</color>
+    <!-- SurfaceTokens.SurfaceContainerDark. -->
+    <color name="widget_surface">#FF15131A</color>
+    <!-- SurfaceTokens.SurfaceContainerHighDark — button chip. -->
+    <color name="widget_button_surface">#FF1B1822</color>
+    <!-- SurfaceTokens.OnSurfaceDark — title text. -->
+    <color name="widget_on_surface">#FFE8DFD1</color>
+    <!-- SurfaceTokens.OnSurfaceVariantDark — secondary text. -->
+    <color name="widget_on_surface_variant">#FFB8AE9F</color>
+</resources>
