@@ -9,6 +9,24 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.48] — 2026-05-15
+
+### Fixed
+- **Bottom nav bar disappeared on Library / home surfaces** (`2efabe6`) — PR #475 (magic-link, v0.5.40) re-registered the LIBRARY route as `library?sharedUrl={sharedUrl}` to accept a system `ACTION_SEND` intent. But the `HOME_ROUTES` set still used the bare LIBRARY constant (`"library"`), and `currentBackStackEntryAsState().destination.route` returns the *full pattern* including the query template, so `route in HOME_ROUTES` always returned false on the Library home surface. Net: bottom nav vanished from the Library tab (by far the most-visited surface) — user could only switch to Settings via the gear icon or a deep-link. Reported by JP on both tablet + Flip3 v0.5.47. Fix strips the `?` suffix in `isHome()` so the substring before the nav-arg template matches the LIBRARY constant; verified on tablet post-fix with the Library + Settings cells visible at y=1239-1300, matching the v0.5.42-v0.5.46 layout exactly.
+
+### Added — PCM cache PR E
+- **Cache-hit playback via `CacheFileSource`** (#498, PR E of the PCM cache series, partial close [#86](https://github.com/techempower-org/storyvox/issues/86)). The user-perceptible win. When `PcmCache.isComplete(key)` returns true, `EnginePlayer.startPlaybackPipeline` opens a memory-mapped `CacheFileSource` (with RAF fallback for corrupt-cache `IOException`) instead of starting `EngineStreamingSource` + synthesis. Cache-hit replays start audio in <100 ms instead of the 2-5 s synthesis warm-up. Truncated PCM or corrupt manifest falls through to streaming with a `pcm-cache hit-open FAILED` logcat event. Partial-cache wipe-and-restart from PR D handles the in-progress edge.
+- **15 new Robolectric contract tests** in `CacheFileSourceTest`: byte-equality on sequential read, trailing-silence propagation, seek edge cases (before-first, mid-range, past-last), truncated-pcm `IOException` fallthrough, `bufferHeadroomMs = Long.MAX_VALUE`, `producerQueueDepth/Capacity = 0`, close-releases-fd, `startSentenceIndex` resume + past-end, `finalizeCache` no-op + idempotency, sample-rate propagation, `SentenceRange` round-trip.
+- **`PcmSource` interface gained `bufferHeadroomMs` + `finalizeCache()`** with safe defaults. Sealed interface, same module, no external impls so no break.
+- **New logcat events** (tag `EnginePlayer`): `pcm-cache HIT chapter=… voice=… speed=… pitch=… fromSentence=… base=<sha12>` and the matching `MISS`. Primary verification surface now that `adb run-as` is gone post-v0.5.46's `isDebuggable=false`.
+
+### Cache-rollup arc
+- **PR D** (v0.5.47): cache files start accumulating on disk as you listen.
+- **PR E** (this release): tap a chapter you've already heard → instant audio.
+- **PR F** (open at #499, lands as v0.5.49): WorkManager background-render N+1 / N+2 chapters while N plays — so even *first-time* playback of the next chapter skips synthesis.
+- **PR G**: Settings UI for cache quota + Mode C (full-fiction pre-render).
+- **PR H**: status icons.
+
 ## [0.5.47] — 2026-05-15
 
 ### Added — PCM cache PR D
