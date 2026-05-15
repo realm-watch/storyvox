@@ -632,6 +632,7 @@ private fun LiveStreamBadge() {
         ),
         label = "live-pulse-alpha",
     )
+    val errorColor = MaterialTheme.colorScheme.error
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -651,13 +652,13 @@ private fun LiveStreamBadge() {
                     .alpha(pulseAlpha),
             ) {
                 androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
-                    drawCircle(MaterialTheme.colorScheme.error)
+                    drawCircle(errorColor)
                 }
             }
             Text(
                 "LIVE",
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.error,
+                color = errorColor,
             )
         }
     }
