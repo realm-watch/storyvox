@@ -69,6 +69,7 @@ import `in`.jphe.storyvox.feature.api.BrowseFilter
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.cascadeReveal
+import `in`.jphe.storyvox.ui.component.coverSourceFamilyFor
 import `in`.jphe.storyvox.ui.component.ErrorBlock
 import `in`.jphe.storyvox.ui.component.friendlyErrorMessage
 import `in`.jphe.storyvox.ui.component.ErrorPlacement
@@ -426,6 +427,8 @@ fun BrowseScreen(
                                 coverUrl = fiction.coverUrl,
                                 title = fiction.title,
                                 monogram = fictionMonogram(fiction.author, fiction.title),
+                                author = fiction.author,
+                                sourceFamily = coverSourceFamilyFor(fiction.sourceId),
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             // Issue #272 — titles longer than 2 lines were silently

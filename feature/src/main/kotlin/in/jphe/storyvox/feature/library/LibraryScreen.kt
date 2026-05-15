@@ -58,6 +58,7 @@ import androidx.compose.ui.draw.clip
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.BrassProgressBar
+import `in`.jphe.storyvox.ui.component.coverSourceFamilyFor
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
 import `in`.jphe.storyvox.ui.component.fictionMonogram
 import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
@@ -457,6 +458,8 @@ private fun ResumeCard(entry: ContinueListeningEntry, onResume: () -> Unit) {
                 coverUrl = entry.fiction.coverUrl,
                 title = entry.fiction.title,
                 monogram = fictionMonogram(entry.fiction.author, entry.fiction.title),
+                author = entry.fiction.author,
+                sourceFamily = coverSourceFamilyFor(entry.fiction.sourceId),
                 modifier = Modifier.size(width = 68.dp, height = 100.dp),
             )
             Column(modifier = Modifier.weight(1f)) {
@@ -717,6 +720,8 @@ private fun LibraryGridBody(
                     coverUrl = fiction.coverUrl,
                     title = fiction.title,
                     monogram = fictionMonogram(fiction.author, fiction.title),
+                    author = fiction.author,
+                    sourceFamily = coverSourceFamilyFor(fiction.sourceId),
                     // Long-press → manage-shelves bottom sheet (#116).
                     // combinedClickable keeps the tap-to-open path
                     // identical to before; long-press is additive.

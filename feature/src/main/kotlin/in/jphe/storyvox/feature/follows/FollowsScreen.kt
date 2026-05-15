@@ -37,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import `in`.jphe.storyvox.feature.api.UiFollow
 import `in`.jphe.storyvox.ui.component.BrassButton
 import `in`.jphe.storyvox.ui.component.BrassButtonVariant
+import `in`.jphe.storyvox.ui.component.coverSourceFamilyFor
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
 import `in`.jphe.storyvox.ui.component.fictionMonogram
 import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
@@ -315,6 +316,8 @@ private fun FollowCard(follow: UiFollow, onClick: () -> Unit) {
                 coverUrl = follow.fiction.coverUrl,
                 title = follow.fiction.title,
                 monogram = fictionMonogram(follow.fiction.author, follow.fiction.title),
+                author = follow.fiction.author,
+                sourceFamily = coverSourceFamilyFor(follow.fiction.sourceId),
                 modifier = Modifier.size(width = 56.dp, height = 84.dp),
             )
             Column(modifier = Modifier.weight(1f)) {

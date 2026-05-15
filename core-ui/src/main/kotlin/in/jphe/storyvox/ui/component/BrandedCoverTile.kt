@@ -50,6 +50,25 @@ enum class CoverSourceFamily {
 }
 
 /**
+ * Map a [FictionSummary.sourceId] (or any [`SourceIds`][`in`.jphe.storyvox.data.source.SourceIds]
+ * constant) to the right [CoverSourceFamily] for the branded fallback.
+ *
+ * Notion currently always means TechEmpower in practice (the Notion
+ * source defaults to TechEmpower's root page; non-TechEmpower public
+ * Notion pages still use TechEmpower's parsing). When/if we add other
+ * Notion roots and want a different watermark we can branch on the
+ * configured rootPageId at the source-mapper layer and pass the
+ * family explicitly.
+ *
+ * Everything else maps to [CoverSourceFamily.Generic] so we don't
+ * claim a specific brand on third-party content.
+ */
+fun coverSourceFamilyFor(sourceId: String?): CoverSourceFamily = when (sourceId) {
+    "notion" -> CoverSourceFamily.TechEmpower
+    else -> CoverSourceFamily.Generic
+}
+
+/**
  * Branded synthetic book cover, rendered entirely in Compose — used as
  * the second-tier fallback in [FictionCoverThumb] when no remote cover
  * URL is available. Looks like a hand-designed jacket rather than a
