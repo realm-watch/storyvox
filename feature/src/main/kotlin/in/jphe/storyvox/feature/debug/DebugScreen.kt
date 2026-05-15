@@ -83,6 +83,13 @@ import kotlinx.coroutines.launch
  * card substrate. Reuses the [Card] from M3 with the same
  * `surfaceContainerHigh` substrate the Settings groups use, so the
  * screen feels like a sibling of Settings rather than a console dump.
+ *
+ * **a11y note (#483):** the event-log row at line 492 uses
+ * `fontSize = 11.sp` (monospace clock-time) rather than a typography
+ * ramp token. This is intentional: the dev-only screen must surface
+ * dense diagnostics in a compact tabular form. Text still rides system
+ * font scaling (`.sp`, not `.dp`); the bypass is "smaller than any
+ * production label" by design. Not reachable by end users.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

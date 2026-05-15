@@ -32,7 +32,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import `in`.jphe.storyvox.ui.theme.BrassRamp
@@ -109,13 +108,19 @@ fun MilestoneDialog(
                     // visual posture as the realm-sigil About card's
                     // brass mark, scaled to 24dp and dropped to 0.22
                     // alpha so it reads as a watermark, not a header.
+                    // a11y (#483): the sigil glyph is a decorative
+                    // watermark — its size *is* its identity (a 24dp
+                    // mark with a 0.22 alpha). Bound to bodyLarge
+                    // (18sp on the typography ramp) so it still rides
+                    // the system font-scale, just via the ramp rather
+                    // than a raw literal.
                     Text(
                         text = "✦",
                         modifier = Modifier
                             .padding(start = spacing.md, top = spacing.sm)
                             .alpha(0.22f),
                         color = BrassRamp.Brass400,
-                        fontSize = 18.sp,
+                        style = MaterialTheme.typography.bodyLarge,
                     )
                     Column(
                         modifier = Modifier
@@ -132,9 +137,14 @@ fun MilestoneDialog(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(spacing.xs),
                         ) {
+                            // a11y (#483): the emoji header reads at
+                            // titleLarge — 22sp on the typography ramp.
+                            // Bound to the theme token rather than a
+                            // raw `fontSize = 22.sp` so system-wide
+                            // font-scale and theme overrides flow.
                             Text(
                                 text = "🎉",
-                                fontSize = 22.sp,
+                                style = MaterialTheme.typography.titleLarge,
                             )
                             Text(
                                 text = "storyvox 0.5.00",
@@ -149,28 +159,30 @@ fun MilestoneDialog(
                         // quiet card that wants room around it.
                         Text(
                             text = "A small light, kept.",
-                            style = MaterialTheme.typography.bodyLarge.copy(
-                                fontSize = 16.sp,
-                                lineHeight = 24.sp,
-                            ),
+                            // a11y (#483): titleMedium is 16sp/24lh on
+                            // the ramp — anchor the body lead-in there
+                            // instead of `.copy(fontSize = 16.sp)`.
+                            style = MaterialTheme.typography.titleMedium,
                             color = MilestoneCream,
                             modifier = Modifier.padding(top = spacing.xxs),
                         )
                         Text(
                             text = "A storefront for the stories that don't fit the bigger " +
                                 "storefronts — yours, hand-tuned, in your pocket.",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 14.sp,
-                                lineHeight = 22.sp,
-                            ),
+                            // a11y (#483): bodyMedium is already
+                            // 14sp/20lh — the +2lh was for breathing
+                            // room around the multi-paragraph body, but
+                            // the theme ramp owns that decision now.
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MilestoneCream.copy(alpha = 0.88f),
                         )
                         Text(
                             text = "Thanks for being early.",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 14.sp,
-                                lineHeight = 22.sp,
-                            ),
+                            // a11y (#483): bodyMedium is already
+                            // 14sp/20lh — the +2lh was for breathing
+                            // room around the multi-paragraph body, but
+                            // the theme ramp owns that decision now.
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MilestoneCream.copy(alpha = 0.88f),
                         )
                         // Signature line, right-aligned, italic-ish via
@@ -246,7 +258,7 @@ private fun PreviewMilestoneDialogDark() = LibraryNocturneTheme(darkTheme = true
                     text = "✦",
                     modifier = Modifier.padding(start = 16.dp, top = 12.dp).alpha(0.22f),
                     color = BrassRamp.Brass400,
-                    fontSize = 18.sp,
+                    style = MaterialTheme.typography.bodyLarge,
                 )
                 Column(
                     modifier = Modifier
@@ -258,7 +270,7 @@ private fun PreviewMilestoneDialogDark() = LibraryNocturneTheme(darkTheme = true
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text(text = "🎉", fontSize = 22.sp)
+                        Text(text = "🎉", style = MaterialTheme.typography.titleLarge)
                         Text(
                             text = "storyvox 0.5.00",
                             style = MaterialTheme.typography.headlineSmall,
@@ -267,27 +279,18 @@ private fun PreviewMilestoneDialogDark() = LibraryNocturneTheme(darkTheme = true
                     }
                     Text(
                         text = "A small light, kept.",
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            fontSize = 16.sp,
-                            lineHeight = 24.sp,
-                        ),
+                        style = MaterialTheme.typography.titleMedium,
                         color = MilestoneCream,
                     )
                     Text(
                         text = "A storefront for the stories that don't fit the bigger " +
                             "storefronts — yours, hand-tuned, in your pocket.",
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontSize = 14.sp,
-                            lineHeight = 22.sp,
-                        ),
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MilestoneCream.copy(alpha = 0.88f),
                     )
                     Text(
                         text = "Thanks for being early.",
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontSize = 14.sp,
-                            lineHeight = 22.sp,
-                        ),
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MilestoneCream.copy(alpha = 0.88f),
                     )
                     Text(
@@ -339,7 +342,7 @@ private fun PreviewMilestoneDialogLight() = LibraryNocturneTheme(darkTheme = fal
                     text = "✦",
                     modifier = Modifier.padding(start = 16.dp, top = 12.dp).alpha(0.22f),
                     color = BrassRamp.Brass400,
-                    fontSize = 18.sp,
+                    style = MaterialTheme.typography.bodyLarge,
                 )
                 Column(
                     modifier = Modifier
@@ -351,7 +354,7 @@ private fun PreviewMilestoneDialogLight() = LibraryNocturneTheme(darkTheme = fal
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text(text = "🎉", fontSize = 22.sp)
+                        Text(text = "🎉", style = MaterialTheme.typography.titleLarge)
                         Text(
                             text = "storyvox 0.5.00",
                             style = MaterialTheme.typography.headlineSmall,
