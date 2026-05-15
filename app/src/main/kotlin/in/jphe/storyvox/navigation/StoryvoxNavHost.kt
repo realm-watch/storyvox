@@ -37,6 +37,7 @@ import `in`.jphe.storyvox.feature.follows.FollowsScreen
 import `in`.jphe.storyvox.feature.library.LibraryScreen
 import `in`.jphe.storyvox.feature.reader.HybridReaderScreen
 import `in`.jphe.storyvox.feature.settings.AboutSettingsScreen
+import `in`.jphe.storyvox.feature.settings.AccessibilitySettingsScreen
 import `in`.jphe.storyvox.feature.settings.AccountSettingsScreen
 import `in`.jphe.storyvox.feature.settings.AiSettingsScreen
 import `in`.jphe.storyvox.feature.settings.MemoryPalaceSettingsScreen
@@ -98,6 +99,12 @@ object StoryvoxRoutes {
      *  test connection, grounding switches, memory toggle, actions
      *  toggle, Sessions link. */
     const val SETTINGS_AI = "settings/ai"
+    /** Settings → Accessibility (Phase 1 scaffold, v0.5.42). High-
+     *  contrast toggle, reduced-motion toggle, larger-touch-targets,
+     *  screen-reader pause slider, speak-chapter-mode radio, font-
+     *  scale override, reading-direction override. Phase 2 agents wire
+     *  the actual behavior; Phase 1 only persists the prefs. */
+    const val SETTINGS_ACCESSIBILITY = "settings/accessibility"
     /** Settings → Account. Royal Road sign-in, GitHub OAuth + scope. */
     const val SETTINGS_ACCOUNT = "settings/account"
     /** Settings → Memory Palace. Daemon host, API key, test probe. */
@@ -640,6 +647,7 @@ private fun StoryvoxNavHostContent(
                     onOpenReading = { navController.navigate(StoryvoxRoutes.SETTINGS_READING) },
                     onOpenPerformance = { navController.navigate(StoryvoxRoutes.SETTINGS_PERFORMANCE) },
                     onOpenAi = { navController.navigate(StoryvoxRoutes.SETTINGS_AI) },
+                    onOpenAccessibility = { navController.navigate(StoryvoxRoutes.SETTINGS_ACCESSIBILITY) },
                     onOpenAccount = { navController.navigate(StoryvoxRoutes.SETTINGS_ACCOUNT) },
                     onOpenMemoryPalace = { navController.navigate(StoryvoxRoutes.SETTINGS_MEMORY_PALACE) },
                     onOpenAbout = { navController.navigate(StoryvoxRoutes.SETTINGS_ABOUT) },
@@ -776,6 +784,22 @@ private fun StoryvoxNavHostContent(
                     onBack = { navController.popBackStack() },
                     onOpenAiSessions = { navController.navigate(StoryvoxRoutes.SETTINGS_AI_SESSIONS) },
                     onOpenTeamsSignIn = { navController.navigate(StoryvoxRoutes.TEAMS_SIGN_IN) },
+                )
+            }
+            // Phase 1 scaffold (v0.5.42) — Accessibility subscreen. Push
+            // transitions mirror the rest of the hub-routed subscreens
+            // (Voice & Playback, Reading, Performance, AI, Account,
+            // Memory Palace, About). Phase 2 wires the actual a11y
+            // behavior; Phase 1 only persists the prefs.
+            composable(
+                StoryvoxRoutes.SETTINGS_ACCESSIBILITY,
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+            ) {
+                AccessibilitySettingsScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(

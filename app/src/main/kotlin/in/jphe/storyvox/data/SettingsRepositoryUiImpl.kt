@@ -38,7 +38,9 @@ import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_NORMAL_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_OFF_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.AzureProbeResult
 import `in`.jphe.storyvox.feature.api.PalaceProbeResult
+import `in`.jphe.storyvox.feature.api.ReadingDirection
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
+import `in`.jphe.storyvox.feature.api.SpeakChapterMode
 import `in`.jphe.storyvox.feature.api.ThemeOverride
 import `in`.jphe.storyvox.feature.api.UiAiSettings
 import `in`.jphe.storyvox.feature.api.UiAzureConfig
@@ -599,6 +601,25 @@ private object Keys {
     val INBOX_NOTIFY_ROYALROAD = booleanPreferencesKey("pref_inbox_notify_royalroad")
     val INBOX_NOTIFY_KVMR = booleanPreferencesKey("pref_inbox_notify_kvmr")
     val INBOX_NOTIFY_WIKIPEDIA = booleanPreferencesKey("pref_inbox_notify_wikipedia")
+
+    // ── Accessibility scaffold (Phase 1, v0.5.42) ──────────────────
+    // Persists the user's explicit intent for the assistive-service
+    // tunables surfaced by the new Settings → Accessibility subscreen.
+    // Phase 1 only stores the values; Phase 2 agents (high-contrast
+    // theme, TalkBack adapter, reduced-motion enforcer) read them.
+    // All defaults are the no-op state — turning a toggle off keeps
+    // storyvox's current behavior bit-identical.
+    val A11Y_HIGH_CONTRAST = booleanPreferencesKey("pref_a11y_high_contrast")
+    val A11Y_REDUCED_MOTION = booleanPreferencesKey("pref_a11y_reduced_motion")
+    val A11Y_LARGER_TOUCH_TARGETS = booleanPreferencesKey("pref_a11y_larger_touch_targets")
+    val A11Y_SCREEN_READER_PAUSE_MS = intPreferencesKey("pref_a11y_screen_reader_pause_ms")
+    /** Stored as the [SpeakChapterMode] enum's name. Unknown values
+     *  fall back to [SpeakChapterMode.Both] on read. */
+    val A11Y_SPEAK_CHAPTER_MODE = stringPreferencesKey("pref_a11y_speak_chapter_mode")
+    val A11Y_FONT_SCALE_OVERRIDE = floatPreferencesKey("pref_a11y_font_scale_override")
+    /** Stored as the [ReadingDirection] enum's name. Unknown values
+     *  fall back to [ReadingDirection.FollowSystem] on read. */
+    val A11Y_READING_DIRECTION = stringPreferencesKey("pref_a11y_reading_direction")
 }
 
 /** Issue #195 — flat string codec for `Map<voiceId, Float>` overrides.
@@ -944,6 +965,24 @@ class SettingsRepositoryUiImpl(
             inboxNotifyRoyalRoad = prefs[Keys.INBOX_NOTIFY_ROYALROAD] ?: true,
             inboxNotifyKvmr = prefs[Keys.INBOX_NOTIFY_KVMR] ?: true,
             inboxNotifyWikipedia = prefs[Keys.INBOX_NOTIFY_WIKIPEDIA] ?: true,
+            // Accessibility scaffold (Phase 1) — all defaults are the
+            // no-op state so an upgrading user sees identical behavior
+            // until they explicitly opt in. Enum keys fall back to
+            // their first-declared value on a parse failure (a forward-
+            // compat remote pushing a v2 enum we don't know).
+            a11yHighContrast = prefs[Keys.A11Y_HIGH_CONTRAST] ?: false,
+            a11yReducedMotion = prefs[Keys.A11Y_REDUCED_MOTION] ?: false,
+            a11yLargerTouchTargets = prefs[Keys.A11Y_LARGER_TOUCH_TARGETS] ?: false,
+            a11yScreenReaderPauseMs = (prefs[Keys.A11Y_SCREEN_READER_PAUSE_MS] ?: 500)
+                .coerceIn(0, 1500),
+            a11ySpeakChapterMode = prefs[Keys.A11Y_SPEAK_CHAPTER_MODE]
+                ?.let { runCatching { SpeakChapterMode.valueOf(it) }.getOrNull() }
+                ?: SpeakChapterMode.Both,
+            a11yFontScaleOverride = (prefs[Keys.A11Y_FONT_SCALE_OVERRIDE] ?: 1.0f)
+                .coerceIn(0.85f, 1.5f),
+            a11yReadingDirection = prefs[Keys.A11Y_READING_DIRECTION]
+                ?.let { runCatching { ReadingDirection.valueOf(it) }.getOrNull() }
+                ?: ReadingDirection.FollowSystem,
         )
     }
 
@@ -1565,6 +1604,46 @@ class SettingsRepositoryUiImpl(
         store.edit { it[Keys.SHOW_DEBUG_OVERLAY] = enabled }
     }
 
+    // ── Accessibility scaffold (Phase 1, v0.5.42) ──────────────────
+    // Every setter also stamps a synced-write so the next InstantDB
+    // sync round carries the new value to the user's other devices —
+    // accessibility intent is the kind of preference users want
+    // mirrored everywhere they've signed in.
+    override suspend fun setA11yHighContrast(enabled: Boolean) {
+        store.edit { it[Keys.A11Y_HIGH_CONTRAST] = enabled }
+        stampSyncedWrite()
+    }
+
+    override suspend fun setA11yReducedMotion(enabled: Boolean) {
+        store.edit { it[Keys.A11Y_REDUCED_MOTION] = enabled }
+        stampSyncedWrite()
+    }
+
+    override suspend fun setA11yLargerTouchTargets(enabled: Boolean) {
+        store.edit { it[Keys.A11Y_LARGER_TOUCH_TARGETS] = enabled }
+        stampSyncedWrite()
+    }
+
+    override suspend fun setA11yScreenReaderPauseMs(ms: Int) {
+        store.edit { it[Keys.A11Y_SCREEN_READER_PAUSE_MS] = ms.coerceIn(0, 1500) }
+        stampSyncedWrite()
+    }
+
+    override suspend fun setA11ySpeakChapterMode(mode: SpeakChapterMode) {
+        store.edit { it[Keys.A11Y_SPEAK_CHAPTER_MODE] = mode.name }
+        stampSyncedWrite()
+    }
+
+    override suspend fun setA11yFontScaleOverride(scale: Float) {
+        store.edit { it[Keys.A11Y_FONT_SCALE_OVERRIDE] = scale.coerceIn(0.85f, 1.5f) }
+        stampSyncedWrite()
+    }
+
+    override suspend fun setA11yReadingDirection(direction: ReadingDirection) {
+        store.edit { it[Keys.A11Y_READING_DIRECTION] = direction.name }
+        stampSyncedWrite()
+    }
+
     // ── Azure Speech Services BYOK (#182, PR-3) ────────────────────
 
     override suspend fun setAzureKey(key: String?) {
@@ -2046,6 +2125,17 @@ class SettingsRepositoryUiImpl(
             "pref_inbox_notify_royalroad",
             "pref_inbox_notify_kvmr",
             "pref_inbox_notify_wikipedia",
+            // Accessibility scaffold (Phase 1, v0.5.42) — user intent
+            // for assistive-service tunables. All synced so a user who
+            // turns on high-contrast on their phone sees it on their
+            // tablet too.
+            "pref_a11y_high_contrast",
+            "pref_a11y_reduced_motion",
+            "pref_a11y_larger_touch_targets",
+            "pref_a11y_screen_reader_pause_ms",
+            "pref_a11y_speak_chapter_mode",
+            "pref_a11y_font_scale_override",
+            "pref_a11y_reading_direction",
         )
 
         /**
@@ -2125,6 +2215,14 @@ class SettingsRepositoryUiImpl(
             "pref_inbox_notify_royalroad" to SyncedType.BOOLEAN,
             "pref_inbox_notify_kvmr" to SyncedType.BOOLEAN,
             "pref_inbox_notify_wikipedia" to SyncedType.BOOLEAN,
+            // Accessibility scaffold (Phase 1, v0.5.42).
+            "pref_a11y_high_contrast" to SyncedType.BOOLEAN,
+            "pref_a11y_reduced_motion" to SyncedType.BOOLEAN,
+            "pref_a11y_larger_touch_targets" to SyncedType.BOOLEAN,
+            "pref_a11y_screen_reader_pause_ms" to SyncedType.INT,
+            "pref_a11y_speak_chapter_mode" to SyncedType.STRING,
+            "pref_a11y_font_scale_override" to SyncedType.FLOAT,
+            "pref_a11y_reading_direction" to SyncedType.STRING,
         )
     }
 
