@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF
+ xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+ xmlns="http://purl.org/rss/1.0/"
+ xmlns:dc="http://purl.org/dc/elements/1.1/"
+ xmlns:syn="http://purl.org/rss/1.0/modules/syndication/"
+ xmlns:admin="http://webns.net/mvcb/"
+ xmlns:cl="http://www.craigslist.org/about/cl-feed-1.0.xml"
+>
+<channel rdf:about="https://sfbay.craigslist.org/search/zip?format=rss">
+<title>Bay Area free stuff classifieds for sale - craigslist</title>
+<link>https://sfbay.craigslist.org/search/zip</link>
+<description>craigslist | Bay Area free stuff classifieds for sale</description>
+<dc:language>en-us</dc:language>
+<dc:rights>copyright 2026 craigslist</dc:rights>
+<dc:publisher>no-reply@craigslist.org</dc:publisher>
+<dc:creator>no-reply@craigslist.org</dc:creator>
+<dc:source>https://sfbay.craigslist.org/search/zip</dc:source>
+<dc:title>Bay Area free stuff classifieds for sale - craigslist</dc:title>
+<dc:type>Collection</dc:type>
+<syn:updateBase>2026-01-01T00:00:00+00:00</syn:updateBase>
+<syn:updateFrequency>4</syn:updateFrequency>
+<syn:updatePeriod>hourly</syn:updatePeriod>
+<items>
+  <rdf:Seq>
+    <rdf:li rdf:resource="https://sfbay.craigslist.org/sby/zip/d/san-jose-free-couch/7700000001.html" />
+    <rdf:li rdf:resource="https://sfbay.craigslist.org/eby/zip/d/oakland-free-piano/7700000002.html" />
+    <rdf:li rdf:resource="https://sfbay.craigslist.org/sfc/zip/d/sf-free-mirror/7700000003.html" />
+  </rdf:Seq>
+</items>
+</channel>
+
+<item rdf:about="https://sfbay.craigslist.org/sby/zip/d/san-jose-free-couch/7700000001.html">
+<title><![CDATA[FREE — Sectional couch, must pick up today (San Jose)]]></title>
+<link>https://sfbay.craigslist.org/sby/zip/d/san-jose-free-couch/7700000001.html</link>
+<description><![CDATA[
+&lt;p&gt;Brown microfiber sectional, ~9 ft long. Some wear on one cushion but structurally sound. Pet-free home. Must take the whole thing — no splitting.&lt;/p&gt;
+&lt;p&gt;Pickup near Willow Glen / Lincoln Ave. Text for the address. Today only — going to the curb tomorrow morning.&lt;/p&gt;
+]]></description>
+<dc:date>2026-05-14T08:30:15-07:00</dc:date>
+<dc:language>en-us</dc:language>
+<dc:rights>copyright 2026 craigslist</dc:rights>
+<dc:source>https://sfbay.craigslist.org/sby/zip/d/san-jose-free-couch/7700000001.html</dc:source>
+<dc:creator>no-reply@craigslist.org</dc:creator>
+<dc:type>text</dc:type>
+</item>
+
+<item rdf:about="https://sfbay.craigslist.org/eby/zip/d/oakland-free-piano/7700000002.html">
+<title><![CDATA[Free upright piano — needs tuning (Oakland)]]></title>
+<link>https://sfbay.craigslist.org/eby/zip/d/oakland-free-piano/7700000002.html</link>
+<description><![CDATA[
+&lt;p&gt;Wurlitzer upright, ~1965. Plays but out of tune. Has some surface scratches. Heavy — bring 4 people and a dolly. Stairs at the pickup (second floor).&lt;/p&gt;
+&lt;p&gt;Oakland, near Lake Merritt. First-come first-served.&lt;/p&gt;
+]]></description>
+<dc:date>2026-05-14T07:12:00-07:00</dc:date>
+<dc:language>en-us</dc:language>
+<dc:rights>copyright 2026 craigslist</dc:rights>
+<dc:source>https://sfbay.craigslist.org/eby/zip/d/oakland-free-piano/7700000002.html</dc:source>
+<dc:creator>no-reply@craigslist.org</dc:creator>
+<dc:type>text</dc:type>
+</item>
+
+<item rdf:about="https://sfbay.craigslist.org/sfc/zip/d/sf-free-mirror/7700000003.html">
+<title><![CDATA[Free large floor mirror (SF, Mission)]]></title>
+<link>https://sfbay.craigslist.org/sfc/zip/d/sf-free-mirror/7700000003.html</link>
+<description><![CDATA[
+&lt;p&gt;72" floor-leaning mirror, no chips, simple black frame. Moving — needs to go this weekend.&lt;/p&gt;
+&lt;p&gt;Mission District, near 24th St BART. Bring a vehicle that fits ~6 ft of mirror upright.&lt;/p&gt;
+]]></description>
+<dc:date>2026-05-14T06:45:00-07:00</dc:date>
+<dc:language>en-us</dc:language>
+<dc:rights>copyright 2026 craigslist</dc:rights>
+<dc:source>https://sfbay.craigslist.org/sfc/zip/d/sf-free-mirror/7700000003.html</dc:source>
+<dc:creator>no-reply@craigslist.org</dc:creator>
+<dc:type>text</dc:type>
+</item>
+
+</rdf:RDF>

@@ -20,6 +20,7 @@ import `in`.jphe.storyvox.source.rss.parse.ParseException
 import `in`.jphe.storyvox.source.rss.parse.RssFeed
 import `in`.jphe.storyvox.source.rss.parse.RssItem
 import `in`.jphe.storyvox.source.rss.parse.RssParser
+import `in`.jphe.storyvox.source.rss.templates.CraigslistTemplates
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -65,7 +66,15 @@ internal class RssSource @Inject constructor(
      *  heuristics: `.rss`, `.atom`, `.xml`, or paths containing
      *  `/feed/` or `/rss/`. Confidence 0.7 — host+path matchers from
      *  other backends always win, but a URL that looks like a feed
-     *  outranks the Readability fallback. */
+     *  outranks the Readability fallback.
+     *
+     *  Issue #464 — also recognises `<region>.craigslist.org/...` URLs
+     *  at the same 0.7 confidence. Craigslist URLs don't naturally
+     *  carry `/feed/` or `?format=rss` in shared / pasted links, but
+     *  every public Craigslist URL has an `?format=rss` variant; the
+     *  RSS source is the only backend in storyvox that knows how to
+     *  fetch one. The route label surfaces the region so the magic-
+     *  link chooser modal reads `Craigslist (SF Bay Area)`. */
     override fun matchUrl(url: String): `in`.jphe.storyvox.data.source.RouteMatch? {
         val trimmed = url.trim()
         if (!trimmed.startsWith("http://", ignoreCase = true) &&
@@ -78,17 +87,33 @@ internal class RssSource @Inject constructor(
             lower.endsWith(".rss") ||
             lower.endsWith(".atom") ||
             lower.endsWith(".xml")
-        if (!looksLikeFeed) return null
+
+        // Craigslist match — host-based. Detected before the generic
+        // feed-pattern path because a CL URL like
+        // `https://sfbay.craigslist.org/search/zip` doesn't carry any
+        // of the generic feed markers.
+        val craigslistRegion = runCatching {
+            val host = java.net.URI(trimmed).host ?: return@runCatching null
+            CraigslistTemplates.regionFromHost(host)
+        }.getOrNull()
+
+        if (!looksLikeFeed && craigslistRegion == null) return null
+
         // Hash the URL so the fictionId is stable across re-paste.
         val hash = java.security.MessageDigest.getInstance("SHA-256")
             .digest(trimmed.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
             .take(16)
+        val label = if (craigslistRegion != null) {
+            "Craigslist (${craigslistRegion.label})"
+        } else {
+            "RSS / Atom feed"
+        }
         return `in`.jphe.storyvox.data.source.RouteMatch(
             sourceId = SourceIds.RSS,
             fictionId = "${SourceIds.RSS}:$hash",
             confidence = 0.7f,
-            label = "RSS / Atom feed",
+            label = label,
         )
     }
 

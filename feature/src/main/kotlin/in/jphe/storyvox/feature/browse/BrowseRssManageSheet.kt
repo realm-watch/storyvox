@@ -192,6 +192,20 @@ internal fun BrowseRssManageSheet(
 
             HorizontalDivider(modifier = Modifier.padding(vertical = spacing.xs))
 
+            // ── Local marketplace · Craigslist (collapsible) ─────────
+            // Issue #464 — the curated regional-feed picker. Composes
+            // a known-good Craigslist `?format=rss` URL from a
+            // (region, category) chip selection and hands it to
+            // `addRssFeed` — same path as the manual Add-by-URL flow
+            // above, so the picker inherits persistence, polling, and
+            // FictionDetail rendering for free.
+            BrowseCraigslistTemplateCard(
+                canonicalSubscribedUrls = subs.map { it.lowercase() }.toSet(),
+                onSubscribe = { viewModel.addRssFeed(it) },
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = spacing.xs))
+
             // ── Suggested feeds (collapsible) ────────────────────────
             // Collapsed by default so users who already have their own
             // feeds don't trip over a long curated list. Tap header to

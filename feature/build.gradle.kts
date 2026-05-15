@@ -64,6 +64,12 @@ dependencies {
     // from its ViewModel without routing through the :app module.
     implementation(project(":source-epub-writer"))
 
+    // Issue #464 — Craigslist regional-feed template picker. The curated
+    // region + category catalogue lives in `:source-rss/templates/`; the
+    // Browse → RSS bottom sheet reads it directly so the data stays in
+    // one place (the source module that owns the URL composition rule).
+    implementation(project(":source-rss"))
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.bundles.lifecycle)
     implementation(libs.bundles.coroutines)
