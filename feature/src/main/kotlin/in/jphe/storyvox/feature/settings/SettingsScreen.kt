@@ -3,6 +3,8 @@ package `in`.jphe.storyvox.feature.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -1201,8 +1203,18 @@ private fun AzureSection(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // a11y (#478): wrap the row in Modifier.toggleable so
+            // TalkBack announces a single Role.Switch node with the
+            // visible label merged in. The Switch itself opts out of
+            // independent click handling (onCheckedChange = null).
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .toggleable(
+                        value = fallbackEnabled,
+                        role = Role.Switch,
+                        onValueChange = onSetFallbackEnabled,
+                    ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -1212,7 +1224,7 @@ private fun AzureSection(
                 )
                 Switch(
                     checked = fallbackEnabled,
-                    onCheckedChange = onSetFallbackEnabled,
+                    onCheckedChange = null,
                 )
             }
             if (fallbackEnabled) {

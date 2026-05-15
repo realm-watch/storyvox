@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -46,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -374,9 +376,16 @@ private fun OverlayToggleCard(enabled: Boolean, onToggle: (Boolean) -> Unit) {
         ),
         shape = MaterialTheme.shapes.large,
     ) {
+        // a11y (#478): toggleable Row so TalkBack announces the
+        // overlay toggle as a single Role.Switch node with the label.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .toggleable(
+                    value = enabled,
+                    role = Role.Switch,
+                    onValueChange = onToggle,
+                )
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -394,7 +403,7 @@ private fun OverlayToggleCard(enabled: Boolean, onToggle: (Boolean) -> Unit) {
             }
             Switch(
                 checked = enabled,
-                onCheckedChange = onToggle,
+                onCheckedChange = null,
                 colors = brassColors,
             )
         }

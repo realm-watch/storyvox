@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -14,6 +15,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import `in`.jphe.storyvox.data.db.entity.Shelf
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
@@ -63,9 +65,16 @@ fun ManageShelvesSheet(
             }
             Shelf.ALL.forEach { shelf ->
                 val isMember = shelf in state.memberOf
+                // a11y (#478): toggleable row so TalkBack announces
+                // "<shelf>, switch, on/off" as one Role.Switch node.
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .toggleable(
+                            value = isMember,
+                            role = Role.Switch,
+                            onValueChange = { onToggle(state.fictionId, shelf) },
+                        )
                         .padding(vertical = spacing.xs),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -76,7 +85,7 @@ fun ManageShelvesSheet(
                     )
                     Switch(
                         checked = isMember,
-                        onCheckedChange = { onToggle(state.fictionId, shelf) },
+                        onCheckedChange = null,
                     )
                 }
             }
