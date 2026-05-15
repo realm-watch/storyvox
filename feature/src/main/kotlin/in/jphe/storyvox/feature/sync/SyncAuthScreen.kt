@@ -24,6 +24,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -182,8 +186,16 @@ private fun CodePromptForm(
 
 @Composable
 private fun InProgress(label: String) {
+    // a11y (#484): give the spinner a contentDescription so TalkBack
+    // announces "Loading, <label>" instead of staying silent during a
+    // multi-second OAuth handshake. Marked as a live region so the
+    // announcement is re-spoken when the label flips between states.
     CircularProgressIndicator(
         color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.semantics {
+            contentDescription = "Loading: $label"
+            liveRegion = LiveRegionMode.Polite
+        },
     )
     Spacer(Modifier.height(12.dp))
     Text(
