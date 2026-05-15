@@ -199,3 +199,21 @@
 # ----------------------------------------------------------------------
 -keep class in.jphe.storyvox.source.** implements in.jphe.storyvox.data.source.FictionSource { *; }
 -keep class in.jphe.storyvox.source.**.*Source { *; }
+
+# ----------------------------------------------------------------------
+# Home-screen widget (#159)
+# ----------------------------------------------------------------------
+# NowPlayingWidgetProvider is referenced from AndroidManifest.xml by
+# fully-qualified name; Android system instantiates it via reflection
+# (Class.forName + newInstance) whenever the AppWidgetHost dispatches
+# APPWIDGET_UPDATE or our custom action broadcasts. R8 doesn't see the
+# manifest → class edge, so without this rule the class is stripped on
+# the minified build and every widget update crashes with
+# ClassNotFoundException inside the framework's broadcast dispatch.
+#
+# `{ *; }` keeps the constructor + onUpdate/onReceive/etc. methods.
+# Companion-object string constants are read by manifest <action>
+# matching and from the same Kotlin file's own callsites; the rule
+# covers them too.
+-keep class in.jphe.storyvox.widget.NowPlayingWidgetProvider { *; }
+-keep class in.jphe.storyvox.widget.NowPlayingWidgetProvider$WidgetEntryPoint { *; }

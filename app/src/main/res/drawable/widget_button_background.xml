@@ -1,0 +1,14 @@
+<!--
+  Transport-button background — circular brass-tinted surface that
+  reads as a tappable target on both light and dark wallpapers.
+  Used by Play/Pause/Next/Sleep ImageButtons in widget_now_playing_4x1
+  and _4x2. Mirrors the Material 3 filled-tonal-icon-button shape.
+
+  Pre-31 devices see the brass fallback (@color/widget_button_surface);
+  Android 12+ launchers re-tint via the AppWidget Material You theme
+  hook in NowPlayingWidgetProvider.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="@color/widget_button_surface" />
+</shape>

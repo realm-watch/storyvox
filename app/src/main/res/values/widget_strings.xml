@@ -1,0 +1,18 @@
+<!--
+  Widget-facing strings. Kept in a separate file from strings.xml so the
+  widget concern doesn't bloat the main bundle when scanning for the
+  app name. Pluralized strings would land in res/values/plurals.xml;
+  none today (no count-bearing widget copy).
+-->
+<resources>
+    <string name="widget_now_playing_label">storyvox — Now playing</string>
+    <string name="widget_now_playing_description">Now-playing chapter with transport controls. Resize to reveal cover, title, chapter, and sleep-timer toggle.</string>
+    <string name="widget_idle_title">Nothing playing</string>
+    <string name="widget_idle_body">Open storyvox to start an audiobook</string>
+    <string name="widget_action_play">Play</string>
+    <string name="widget_action_pause">Pause</string>
+    <string name="widget_action_next">Next chapter</string>
+    <string name="widget_action_sleep_start">Start sleep timer</string>
+    <string name="widget_action_sleep_stop">Cancel sleep timer</string>
+    <string name="widget_sleep_remaining">Sleep in %1$s</string>
+</resources>

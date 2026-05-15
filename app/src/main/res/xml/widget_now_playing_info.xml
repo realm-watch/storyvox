@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AppWidgetProvider metadata for the storyvox now-playing widget
+  (#159).
+
+  Sizing strategy — adaptive RemoteViews:
+   - `minWidth` / `minHeight` set the smallest legal grid bucket
+     (80dp ≈ 1x1 on the canonical Pixel launcher cell).
+   - `targetCellWidth` / `targetCellHeight` (API 31+) request the
+     default landing size on Material You launchers — a 4x2 strip.
+   - `maxResizeWidth` / `maxResizeHeight` cap the resize ceiling so
+     the widget doesn't get stretched into a useless billboard. The
+     widget itself picks one of three layouts inside
+     NowPlayingWidgetProvider.onAppWidgetOptionsChanged based on the
+     reported cell size.
+   - `resizeMode="horizontal|vertical"` lets the user drag both axes.
+
+  `widgetCategory="home_screen"` — keyguard widgets were deprecated in
+  API 21; home-screen-only matches everything from a Pixel launcher to
+  Nova / Smart Launcher.
+
+  `initialLayout` is the 4x2 variant because that's the default cell
+  size and what the host shows in the picker. The actual rendered
+  layout switches via updateAppWidget(...) the first time the OS
+  reports the real grid size to onAppWidgetOptionsChanged.
+
+  `previewLayout` (API 31+) — using `initialLayout` directly until we
+  add a separate static preview asset. The picker shows the layout
+  with the idle/placeholder strings.
+
+  `configure` left unset — no per-instance configuration; the widget
+  always reflects the global playback state (this matches Pocket Casts
+  / Spotify / The Voice app pattern; per-fiction pinning is a
+  follow-up issue if anyone asks).
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="80dp"
+    android:minHeight="80dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:maxResizeWidth="400dp"
+    android:maxResizeHeight="220dp"
+    android:updatePeriodMillis="0"
+    android:initialLayout="@layout/widget_now_playing_4x2"
+    android:previewLayout="@layout/widget_now_playing_4x2"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:description="@string/widget_now_playing_description" />

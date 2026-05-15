@@ -1,0 +1,18 @@
+<!--
+  Widget chrome — rounded warm-dark surface that backstops every size
+  variant. The fill is a fallback for pre-Android-12 devices that
+  cannot resolve `?attr/colorSurfaceContainer` through Material-You
+  dynamic theming; on Android 12+ the AppWidgetProvider re-tints to
+  the device wallpaper accent at render time (see
+  NowPlayingWidgetProvider.buildRemoteViews).
+
+  Corner radius is 24dp — matches the Material You launcher-widget
+  corner expectation. The widget host on most launchers also rounds
+  via WindowInsets; 24dp here just keeps us looking right on
+  launchers that don't auto-round.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/widget_surface" />
+    <corners android:radius="24dp" />
+</shape>
