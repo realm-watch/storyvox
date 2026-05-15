@@ -842,6 +842,12 @@ data class UiSettings(
      *  this window, consecutive messages from the same author collapse
      *  into one chapter. Default 5 min; slider range 1-30. */
     val discordCoalesceMinutes: Int = 5,
+    /** Issue #462 — true when a Telegram bot token has been stored.
+     *  The token itself is never surfaced to the UI; only this
+     *  boolean drives the Settings card's "Token configured / paste a
+     *  token" branch. v1 has no separate server/channel picker — the
+     *  channel list is derived from observed `getUpdates` activity. */
+    val telegramTokenConfigured: Boolean = false,
     /**
      * Plugin-seam Phase 3 (#384) — per-plugin on/off keyed by stable
      * plugin id ("kvmr", "royalroad", "notion", ...). Single source of
@@ -1427,6 +1433,31 @@ interface SettingsRepositoryUi {
      * (with a hint that the token is missing for the first case).
      */
     suspend fun fetchDiscordGuilds(): List<Pair<String, String>>
+
+    /** Issue #462 — persist or clear the Telegram bot token. Pass
+     *  null/blank to clear. Stored encrypted under
+     *  `pref_source_telegram_token` in `storyvox.secrets`. */
+    suspend fun setTelegramApiToken(token: String?)
+
+    /**
+     * Issue #462 — verify the bot token by hitting Telegram's
+     * `getMe` endpoint. Returns the bot's @username on success,
+     * null on any failure (no token, bad token, network out).
+     * Drives the Settings card's "Authenticated as @bot_name"
+     * confirmation row.
+     */
+    suspend fun probeTelegramBot(): String?
+
+    /**
+     * Issue #462 — probe `getUpdates` once and return
+     * (chatId, displayTitle) pairs for the public channels the
+     * bot has been invited to. Empty when no token, no observed
+     * channels yet, or the call fails — the UI handles all three
+     * as "your bot has not been added to any channels yet" with a
+     * clarifying line about the bot-after-invite history
+     * limitation.
+     */
+    suspend fun fetchTelegramChannels(): List<Pair<String, String>>
 
     /** Issue #236 — manage subscribed feed URLs. */
     suspend fun addRssFeed(url: String)

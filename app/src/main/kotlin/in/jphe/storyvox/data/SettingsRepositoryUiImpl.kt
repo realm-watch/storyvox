@@ -347,6 +347,12 @@ internal object LegacySourceKeys {
         // until the user enters a bot token in Settings.
         `in`.jphe.storyvox.data.source.SourceIds.DISCORD to
             Spec(booleanPreferencesKey("pref_source_discord_enabled"), defaultValue = true),
+        // #462 — Telegram backend. Same posture as Discord: chip is
+        // visible on fresh install for discoverability, but the
+        // backend stays inert until the user enters a bot token via
+        // @BotFather in Settings.
+        `in`.jphe.storyvox.data.source.SourceIds.TELEGRAM to
+            Spec(booleanPreferencesKey("pref_source_telegram_enabled"), defaultValue = true),
     )
 }
 
@@ -495,6 +501,12 @@ private object Keys {
      *  on/off. Default false for fresh installs; opt-in surface like
      *  Wikipedia. */
     val SOURCE_PLOS_ENABLED = booleanPreferencesKey("pref_source_plos_enabled")
+    /** Issue #462 — Telegram backend on/off. Default true for
+     *  fresh-install discoverability (#436); the backend stays
+     *  inert until the user enters a bot token via @BotFather
+     *  in Settings. */
+    val SOURCE_TELEGRAM_ENABLED = booleanPreferencesKey("pref_source_telegram_enabled")
+
     /** Issue #403 — Discord backend on/off. Default false for fresh
      *  installs — bot-token onboarding is high-friction and Discord
      *  is a private workspace, not a public catalog. */
@@ -667,6 +679,8 @@ class SettingsRepositoryUiImpl(
     private val notionConfig: NotionConfigImpl,
     private val discordConfig: DiscordConfigImpl,
     private val discordGuildDirectory: `in`.jphe.storyvox.source.discord.DiscordGuildDirectory,
+    private val telegramConfig: TelegramConfigImpl,
+    private val telegramChannelDirectory: `in`.jphe.storyvox.source.telegram.TelegramChannelDirectory,
     private val suggestedFeedsRegistry: SuggestedFeedsRegistry,
     private val azureCreds: AzureCredentials,
     private val azureClient: AzureSpeechClient,
@@ -708,6 +722,8 @@ class SettingsRepositoryUiImpl(
         notionConfig: NotionConfigImpl,
         discordConfig: DiscordConfigImpl,
         discordGuildDirectory: `in`.jphe.storyvox.source.discord.DiscordGuildDirectory,
+        telegramConfig: TelegramConfigImpl,
+        telegramChannelDirectory: `in`.jphe.storyvox.source.telegram.TelegramChannelDirectory,
         suggestedFeedsRegistry: SuggestedFeedsRegistry,
         azureCreds: AzureCredentials,
         azureClient: AzureSpeechClient,
@@ -717,6 +733,7 @@ class SettingsRepositoryUiImpl(
         context.settingsDataStore, auth, hydrator,
         palaceConfig, palaceApi, llmCreds, githubAuth, teamsAuth, rssConfig, epubConfig,
         outlineConfig, wikipediaConfig, notionConfig, discordConfig, discordGuildDirectory,
+        telegramConfig, telegramChannelDirectory,
         suggestedFeedsRegistry,
         azureCreds, azureClient, azureRoster,
         googleTokenSource,
@@ -733,16 +750,17 @@ class SettingsRepositoryUiImpl(
      */
     private val azureTick = kotlinx.coroutines.flow.MutableStateFlow(0L)
 
-    /** Issue #377 + #233 + #403 — non-prefs source configs bundled
-     *  into a single combine so the outer combine stays inside the
-     *  5-arg overload. Palace + Wikipedia + Notion + Discord ride
-     *  together; each re-emits independently when its respective
-     *  store changes. */
+    /** Issue #377 + #233 + #403 + #462 — non-prefs source configs
+     *  bundled into a single combine so the outer combine stays
+     *  inside the 5-arg overload. Palace + Wikipedia + Notion +
+     *  Discord + Telegram ride together; each re-emits independently
+     *  when its respective store changes. */
     private data class NonPrefsConfigs(
         val palace: `in`.jphe.storyvox.source.mempalace.config.PalaceConfigState,
         val wikipedia: `in`.jphe.storyvox.source.wikipedia.config.WikipediaConfigState,
         val notion: `in`.jphe.storyvox.source.notion.config.NotionConfigState,
         val discord: `in`.jphe.storyvox.source.discord.config.DiscordConfigState,
+        val telegram: `in`.jphe.storyvox.source.telegram.config.TelegramConfigState,
     )
 
     private val nonPrefsConfigs: Flow<NonPrefsConfigs> =
@@ -751,8 +769,9 @@ class SettingsRepositoryUiImpl(
             wikipediaConfig.state,
             notionConfig.state,
             discordConfig.state,
-        ) { palace, wiki, notion, discord ->
-            NonPrefsConfigs(palace, wiki, notion, discord)
+            telegramConfig.state,
+        ) { palace, wiki, notion, discord, telegram ->
+            NonPrefsConfigs(palace, wiki, notion, discord, telegram)
         }
 
     override val settings: Flow<UiSettings> = combine(
@@ -766,6 +785,7 @@ class SettingsRepositoryUiImpl(
         val wikipedia = configs.wikipedia
         val notion = configs.notion
         val discord = configs.discord
+        val telegram = configs.telegram
         UiSettings(
             ttsEngine = "VoxSherpa",
             defaultVoiceId = prefs[Keys.DEFAULT_VOICE_ID],
@@ -815,6 +835,7 @@ class SettingsRepositoryUiImpl(
             discordServerId = discord.serverId,
             discordServerName = discord.serverName,
             discordCoalesceMinutes = discord.coalesceMinutes,
+            telegramTokenConfigured = telegram.apiToken.isNotBlank(),
             // Plugin-seam Phase 1 (#384) — derive the per-plugin map
             // from the JSON blob seeded by SourcePluginsMapMigration.
             // Empty map (parse error / missing key in a race) falls
@@ -1518,6 +1539,26 @@ class SettingsRepositoryUiImpl(
         // an empty list — the UI handles "empty picker" as the
         // unified empty-state across the three failure modes.
         discordGuildDirectory.listGuilds()
+
+    override suspend fun setTelegramApiToken(token: String?) {
+        telegramConfig.setApiToken(token)
+    }
+
+    override suspend fun probeTelegramBot(): String? =
+        // Delegates to TelegramChannelDirectory in :source-telegram.
+        // Returns the bot's @username (or first_name) on success,
+        // null on any failure (no token, bad token, network out) —
+        // the UI handles "null" as the unified failure state across
+        // those modes.
+        telegramChannelDirectory.authenticate()
+
+    override suspend fun fetchTelegramChannels(): List<Pair<String, String>> =
+        // Delegates to TelegramChannelDirectory's `getUpdates` +
+        // per-channel `getChat` probe. Returns
+        // (chatId-as-string, displayTitle) pairs — empty on any
+        // failure or when no channels have been observed since the
+        // bot joined.
+        telegramChannelDirectory.listChannels()
 
     /**
      * Plugin-seam Phase 3 (#384) — registry-driven entry point and

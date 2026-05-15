@@ -176,6 +176,7 @@ dependencies {
     implementation(project(":source-arxiv"))
     implementation(project(":source-plos"))
     implementation(project(":source-discord"))
+    implementation(project(":source-telegram"))
     // Issue #472 — magic-link Readability catch-all. Must be on the
     // app classpath so its KSP-generated SourcePluginDescriptor binding
     // joins the Hilt multibinding set the registry consumes.

@@ -508,6 +508,15 @@ fun SettingsScreen(
                 onCoalesceMinutesChange = viewModel::setDiscordCoalesceMinutes,
                 onRefreshGuilds = viewModel::refreshDiscordGuilds,
             )
+            val telegramBot by viewModel.telegramBotUsername.collectAsStateWithLifecycle()
+            val telegramChannels by viewModel.telegramChannels.collectAsStateWithLifecycle()
+            TelegramConfigRow(
+                tokenConfigured = s.telegramTokenConfigured,
+                botUsername = telegramBot,
+                channels = telegramChannels,
+                onApiTokenChange = viewModel::setTelegramApiToken,
+                onRefreshProbe = viewModel::refreshTelegramProbe,
+            )
         }
 
         // ── Inbox notifications sub-card (#383) ────────────────────
@@ -3511,6 +3520,143 @@ private fun DiscordConfigRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = spacing.xs),
             )
+        }
+    }
+}
+
+/**
+ * Issue #462 — Telegram backend config card. Renders inside the
+ * Library & Sync section right under the Discord card.
+ *
+ * Two knobs:
+ *  - **Bot token** — masked text field with Save / Clear. Token is
+ *    stored encrypted under `pref_source_telegram_token` in
+ *    `storyvox.secrets`.
+ *  - **Probe** — refresh button hits `getMe` to confirm the
+ *    bot's identity and `getUpdates` to surface the channels the
+ *    bot has been invited to. No persisted channel list — the
+ *    probe result is hot per session.
+ *
+ * Telegram-specific shape: no server picker (Bot API has no
+ * "list of channels I'm in" endpoint; we derive from observed
+ * `getUpdates` activity), no coalesce slider (channel posts are
+ * admin-curated and rarely need coalescing). What we DO have
+ * that Discord doesn't is a explicit bot-identity confirmation
+ * line ("Authenticated as @bot_name") because the @BotFather
+ * onboarding doesn't produce a visible "your bot is" surface
+ * elsewhere in the flow.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun TelegramConfigRow(
+    tokenConfigured: Boolean,
+    botUsername: String?,
+    channels: List<Pair<String, String>>,
+    onApiTokenChange: (String?) -> Unit,
+    onRefreshProbe: () -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    var tokenDraft by remember { mutableStateOf("") }
+
+    // Auto-probe when the token is configured + nothing has been
+    // fetched yet. Without this, opening the Telegram card on a
+    // fresh paste would render the empty "no channels yet" state
+    // until the user tapped Refresh manually.
+    LaunchedEffect(tokenConfigured) {
+        if (tokenConfigured && botUsername == null) onRefreshProbe()
+    }
+
+    Column(modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm)) {
+        Text(
+            "Telegram bot",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = spacing.xs),
+        )
+        Text(
+            text = if (tokenConfigured)
+                "Token configured. Invite your bot to a public channel " +
+                    "(channel admins → Add member → search the bot " +
+                    "username), then tap Refresh below. Bots only see " +
+                    "posts that arrive after they join — older posts " +
+                    "can't be replayed via the Bot API."
+            else
+                "Open Telegram, chat with @BotFather, send /newbot, " +
+                    "follow the prompts to create a bot, copy the " +
+                    "token, and paste it here.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = spacing.sm),
+        )
+        androidx.compose.material3.OutlinedTextField(
+            value = tokenDraft,
+            onValueChange = { tokenDraft = it },
+            label = { Text("Bot token") },
+            placeholder = { Text("123456:ABC-DEF…") },
+            singleLine = true,
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            BrassButton(
+                label = "Save token",
+                onClick = {
+                    if (tokenDraft.isNotBlank()) {
+                        onApiTokenChange(tokenDraft)
+                        tokenDraft = ""
+                    }
+                },
+                variant = BrassButtonVariant.Primary,
+            )
+            if (tokenConfigured) {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        onApiTokenChange(null)
+                        tokenDraft = ""
+                    },
+                ) { Text("Clear token") }
+            }
+        }
+        // ── Bot identity + observed-channels probe.
+        if (tokenConfigured) {
+            Spacer(Modifier.height(spacing.md))
+            Text(
+                text = when {
+                    botUsername != null && channels.isEmpty() ->
+                        "Authenticated as @$botUsername · " +
+                            "your bot has not been added to any " +
+                            "channels yet."
+                    botUsername != null ->
+                        "Authenticated as @$botUsername · " +
+                            "sees ${channels.size} channel" +
+                            (if (channels.size == 1) "" else "s") +
+                            "."
+                    else ->
+                        "Could not verify the bot token. " +
+                            "Check it matches the @BotFather token, " +
+                            "then tap Refresh."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = spacing.xs),
+            )
+            if (channels.isNotEmpty()) {
+                for ((chatId, title) in channels) {
+                    Text(
+                        text = "• $title  ($chatId)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = spacing.sm, top = spacing.xs),
+                    )
+                }
+            }
+            androidx.compose.material3.TextButton(
+                onClick = onRefreshProbe,
+                modifier = Modifier.padding(top = spacing.xs),
+            ) { Text("Refresh bot status") }
         }
     }
 }
