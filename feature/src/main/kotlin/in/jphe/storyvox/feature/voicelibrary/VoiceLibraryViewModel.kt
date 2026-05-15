@@ -114,13 +114,11 @@ class VoiceLibraryViewModel @Inject constructor(
      *  Works. The actual key + region stay encrypted in
      *  [AzureCredentials]; this VM only needs the boolean. */
     private val settingsRepo: SettingsRepositoryUi,
-<<<<<<< HEAD
     /** #501 — voice-family registry; the Voice Library filters voices
      *  whose family is disabled in `voiceFamiliesEnabled`. The registry
      *  carries each family's `defaultEnabled` so an absent key falls
      *  through to the right default. */
     private val voiceFamilyRegistry: VoiceFamilyRegistry,
-=======
     /** PR-H (#86) — per-voice cached-bytes lookup. Polled once per
      *  [installedVoices] emission (cheap: one directory walk + N meta
      *  JSON parses). The resulting Map<voiceId, Long> is folded into
@@ -129,7 +127,6 @@ class VoiceLibraryViewModel @Inject constructor(
      *  state. No live re-poll — cache changes between screen visits
      *  show up on the next entry. */
     private val cacheInspector: CacheStateInspector,
->>>>>>> b52e410 (feat(voicelibrary): per-voice cached-MB indicator (PR-H #86))
 ) : ViewModel() {
 
     private val _currentDownload = MutableStateFlow<DownloadingVoice?>(null)
@@ -305,8 +302,19 @@ class VoiceLibraryViewModel @Inject constructor(
         debouncedQuery,
         _selectedLanguage.asStateFlow(),
         perVoiceOverrides,
-<<<<<<< HEAD
-    ) { state, q, lang, overrides ->
+        cachedBytesByVoice,
+    ) { state, q, lang, overrides, cachedBytes ->
+        // PR-H (#86) — fold cached-bytes onto each UiVoiceInfo FIRST so
+        // the "X MB cached" subtitle survives the family filter and
+        // text-search filters downstream. Skip the map when the bytes
+        // map is empty (cold launch, fresh install) — every
+        // UiVoiceInfo already carries `cachedBytes = 0L` per the data-
+        // class default, so the no-op fast path is correct.
+        val withCachedBytes = if (cachedBytes.isEmpty()) state else state.copy(
+            favorites = state.favorites.withCachedBytes(cachedBytes),
+            installedByEngine = state.installedByEngine.withCachedBytes(cachedBytes),
+            availableByEngine = state.availableByEngine.withCachedBytes(cachedBytes),
+        )
         // #501 — voice-family filter. Family ids absent from the
         // settings map fall back to each family's `defaultEnabled` in
         // the registry, so a fresh install (empty map) shows every
@@ -317,35 +325,18 @@ class VoiceLibraryViewModel @Inject constructor(
             val explicit = overrides.voiceFamiliesEnabled[familyId]
             explicit ?: (voiceFamilyRegistry.byId(familyId)?.defaultEnabled ?: true)
         }
-        val familyFiltered = state.copy(
-            favorites = state.favorites.filter(familyEnabled),
-            installedByEngine = state.installedByEngine.mapValues { (_, tierMap) ->
+        val familyFiltered = withCachedBytes.copy(
+            favorites = withCachedBytes.favorites.filter(familyEnabled),
+            installedByEngine = withCachedBytes.installedByEngine.mapValues { (_, tierMap) ->
                 tierMap.mapValues { (_, voices) -> voices.filter(familyEnabled) }
                     .filterValues { it.isNotEmpty() }
             }.filterValues { it.isNotEmpty() },
-            availableByEngine = state.availableByEngine.mapValues { (_, tierMap) ->
+            availableByEngine = withCachedBytes.availableByEngine.mapValues { (_, tierMap) ->
                 tierMap.mapValues { (_, voices) -> voices.filter(familyEnabled) }
                     .filterValues { it.isNotEmpty() }
             }.filterValues { it.isNotEmpty() },
         )
         val withOverrides = familyFiltered.copy(
-=======
-        cachedBytesByVoice,
-    ) { state, q, lang, overrides, cachedBytes ->
-        // PR-H (#86) — fold cached-bytes onto each UiVoiceInfo. Done
-        // BEFORE the filter pipeline so the "X MB cached" subtitle is
-        // present on filtered rows too (a user searching "cori" should
-        // still see Cori's cached-MB line). Skip the map when the
-        // bytes map is empty (cold launch, fresh install) — every
-        // UiVoiceInfo already carries `cachedBytes = 0L` per the data-
-        // class default, so the no-op fast path is correct.
-        val withCachedBytes = if (cachedBytes.isEmpty()) state else state.copy(
-            favorites = state.favorites.withCachedBytes(cachedBytes),
-            installedByEngine = state.installedByEngine.withCachedBytes(cachedBytes),
-            availableByEngine = state.availableByEngine.withCachedBytes(cachedBytes),
-        )
-        val withOverrides = withCachedBytes.copy(
->>>>>>> b52e410 (feat(voicelibrary): per-voice cached-MB indicator (PR-H #86))
             voiceLexiconOverrides = overrides.lexicon,
             voicePhonemizerLangOverrides = overrides.phonemizerLang,
         )
