@@ -66,24 +66,16 @@ private val Context.tagSyncDataStore: DataStore<Preferences> by preferencesDataS
     name = "storyvox_tag_sync",
 )
 
-/**
- * Second handle on the main settings DataStore — shared with
- * [SettingsRepositoryUiImpl] (file-local `settingsDataStore`).
- * DataStore is a per-name singleton per process, so this points
- * at the same on-disk file. Used exclusively to read/write the
- * two synced metadata keys, never anything else.
- */
-private val Context.tagSyncMetadataStore: DataStore<Preferences> by preferencesDataStore(
-    name = "storyvox_settings",
-)
-
 @Singleton
 class FollowedTagsStoreImpl @Inject constructor(
     @ApplicationContext private val context: Context,
 ) : FollowedTagsStore {
 
     private val store: DataStore<Preferences> get() = context.tagSyncDataStore
-    private val metadataStore: DataStore<Preferences> get() = context.tagSyncMetadataStore
+    // Shares the package-internal `settingsDataStore` delegate declared in
+    // SettingsRepositoryUiImpl. Declaring a second `preferencesDataStore(name=...)`
+    // with the same name throws IllegalStateException at runtime (#522).
+    private val metadataStore: DataStore<Preferences> get() = context.settingsDataStore
 
     private fun tagsKey(sourceId: String) = stringPreferencesKey("tags:$sourceId")
     private fun tombstonesKey(sourceId: String) = stringPreferencesKey("tombstones:$sourceId")

@@ -144,6 +144,14 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- WorkManager's SystemForegroundService needs an explicit
+             foregroundServiceType on API 34+. The tag-sync worker (#520)
+             runs as a dataSync foreground service via WorkManager. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:replace="android:foregroundServiceType" />
+
     </application>
 
 </manifest>

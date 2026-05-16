@@ -9,6 +9,17 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.53] — 2026-05-15
+
+Hotfix release. v0.5.52 ships a launch-crash regression introduced in PR #520 (Royal Road tag sync); v0.5.53 fixes it.
+
+### Fixed
+- **Cold-launch crash on devices with persisted state (#522)** — `FollowedTagsStoreImpl` declared `preferencesDataStore(name = "storyvox_settings")`, a duplicate of the delegate already declared in `SettingsRepositoryUiImpl`. Android's `preferencesDataStore` enforces "one delegate per name per process" and throws `IllegalStateException` when the second is accessed. The fresh-install audit on R5CRB0W66MK didn't catch this because no prior state had touched the conflicting code path; the R83W80CAFZB audit reproduced it on every cold launch.
+- **WorkManager SystemForegroundService manifest type (#522 follow-on)** — PR #520 added `FOREGROUND_SERVICE_DATA_SYNC` permission but didn't override WorkManager's merged `SystemForegroundService` with an explicit `android:foregroundServiceType="dataSync"` attribute. Android 14+ requires the type to be declared on the service. Added a manifest override with `tools:replace`.
+
+### Why this slipped
+Unit tests don't initialize the Android Application context that triggers both DataStore lazy delegates, so CI was green. The `feedback_install_test_each_iteration` memory is exactly what should have caught this — and did, on the post-merge tablet audit.
+
 ## [0.5.52] — 2026-05-15
 
 The four-parallel-agent bundle — AO3 personal subscriptions, Royal Road two-way tag sync, Discord-as-fiction wiring, and an Emergency Help card surfacing all three crisis numbers together.

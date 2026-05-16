@@ -80,7 +80,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(
+internal val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(
     name = "storyvox_settings",
     produceMigrations = { _ ->
         listOf(
