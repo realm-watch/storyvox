@@ -9,6 +9,22 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.55] — 2026-05-15
+
+Three residual smoothness fixes caught on R83W80CAFZB after v0.5.54 landed. Auto-advance, pause-position pinning, and speed-change position stability — the last three gaps between storyvox and Spotify/Apple Music-grade playback.
+
+### Fixed — Playback smoothness follow-up (#556, closes #553 #554 #555)
+- **#553 Auto-advance no longer stalls in Buffering forever** — `handleChapterDone → advanceChapter → loadAndPlay` had two failure modes: indefinite `observeChapter().filterNotNull().first()` park when the next chapter body wasn't downloaded yet, and uncaught throws in pre-advance Room calls that stranded the pipeline with `isBuffering=true`. Fix: `withTimeoutOrNull(30s)` on the chapter-body wait + `runCatching` per step. Plus a belt-and-suspenders buffering-stuck watchdog in `PlaybackController` that fires `advanceChapter(1)` after 8s of stuck state — the same call path the manual skip-next button uses (verified working). **On-device**: chapter 01→02 auto-advances in ~340ms.
+- **#554 Cover-tap pause no longer regresses position** — `AudioTrack.playbackHeadPosition` can glitch on the pause edge, occasionally returning a stale frame counter. Fix: `pauseTts/pauseRouted` snapshot `currentPositionMs()` into `pinnedPausePositionMs`; `currentPositionMs()` returns it verbatim while paused. Position cannot regress by construction. **On-device**: 2:36 → 2:34 → 2:34 stable across 3 s of pause.
+- **#555 Speed change no longer jumps position backwards** — both `EnginePlayer.estimateDurationMs` and `AppBindings.toUi` used speed-aware `charsPerSec = BASELINE × speed`, so a speed tap relabeled the axis; compounded by `state.charOffset` lagging the audible head because consumer-thread updates queue behind Main. Fix: both position and duration now live on the speed-invariant media-time (speed-1) axis; `setSpeed` captures truthful audible position via `currentPositionMs()` BEFORE the rebuild, writes it into both `speedHandoffCharOffset` (engine) and `state.charOffset` (UI anchor); `AppBindings.toUi` scales wall-elapsed by speed. **On-device**: 1:35 (1×) → tap 1.5× → 1:41 forward motion only (pre-fix: ~0:55 visible backwards jump).
+
+### Why this slipped v0.5.54
+v0.5.54's PR #552 fixed the visible *state* (Buffering subtitle) on chapter end but didn't actually wire the auto-advance trigger to the chapter-load mechanism. The on-device verification — booted on the tablet, played a Notion chapter to natural end — surfaced the gap that unit tests missed.
+
+### Under the hood
+- 10 new tests in `PlaybackSmoothnessFollowupTest.kt` covering watchdog timing + speed-invariant axis math. 229+ tests pass.
+- The watchdog architecture is intentionally defensive: the engine has its own 30 s timeout on chapter-body await, and the controller has an independent 8 s watchdog that fires the manual-skip path. Belt-and-suspenders — if either layer succeeds, auto-advance works.
+
 ## [0.5.54] — 2026-05-15
 
 Spotify-grade playback smoothness pass. Two parallel agents, two clusters of fixes covering everything the on-device audit found in the player surface, plus a magical new launcher icon.
