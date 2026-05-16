@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import `in`.jphe.storyvox.feature.api.AzureProbeResult
+import `in`.jphe.storyvox.feature.api.CoverStyle
 import `in`.jphe.storyvox.feature.api.PalaceProbeResult
 import `in`.jphe.storyvox.feature.api.ReadingDirection
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
@@ -493,6 +494,10 @@ class SettingsViewModel @Inject constructor(
      */
     fun setA11yTalkBackNudgeDismissed(dismissed: Boolean) =
         viewModelScope.launch { repo.setA11yTalkBackNudgeDismissed(dismissed) }
+
+    /** v0.5.59 — book-cover fallback style. See [`CoverStyle`]. */
+    fun setCoverStyle(style: CoverStyle) =
+        viewModelScope.launch { repo.setCoverStyle(style) }
 }
 
 /** Map the feature-layer enum to the :core-llm enum. The two are

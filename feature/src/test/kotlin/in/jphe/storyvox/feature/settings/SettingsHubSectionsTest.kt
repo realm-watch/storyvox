@@ -27,13 +27,15 @@ import org.junit.Test
 class SettingsHubSectionsTest {
 
     @Test
-    fun `hub catalog renders fourteen sections in fixed order`() {
-        // 13 named sections + 1 escape hatch ("All settings"). The
+    fun `hub catalog renders fifteen sections in fixed order`() {
+        // 14 named sections + 1 escape hatch ("All settings"). The
         // count bumped from 13 → 14 in v0.5.42 when the Accessibility
-        // subscreen scaffold landed. Adding a new section requires
-        // updating both this assertion AND the composable's row list
-        // — that drift is the point of pinning.
-        assertEquals(14, SettingsHubSections.size)
+        // subscreen scaffold landed; bumped 14 → 15 in v0.5.59 when
+        // the Appearance subscreen (book cover style toggle) shipped.
+        // Adding a new section requires updating both this assertion
+        // AND the composable's row list — that drift is the point of
+        // pinning.
+        assertEquals(15, SettingsHubSections.size)
     }
 
     @Test
@@ -51,6 +53,8 @@ class SettingsHubSectionsTest {
             // entry point. Pin it here so a regression that drops the
             // row surfaces in this suite too.
             "Accessibility",
+            // v0.5.59 — Appearance (book cover style toggle).
+            "Appearance",
             "Plugins",
             "Account",
             "Memory Palace",

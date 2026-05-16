@@ -24,6 +24,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.compose.foundation.isSystemInDarkTheme
 import dagger.Lazy
 import dagger.hilt.android.AndroidEntryPoint
+import `in`.jphe.storyvox.feature.api.CoverStyle
 import `in`.jphe.storyvox.feature.api.ReadingDirection
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
 import `in`.jphe.storyvox.feature.api.SpeakChapterMode
@@ -34,6 +35,8 @@ import `in`.jphe.storyvox.ui.a11y.A11ySpeakChapterMode
 import `in`.jphe.storyvox.ui.a11y.LocalA11ySpeakChapterMode
 import `in`.jphe.storyvox.ui.a11y.LocalAccessibleTouchTargets
 import `in`.jphe.storyvox.ui.a11y.LocalIsTalkBackActive
+import `in`.jphe.storyvox.ui.component.CoverStyleLocal
+import `in`.jphe.storyvox.ui.component.LocalCoverStyle
 import `in`.jphe.storyvox.ui.theme.LibraryNocturneTheme
 import `in`.jphe.storyvox.navigation.DeepLinkResolver
 import `in`.jphe.storyvox.navigation.StoryvoxNavHost
@@ -231,10 +234,23 @@ class MainActivity : ComponentActivity() {
                     SpeakChapterMode.NumbersOnly -> A11ySpeakChapterMode.NumbersOnly
                     SpeakChapterMode.TitlesOnly -> A11ySpeakChapterMode.TitlesOnly
                 }
+                // v0.5.59 — book-cover fallback style mirror, sourced
+                // from `pref_cover_style` and pushed into `:core-ui`
+                // via [LocalCoverStyle] so [FictionCoverThumb] can
+                // branch without depending on `:feature/api`. Default
+                // Monogram (the JP-preferred classic minimalist tile,
+                // and the visual revert from the v0.5.51
+                // BrandedCoverTile experiment).
+                val coverStyle = when (settings?.coverStyle ?: CoverStyle.Monogram) {
+                    CoverStyle.Monogram -> CoverStyleLocal.Monogram
+                    CoverStyle.Branded -> CoverStyleLocal.Branded
+                    CoverStyle.CoverOnly -> CoverStyleLocal.CoverOnly
+                }
                 val providers = buildList {
                     add(LocalAccessibleTouchTargets provides effectiveLargerTouchTargets)
                     add(LocalA11ySpeakChapterMode provides speakChapterMode)
                     add(LocalIsTalkBackActive provides a11yState.isTalkBackActive)
+                    add(LocalCoverStyle provides coverStyle)
                     if (forcedDirection != null) {
                         add(LocalLayoutDirection provides forcedDirection)
                     }

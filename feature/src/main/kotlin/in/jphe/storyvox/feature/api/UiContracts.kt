@@ -1173,6 +1173,19 @@ data class UiSettings(
      * TalkBack active; dismissal flips this true forever.
      */
     val a11yTalkBackNudgeDismissed: Boolean = false,
+    /**
+     * v0.5.59 — book-cover fallback style. Controls what
+     * [`FictionCoverThumb`] renders when the remote cover URL is
+     * missing, expired, or fails to load. Real covers are always shown
+     * when they load.
+     *
+     * Defaults to [CoverStyle.Monogram] — the visual revert from the
+     * v0.5.51 BrandedCoverTile (#514). Existing users on v0.5.51..0.5.58
+     * who don't have the pref persisted yet land on Monogram on first
+     * launch of v0.5.59; users who explicitly prefer the BrandedCoverTile
+     * can opt back in via Settings → Appearance → Book cover style.
+     */
+    val coverStyle: CoverStyle = CoverStyle.Monogram,
 ) {
     /** Speed value the engine should run at right now — the active
      *  voice's override if set, otherwise the global default (#195). */
@@ -1453,6 +1466,34 @@ enum class SpeakChapterMode { Both, NumbersOnly, TitlesOnly }
  * the radio group only persists the user's intent.
  */
 enum class ReadingDirection { FollowSystem, ForceLtr, ForceRtl }
+
+/**
+ * Book-cover fallback style — what [`FictionCoverThumb`] renders when
+ * the remote cover URL is missing, expired, or fails to load. Real
+ * covers are always shown when they load successfully; this enum only
+ * controls the fallback tile.
+ *
+ * Introduced in v0.5.59 as a user-facing opt-out from the v0.5.51
+ * BrandedCoverTile experiment (#514). JP's audit found the warm
+ * gradient + EB-Garamond title made every fallback feel like the
+ * cover, blurring the visual distinction between "we have a cover"
+ * and "we're standing in for one". The old [`MonogramSigilTile`] —
+ * minimalist sigil + author initial on dark — reads more clearly as a
+ * placeholder, so it's the new default.
+ *
+ *  - [Monogram] — classic minimalist sigil tile + author initial.
+ *    Default for new installs and the visual revert for users on
+ *    v0.5.51..v0.5.58.
+ *  - [Branded] — the v0.5.51 BrandedCoverTile: warm gradient,
+ *    sun-disk watermark, EB-Garamond title, brass border.
+ *  - [CoverOnly] — show the remote cover when one loads; otherwise
+ *    a dim brass-ring outline placeholder (no title, no monogram).
+ *    For users who want a strict "real cover or nothing visible".
+ *
+ * Persisted as the enum's `name` under `pref_cover_style`; unknown
+ * values fall back to [Monogram] on read.
+ */
+enum class CoverStyle { Monogram, Branded, CoverOnly }
 
 interface SettingsRepositoryUi {
     val settings: Flow<UiSettings>
@@ -1839,6 +1880,17 @@ interface SettingsRepositoryUi {
      * resets, but a Settings → Accessibility tap won't).
      */
     suspend fun setA11yTalkBackNudgeDismissed(dismissed: Boolean) {}
+
+    // ── Appearance (v0.5.59) ───────────────────────────────────────
+    /**
+     * Book-cover fallback style — see [UiSettings.coverStyle] and
+     * [`CoverStyle`]. Default no-op for test fakes; the DataStore
+     * impl in `:app` persists under `pref_cover_style`, mirrors
+     * through the `:core-sync` allowlist, and triggers a recomposition
+     * via the [`LocalCoverStyle`] CompositionLocal so the next
+     * `FictionCoverThumb` render picks the new tile.
+     */
+    suspend fun setCoverStyle(style: CoverStyle) {}
 
     // ── InstantDB magical sign-in onboarding (#500) ────────────────
     /**
