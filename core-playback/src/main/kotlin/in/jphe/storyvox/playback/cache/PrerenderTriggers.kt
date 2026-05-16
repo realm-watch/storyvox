@@ -3,6 +3,7 @@ package `in`.jphe.storyvox.playback.cache
 import android.util.Log
 import `in`.jphe.storyvox.data.repository.ChapterRepository
 import `in`.jphe.storyvox.data.repository.FictionLibraryListener
+import `in`.jphe.storyvox.data.repository.PlaybackPositionRepository
 import `in`.jphe.storyvox.data.repository.playback.PlaybackModeConfig
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -59,13 +60,51 @@ class PrerenderTriggers @Inject constructor(
     private val scheduler: PcmRenderScheduler,
     private val chapterRepo: ChapterRepository,
     private val modeConfig: PlaybackModeConfig,
+    /**
+     * Issue #557 (stuck-state-fixer batch) — used by [onLibraryAdded] to
+     * anchor pre-render scheduling on the user's resume chapter instead
+     * of always starting at chapter 0. When a fiction is re-added mid-
+     * series (manual unfollow → re-follow, or the future "imported from
+     * backup" flow), the user has likely already read several chapters
+     * and the relevant warming window is N+1..N+3, not 1..3.
+     *
+     * Optional dependency by Singleton-graph: PlaybackPositionRepository
+     * is always present in production (`:core-data` Hilt module). Tests
+     * can pass a fake (see PrerenderTriggersTest).
+     */
+    private val positionRepo: PlaybackPositionRepository,
 ) : FictionLibraryListener {
 
     /**
-     * Library-add: schedule chapters 1-N (per [DEFAULT_PRERENDER_CHAPTERS]
-     * or full-prerender). Order matches reading order from
+     * Library-add: schedule the next [DEFAULT_PRERENDER_CHAPTERS] chapters
+     * in reading order STARTING FROM the user's resume position (per
+     * [PlaybackPositionRepository]), or chapter 0 when no resume row
+     * exists yet (first-time add). Order matches reading order from
      * [ChapterRepository.observeChapters] — first emission is the
      * current snapshot, sorted by chapter index.
+     *
+     * Issue #557 — pre-fix this always took chapters[0..3], which meant
+     * re-adding a mid-series fiction (e.g. user is at chapter 04 of a
+     * 20-chapter Royal Road) burned the worker on rendering chapter 01
+     * while the listener actually needs chapter 05 next. The user
+     * complained: "Pre-render targets the WRONG chapter — when resuming
+     * a fiction mid-series the cache pre-render starts on chapter 01
+     * instead of chapter N+1."
+     *
+     * The fix anchors the slice on the resume chapter index:
+     *  - No resume position → take chapters[0..N] (legacy behavior;
+     *    fresh add of a never-played fiction).
+     *  - Resume position present + resume chapter found in list →
+     *    take chapters from (resumeIndex + 1) for N entries. The user
+     *    is already AT the resume chapter; pre-rendering it would be
+     *    wasted work (the foreground tee in EnginePlayer's streaming
+     *    source populates the cache for the active chapter
+     *    automatically). N+1, N+2, N+3 keep the window one chapter
+     *    ahead of playback so the next-up transition is instant.
+     *  - Resume chapter not in current chapter list (deleted /
+     *    re-numbered upstream) → fall back to chapters[0..N] rather
+     *    than skip silently.
+     *  - Mode C (full pre-render) → render everything (no slice).
      */
     override suspend fun onLibraryAdded(fictionId: String) {
         val chapters = chapterRepo.observeChapters(fictionId).first()
@@ -77,16 +116,53 @@ class PrerenderTriggers @Inject constructor(
             )
             return
         }
-        val limit = if (modeConfig.currentFullPrerender()) {
-            chapters.size
-        } else {
-            DEFAULT_PRERENDER_CHAPTERS
+        if (modeConfig.currentFullPrerender()) {
+            Log.i(
+                LOG_TAG,
+                "pcm-cache TRIGGER-LIBRARY-ADD fictionId=$fictionId " +
+                    "scheduling=${chapters.size} fullPrerender=true",
+            )
+            for (chapter in chapters) {
+                scheduler.scheduleRender(fictionId = fictionId, chapterId = chapter.id)
+            }
+            return
         }
-        val targets = chapters.take(limit)
+        // Issue #557 — resolve the resume slice anchor. The
+        // `runCatching` defends against a malformed PlaybackPositionRepo
+        // (Room corruption, schema migration failure) — pre-render
+        // scheduling is best-effort housekeeping, not a load-blocking
+        // path, so a position read that throws falls through to the
+        // legacy "start from 0" behavior.
+        val resumeChapterId = runCatching { positionRepo.load(fictionId)?.chapterId }
+            .getOrNull()
+        val resumeIndex = resumeChapterId?.let { id ->
+            chapters.indexOfFirst { it.id == id }.takeIf { it >= 0 }
+        }
+        val targets = if (resumeIndex != null) {
+            // Start ONE PAST the resume chapter — that chapter is the
+            // active one (or about to be) and gets cached by the
+            // streaming source's foreground tee. The pre-render window
+            // belongs to the chapters that come AFTER.
+            chapters.drop(resumeIndex + 1).take(DEFAULT_PRERENDER_CHAPTERS)
+        } else {
+            chapters.take(DEFAULT_PRERENDER_CHAPTERS)
+        }
+        if (targets.isEmpty()) {
+            // User is at end-of-fiction (resume = last chapter); nothing
+            // left to pre-render. Log so the audit trail makes sense.
+            Log.i(
+                LOG_TAG,
+                "pcm-cache TRIGGER-LIBRARY-ADD fictionId=$fictionId " +
+                    "resumeChapterId=$resumeChapterId resumeIndex=$resumeIndex " +
+                    "scheduling=0 (at end of fiction)",
+            )
+            return
+        }
         Log.i(
             LOG_TAG,
             "pcm-cache TRIGGER-LIBRARY-ADD fictionId=$fictionId " +
-                "scheduling=${targets.size} fullPrerender=${limit == chapters.size}",
+                "resumeChapterId=$resumeChapterId resumeIndex=$resumeIndex " +
+                "scheduling=${targets.size} fullPrerender=false",
         )
         for (chapter in targets) {
             scheduler.scheduleRender(fictionId = fictionId, chapterId = chapter.id)

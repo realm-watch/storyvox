@@ -131,10 +131,10 @@ class PlaybackSmoothnessFollowupTest {
                 }
         }
         // Less than the threshold — watchdog should not have fired yet.
-        advanceTimeBy(DefaultPlaybackController.BUFFERING_STUCK_WATCHDOG_MS - 1_000L)
+        advanceTimeBy(DefaultPlaybackController.BUFFERING_STUCK_WATCHDOG_MS / 2)
         assertNull("watchdog fired prematurely", firedFor)
         // Past the threshold — should fire.
-        advanceTimeBy(2_000L)
+        advanceTimeBy(DefaultPlaybackController.BUFFERING_STUCK_WATCHDOG_MS)
         assertEquals("watchdog should have fired for ch1", "ch1", firedFor)
         job.cancel()
     }
@@ -168,7 +168,11 @@ class PlaybackSmoothnessFollowupTest {
                 }
         }
         // Chapter advances naturally before the watchdog threshold.
-        advanceTimeBy(2_000L)
+        // v0.5.57 (#557) — watchdog dropped from 8 s → 1.5 s, so the
+        // "advance well before threshold" probe has to be sub-threshold.
+        // Pre-fix this advanced 2 s which now overshoots the 1.5 s
+        // watchdog, fires it, and trips the assertNull on the test below.
+        advanceTimeBy(500L)
         state.value = state.value.copy(
             currentChapterId = "ch2",
             isBuffering = false,
@@ -207,7 +211,11 @@ class PlaybackSmoothnessFollowupTest {
                     }
                 }
         }
-        advanceTimeBy(2_000L)
+        // v0.5.57 (#557) — watchdog dropped from 8 s → 1.5 s, so the
+        // "advance well before threshold" probe has to be sub-threshold.
+        // Pre-fix this advanced 2 s which now overshoots the 1.5 s
+        // watchdog, fires it, and trips the assertNull on the test below.
+        advanceTimeBy(500L)
         // Buffering clears (e.g., chapter body landed, audio started).
         state.value = state.value.copy(isBuffering = false)
         advanceTimeBy(DefaultPlaybackController.BUFFERING_STUCK_WATCHDOG_MS + 1_000L)
@@ -243,7 +251,11 @@ class PlaybackSmoothnessFollowupTest {
                     }
                 }
         }
-        advanceTimeBy(2_000L)
+        // v0.5.57 (#557) — watchdog dropped from 8 s → 1.5 s, so the
+        // "advance well before threshold" probe has to be sub-threshold.
+        // Pre-fix this advanced 2 s which now overshoots the 1.5 s
+        // watchdog, fires it, and trips the assertNull on the test below.
+        advanceTimeBy(500L)
         // Error surfaces — engine already gave up; watchdog should NOT
         // double-fire an advance.
         state.value = state.value.copy(

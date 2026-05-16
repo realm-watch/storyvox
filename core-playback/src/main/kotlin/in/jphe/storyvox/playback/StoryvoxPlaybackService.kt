@@ -59,6 +59,12 @@ class StoryvoxPlaybackService : MediaSessionService() {
     @Inject lateinit var wearBridge: PhoneWearBridge
     @Inject lateinit var mediaSessionLocator: MediaSessionLocator
 
+    /** Issue #560 — process-wide audio-focus singleton. Held here so the
+     *  service can wire the loss callback to controller.pause() once at
+     *  onCreate(); the engine acquires/abandons through the same
+     *  Singleton instance via Hilt. */
+    @Inject lateinit var audioFocus: AudioFocusController
+
     private lateinit var session: MediaSession
     private lateinit var player: EnginePlayer
 
@@ -88,6 +94,16 @@ class StoryvoxPlaybackService : MediaSessionService() {
 
         player = enginePlayerFactory.create(applicationContext)
         controller.bindPlayer(player)
+
+        // Issue #560 — when the system or another app takes audio focus
+        // from us (phone call, video playback, alarm), pause the
+        // pipeline gracefully. Spotify/Pocket Casts behavior: speech
+        // doesn't auto-resume on focus regain — the user explicitly
+        // taps play. The controller's pause() routes through Media3's
+        // pauseRouted() which handles both TTS and audio-stream backends.
+        audioFocus.setOnFocusLost {
+            scope.launch { controller.pause() }
+        }
 
         session = MediaSession.Builder(this, player)
             .setCallback(StoryvoxSessionCallback(controller, scope))

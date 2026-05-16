@@ -184,6 +184,59 @@ class EngineStateDerivationTest {
     }
 
     /**
+     * Issue #557 (stuck-state-fixer) — at chapter natural-end, EnginePlayer
+     * flips `isBuffering=true / currentSentenceRange=null` BEFORE the
+     * housekeeping runs (persistPosition, markChapterPlayed, prerender,
+     * advanceChapter). With `isPlaying` still true, the engineState
+     * mapping should land on Buffering — NOT Playing. Pre-fix the engine
+     * sat on `isPlaying=true / isBuffering=false / currentSentenceRange=
+     * (stale)`, which mapped to Playing while no audio was coming out.
+     * The tablet audit captured this as the "state=PLAYING, position=
+     * frozen, no PCM" symptom.
+     */
+    @Test
+    fun `chapter-end transition state maps to Buffering not Playing`() {
+        val s = PlaybackState(
+            currentChapterId = "ch1",
+            isPlaying = true,
+            isBuffering = true,
+            currentSentenceRange = null,
+        )
+        val state = derive(s, warming = false, completed = false)
+        assertEquals(
+            "isPlaying=true + isBuffering=true must surface as Buffering, " +
+                "not Playing — see EnginePlayer.handleChapterDone (#557)",
+            EngineState.Buffering,
+            state,
+        )
+    }
+
+    /**
+     * Issue #557 — the debug overlay's "warming up" indicator is meant
+     * to surface ONLY during real voice warm-up (controller's _warmingUp
+     * latch). At chapter natural-end the state briefly looks similar
+     * (`isPlaying=true && currentSentenceRange==null`) but the warming
+     * latch is FALSE, so the precedence routes through Buffering. Pin
+     * the rule so a future refactor doesn't reintroduce the false
+     * "warming up" reading.
+     */
+    @Test
+    fun `chapter-end transition without warmup latch is Buffering not Warming`() {
+        val s = PlaybackState(
+            currentChapterId = "ch1",
+            isPlaying = true,
+            isBuffering = true,
+            currentSentenceRange = null,
+        )
+        val state = derive(s, warming = false, completed = false)
+        assertTrue(
+            "no warmup latch held → must NOT surface Warming",
+            state !is EngineState.Warming,
+        )
+        assertEquals(EngineState.Buffering, state)
+    }
+
+    /**
      * Mirror of the combine() body inside [DefaultPlaybackController.engineState].
      * Keeping a copy here is intentional: the test is the precedence
      * contract; if a future PR shuffles the order in the production code

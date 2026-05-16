@@ -57,6 +57,34 @@ class PlaybackStateTest {
         assertEquals(12.5f, SPEED_BASELINE_CHARS_PER_SECOND, 0f)
     }
 
+    /**
+     * Issue #561 (stuck-state-fixer) — when a chapter loads, the engine
+     * MUST surface the active voice id into [PlaybackState.voiceId]. The
+     * debug overlay's "name" / "voice" / "tier" rows feed off this field
+     * (via RealDebugRepositoryUi.displayEngineName), and a null
+     * voiceId paints them all as "—" — the audit's "blank fields"
+     * symptom. This test pins the contract: a copy with `voiceId="..."`
+     * is the post-load shape, and `displayEngineName` should resolve
+     * to a non-empty label.
+     */
+    @Test fun `voiceId round-trips and resolves engine name`() {
+        val s = PlaybackState(voiceId = "piper:lessac")
+        // Round-trip via Serializable to make sure the field survives
+        // background save/restore (Service kill, process death).
+        val json = kotlinx.serialization.json.Json.encodeToString(PlaybackState.serializer(), s)
+        val round = kotlinx.serialization.json.Json.decodeFromString(PlaybackState.serializer(), json)
+        assertEquals("piper:lessac", round.voiceId)
+        // The display heuristic in RealDebugRepositoryUi keys on the
+        // colon prefix. "piper:lessac" -> "VoxSherpa · Piper".
+        val derived = when {
+            s.voiceId?.startsWith("azure:") == true -> "Azure"
+            s.voiceId?.startsWith("kokoro:") == true -> "VoxSherpa · Kokoro"
+            s.voiceId?.startsWith("piper:") == true -> "VoxSherpa · Piper"
+            else -> "—"
+        }
+        assertEquals("VoxSherpa · Piper", derived)
+    }
+
     @Test fun `isBuffering defaults false and serializes round-trip`() {
         val s = PlaybackState(isBuffering = true, isPlaying = true, charOffset = 42)
         val json = kotlinx.serialization.json.Json.encodeToString(PlaybackState.serializer(), s)

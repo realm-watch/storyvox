@@ -169,6 +169,14 @@ class EnginePlayer @AssistedInject constructor(
      *  the N+2 render (N+1 was scheduled when N started or is already
      *  in flight). */
     private val prerenderTriggers: PrerenderTriggers,
+    /** Issue #560 (stuck-state-fixer) — audio-focus claim around every
+     *  AudioTrack write loop. Without this the AudioTrack silently
+     *  parks at the framework level and the user sees "PLAYING" with
+     *  no sound — the audit's stuck-state symptom (see
+     *  AudioFocusController kdoc for the dumpsys evidence). Singleton
+     *  so chapter transitions reuse the same focus request rather than
+     *  thrashing the stack. */
+    private val audioFocus: `in`.jphe.storyvox.playback.AudioFocusController,
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
 
     @AssistedFactory
@@ -846,7 +854,25 @@ class EnginePlayer @AssistedInject constructor(
                     .build(),
             )
             .setPlayWhenReady(s.isPlaying, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
-            .setPlaybackState(if (s.currentChapterId != null) Player.STATE_READY else Player.STATE_IDLE)
+            // Issue #557 — surface BUFFERING to MediaSession whenever
+            // the engine is buffering. Pre-fix this returned STATE_READY
+            // whenever a chapter id was set; combined with
+            // setPlayWhenReady(isPlaying) that meant MediaSession's
+            // computed state was PLAYING the entire time the engine was
+            // physically silent in a chapter-transition or
+            // catch-up-pause window. The tablet audit saw `state=PLAYING,
+            // position=N frozen` ticking every 3 s in this state. With
+            // STATE_BUFFERING the MediaSession surface (Bluetooth tile,
+            // Wear OS, Android Auto, the system media notification) all
+            // render the buffering indicator and stop claiming playback
+            // when none is happening.
+            .setPlaybackState(
+                when {
+                    s.currentChapterId == null -> Player.STATE_IDLE
+                    s.isBuffering -> Player.STATE_BUFFERING
+                    else -> Player.STATE_READY
+                },
+            )
             .setPlaylist(buildPlaylist(s))
             .setCurrentMediaItemIndex(0)
             // Issue #536 — Media3 polls this Supplier on every state
@@ -1507,6 +1533,15 @@ class EnginePlayer @AssistedInject constructor(
         activeEngineType = active.engineType
         loadedVoiceId = active.id
         voiceReloadPending = false
+        // Issue #561 (stuck-state-fixer) — surface the active voice id
+        // into PlaybackState so the debug overlay's "name" / "voice"
+        // rows + the snapshot's tier descriptor have the right input.
+        // Pre-fix `loadedVoiceId` was an internal field only and
+        // RealDebugRepositoryUi read `PlaybackState.voiceId` which never
+        // got set, so the overlay rendered "—" while the engine was
+        // actively rendering Piper Lessac. The audit captured this
+        // exact symptom on R5CRB0W66MK.
+        _observableState.update { it.copy(voiceId = active.id) }
 
         // (state was already pushed above so the spinner could show during
         // model load — refresh durationEstimate now that the active engine
@@ -1550,6 +1585,25 @@ class EnginePlayer @AssistedInject constructor(
     private fun startPlaybackPipeline() {
         // Make sure any previous run is fully stopped.
         stopPlaybackPipeline()
+
+        // Issue #560 — claim audio focus BEFORE creating the AudioTrack.
+        // Pre-fix the AudioTrack was created and `write()`-ed against
+        // with no focus held; on Samsung Z Flip3 the framework silently
+        // refused to drain the track and the audit captured the
+        // resulting "PLAYING + no audio" stuck state. AudioManager's
+        // AUDIOFOCUS_REQUEST_GRANTED is the green light to actually
+        // emit PCM. On denial we still build the pipeline (so the UI
+        // state stays consistent) but the user will hear nothing — the
+        // log warning is the breadcrumb for that path. Idempotent, so
+        // a chapter advance reusing the same focus is free.
+        val focusGranted = runCatching { audioFocus.acquire() }.getOrDefault(false)
+        if (!focusGranted) {
+            android.util.Log.w(
+                "EnginePlayer",
+                "#560 startPlaybackPipeline: audio focus was NOT granted; pipeline will be silent " +
+                    "until another app yields focus",
+            )
+        }
 
         val engineType = activeEngineType
         val sampleRate = when (engineType) {
@@ -2668,15 +2722,30 @@ class EnginePlayer @AssistedInject constructor(
             "advanceChapter: body ready for $nextId, calling loadAndPlay",
         )
         loadAndPlay(fiction, nextId, charOffset = 0)
-        // Issue #287 — persist the new chapter's id immediately so the
-        // Library "Continue listening" join sees the freshly-loaded
-        // chapter on its next emission. Without this the playback_position
-        // row stays pointed at the PREVIOUS chapter until the next save
-        // tick (e.g. user pauses, or next sentence boundary triggers a
-        // persistPosition), and the Resume card paints the new chapter's
-        // title alongside the old chapter's index/number — a confusing
-        // mismatch every auto-advance.
-        persistPosition()
+        // Issue #287 / #563 (stuck-state-fixer) — persist the new
+        // chapter's id immediately so the Library "Continue listening"
+        // join sees the freshly-loaded chapter on its next emission.
+        // Without this the playback_position row stays pointed at the
+        // PREVIOUS chapter until the next save tick (e.g. user pauses,
+        // or next sentence boundary triggers a persistPosition), and
+        // the Resume card paints the new chapter's title alongside the
+        // old chapter's index/number — a confusing mismatch every
+        // auto-advance.
+        //
+        // #563 — wrap in NonCancellable. The buffering-stuck watchdog's
+        // `withContext(Main) { advanceChapter(1) }` runs on a coroutine
+        // that the watchdog itself cancels once the state transition
+        // completes (the chapter id flips so `distinctUntilChanged`
+        // re-emits and the watchdog's collect loop re-arms). If that
+        // cancellation lands BEFORE this line, the suspending
+        // persistPosition is skipped and the DB row stays pointing at
+        // the old chapter — which is exactly the "Resume card stale
+        // after watchdog auto-advance" phone audit symptom (#563). The
+        // NonCancellable block lets persistPosition finish even if the
+        // parent is cancelling.
+        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+            persistPosition()
+        }
         _uiEvents.tryEmit(PlaybackUiEvent.ChapterChanged(nextId))
         android.util.Log.i(
             "EnginePlayer",
@@ -2691,6 +2760,45 @@ class EnginePlayer @AssistedInject constructor(
             "EnginePlayer",
             "handleChapterDone: chapter=$chapterId fiction=$fictionId — starting natural-end housekeeping",
         )
+        // Issue #557 (stuck-state-fixer batch) — flip into the
+        // chapter-transition buffering state BEFORE the housekeeping fans
+        // out. The natural-end branch already released the AudioTrack in
+        // the consumer thread's `finally`, so the speakers are physically
+        // silent the moment we get here. Pre-fix the only state mutation
+        // in this window was `isBuffering=true` inside `advanceChapter`
+        // (line ~2617), which runs AFTER several runCatching-wrapped
+        // suspend steps; if any of those throws CancellationException
+        // (the parent scope was cancelled — e.g. service shutdown, user
+        // navigated away, pipelineRunning was just set to false by
+        // stopPlaybackPipeline mid-housekeeping), the rest of the
+        // function short-circuits and the engine sits on
+        // `isPlaying=true / isBuffering=false / currentSentenceRange=...
+        // (stale)` forever. That's exactly the audit's symptom — the UI
+        // claims playing, the MediaSession heartbeat shows
+        // `state=PLAYING, position=57621 frozen` every 3s, but no PCM is
+        // moving.
+        //
+        // Keep `isPlaying=true` here on purpose: the controller's
+        // `engineState` mapping requires `isPlaying && isBuffering` to
+        // surface Buffering; dropping isPlaying would route us through
+        // Paused for this brief window. Clearing `currentSentenceRange`
+        // is what makes the debug overlay's "warming up" indicator
+        // honest — `isWarmingUp = isPlaying && currentSentenceRange ==
+        // null` in RealDebugRepositoryUi, and the post-fix invariant is
+        // that while we hold that combo we're truly in a transition,
+        // not stuck.
+        //
+        // `getState()` was also updated (#557) to emit
+        // `Player.STATE_BUFFERING` whenever `isBuffering=true`, so the
+        // MediaSession surface stops reporting PLAYING while we're
+        // physically silent.
+        _observableState.update {
+            it.copy(
+                isBuffering = true,
+                currentSentenceRange = null,
+            )
+        }
+        invalidateState()
         // Issue #553 — wrap each pre-advance step in runCatching so a
         // single Room write hiccup or a missing repo dep can't strand us
         // BEFORE advanceChapter even runs. Pre-fix any uncaught throw
@@ -2925,6 +3033,12 @@ class EnginePlayer @AssistedInject constructor(
         // running drops, the other is a cheap no-op.
         stopPlaybackPipeline()
         stopAudioStreamPlayer()
+        // Issue #560 — handleStop is the user-driven stop (notification
+        // dismiss, transport stop button) — abandon focus so other apps
+        // can take it. Transport pause via handleSetPlayWhenReady(false)
+        // does NOT abandon (we want to hold focus while paused so a
+        // subsequent resume doesn't have to re-acquire).
+        runCatching { audioFocus.abandon() }
         _observableState.update {
             it.copy(
                 isPlaying = false,
@@ -2951,6 +3065,12 @@ class EnginePlayer @AssistedInject constructor(
         stopRecapPipeline()
         stopPlaybackPipeline()
         stopAudioStreamPlayer()
+        // Issue #560 — release audio focus so other media apps can
+        // resume playback when storyvox is dismissed. The transport-
+        // level pause/resume doesn't abandon focus (we keep it for the
+        // chapter the user is paused in, matching audiobook UX); only
+        // full release / handleStop drops it.
+        runCatching { audioFocus.abandon() }
         scope.cancel()
     }
 

@@ -1,10 +1,15 @@
 package `in`.jphe.storyvox.playback.cache
 
+import `in`.jphe.storyvox.data.db.entity.ChapterDownloadState
+import `in`.jphe.storyvox.data.db.entity.PlaybackPosition
 import `in`.jphe.storyvox.data.repository.CachedBodyUsage
 import `in`.jphe.storyvox.data.repository.ChapterRepository
-import `in`.jphe.storyvox.data.db.entity.ChapterDownloadState
+import `in`.jphe.storyvox.data.repository.ContinueListeningEntry
+import `in`.jphe.storyvox.data.repository.PlaybackPositionRepository
 import `in`.jphe.storyvox.data.repository.playback.PlaybackChapter
 import `in`.jphe.storyvox.data.repository.playback.PlaybackModeConfig
+import `in`.jphe.storyvox.data.repository.playback.RecentItem
+import `in`.jphe.storyvox.data.repository.playback.SavedPosition
 import `in`.jphe.storyvox.data.source.model.ChapterContent
 import `in`.jphe.storyvox.data.source.model.ChapterInfo
 import kotlinx.coroutines.flow.Flow
@@ -103,6 +108,37 @@ class PrerenderTriggersTest {
         override suspend fun chapterBookmark(chapterId: String): Int? = null
     }
 
+    /**
+     * Issue #557 — FakePositionRepo for PrerenderTriggers's resume-aware
+     * scheduling. Only the `load(fictionId)` path is exercised in
+     * production from PrerenderTriggers, but the full interface is
+     * stubbed to keep the fake type-safe across future refactors.
+     */
+    private class FakePositionRepo(
+        private val positions: Map<String, SavedPosition> = emptyMap(),
+    ) : PlaybackPositionRepository {
+        override fun observePosition(fictionId: String): kotlinx.coroutines.flow.Flow<PlaybackPosition?> =
+            flowOf(null)
+        override fun observeMostRecentContinueListening(): kotlinx.coroutines.flow.Flow<ContinueListeningEntry?> =
+            flowOf(null)
+        override suspend fun savePosition(
+            fictionId: String,
+            chapterId: String,
+            charOffset: Int,
+            paragraphIndex: Int,
+            playbackSpeed: Float,
+        ) = Unit
+        override suspend fun clearPosition(fictionId: String) = Unit
+        override suspend fun save(
+            fictionId: String,
+            chapterId: String,
+            charOffset: Int,
+            durationEstimateMs: Long,
+        ) = Unit
+        override suspend fun load(fictionId: String): SavedPosition? = positions[fictionId]
+        override suspend fun recent(limit: Int): List<RecentItem> = emptyList()
+    }
+
     private fun chapter(num: Int, fictionPrefix: String) = ChapterInfo(
         id = "$fictionPrefix-c$num",
         sourceChapterId = "src-$num",
@@ -114,7 +150,7 @@ class PrerenderTriggersTest {
     fun `onLibraryAdded enqueues first 3 chapters when fullPrerender off`() = runBlocking {
         val scheduler = RecordingScheduler()
         val repo = FakeChapterRepo(mapOf("f1" to (1..5).map { chapter(it, "f1") }))
-        val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig(full = false))
+        val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig(full = false), FakePositionRepo())
 
         triggers.onLibraryAdded("f1")
 
@@ -133,7 +169,7 @@ class PrerenderTriggersTest {
     fun `onLibraryAdded enqueues all chapters when fullPrerender on`() = runBlocking {
         val scheduler = RecordingScheduler()
         val repo = FakeChapterRepo(mapOf("f1" to (1..5).map { chapter(it, "f1") }))
-        val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig(full = true))
+        val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig(full = true), FakePositionRepo())
 
         triggers.onLibraryAdded("f1")
 
@@ -150,7 +186,7 @@ class PrerenderTriggersTest {
         // Fiction with only 2 chapters; default limit is 3 but we shouldn't
         // try to schedule beyond what exists.
         val repo = FakeChapterRepo(mapOf("f1" to (1..2).map { chapter(it, "f1") }))
-        val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig(full = false))
+        val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig(full = false), FakePositionRepo())
 
         triggers.onLibraryAdded("f1")
 
@@ -161,7 +197,7 @@ class PrerenderTriggersTest {
     fun `onLibraryAdded with empty chapter list is a no-op`() = runBlocking {
         val scheduler = RecordingScheduler()
         val repo = FakeChapterRepo(emptyMap())
-        val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig(full = false))
+        val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig(full = false), FakePositionRepo())
 
         triggers.onLibraryAdded("f1")
 
@@ -175,6 +211,7 @@ class PrerenderTriggersTest {
             scheduler,
             FakeChapterRepo(emptyMap()),
             FakeModeConfig(),
+            FakePositionRepo(),
         )
 
         triggers.onLibraryRemoved("f1")
@@ -200,7 +237,7 @@ class PrerenderTriggersTest {
                     coverUrl = null,
                 ) else null
         }
-        val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig())
+        val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig(), FakePositionRepo())
 
         // Just-completed = c1 → next = c2 → next-next = c3 → schedule c3.
         triggers.onChapterCompleted("f1-c1")
@@ -214,7 +251,7 @@ class PrerenderTriggersTest {
         val scheduler = RecordingScheduler()
         // f1 has 3 chapters; completing c2 → next is c3 → next-next is null.
         val repo = FakeChapterRepo(mapOf("f1" to (1..3).map { chapter(it, "f1") }))
-        val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig())
+        val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig(), FakePositionRepo())
 
         triggers.onChapterCompleted("f1-c2")
 
@@ -225,7 +262,7 @@ class PrerenderTriggersTest {
     fun `onChapterCompleted at last chapter is a no-op`() = runBlocking {
         val scheduler = RecordingScheduler()
         val repo = FakeChapterRepo(mapOf("f1" to (1..3).map { chapter(it, "f1") }))
-        val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig())
+        val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig(), FakePositionRepo())
 
         triggers.onChapterCompleted("f1-c3")
 
@@ -241,7 +278,7 @@ class PrerenderTriggersTest {
                 "f2" to (1..4).map { chapter(it, "f2") },
             ),
         )
-        val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig())
+        val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig(), FakePositionRepo())
 
         triggers.onFullPrerenderEnabled(listOf("f1", "f2"))
 
@@ -250,4 +287,131 @@ class PrerenderTriggersTest {
         val fictions = scheduler.scheduled.map { it.first }.toSet()
         assertEquals(setOf("f1", "f2"), fictions)
     }
+
+    // ─── Issue #557 — resume-anchored scheduling ─────────────────────
+
+    @Test
+    fun `onLibraryAdded with resume on chapter 4 schedules chapters 5-6-7 not 1-2-3`() = runBlocking {
+        val scheduler = RecordingScheduler()
+        val repo = FakeChapterRepo(mapOf("f1" to (1..10).map { chapter(it, "f1") }))
+        // User is mid-series — last persisted position is chapter 4. The
+        // pre-render window should start at chapter 5 (next chapter), not
+        // chapter 1 (default). This is the audit's "Bug 3 — pre-render
+        // targets the WRONG chapter on resume" scenario.
+        val positions = FakePositionRepo(
+            mapOf(
+                "f1" to SavedPosition(
+                    fictionId = "f1",
+                    chapterId = "f1-c4",
+                    charOffset = 1_234,
+                    durationEstimateMs = 0L,
+                ),
+            ),
+        )
+        val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig(full = false), positions)
+
+        triggers.onLibraryAdded("f1")
+
+        assertEquals(
+            "pre-render window anchors on resume chapter + 1",
+            listOf("f1-c5", "f1-c6", "f1-c7"),
+            scheduler.scheduled.map { it.second },
+        )
+    }
+
+    @Test
+    fun `onLibraryAdded with no resume position falls back to chapters 1-2-3`() = runBlocking {
+        val scheduler = RecordingScheduler()
+        val repo = FakeChapterRepo(mapOf("f1" to (1..10).map { chapter(it, "f1") }))
+        // First-time add, no prior position. Should match the legacy
+        // pre-#557 behavior — pre-render from the start.
+        val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig(full = false), FakePositionRepo())
+
+        triggers.onLibraryAdded("f1")
+
+        assertEquals(
+            listOf("f1-c1", "f1-c2", "f1-c3"),
+            scheduler.scheduled.map { it.second },
+        )
+    }
+
+    @Test
+    fun `onLibraryAdded with resume position on last chapter is a no-op`() = runBlocking {
+        val scheduler = RecordingScheduler()
+        val repo = FakeChapterRepo(mapOf("f1" to (1..5).map { chapter(it, "f1") }))
+        // Resume = chapter 5 (the last one). There's no N+1 to pre-render.
+        val positions = FakePositionRepo(
+            mapOf(
+                "f1" to SavedPosition(
+                    fictionId = "f1",
+                    chapterId = "f1-c5",
+                    charOffset = 999,
+                    durationEstimateMs = 0L,
+                ),
+            ),
+        )
+        val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig(full = false), positions)
+
+        triggers.onLibraryAdded("f1")
+
+        assertTrue(
+            "no chapters left to pre-render at end of fiction",
+            scheduler.scheduled.isEmpty(),
+        )
+    }
+
+    @Test
+    fun `onLibraryAdded with stale resume chapter id falls back to chapters 1-2-3`() = runBlocking {
+        val scheduler = RecordingScheduler()
+        val repo = FakeChapterRepo(mapOf("f1" to (1..5).map { chapter(it, "f1") }))
+        // Resume chapter id doesn't exist in the current chapter list —
+        // upstream re-numbered, source restored, or row got corrupted.
+        // The fallback must NOT crash and MUST schedule something useful.
+        val positions = FakePositionRepo(
+            mapOf(
+                "f1" to SavedPosition(
+                    fictionId = "f1",
+                    chapterId = "f1-c-deleted",
+                    charOffset = 0,
+                    durationEstimateMs = 0L,
+                ),
+            ),
+        )
+        val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig(full = false), positions)
+
+        triggers.onLibraryAdded("f1")
+
+        assertEquals(
+            listOf("f1-c1", "f1-c2", "f1-c3"),
+            scheduler.scheduled.map { it.second },
+        )
+    }
+
+    @Test
+    fun `onLibraryAdded with resume + fullPrerender ignores resume and schedules everything`() =
+        runBlocking {
+            val scheduler = RecordingScheduler()
+            val repo = FakeChapterRepo(mapOf("f1" to (1..5).map { chapter(it, "f1") }))
+            // Mode C means "render every chapter"; the resume slice
+            // semantics don't apply — user wants the whole fiction cached.
+            val positions = FakePositionRepo(
+                mapOf(
+                    "f1" to SavedPosition(
+                        fictionId = "f1",
+                        chapterId = "f1-c3",
+                        charOffset = 0,
+                        durationEstimateMs = 0L,
+                    ),
+                ),
+            )
+            val triggers = PrerenderTriggers(scheduler, repo, FakeModeConfig(full = true), positions)
+
+            triggers.onLibraryAdded("f1")
+
+            assertEquals(5, scheduler.scheduled.size)
+            assertEquals(
+                listOf("f1-c1", "f1-c2", "f1-c3", "f1-c4", "f1-c5"),
+                scheduler.scheduled.map { it.second },
+            )
+        }
 }

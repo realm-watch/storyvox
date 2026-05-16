@@ -422,11 +422,32 @@ class DefaultPlaybackController @Inject constructor(
                                 p.advanceChapter(direction = 1)
                             }
                         }.onFailure { t ->
-                            android.util.Log.e(
-                                "PlaybackController",
-                                "#553 watchdog fallback advance threw: ${t.message}",
-                                t,
-                            )
+                            // Issue #567 (stuck-state-fixer) — filter
+                            // CancellationException. The watchdog's
+                            // parent coroutine is intentionally cancelled
+                            // when the state transitions cleanly after
+                            // the advance (chapter id flips so the
+                            // outer collect re-arms), and that
+                            // cancellation propagates into the inflight
+                            // withContext. Logging it as ERROR pollutes
+                            // logcat on every happy-path auto-advance.
+                            // Real failures (network down, body wait
+                            // timeout) surface as typed errors via the
+                            // engine's own runCatching wrappers; this
+                            // catch-all only ever catches the
+                            // cooperative cancellation now.
+                            if (t is kotlinx.coroutines.CancellationException) {
+                                android.util.Log.d(
+                                    "PlaybackController",
+                                    "#553 watchdog advance cancelled cleanly (chapter transitioned)",
+                                )
+                            } else {
+                                android.util.Log.e(
+                                    "PlaybackController",
+                                    "#553 watchdog fallback advance threw: ${t.message}",
+                                    t,
+                                )
+                            }
                         }
                     }
                 }

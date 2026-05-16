@@ -22,6 +22,7 @@ import `in`.jphe.storyvox.feature.api.DebugRepositoryUi
 import `in`.jphe.storyvox.feature.api.DebugSnapshot
 import `in`.jphe.storyvox.feature.api.DebugStorage
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
+import `in`.jphe.storyvox.playback.EngineState
 import `in`.jphe.storyvox.playback.PlaybackController
 import `in`.jphe.storyvox.playback.PlaybackError
 import `in`.jphe.storyvox.playback.PlaybackState
@@ -356,8 +357,9 @@ internal class RealDebugRepositoryUi(
         settings.settings,
         events,
         azureEngine.lastError,
-    ) { playback, ui, ring, azureErr ->
-        buildSnapshot(playback, ui, ring, azureErr)
+        controller.engineState,
+    ) { playback, ui, ring, azureErr, engineState ->
+        buildSnapshot(playback, ui, ring, azureErr, engineState)
     }
         .sample(REFRESH_INTERVAL_MS)
         .shareIn(scope, SharingStarted.WhileSubscribed(5_000), replay = 1)
@@ -369,7 +371,13 @@ internal class RealDebugRepositoryUi(
         // fast in practice because DataStore caches in-memory.
         val playback = controller.state.value
         val ui = settings.settings.first()
-        return buildSnapshot(playback, ui, events.value, azureEngine.lastError.value)
+        return buildSnapshot(
+            playback,
+            ui,
+            events.value,
+            azureEngine.lastError.value,
+            controller.engineState.value,
+        )
     }
 
     private fun buildSnapshot(
@@ -377,16 +385,32 @@ internal class RealDebugRepositoryUi(
         ui: `in`.jphe.storyvox.feature.api.UiSettings,
         ring: List<DebugEvent>,
         azureErr: AzureError?,
+        engineState: EngineState,
     ): DebugSnapshot {
         val engineName = displayEngineName(playback.voiceId)
         val voiceLabel = playback.voiceId.orEmpty().substringAfterLast(":")
             .ifBlank { playback.voiceId.orEmpty() }
+        // Issue #557 — drive `isWarmingUp` from the controller's
+        // canonical engineState rather than re-deriving from PlaybackState
+        // bits. Pre-fix `isPlaying && currentSentenceRange == null` was
+        // a leaky abstraction: in the natural-end → advanceChapter
+        // window the engine briefly hits that combo on purpose (chapter
+        // transition, not voice warm-up) and the overlay showed "warming
+        // up" with mostly blank fields. With this seam the overlay
+        // label tracks engineState exactly (Warming only when the
+        // controller-level _warmingUp latch is set, i.e. play() was just
+        // called and the producer hasn't emitted a first sentence yet).
+        val isWarming = engineState is EngineState.Warming
+        val isBufferingDerived = engineState is EngineState.Buffering ||
+            (engineState is EngineState.Playing && playback.isBuffering)
         return DebugSnapshot(
             playback = DebugPlayback(
-                pipelineRunning = playback.isPlaying || playback.isBuffering,
+                pipelineRunning = playback.currentChapterId != null &&
+                    engineState !is EngineState.Idle &&
+                    engineState !is EngineState.Completed,
                 isPlaying = playback.isPlaying,
-                isBuffering = playback.isBuffering,
-                isWarmingUp = playback.isPlaying && playback.currentSentenceRange == null,
+                isBuffering = isBufferingDerived,
+                isWarmingUp = isWarming,
                 currentSentenceIndex = playback.currentSentenceRange?.sentenceIndex ?: -1,
                 totalSentences = 0, // not surfaced from PlaybackState today; future enhancement
                 currentChapterId = playback.currentChapterId,
