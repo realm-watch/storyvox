@@ -29,6 +29,14 @@ android {
 
     buildFeatures {
         compose = true
+        // Issue #529 — feature module needs BuildConfig.DEBUG to gate the
+        // on-reader DebugOverlay so it can never render in release builds
+        // regardless of the legacy DataStore `pref_show_debug_overlay` flag.
+        // A user who flipped the toggle on in v0.5.4x would otherwise carry
+        // it forward into release shipments. BuildConfig.DEBUG is the
+        // belt-and-suspenders gate; the DataStore flag stays so debug-build
+        // users can still hide the overlay if they don't want it on screen.
+        buildConfig = true
     }
 
     sourceSets {

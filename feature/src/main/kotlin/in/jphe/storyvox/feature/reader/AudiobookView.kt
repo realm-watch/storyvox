@@ -1,5 +1,6 @@
 package `in`.jphe.storyvox.feature.reader
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -37,6 +38,8 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Bedtime
+import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkAdd
 import androidx.compose.material.icons.outlined.ChevronRight
@@ -61,11 +64,14 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -352,14 +358,30 @@ fun AudiobookView(
                     glyphSize = 96.dp,
                 )
             } else {
+                // Issue #525 — cover-tap silently toggled play/pause with
+                // no visual confirmation. On a 220×330 dp cover with no
+                // ripple-on-image and no overlay, an accidental thumb tap
+                // dropped audio mid-sentence and the user couldn't tell
+                // the cover was the cause. Audit (R5CRB0W66MK, 2026-05-15)
+                // logged this as "accidental-pause trap".
+                //
+                // Fix: keep tap-to-toggle (the muscle memory is correct —
+                // Spotify, Apple Music, Pocket Casts all do this), but
+                // *always* show a transient centered Play/Pause icon
+                // overlay for ~400 ms so the user gets immediate visual
+                // confirmation of what their tap did. Long-press stays
+                // unbound to avoid fighting a11y gestures.
+                //
+                // `coverFeedbackAtMs` is the wall-clock stamp of the most
+                // recent cover tap; the overlay derives its alpha + the
+                // icon-shown-during-the-flash from that stamp. We capture
+                // `isPlaying` AT THE TAP MOMENT (`feedbackShowsPause`) so
+                // the overlay shows "what just happened" (Pause icon
+                // appearing → "you paused") rather than racing the state
+                // flow's swap.
+                var coverFeedbackAtMs by remember { mutableLongStateOf(0L) }
+                var feedbackShowsPause by remember { mutableStateOf(false) }
                 Box(contentAlignment = Alignment.Center) {
-                    // Cover tap toggles play/pause — same convention as
-                    // Spotify, Apple Music, Pocket Casts, etc. The big play
-                    // button below remains the explicit affordance; the
-                    // cover is the *convenient* one, since it's the largest
-                    // surface on the player and one-handed users naturally
-                    // thumb-tap it (#269). Long-press is left unbound so
-                    // we don't accidentally fight system-level a11y gestures.
                     FictionCoverThumb(
                         coverUrl = state.coverUrl,
                         title = state.fictionTitle,
@@ -369,8 +391,29 @@ fun AudiobookView(
                             .clickable(
                                 role = androidx.compose.ui.semantics.Role.Button,
                                 onClickLabel = if (state.isPlaying) "Pause" else "Play",
-                                onClick = onPlayPause,
+                                onClick = {
+                                    // Capture the icon BEFORE firing the
+                                    // toggle: tapping a playing chapter
+                                    // shows "Pause" briefly (what just
+                                    // happened); tapping a paused
+                                    // chapter shows "Play". Without
+                                    // capture-first, the state flow can
+                                    // race the overlay and the user sees
+                                    // the wrong icon for ~16-100 ms.
+                                    feedbackShowsPause = state.isPlaying
+                                    coverFeedbackAtMs = System.currentTimeMillis()
+                                    onPlayPause()
+                                },
                             ),
+                    )
+                    // #525 — transient feedback overlay. The icon fades
+                    // in/out across [COVER_FEEDBACK_DURATION_MS]; outside
+                    // that window the overlay is invisible and the cover
+                    // is back to undecorated. AnimatedVisibility owns the
+                    // fade so we don't need to drive alpha by hand.
+                    CoverTapFeedback(
+                        startedAtMs = coverFeedbackAtMs,
+                        showPauseIcon = feedbackShowsPause,
                     )
                     // Subtle brass sigil ring orbiting the cover while the
                     // engine is producing the first sentence's audio. Fades
@@ -404,12 +447,27 @@ fun AudiobookView(
                 // need to carry it alone. When title is present + we're in
                 // a state tail, append the state to the title with a "·"
                 // separator so the user gets both pieces of information.
-                when {
-                    state.chapterTitle.isBlank() -> "Loading voice + chapter text"
-                    warmingUp -> "${state.chapterTitle} · Voice waking up…"
-                    state.isBuffering -> "${state.chapterTitle} · Buffering…"
-                    else -> state.chapterTitle
-                },
+                //
+                // Issue #543 — the warmup message is now voice-aware:
+                // "Warming Brian…" instead of "Voice waking up…" so the
+                // listener sees which neural voice is loading. Resolves
+                // to "Warming voice…" when the voice label is blank
+                // (cold launch before VoiceLibrary resolves the active
+                // voice), matching the sibling audio-fidelity-fixer's
+                // `EngineState.Warming(message)` semantic.
+                //
+                // Issue #537 — pre-fix the buffering branch said "idle"
+                // when the player was paused mid-chapter; that semantic
+                // mismatch is handled in DebugOverlay.pipelineStateText.
+                // The on-screen subtitle here only ever rendered the
+                // chapter title, warming label, or buffering label, so
+                // no surface change needed here for #537.
+                playerStatusSubtitle(
+                    chapterTitle = state.chapterTitle,
+                    warmingUp = warmingUp,
+                    buffering = state.isBuffering,
+                    voiceLabel = state.voiceLabel,
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (showSpinner) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -478,7 +536,27 @@ fun AudiobookView(
                 // consistent.
                 val warmingUp = state.isWarmingUp
                 val showSpinner = warmingUp || state.isBuffering
-                Box(contentAlignment = Alignment.Center) {
+                // Issue #526 — the play/pause button jumped 25 dp on the
+                // buffering ⇄ playing transition. Pre-fix the surrounding
+                // Box had no fixed size, so it resized to whichever child
+                // was largest at that moment: 96 dp when the spinner was
+                // visible, 72 dp (the FilledIconButton) when it wasn't.
+                // SpaceEvenly distributes around children's measured
+                // widths, so every state flip nudged the whole transport
+                // row vertically + horizontally by ~12-25 dp.
+                //
+                // Fix: pin the host Box to 96 dp regardless of which child
+                // is visible. The spinner appears / disappears inside that
+                // fixed bounds without resizing the row. The play icon
+                // itself stays centered via Box(Alignment.Center); the
+                // FilledIconButton is still 72 dp inside, so the visual
+                // tap target doesn't grow. Crossfade the icon vector
+                // inside the button so the Play→Pause swap is smooth
+                // instead of a hard pop.
+                Box(
+                    modifier = Modifier.size(PLAY_BUTTON_HOST_SIZE_DP.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
                     androidx.compose.animation.AnimatedVisibility(
                         visible = showSpinner,
                         enter = spinnerEnter,
@@ -494,11 +572,26 @@ fun AudiobookView(
                             contentColor = MaterialTheme.colorScheme.onPrimary,
                         ),
                     ) {
-                        Icon(
-                            imageVector = if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = if (state.isPlaying) "Pause" else "Play",
-                            modifier = Modifier.size(40.dp),
-                        )
+                        // Crossfade the play/pause vector so the swap
+                        // doesn't pop. Honors reduced-motion via the
+                        // same `spinnerEnter` family above — when
+                        // reduced motion is on, the icon swap becomes
+                        // instantaneous (matches the rest of Library
+                        // Nocturne's reduced-motion fall-back pattern).
+                        androidx.compose.animation.Crossfade(
+                            targetState = state.isPlaying,
+                            animationSpec = tween(
+                                if (reducedMotion) 0 else motion.standardDurationMs,
+                                easing = motion.standardEasing,
+                            ),
+                            label = "play-pause-icon",
+                        ) { playing ->
+                            Icon(
+                                imageVector = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                contentDescription = if (playing) "Pause" else "Play",
+                                modifier = Modifier.size(40.dp),
+                            )
+                        }
                     }
                 }
                 IconButton(onClick = onSkipForward) {
@@ -508,6 +601,38 @@ fun AudiobookView(
                     Icon(Icons.Filled.SkipNext, contentDescription = "Next chapter", modifier = Modifier.size(32.dp))
                 }
             }
+            // Issue #527 — Spotify / Apple Music / Libby all expose
+            // speed, sleep timer, and a quick voice/output picker on
+            // the main player surface, one tap away. v0.5.52's player
+            // hid all three behind the brass voice icon's quick sheet
+            // and the ⋮ overflow; the discoverability cost was a
+            // 0-of-5 tap-test failure during the 2026-05-15 audit
+            // ("missing: Speed, Sleep timer, Voice picker, Cast,
+            // Chapter-list jump"). The PlayerQuickChips row sits
+            // directly under the transport so the most-tweaked knobs
+            // are flat — preset speed chips (0.75/1.0/1.25/1.5/2.0×),
+            // sleep timer presets (Off/5/15/30/60/End), voice chip
+            // showing the current voice with a tap-to-open-picker
+            // affordance. The detailed slider-based sheets (#418) stay
+            // available via the brass voice icon for users who want
+            // continuous-knob tuning; the chips are the *fast path*.
+            PlayerQuickChips(
+                state = state,
+                onSetSpeed = { presetSpeed ->
+                    onSetSpeed(presetSpeed)
+                    // Persist preset speed immediately — discrete presets
+                    // are commit-on-tap (the user expressed intent
+                    // exactly), unlike the continuous slider where we
+                    // only persist on onValueChangeFinished.
+                    onPersistSpeed(presetSpeed)
+                },
+                onStartSleepTimer = onStartSleepTimer,
+                onCancelSleepTimer = onCancelSleepTimer,
+                onPickVoice = onPickVoice,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = spacing.xs),
+            )
         }
 
         // Candlelight scrim — a translucent brass tone composited over
@@ -1006,4 +1131,413 @@ internal fun formatVoiceLabel(raw: String): String {
         else -> engineId.replaceFirstChar { it.uppercase() }
     }
     return "$engine · $voiceId"
+}
+
+// ─── Issue #526 — play-button host sizing ────────────────────────────
+/**
+ * Pin the play/pause host Box to this size in dp regardless of whether
+ * the warmup/buffering spinner is currently visible inside it. The
+ * spinner is 96 dp; the FilledIconButton is 72 dp. Pre-#526 the host
+ * Box wrapped to whichever child was visible, shifting the transport
+ * row layout by ~25 dp on every state transition.
+ *
+ * Exposed `internal` so [AudiobookViewLayoutTest] can pin the value
+ * without rendering the composable; pre-#526 a future "make play
+ * button bigger" change would re-introduce the layout shift if the
+ * host size doesn't grow alongside.
+ */
+internal const val PLAY_BUTTON_HOST_SIZE_DP: Int = 96
+
+// ─── Issue #525 — cover-tap transient feedback ───────────────────────
+/**
+ * Duration (ms) of the centered Play/Pause icon overlay that fades in
+ * + out on a cover tap. Long enough to register (~one read) but short
+ * enough not to obstruct the cover when the user is intentionally
+ * watching the chapter title or scrubber.
+ *
+ * 400 ms is the Spotify/Pocket Casts default for this same pattern —
+ * the audit reference benchmark.
+ */
+internal const val COVER_FEEDBACK_DURATION_MS: Long = 400L
+
+/**
+ * Issue #525 — transient overlay icon that appears on cover tap. The
+ * caller stamps [startedAtMs] with `System.currentTimeMillis()` at the
+ * tap moment and tells us which icon (Play or Pause) reflects what
+ * just happened. The composable fades in for ~120 ms, holds for ~160
+ * ms, fades out for ~120 ms, then unmounts. Outside the window the
+ * overlay is invisible (alpha = 0) and the cover renders undecorated.
+ *
+ * The overlay sits inside the same Box that hosts the cover and the
+ * MagicSpinner (the cover-area Box in [AudiobookView]); we don't
+ * intercept pointer events here — the cover's `clickable` still owns
+ * taps, and this composable is presentation-only.
+ */
+@Composable
+private fun CoverTapFeedback(
+    startedAtMs: Long,
+    showPauseIcon: Boolean,
+) {
+    val motion = LocalMotion.current
+    val reducedMotion = LocalReducedMotion.current
+
+    // Track visibility off a local recomposition trigger. We use a
+    // LaunchedEffect keyed on startedAtMs so each tap restarts the
+    // fade cycle from scratch even if the previous one was still in
+    // flight (rapid double-tap). The effect flips `visible` true,
+    // waits the full duration, then flips false; AnimatedVisibility
+    // owns the fade curve.
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(startedAtMs) {
+        if (startedAtMs == 0L) return@LaunchedEffect
+        visible = true
+        delay(COVER_FEEDBACK_DURATION_MS)
+        visible = false
+    }
+
+    val enter = if (reducedMotion) EnterTransition.None else fadeIn(
+        animationSpec = tween(motion.standardDurationMs, easing = motion.standardEasing),
+    )
+    val exit = if (reducedMotion) ExitTransition.None else fadeOut(
+        animationSpec = tween(motion.standardDurationMs, easing = motion.standardEasing),
+    )
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible,
+        enter = enter,
+        exit = exit,
+    ) {
+        // Brass-tinted circle backdrop so the icon reads against any
+        // cover artwork. Alpha 0.62 keeps the cover faintly visible
+        // through the overlay — matches the candlelight-dim aesthetic
+        // for the bottom-sheet scrim.
+        Box(
+            modifier = Modifier.size(96.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .alpha(0.62f)
+                    .background(
+                        color = MaterialTheme.colorScheme.scrim,
+                        shape = androidx.compose.foundation.shape.CircleShape,
+                    ),
+            )
+            Icon(
+                imageVector = if (showPauseIcon) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                contentDescription = null, // a11y: the cover's onClickLabel already announces the action.
+                tint = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.size(56.dp),
+            )
+        }
+    }
+}
+
+// ─── Issue #543 — voice warming indicator ────────────────────────────
+/**
+ * Pure helper for the player's status-subtitle text. Encodes the
+ * label-vs-spinner branches outside the composable so [AudiobookViewTextTest]
+ * can pin the wording without an Android renderer.
+ *
+ * The voice-aware "Warming Brian…" copy (#543) requires the active
+ * voice's display name; we derive it from [UiPlaybackState.voiceLabel]
+ * via [warmingMessageForVoice] so the label flips to "Warming Brian…"
+ * once a Brian voice is selected and "Warming voice…" before any
+ * voice resolves (cold launch / blank label).
+ *
+ * Future contract bridge (sibling agent's [in.jphe.storyvox.playback.PlaybackController]):
+ *  when the engine exposes a real [EngineState.Warming(message, progress)]
+ *  upstream, the message should override our derived string here. Until
+ *  the upstream message lands, deriving the name from voiceLabel keeps
+ *  the UX honest with zero coupling.
+ *
+ * TODO(audio-fidelity-fixer): once `EngineState.Warming(message, progress)`
+ *  publishes, plumb the upstream `message` through UiPlaybackState
+ *  (new field) and prefer it over [warmingMessageForVoice] when present.
+ *  Progress, when non-null, drives the thin progress bar described in
+ *  the spec — currently absent because we have no signal to feed it.
+ */
+internal fun playerStatusSubtitle(
+    chapterTitle: String,
+    warmingUp: Boolean,
+    buffering: Boolean,
+    voiceLabel: String,
+): String = when {
+    chapterTitle.isBlank() -> "Loading voice + chapter text"
+    warmingUp -> "$chapterTitle · ${warmingMessageForVoice(voiceLabel)}"
+    buffering -> "$chapterTitle · Buffering…"
+    else -> chapterTitle
+}
+
+/**
+ * Derive a voice-aware warming message from the voiceLabel. The label
+ * arrives as `engine:voiceId` (see [formatVoiceLabel]); we extract a
+ * proper-noun name out of the voiceId where one is recognizable
+ * (Brian, Ava, Amy, Ryan, Lessac, Aria, etc.) and otherwise fall back
+ * to a generic "Warming voice…".
+ *
+ * Voice-name extraction is best-effort regex: voice ids look like
+ *   `en-US-BrianNeural`, `en-US-AvaMultilingualNeural`, `en_US-amy-medium`,
+ *   `en_US-lessac-low`, `tier3/narrator-warm`.
+ *
+ * The first capitalized-token-with-2+-letters after the locale prefix
+ * is the speaker name in the BCP-47/Azure naming convention; for Piper
+ * the lowercase token between two dashes is the name (`amy`, `lessac`).
+ * For VoxSherpa custom voices (`tier3/narrator-warm`) we don't try to
+ * extract a name — those are descriptive not first-name — and fall
+ * back to "Warming voice…".
+ *
+ * Exposed `internal` so [AudiobookViewTextTest] can pin per-voice cases.
+ */
+internal fun warmingMessageForVoice(voiceLabel: String): String {
+    if (voiceLabel.isBlank()) return "Warming voice…"
+    // Engine prefix split: "azure:en-US-BrianNeural" → "en-US-BrianNeural"
+    val voiceId = if (voiceLabel.contains(':')) {
+        voiceLabel.substringAfter(':')
+    } else voiceLabel
+
+    // Azure-style: locale tokens separated by '-', last token PascalCase
+    // and ends with "Neural" or similar — speaker name is the first
+    // capitalized chunk after the locale.
+    //   en-US-BrianNeural               → Brian
+    //   en-US-AvaMultilingualNeural     → Ava
+    //   en-GB-RyanNeural                → Ryan
+    val azureMatch = Regex("""^[a-z]{2,3}-[A-Z]{2}-([A-Z][a-z]+)""").find(voiceId)
+    if (azureMatch != null) {
+        val name = azureMatch.groupValues[1]
+        return "Warming $name…"
+    }
+
+    // Piper-style: locale_REGION-name-quality
+    //   en_US-amy-medium                → Amy
+    //   en_US-lessac-low                → Lessac
+    //   en_GB-alan-medium               → Alan
+    val piperMatch = Regex("""^[a-z]{2,3}_[A-Z]{2}-([a-z]+)-""").find(voiceId)
+    if (piperMatch != null) {
+        val raw = piperMatch.groupValues[1]
+        // Skip generic words that aren't proper-noun names so we don't
+        // surface "Warming Narrator…" — sounds robotic.
+        if (raw !in GENERIC_VOICE_TOKENS) {
+            return "Warming ${raw.replaceFirstChar { it.uppercaseChar() }}…"
+        }
+    }
+
+    return "Warming voice…"
+}
+
+/** Voice-id tokens that aren't real speaker names — they're voice
+ *  descriptors. Skip them so we don't say "Warming Narrator…". */
+private val GENERIC_VOICE_TOKENS = setOf(
+    "narrator",
+    "voice",
+    "default",
+    "generic",
+    "neutral",
+    "warm",
+    "cool",
+)
+
+// ─── Issue #527 — player quick-chips overflow row ────────────────────
+/**
+ * Discrete preset chips for speed, sleep timer, and voice — the three
+ * controls the 2026-05-15 audit (R5CRB0W66MK, R83W80CAFZB) flagged as
+ * missing from the main player surface.
+ *
+ * Layout: two rows of brass-tinted FilterChips wrapped in a FlowRow so
+ * narrow phones (Flip3 360 dp) break to extra lines instead of
+ * squashing chips. Selected state mirrors the current playback state:
+ * the chip whose preset matches the live `state.speed` (within ε) is
+ * brass-filled; the rest are outlined. Same for sleep timer — when
+ * `state.sleepTimerRemainingMs == null` the "Off" chip is selected,
+ * otherwise no chip is selected because the active duration is shown
+ * separately by the SleepTimerCountdownChip above the transport row.
+ *
+ * Tap behavior is commit-on-tap: a preset chip persists the value
+ * immediately (unlike the continuous slider, where we only persist
+ * on `onValueChangeFinished`). The user expressed exact intent.
+ *
+ * The Voice chip is a single chip showing the current voice name with
+ * a chevron — tap routes to the Voice Library. This matches the Voice
+ * row in the existing brass-icon quick sheet but lifts it onto the
+ * main surface for one-tap reachability.
+ */
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+internal fun PlayerQuickChips(
+    state: UiPlaybackState,
+    onSetSpeed: (Float) -> Unit,
+    onStartSleepTimer: (UiSleepTimerMode) -> Unit,
+    onCancelSleepTimer: () -> Unit,
+    onPickVoice: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = LocalSpacing.current
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+    ) {
+        // Row 1 — speed presets. Brass icon + presets list. Sleep timer
+        // and voice chip go to row 2 so a narrow phone gets a clean
+        // two-row layout instead of a 9-chip wrap.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+        ) {
+            Icon(
+                Icons.Outlined.Speed,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+            FlowRow(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                verticalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                SPEED_PRESETS.forEach { preset ->
+                    val selected = isSpeedPresetSelected(state.speed, preset)
+                    FilterChip(
+                        selected = selected,
+                        onClick = { onSetSpeed(preset) },
+                        label = { Text(formatSpeedPreset(preset)) },
+                        colors = brassFilterChipColors(),
+                        modifier = Modifier.semantics {
+                            contentDescription = "Playback speed ${formatSpeedPreset(preset)}"
+                        },
+                    )
+                }
+            }
+        }
+        // Row 2 — sleep timer presets + voice chip. Same brass-icon
+        // anchor so the icons read as "what the chips control".
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+        ) {
+            Icon(
+                Icons.Outlined.Bedtime,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+            FlowRow(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                verticalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                val sleepActive = state.sleepTimerRemainingMs != null
+                FilterChip(
+                    selected = !sleepActive,
+                    onClick = { onCancelSleepTimer() },
+                    label = { Text("Off") },
+                    colors = brassFilterChipColors(),
+                )
+                SLEEP_TIMER_PRESETS_MIN.forEach { minutes ->
+                    FilterChip(
+                        selected = false,
+                        onClick = { onStartSleepTimer(UiSleepTimerMode.Duration(minutes)) },
+                        label = { Text("${minutes}m") },
+                        colors = brassFilterChipColors(),
+                    )
+                }
+                FilterChip(
+                    selected = false,
+                    onClick = { onStartSleepTimer(UiSleepTimerMode.EndOfChapter) },
+                    label = { Text("End") },
+                    colors = brassFilterChipColors(),
+                )
+            }
+        }
+        // Row 3 — voice quick-switch. Single chip so the voice name has
+        // room to breathe on narrow phones; tapping deep-links to the
+        // Voice Library where the full picker lives.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+        ) {
+            Icon(
+                Icons.Outlined.RecordVoiceOver,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+            AssistChip(
+                onClick = onPickVoice,
+                label = {
+                    Text(
+                        formatVoiceLabel(state.voiceLabel).ifBlank { "Pick a voice" },
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                },
+                trailingIcon = {
+                    Icon(
+                        Icons.Outlined.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                colors = AssistChipDefaults.assistChipColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics {
+                        contentDescription = "Pick voice. Current: ${formatVoiceLabel(state.voiceLabel)}"
+                    },
+            )
+        }
+    }
+}
+
+/**
+ * Discrete speed presets surfaced on the main player surface. The
+ * continuous slider in the brass-voice-icon sheet still covers
+ * arbitrary values; these chips are the "common values, one tap"
+ * shortcut. 0.75 / 1.0 / 1.25 / 1.5 / 2.0 matches Spotify, Apple
+ * Music, Pocket Casts, and Libby — the audit reference set.
+ *
+ * Exposed `internal` so PlayerQuickChipsTest can iterate them.
+ */
+internal val SPEED_PRESETS: List<Float> = listOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+
+/**
+ * Sleep-timer duration presets in minutes. 5/15/30/60 covers the bulk
+ * of bedtime-listener use cases (the 2026-05-15 audit suggested
+ * 5/15/30/60). The "End of chapter" chip is a separate
+ * [UiSleepTimerMode.EndOfChapter] mode rendered alongside.
+ */
+internal val SLEEP_TIMER_PRESETS_MIN: List<Int> = listOf(5, 15, 30, 60)
+
+/**
+ * Speed-preset selection epsilon. Comparing floats directly would
+ * miss a 1.25× chip when the live speed is `1.2500001f` (float
+ * rounding from the slider). 0.01 is a third of the gap between
+ * adjacent presets so adjacent presets can't both flash selected.
+ */
+private const val SPEED_PRESET_EPSILON = 0.01f
+
+/**
+ * Pure-logic selection check — exposed `internal` so the test can
+ * pin the epsilon contract without rendering chips. Returns true when
+ * `state.speed` rounds to `preset` within [SPEED_PRESET_EPSILON].
+ */
+internal fun isSpeedPresetSelected(current: Float, preset: Float): Boolean =
+    kotlin.math.abs(current - preset) < SPEED_PRESET_EPSILON
+
+/**
+ * Format a preset float as a user-facing label: 0.75 → "0.75×",
+ * 1.0 → "1×", 1.25 → "1.25×". The "1×" special-case avoids the
+ * awkward "1.00×" reading; whole-number presets always strip the
+ * decimal.
+ */
+internal fun formatSpeedPreset(preset: Float): String {
+    return if (preset == preset.toInt().toFloat()) {
+        "${preset.toInt()}×"
+    } else {
+        "${"%.2f".format(preset).trimEnd('0').trimEnd('.')}×"
+    }
 }
