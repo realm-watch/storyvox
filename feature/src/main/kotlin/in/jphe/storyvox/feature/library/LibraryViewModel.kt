@@ -394,9 +394,24 @@ class LibraryViewModel @Inject constructor(
 
     fun submitAddByUrl(url: String, preferredSourceId: String? = null) {
         if (_addByUrlState.value === AddByUrlSheetState.Submitting) return
+        // Issue #584 — reject non-http(s) schemes before hitting the
+        // resolver. The pre-fix path queued anything (including
+        // `file:///etc/passwd`, `javascript:alert(1)`, `content://`,
+        // `data:`, `intent://`) with no client-side feedback; the
+        // user saw a partial sheet state and silent acceptance. The
+        // allowlist also strips leading/trailing whitespace before
+        // the check (a trailing space made `'file:///etc/passwd '`
+        // slip through the helper text's "supported" hint).
+        val trimmed = url.trim()
+        if (!isLikelyAddByUrl(trimmed)) {
+            _addByUrlState.value = AddByUrlSheetState.Open(
+                error = "Only http:// and https:// URLs are supported.",
+            )
+            return
+        }
         _addByUrlState.value = AddByUrlSheetState.Submitting
         viewModelScope.launch {
-            when (val result = uiRepo.addByUrl(url, preferredSourceId)) {
+            when (val result = uiRepo.addByUrl(trimmed, preferredSourceId)) {
                 is UiAddByUrlResult.Success -> {
                     _addByUrlState.value = AddByUrlSheetState.Hidden
                     _events.send(LibraryUiEvent.OpenFiction(result.fictionId))
@@ -425,7 +440,7 @@ class LibraryViewModel @Inject constructor(
                     // the dominance threshold in FictionRepositoryImpl.
                     val top = result.candidates.firstOrNull()
                     if (top != null) {
-                        submitAddByUrl(url, preferredSourceId = top.sourceId)
+                        submitAddByUrl(trimmed, preferredSourceId = top.sourceId)
                     } else {
                         _addByUrlState.value = AddByUrlSheetState.Open(
                             error = "Could not pick a backend for that URL.",
@@ -435,4 +450,32 @@ class LibraryViewModel @Inject constructor(
             }
         }
     }
+}
+
+/**
+ * Issue #584 — scheme allowlist for the Add-by-URL flow. Only
+ * `http://` and `https://` reach the resolver. Everything else
+ * (`file://`, `javascript:`, `content://`, `data:`, `intent://`,
+ * bare strings without a scheme) gets a friendly error before any
+ * network hit or filesystem touch.
+ *
+ * Why a single scheme allowlist rather than a regex: the magic-link
+ * resolver downstream has its own per-source pattern matching, so we
+ * don't want to second-guess shape here. The only invariant the
+ * resolver currently relies on is "this is an HTTP(S) URL we can
+ * actually fetch", and that's exactly what we pin.
+ *
+ * Exposed `internal` so a unit test can pin the spec — same pattern
+ * as [isLikelyEmail] in the sync auth module.
+ */
+internal fun isLikelyAddByUrl(raw: String): Boolean {
+    val url = raw.trim()
+    if (url.isEmpty()) return false
+    // Case-insensitive scheme check. RFC 3986 §3.1 says schemes are
+    // case-insensitive; users paste both `HTTP://` (browser address
+    // bar copy-paste on some platforms) and `http://` interchangeably.
+    val lower = url.lowercase()
+    if (lower.startsWith("http://") && url.length > "http://".length) return true
+    if (lower.startsWith("https://") && url.length > "https://".length) return true
+    return false
 }

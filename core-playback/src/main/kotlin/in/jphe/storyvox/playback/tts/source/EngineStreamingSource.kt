@@ -398,7 +398,13 @@ class EngineStreamingSource(
     override fun finalizeCache() {
         val ap = cacheAppender ?: return
         cacheAppender = null
-        runCatching { ap.finalize() }
+        // Issue #581 — `complete()` (was `finalize()`) sidesteps the
+        // Object.finalize() shadow that produced uncaught
+        // IllegalStateExceptions when the GC reclaimed a leaked
+        // already-completed appender. The Tee surface here keeps the
+        // name `finalizeCache` (matches the producer's pipeline-end
+        // semantics); only the inner call to PcmAppender changes.
+        runCatching { ap.complete() }
             .onFailure { _cacheTeeErrors.update { it + 1 } }
     }
 

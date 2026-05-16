@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * The `<sha>.idx.json` sidecar. Written by [PcmAppender.finalize] —
+ * The `<sha>.idx.json` sidecar. Written by [PcmAppender.complete] —
  * its presence on disk = "cache is complete". `PcmCache.isComplete`
  * is just `indexFor(key).exists()`.
  *

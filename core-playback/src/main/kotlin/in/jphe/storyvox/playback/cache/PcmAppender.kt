@@ -12,10 +12,18 @@ import kotlinx.serialization.encodeToString
  * Returned by [PcmCache.appender]. The caller (PR-D's
  * `EngineStreamingSource` tee, or PR-F's `ChapterRenderJob`) calls
  * [appendSentence] for each generated sentence in order. On natural
- * end-of-chapter the caller calls [finalize] to write the index sidecar
+ * end-of-chapter the caller calls [complete] to write the index sidecar
  * and mark the cache complete. On cancellation (user pause + don't
  * resume, voice swap, seek away) the caller calls [abandon] to delete
  * the partial files.
+ *
+ * Issue #581 — historically the completion method was named
+ * `finalize()`, which silently shadowed [java.lang.Object.finalize]
+ * (Kotlin doesn't require `override` for the deprecated GC hook).
+ * When the GC reclaimed a leaked appender it re-invoked the same
+ * method and the `check(!closed)` precondition threw on the
+ * `FinalizerDaemon` thread. Renamed to [complete] so the GC sees a
+ * plain Object.finalize no-op.
  *
  * **Not thread-safe.** The producer holds the only reference; concurrent
  * `appendSentence` calls would corrupt byte offsets in the in-memory
@@ -100,7 +108,7 @@ class PcmAppender internal constructor(
      */
     @Throws(IOException::class)
     fun appendSentence(sentence: Sentence, pcm: ByteArray, trailingSilenceMs: Int) {
-        check(!closed) { "appender already closed (finalize/abandon)" }
+        check(!closed) { "appender already closed (complete/abandon)" }
         if (pcm.isEmpty()) return
 
         val byteOffset = totalBytesWritten
@@ -122,11 +130,25 @@ class PcmAppender internal constructor(
      * Mark the cache entry complete: closes the pcm stream and writes
      * the `.idx.json` sidecar atomically (write to `.tmp`, rename).
      *
-     * After finalize the appender is closed; further calls throw.
+     * After complete the appender is closed; further calls throw.
+     *
+     * Issue #581 — this method used to be named `finalize()`, which
+     * silently shadowed [java.lang.Object.finalize] (Kotlin doesn't
+     * require the `override` keyword for the deprecated Object hook).
+     * When the GC's `FinalizerDaemon` reclaimed a leaked
+     * already-closed PcmAppender it invoked the same method and the
+     * `check(!closed)` precondition threw on the finalizer thread,
+     * producing the recurring `IllegalStateException: appender
+     * already closed (finalize/abandon)` uncaught-exception spam
+     * captured by the stress test (R5CRB0W66MK, monkey 5000-event
+     * runs, ~5 occurrences per session). Renaming to [complete]
+     * leaves a real `Object.finalize()` that the GC can call as a
+     * no-op (default Object behavior) and a distinct user method that
+     * only the explicit producer codepath invokes.
      */
     @Throws(IOException::class)
-    fun finalize() {
-        check(!closed) { "appender already closed (finalize/abandon)" }
+    fun complete() {
+        check(!closed) { "appender already closed (complete/abandon)" }
         closed = true
         runCatching { pcmStream.close() }
 

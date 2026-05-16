@@ -1,6 +1,8 @@
 package `in`.jphe.storyvox.source.arxiv.net
 
 import `in`.jphe.storyvox.data.source.model.FictionResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
@@ -98,7 +100,7 @@ internal class ArxivApi @Inject constructor(
 
     // ─── transport ─────────────────────────────────────────────────────
 
-    private fun getAtom(url: String): FictionResult<ArxivAtomFeed> =
+    private suspend fun getAtom(url: String): FictionResult<ArxivAtomFeed> =
         when (val raw = getRaw(url)) {
             is FictionResult.Success -> try {
                 FictionResult.Success(ArxivAtomFeed.parse(raw.value))
@@ -108,44 +110,63 @@ internal class ArxivApi @Inject constructor(
             is FictionResult.Failure -> raw
         }
 
-    private fun getRaw(url: String): FictionResult<String> {
-        return try {
-            val req = Request.Builder()
-                .url(url)
-                .header("Accept", "application/atom+xml, text/html;q=0.9, */*;q=0.5")
-                .header("User-Agent", USER_AGENT)
-                .get()
-                .build()
-            client.newCall(req).execute().use { resp ->
-                when {
-                    resp.code == 404 ->
-                        FictionResult.NotFound("arXiv paper not found")
-                    resp.code == 429 ->
-                        FictionResult.RateLimited(
-                            retryAfter = resp.header("Retry-After")
-                                ?.toLongOrNull()
-                                ?.seconds,
-                            message = "arXiv rate-limited the request",
-                        )
-                    !resp.isSuccessful ->
-                        FictionResult.NetworkError(
-                            "HTTP ${resp.code} from $url",
-                            IOException("HTTP ${resp.code}"),
-                        )
-                    else -> {
-                        val text = resp.body?.string()
-                            ?: return FictionResult.NetworkError(
-                                "empty body",
-                                IOException("empty body"),
+    /**
+     * Issue #585 — synchronous OkHttp `execute()` MUST run off the main
+     * thread. Pre-fix this method was a plain `fun`, and the suspend
+     * call sites in [ArxivSource] inherited the caller's dispatcher
+     * (`BrowseViewModel`'s `viewModelScope` is `Dispatchers.Main.immediate`).
+     * Rapid source-chip cycling on the Z Flip 3 captured a fatal
+     * `NetworkOnMainThreadException` from `client.newCall(req).execute()`
+     * → `Dns.lookupHostByName` on the Activity thread, killing the
+     * process with the system "app stopped" dialog (R5CRB0W66MK, 2/2
+     * repros within ~60 s).
+     *
+     * The fix wraps the OkHttp call in [withContext]`(Dispatchers.IO)`
+     * at the lowest-level transport seam so every public entry point
+     * (`recent`, `search`, `byId`, `absPage`) is automatically protected
+     * — no per-call audit needed, and the dispatcher pin doesn't leak
+     * past the network boundary (the parser and result mapping still
+     * run on the original dispatcher).
+     */
+    private suspend fun getRaw(url: String): FictionResult<String> =
+        withContext(Dispatchers.IO) {
+            try {
+                val req = Request.Builder()
+                    .url(url)
+                    .header("Accept", "application/atom+xml, text/html;q=0.9, */*;q=0.5")
+                    .header("User-Agent", USER_AGENT)
+                    .get()
+                    .build()
+                client.newCall(req).execute().use { resp ->
+                    when {
+                        resp.code == 404 ->
+                            FictionResult.NotFound("arXiv paper not found")
+                        resp.code == 429 ->
+                            FictionResult.RateLimited(
+                                retryAfter = resp.header("Retry-After")
+                                    ?.toLongOrNull()
+                                    ?.seconds,
+                                message = "arXiv rate-limited the request",
                             )
-                        FictionResult.Success(text)
+                        !resp.isSuccessful ->
+                            FictionResult.NetworkError(
+                                "HTTP ${resp.code} from $url",
+                                IOException("HTTP ${resp.code}"),
+                            )
+                        else -> {
+                            val text = resp.body?.string()
+                                ?: return@use FictionResult.NetworkError(
+                                    "empty body",
+                                    IOException("empty body"),
+                                )
+                            FictionResult.Success(text)
+                        }
                     }
                 }
+            } catch (e: IOException) {
+                FictionResult.NetworkError(e.message ?: "fetch failed", e)
             }
-        } catch (e: IOException) {
-            FictionResult.NetworkError(e.message ?: "fetch failed", e)
         }
-    }
 
     companion object {
         /** Default browse landing category. cs.AI per #378 — JP's space.

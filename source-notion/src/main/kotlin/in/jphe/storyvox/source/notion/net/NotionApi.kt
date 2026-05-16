@@ -4,6 +4,8 @@ import `in`.jphe.storyvox.data.source.model.FictionResult
 import `in`.jphe.storyvox.source.notion.config.NotionConfig
 import `in`.jphe.storyvox.source.notion.config.NotionConfigState
 import `in`.jphe.storyvox.source.notion.config.NotionDefaults
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -132,7 +134,7 @@ internal class NotionApi @Inject constructor(
 
     // ─── transport ────────────────────────────────────────────────────
 
-    private inline fun <reified T> getJson(url: String, state: NotionConfigState): FictionResult<T> =
+    private suspend inline fun <reified T> getJson(url: String, state: NotionConfigState): FictionResult<T> =
         when (val raw = doRequest(url, state, body = null, method = "GET")) {
             is FictionResult.Success -> try {
                 FictionResult.Success(json.decodeFromString<T>(raw.value))
@@ -142,7 +144,7 @@ internal class NotionApi @Inject constructor(
             is FictionResult.Failure -> raw
         }
 
-    private inline fun <reified T> postJson(
+    private suspend inline fun <reified T> postJson(
         url: String,
         body: String,
         state: NotionConfigState,
@@ -156,13 +158,17 @@ internal class NotionApi @Inject constructor(
             is FictionResult.Failure -> raw
         }
 
-    private fun doRequest(
+    /**
+     * Issue #585 — sync OkHttp `execute()` on `Dispatchers.IO`. See
+     * `ArxivApi.getRaw` kdoc for full context; same crash class.
+     */
+    private suspend fun doRequest(
         url: String,
         state: NotionConfigState,
         body: String?,
         method: String,
-    ): FictionResult<String> {
-        return try {
+    ): FictionResult<String> = withContext(Dispatchers.IO) {
+        try {
             val reqBuilder = Request.Builder()
                 .url(url)
                 .header("Authorization", "Bearer ${state.apiToken}")

@@ -54,7 +54,7 @@ class PcmCacheTest {
             ByteArray(bytes) { 0x44 },
             trailingSilenceMs = 350,
         )
-        app.finalize()
+        app.complete()
     }
 
     @Test
@@ -64,7 +64,7 @@ class PcmCacheTest {
         app.appendSentence(Sentence(0, 0, 10, "Hi."), ByteArray(50), trailingSilenceMs = 350)
         // pre-finalize: pcm + meta exist, but idx doesn't
         assertFalse(cache.isComplete(key1))
-        app.finalize()
+        app.complete()
         assertTrue(cache.isComplete(key1))
     }
 
@@ -179,7 +179,7 @@ class PcmCacheTest {
     fun `appender for a different sample rate writes that sample rate to meta`() = runBlocking {
         val app = cache.appender(key1, sampleRate = 24_000)
         app.appendSentence(Sentence(0, 0, 10, "Hi."), ByteArray(50), trailingSilenceMs = 350)
-        app.finalize()
+        app.complete()
 
         val meta = pcmCacheJson.decodeFromString(
             PcmMeta.serializer(),
