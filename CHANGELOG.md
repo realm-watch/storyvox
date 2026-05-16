@@ -9,6 +9,43 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.58] — 2026-05-15
+
+A serious bug pass after v0.5.57. JP's on-device testing on the Z Flip 3 surfaced that **storyvox never called `requestAudioFocus()`** — `dumpsys audio` showed the focus stack empty for the storyvox pid. On Samsung's strict audio policy the AudioTrack would silently park while MediaSession reported PLAYING; this is the master bug behind every "silent stuck state" observation. Plus three parallel concerns: real release variant, chips visible on phone, slider → chip transition.
+
+### Added — Real `release` build variant (#562)
+- **`release` is now the primary shipped build type** — copies the prior `debug` block's settings (R8 minification, proguard rules, checked-in debug keystore for sideload continuity, Baseline Profile bundling).
+- **`BuildConfig.DEBUG` is `false` in shipped APKs**, pinned by a new `ReleaseBuildConfigTest`. Demoted `debug` to non-minified developer-only variant for `./gradlew installDebug` + debugger attach.
+- **APK filename**: `applicationVariants.all` block writes `storyvox-v<versionName>.apk` for release + benchmark. `./gradlew :app:assembleRelease` produces `app/build/outputs/apk/release/storyvox-v0.5.58.apk` matching the published GitHub release artifact name.
+- **CI**: `.github/workflows/android.yml` runs `:app:assembleRelease`; check renamed `build-debug` → `build`, `Build debug APK` → `Build APK`; main-branch protection updated.
+- **Debug overlay gate** stays user-controllable — `HybridReaderScreen.kt:96` simplified to `val debugOverlayVisible = debugEnabled` (no `&& BuildConfig.DEBUG`). The Settings → Advanced → `pref_show_debug_overlay` toggle is the sole gate, default `false`. JP requested keeping it accessible (`"no we do want the debug overlay. settings still"`).
+- **No `applicationId` change** — stays `in.jphe.storyvox` for sideload continuity. No keystore change.
+
+### Added — Chips visible on phone + slider → chip across the player (#571)
+- **PlayerQuickChips not rendering on phone fixed** — root cause was `AudiobookView`'s player Column using `Modifier.fillMaxSize()` with no scroll. ~820 dp of content fit the tablet's ~1006 dp viewport but overflowed the phone's ~880 dp; with unbounded children laying out top-to-bottom and `Arrangement.spacedBy`, the chip rows measured to zero height (uiautomator on R5CRB0W66MK confirmed `bounds=[0,0][0,0]` for the chip row pre-fix). Fix: `verticalScroll(rememberScrollState())` with modifier order `fillMaxWidth().verticalScroll().padding()` (NOT `fillMaxSize().verticalScroll()` — that clashes between "fill parent height" and "vertical is unbounded", silently zeroing children even with scroll present).
+- **Slider → chip presets in `VoiceQuickSheet`** — JP request: "i want chips instead of sliders for the voices speed in and pitch, and also for the voice performance sliders":
+  - **Speed** chip row reuses existing `SPEED_PRESETS` (`0.75× / 1× / 1.25× / 1.5× / 2×`)
+  - **Pitch** chip row uses new `PITCH_PRESETS` (`0.7× / 0.85× / 1× / 1.15× / 1.3×`) — 0.15 spacing above the perceptible pitch JND
+  - **Sentence silence** chip row uses new `PUNCTUATION_PAUSE_PRESETS` (`0× / 0.5× / 1× / 2× / 3×`) — covers the practical range; 4× via "Custom…"
+  - Each row keeps the slider behind a "Custom…" chip + `AnimatedVisibility` so power users keep continuous tuning. Chip taps invoke the same `onSetX` / `onPersistX` callbacks the slider used — pref keys unchanged so user settings survive the migration.
+- **16 new tests** in `VoiceQuickSheetChipPresetsTest` pin preset sets, selection epsilons, format-label contracts, the `1×` neutral anchor invariant.
+
+### Fixed — Audio focus + stuck states + debug snapshot + Resume card (#572)
+- **#560 — Silent "playing but no audio" fixed at the root** — storyvox NEVER called `requestAudioFocus()`. On Samsung's strict audio policy this silently parks AudioTrack at the framework level while MediaSession claims PLAYING. New `AudioFocusController` (`@Singleton`, `USAGE_MEDIA` + `CONTENT_TYPE_MUSIC`) acquired in `startPlaybackPipeline`, abandoned on stop/release. Focus loss (interruption by phone call, alarm, etc.) routes to `controller.pause()`. Also wired `isBuffering` → `Player.STATE_BUFFERING` in MediaSession's `getState()`. Verified: `dumpsys audio | grep storyvox` shows the focus request firing at the resume tap.
+- **#561 — Debug overlay blank/wrong fields fixed** — `PlaybackState.voiceId` was never written; `loadedVoiceId` was an internal-only field; `displayEngineName(null)` returned `"—"`. The engine now emits `voiceId = active.id` into `_observableState` after voice load. `isWarmingUp` rewired to track the controller's canonical `engineState` so the overlay no longer false-positives during chapter transitions. Verified: overlay shows `name = piper_lessac_en_US_low`, `voice = piper_lessac_en_US_low`, `sentence = #9 @ 484`.
+- **#563 — Resume card stale after auto-advance fixed (reframed from "wrong-chapter cache")** — original hypothesis (cache scheduler targeting wrong chapter) was wrong per the phone audit. The actual bug: `persistPosition()` in `EnginePlayer.advanceChapter` was getting skipped because the buffering watchdog's cooperative cancellation landed mid-suspend, so the persisted resume-chapter-id stayed at the pre-advance chapter. Fix: wrap `persistPosition` in `NonCancellable`. Bonus: `PrerenderTriggers.onLibraryAdded` now anchors its 3-chapter pre-render window on `resumeIndex + 1` instead of always chapter 0.
+- **#567 — Watchdog `CancellationException` log noise suppressed** — when a state transition cleanly cancels the in-flight watchdog `runCatching { advanceChapter() }`, the `.onFailure` was logging `u0 was cancelled` as if it were a real error. Filter out `CancellationException` in the failure path.
+- **Three pre-existing watchdog tests updated** to match v0.5.57's `BUFFERING_STUCK_WATCHDOG_MS` (8 s → 1.5 s).
+
+### Under the hood
+- 4 parallel agents in worktrees this session: build-cleanup-fixer, chip-ui-fixer, stuck-state-fixer, phone-extensive-tester (read-only QA, filed 10 issues with hard `dumpsys` evidence).
+- ~880 lines of new + modified code across the 4 PRs, plus ~700 lines of tests. No cross-file conflicts on merge — file ownership was negotiated upfront in agent prompts.
+
+### Known limitations (next pass)
+- **#564 AudioTrack churn on phone**: 8 tracks in 9 min, ~1 s rebuild per transport tap. PR #552's "park AudioTrack" doesn't stick on Samsung's strict audio policy. The new `AudioFocusController` may help indirectly (no more focus-loss teardowns), but the underlying churn likely needs a separate fix.
+- **#566 Scrubber 16s drift in 4s wall during warming**: the position math reads `AudioTrack.playbackHeadPosition` during the warming state when no PCM is yet queued; pin behavior to `pipelineStartCharOffset` until first sentence emit.
+- **#568 Cover-tap pause -6 s on phone**: `pinnedPausePositionMs` from PR #556 isn't working on phone; needs investigation.
+
 ## [0.5.57] — 2026-05-15
 
 The Spotify-grade gap fix: watchdog threshold dropped from 8 s to 1.5 s so the auto-advance "safety net" path is essentially imperceptible.
