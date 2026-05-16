@@ -12,6 +12,9 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -19,6 +22,34 @@ import javax.inject.Singleton
 interface PlaybackController {
     val state: StateFlow<PlaybackState>
     val events: SharedFlow<PlaybackUiEvent>
+
+    /**
+     * Issues #524 #530 #536 #539 #543 (audio-fidelity-fixer batch) — the
+     * Spotify/Apple-Music-style single-source-of-truth UI state. Derived
+     * from [state] inside the default controller. See
+     * [EngineState] and `scratch/audio-fidelity-fixer/CONTRACT.md`.
+     */
+    val engineState: StateFlow<EngineState>
+
+    /**
+     * Issue #539 — truthful playback position in ms inside the current
+     * chapter, advanced by the AudioTrack frame counter rather than
+     * wall-clock interpolation between sentence boundaries. Drives the
+     * Spotify-style scrubber thumb directly; tap-to-seek round-trips
+     * through this number so visual ↔ audio stay synced.
+     *
+     * Falls back to a charOffset-based estimate when no AudioTrack is
+     * live (paused, seek-in-flight, chapter just loaded). 0 when no
+     * chapter is loaded.
+     */
+    val playbackPositionMs: StateFlow<Long>
+
+    /**
+     * Issue #539 — chapter duration estimate in ms. Mirrors
+     * [PlaybackState.durationEstimateMs] so the sibling UI doesn't have to
+     * project through the full state object to draw the scrubber rail.
+     */
+    val chapterDurationMs: StateFlow<Long>
 
     /** Issue #189 — recap-aloud TTS pipeline state. Idle until [speakText]
      *  is called; flips to Speaking while the one-shot utterance is playing,
@@ -30,8 +61,24 @@ interface PlaybackController {
     fun resume()
     fun togglePlayPause()
     fun seekTo(charOffset: Int)
+    /**
+     * Issue #531 — seek by position-in-chapter (milliseconds). Mirror of
+     * [seekTo] for the seekbar tap path: UI thinks in ms, the engine
+     * indexes in chars. Converted via the speed-aware
+     * [SPEED_BASELINE_CHARS_PER_SECOND] so a tap at 50 % of the rail lands
+     * at the audio-time 50 % matches.
+     */
+    fun seekToPositionMs(positionMs: Long)
     fun skipForward30s()
     fun skipBack30s()
+    /**
+     * Issue #543 — fire-and-forget engine pre-warm. Safe to call when the
+     * Library tab opens so the first Listen tap doesn't hit a 5-10 s
+     * voice-load. Idempotent; no-op when a chapter is already playing.
+     * Implementation may schedule a no-text loadModel on the active voice
+     * — this is a best-effort hook; failure is logged but invisible.
+     */
+    fun prewarmEngine()
     /** #120 — step to the next sentence boundary. No-op when already
      *  on the last sentence of the chapter. */
     fun nextSentence()
@@ -129,6 +176,75 @@ class DefaultPlaybackController @Inject constructor(
     private val _events = MutableSharedFlow<PlaybackUiEvent>(extraBufferCapacity = 8)
     override val events: SharedFlow<PlaybackUiEvent> = _events.asSharedFlow()
 
+    /**
+     * #543 — most-recent "we expect first audio shortly" hint. Set true
+     * when [play] is invoked; cleared when [PlaybackState.currentSentenceRange]
+     * starts emitting (i.e. the producer pushed the first sentence). Read
+     * by [engineState] to decide whether to surface [EngineState.Warming].
+     */
+    private val _warmingUp = MutableStateFlow(false)
+
+    /**
+     * #543 — message rendered alongside [EngineState.Warming]. Updated by
+     * [play] with the active voice's display label so the UI shows
+     * "Warming Brian…" rather than a generic "Loading…".
+     */
+    private val _warmingMessage = MutableStateFlow("Warming voice…")
+
+    /**
+     * #524 — completion latch set when the producer reports book-finished
+     * (no next chapter). Surfaces as [EngineState.Completed] so the UI can
+     * show an end-of-book card instead of the chapter-finished overlay
+     * spinning on a non-existent successor.
+     */
+    private val _completed = MutableStateFlow(false)
+
+    /**
+     * #539 — truthful audio-position feed from [EnginePlayer.bytesPlayed].
+     * Mirrors what the user actually hears, not what we hope is playing.
+     */
+    private val _playbackPositionMs = MutableStateFlow(0L)
+    override val playbackPositionMs: StateFlow<Long> = _playbackPositionMs.asStateFlow()
+
+    override val chapterDurationMs: StateFlow<Long> = _state
+        .map { it.durationEstimateMs }
+        .stateIn(scope, SharingStarted.Eagerly, 0L)
+
+    /**
+     * #524 / #530 / #536 / #543 — derived UI status. Recomputed on every
+     * underlying signal change so the sibling reader UI only has to
+     * `engineState.collect { … }` and route on cases. Order of precedence
+     * is intentional:
+     *  1. `error != null` → [EngineState.Error] (winner; surfaces dropped
+     *     chapter loads even while paused).
+     *  2. `completed=true` → [EngineState.Completed] (end-of-book).
+     *  3. `warmingUp=true && isPlaying` → [EngineState.Warming] (voice
+     *     loading or first-sentence not yet produced).
+     *  4. `isBuffering=true && isPlaying` → [EngineState.Buffering].
+     *  5. `isPlaying=true` → [EngineState.Playing].
+     *  6. `currentChapterId != null` → [EngineState.Paused] (loaded but
+     *     not running).
+     *  7. otherwise → [EngineState.Idle].
+     */
+    override val engineState: StateFlow<EngineState> =
+        kotlinx.coroutines.flow.combine(
+            _state,
+            _warmingUp,
+            _warmingMessage,
+            _completed,
+        ) { s, warming, msg, completed ->
+            val err = s.error
+            when {
+                err != null -> EngineState.Error(errorMessage(err), retryable = isRetryable(err))
+                completed -> EngineState.Completed
+                warming && s.isPlaying -> EngineState.Warming(msg)
+                s.isBuffering && s.isPlaying -> EngineState.Buffering
+                s.isPlaying -> EngineState.Playing
+                s.currentChapterId != null -> EngineState.Paused
+                else -> EngineState.Idle
+            }
+        }.stateIn(scope, SharingStarted.Eagerly, EngineState.Idle)
+
     private var player: EnginePlayer? = null
 
     /** Issue #189 — mirror of the bound player's recap-aloud state. Idle
@@ -149,11 +265,74 @@ class DefaultPlaybackController @Inject constructor(
         player = p
         scope.launch {
             p.observableState.collect { update ->
+                val prev = _state.value
+                // #543 — clear the warmup latch the moment the producer
+                // emits its first sentence range. Independent of
+                // `isPlaying` (which flipped true at play() time before
+                // the engine had a chance to render anything).
+                if (update.currentSentenceRange != null && _warmingUp.value) {
+                    _warmingUp.value = false
+                }
+                // #530 — when a chapter load errors out, the engine
+                // leaves currentChapterId pointing at the failed id +
+                // isPlaying=false. The default Spotify-style behavior is
+                // to surface the failure prominently (handled by
+                // EngineState.Error mapping in engineState) AND not let a
+                // subsequent play() reuse the stale chapter id without an
+                // explicit retry. Don't clear the id here — the sibling
+                // UI uses it to render "Couldn't play '$chapterTitle'."
                 _state.value = update.copy(sleepTimerRemainingMs = sleepTimer.remainingMs.value)
+                // #524 — if the engine reports BookFinished via the events
+                // channel (collected below), the listener pipeline goes idle.
+                // We additionally watch for an authoritative isPlaying=false
+                // with currentChapterId still set + no error: that's the
+                // natural-end signal when the chapter was the last one. The
+                // _completed latch flips back to false on the next play().
+                if (
+                    prev.isPlaying && !update.isPlaying &&
+                    update.error == null &&
+                    update.currentChapterId != null &&
+                    _completed.value.not()
+                ) {
+                    // Don't auto-set Completed here — the engine's own
+                    // BookFinished event below is the canonical source.
+                    // Keeping this branch as a documentation anchor for
+                    // why we don't.
+                }
             }
         }
         scope.launch {
             p.recapPlayback.collect { _recapPlayback.value = it }
+        }
+        // #524 — listen for the engine's BookFinished signal. When the
+        // last chapter ends naturally and there's no next chapter,
+        // advanceChapter emits BookFinished + does NOT load a new chapter,
+        // leaving isPlaying=false. Flip the Completed latch so engineState
+        // emits Completed; the next play() clears it.
+        scope.launch {
+            p.uiEvents.collect { ev ->
+                if (ev is PlaybackUiEvent.BookFinished) {
+                    _completed.value = true
+                }
+            }
+        }
+        // #539 — poll the engine for the truthful audio position. Polls
+        // every 100 ms while a chapter is loaded; lower than that and the
+        // scrubber jitters from the AudioTrack frame-counter granularity
+        // (sherpa-onnx is 24 kHz, so 1 ms = 24 frames; the poll cadence
+        // dominates jitter, not the counter). Idle when no chapter
+        // loaded — we skip emissions equal to the last value so a paused
+        // chapter doesn't burn CPU. Bound to the controller's scope so
+        // it dies with bindPlayer/unbindPlayer pairs.
+        scope.launch {
+            while (true) {
+                val live = player ?: break
+                val pos = live.currentPositionMs()
+                if (pos != _playbackPositionMs.value) {
+                    _playbackPositionMs.value = pos
+                }
+                kotlinx.coroutines.delay(100L)
+            }
         }
         // Calliope (v0.5.00) — bridge the player's internal uiEvents
         // SharedFlow into the controller's public `events` flow. Pre-
@@ -173,6 +352,56 @@ class DefaultPlaybackController @Inject constructor(
     fun unbindPlayer() {
         player = null
         _recapPlayback.value = RecapPlaybackState.Idle
+        _playbackPositionMs.value = 0L
+        _warmingUp.value = false
+        _completed.value = false
+    }
+
+    /**
+     * #543 — message rendered alongside [EngineState.Warming]. Renders the
+     * voice's friendly label ("Warming Brian…") when available, otherwise
+     * a generic fallback. We look at the most-recent state emission's
+     * `voiceId` because the active voice flow lives in :feature/voice and
+     * pulling a dep here is wrong-layer. The label uplift to
+     * "Warming Brian…" specifically happens in the sibling :feature
+     * agent — at this layer we only know the voice id string.
+     */
+    private fun warmingMessageForCurrentVoice(): String {
+        val id = _state.value.voiceId
+        // Heuristic — Brian, Lessac, etc. are typically `kokoro-en-US-brian`
+        // or `piper-en-US-lessac-medium`. Pull out the human-ish segment.
+        val label = id
+            ?.substringAfterLast("-", missingDelimiterValue = "")
+            ?.takeIf { it.isNotBlank() && it.length in 3..16 }
+            ?.replaceFirstChar { it.uppercaseChar() }
+            ?: "voice"
+        return "Warming $label…"
+    }
+
+    /**
+     * #530 — render-ready error copy. Today the engine has eight
+     * [PlaybackError] subtypes; we collapse them to one message line for
+     * the sibling UI. The UI's error band displays the message verbatim
+     * and offers a Retry button when [isRetryable] returns true.
+     */
+    private fun errorMessage(err: PlaybackError): String = when (err) {
+        is PlaybackError.ChapterFetchFailed -> err.message
+        is PlaybackError.EngineUnavailable ->
+            "Voice engine isn't installed yet. Open Voices to download one."
+        is PlaybackError.TtsSpeakFailed ->
+            "Voice failed mid-utterance (code ${err.errorCode}). Tap to retry."
+        is PlaybackError.AzureAuthFailed ->
+            "Azure subscription key was rejected. Paste a fresh key in Settings → Cloud voices."
+        is PlaybackError.AzureThrottled -> err.message
+        is PlaybackError.AzureNetworkUnavailable -> err.message
+        is PlaybackError.AzureServerError -> err.message
+    }
+
+    /** #530 — which errors should surface a Retry button. */
+    private fun isRetryable(err: PlaybackError): Boolean = when (err) {
+        PlaybackError.AzureAuthFailed -> false // user has to re-paste key
+        is PlaybackError.EngineUnavailable -> false // install required
+        else -> true
     }
 
     override suspend fun play(fictionId: String, chapterId: String, charOffset: Int) {
@@ -180,6 +409,15 @@ class DefaultPlaybackController @Inject constructor(
         // 30+s to return on a cold engine load). If the user kills the
         // app mid-load we want resume-on-reopen to autoplay.
         scope.launch { runCatching { resumePolicy.setLastWasPlaying(true) } }
+        // #543 — flip the warmup latch + render-ready message BEFORE
+        // suspending into loadAndPlay. The sibling UI polls engineState;
+        // we want Warming to surface within one frame of the play tap,
+        // not 30 s later when sherpa-onnx finishes loading. Cleared in
+        // the observableState collector when the first sentence range
+        // surfaces.
+        _completed.value = false
+        _warmingMessage.value = warmingMessageForCurrentVoice()
+        _warmingUp.value = true
         player?.loadAndPlay(fictionId, chapterId, charOffset)
     }
 
@@ -206,16 +444,77 @@ class DefaultPlaybackController @Inject constructor(
 
     override fun seekTo(charOffset: Int) { player?.seekToCharOffset(charOffset) }
 
-    override fun skipForward30s() {
+    override fun seekToPositionMs(positionMs: Long) {
+        // #531 — UI gives us a ms position on the scrubber rail (clamped
+        // to [0, chapterDuration] by the seekbar widget). Reverse the
+        // SAME baseline conversion EnginePlayer uses in
+        // [estimateDurationMs] / [getState.setContentPositionMs]:
+        //   `chapterDurationMs = text.length / (baseline * speed) * 1000`
+        //   ⇒ `charOffset = positionMs / 1000 * (baseline * speed)`
+        // so a tap at 50 % of the displayed rail lands at the 50 %
+        // char-offset, regardless of speed.
+        //
+        // Pre-fix this method (the legacy `seekTo(ms: Long)` in
+        // RealPlaybackControllerUi) used the correct formula but bypassed
+        // controller-side bound enforcement — and the AudioTrack-vs-rail
+        // ms math drifted because positionMs displayed by the UI was the
+        // wall-clock-interpolated estimate, not the truthful audio frame
+        // counter. The ~5 % seek offset in #531 surfaces from that
+        // drift: the user taps "where the audio says it is" but the
+        // displayed position has slid ahead during the wall-clock
+        // interpolation between sentence boundaries. Fix is two-fold:
+        // (a) this method does the speed-aware ms→chars conversion
+        // here so callers don't reinvent it (and don't reinvent it
+        // wrong); (b) [playbackPositionMs] is now sourced from the
+        // truthful frame counter, so the displayed rail matches what
+        // the user hears.
         val s = state.value
         val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * s.speed
-        player?.seekToCharOffset(s.charOffset + (charsPerSec * 30).toInt())
+        val targetChar = ((positionMs.coerceAtLeast(0L) / 1000.0) * charsPerSec).toInt()
+        player?.seekToCharOffset(targetChar)
+    }
+
+    override fun skipForward30s() {
+        // #550 — seek by exactly 30 seconds on the scrubber rail. The
+        // rail's axis is "chapter-time at current speed" — durationMs =
+        // text.length / (baseline * speed) * 1000 — so "30 seconds of
+        // rail" = `(baseline * speed) * 30` chars. At speed=2 that's
+        // 60 s of chapter content played in 30 wall-clock seconds; the
+        // user feels the thumb jump 30 s forward, matching Spotify's
+        // "+30 s" behavior on a sped-up podcast.
+        //
+        // Pre-fix the math used speed correctly but the surrounding
+        // pipeline rebuild interleaved with the wall-clock interpolation
+        // — the displayed thumb would race ahead during the rebuild
+        // (post-#539 it's pinned to the truthful audio frame counter so
+        // the visual jump matches the audio jump within ~100 ms).
+        //
+        // The audit's "sometimes wrong direction" finding was that
+        // wall-clock interpolation occasionally jumped the thumb FORWARD
+        // during a skip-back's brief teardown; with the truthful
+        // position feed in #539 the symptom can't manifest.
+        val cur = state.value.charOffset
+        val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * state.value.speed
+        val target = (cur + (charsPerSec * 30).toInt()).coerceAtLeast(0)
+        player?.seekToCharOffset(target)
     }
 
     override fun skipBack30s() {
-        val s = state.value
-        val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * s.speed
-        player?.seekToCharOffset((s.charOffset - (charsPerSec * 30).toInt()).coerceAtLeast(0))
+        val cur = state.value.charOffset
+        val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * state.value.speed
+        val target = (cur - (charsPerSec * 30).toInt()).coerceAtLeast(0)
+        player?.seekToCharOffset(target)
+    }
+
+    override fun prewarmEngine() {
+        // #543 — fire-and-forget hook. EnginePlayer is the right owner
+        // (it knows the active voice + sherpa state); the controller
+        // just plumbs the call so a UI mount can request a warm without
+        // taking a core-playback dep on the voice manager directly. The
+        // engine's implementation is best-effort: skipped if a chapter
+        // is already playing, idempotent across repeated calls, no error
+        // surfaces if the voice isn't installed.
+        runCatching { player?.prewarmEngine() }
     }
 
     override fun nextSentence() { player?.seekSentence(direction = 1) }
@@ -318,5 +617,26 @@ class DefaultPlaybackController @Inject constructor(
          *  standard across Apple Music, Spotify, Pocket Casts, and the
          *  Android MediaSession default behavior. */
         internal const val REWIND_TO_START_THRESHOLD_SEC = 3f
+
+        /**
+         * #531 / #550 — pure-function exports of the seek math so JVM unit
+         * tests can verify the controller-side conversions without
+         * needing an EnginePlayer (which requires sherpa-onnx AARs +
+         * Android context).
+         */
+
+        /** #531 — convert a scrubber-rail position in ms to a chapter
+         *  char offset, using the same formula as
+         *  [in.jphe.storyvox.playback.tts.EnginePlayer.estimateDurationMs]. */
+        fun positionMsToCharOffset(positionMs: Long, speed: Float): Int {
+            val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * speed
+            return ((positionMs.coerceAtLeast(0L) / 1000.0) * charsPerSec).toInt()
+        }
+
+        /** #550 — convert "30 s on the rail" to a char delta at this speed. */
+        fun skipDeltaChars(seconds: Float, speed: Float): Int {
+            val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * speed
+            return (charsPerSec * seconds).toInt()
+        }
     }
 }

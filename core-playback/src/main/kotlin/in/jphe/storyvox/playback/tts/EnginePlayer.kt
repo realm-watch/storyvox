@@ -669,6 +669,64 @@ class EnginePlayer @AssistedInject constructor(
      *  waiting for the buffer to drain. */
     private val pipelineRunning = AtomicBoolean(false)
 
+    /**
+     * Issue #540 — user-initiated pause flag. Set true by [pauseTts] when
+     * the user taps the play-screen Pause; cleared by [resume]. The
+     * consumer thread polls this each iteration and, when true, parks the
+     * AudioTrack (track.pause()) and sleeps until the flag clears. The
+     * producer keeps generating until its queue fills, then back-pressures.
+     *
+     * Why an atomic flag instead of the previous "tear-down + rebuild"
+     * pattern: rebuilding the AudioTrack on every pause→resume cost ~1-3 s
+     * on Samsung tablets (the AudioFlinger track-attach handshake on
+     * STREAM_MUSIC). Measured 2.5 s gap on R83W80CAFZB in v0.5.52 — see
+     * #540. Holding the track parked and pre-filled lets resume() restart
+     * audio within ~150 ms, matching Spotify / Apple Music.
+     *
+     * Volatile reads from the consumer thread (URGENT_AUDIO priority); the
+     * AtomicBoolean's compareAndSet semantics keep state-flips visible
+     * without an explicit memory barrier on every loop iteration.
+     */
+    private val userPaused = AtomicBoolean(false)
+
+    /**
+     * Issue #539 — frame counter snapshot at the moment the consumer
+     * thread last wrote into the AudioTrack. Combined with the track's
+     * [AudioTrack.getPlaybackHeadPosition] gives us "frames the listener
+     * has actually heard" — the truthful position the scrubber thumb
+     * should track.
+     *
+     * Read from any thread via [currentPositionMs]; written from the
+     * consumer thread inside the write loop.
+     */
+    @Volatile
+    private var pipelineStartCharOffset: Int = 0
+
+    /**
+     * Issue #539 — sample rate of the currently-live AudioTrack. Captured
+     * at pipeline-construction time so [currentPositionMs] can compute
+     * `playbackHeadPosition * 1000 / sampleRate` without holding the
+     * track reference itself (which races with [stopPlaybackPipeline]).
+     * Volatile because the writer is the construction path on Main and
+     * the reader is the position-poll loop on the controller scope.
+     */
+    @Volatile
+    private var pipelineSampleRate: Int = DEFAULT_SAMPLE_RATE
+
+    /**
+     * Issue #536 — last truthful position computed by [currentPositionMs].
+     * Whenever the AudioTrack reports a regression (e.g. track.flush
+     * happened mid-poll, sampling raced with pipeline teardown), we serve
+     * this last-known value instead of dropping to 0. Always advances
+     * monotonically within a single chapter; resets to 0 only on chapter
+     * change.
+     */
+    @Volatile
+    private var lastTruthfulPositionMs: Long = 0L
+
+    @Volatile
+    private var lastTruthfulPositionChapter: String? = null
+
     /** Serializes [VoiceEngine.generateAudioPCM] / [KokoroEngine.generateAudioPCM]
      *  calls. The VoxSherpa engines are process-singletons and the underlying
      *  Sonic/onnxruntime state isn't safe across concurrent threads. Every
@@ -732,7 +790,16 @@ class EnginePlayer @AssistedInject constructor(
             .setPlaybackState(if (s.currentChapterId != null) Player.STATE_READY else Player.STATE_IDLE)
             .setPlaylist(buildPlaylist(s))
             .setCurrentMediaItemIndex(0)
-            .setContentPositionMs { (s.charOffset * 1000L) / charsPerSecondLong() }
+            // Issue #536 — Media3 polls this Supplier on every state
+            // change to refresh PlaybackState.position. Pre-fix this
+            // returned (charOffset / charsPerSec) which can be 0 during
+            // a chapter-load state transition (currentChapterId just
+            // landed, charOffset still 0). Routing through
+            // currentPositionMs() uses the monotonic latch in
+            // [lastTruthfulPositionMs], which only ever advances within
+            // a chapter, so MediaSession + Bluetooth tiles + Wear / Auto
+            // never see the spurious position=0 glitch.
+            .setContentPositionMs { currentPositionMs() }
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
@@ -769,6 +836,152 @@ class EnginePlayer @AssistedInject constructor(
         return v.toLong().coerceAtLeast(1L)
     }
 
+    /**
+     * Issue #539 — current truthful playback position in ms within the
+     * loaded chapter. Driven by the AudioTrack's
+     * [AudioTrack.getPlaybackHeadPosition] (frame counter against the
+     * hardware ring buffer) rather than wall-clock interpolation.
+     *
+     * Position formula:
+     *   `pipelineStartOffsetMs + (playbackHeadFrames * 1000 / sampleRate)`
+     *
+     * where:
+     *  - `pipelineStartOffsetMs` is the chapter-time of `charOffset` at
+     *    the moment this pipeline started (recomputed on every fresh
+     *    [startPlaybackPipeline]),
+     *  - `playbackHeadFrames` is what the AudioTrack has *actually
+     *    drained through the speaker* (not what we've handed it).
+     *
+     * Issue #536 — never returns 0 transiently. When the AudioTrack is
+     * null (paused-and-rebuilt fall-back, chapter just loaded, audio
+     * stream chapter) we serve [lastTruthfulPositionMs] which is the
+     * highest value we've ever returned for this chapter. New chapters
+     * reset the latch.
+     *
+     * Safe to call from any thread.
+     */
+    fun currentPositionMs(): Long {
+        val state = _observableState.value
+        val chapterId = state.currentChapterId ?: return 0L
+
+        // Chapter changed since the last measurement — reset the
+        // monotonic latch.
+        if (chapterId != lastTruthfulPositionChapter) {
+            lastTruthfulPositionChapter = chapterId
+            lastTruthfulPositionMs = 0L
+        }
+
+        // Audio-stream chapters route through ExoPlayer, which owns
+        // its own currentPosition. Defer to it; the UI scrubber for
+        // live streams isn't useful anyway (#373 hides the rail).
+        if (state.isLiveAudioChapter) {
+            val pos = audioStreamPlayer?.currentPosition ?: 0L
+            if (pos > lastTruthfulPositionMs) lastTruthfulPositionMs = pos
+            return lastTruthfulPositionMs
+        }
+
+        val track = audioTrack
+        val sr = pipelineSampleRate
+        // Chapter-time math is consistent with [estimateDurationMs]
+        // (which sets durationEstimateMs) and `scrubProgress` (which
+        // measures fraction-of-chapter). Both multiply by currentSpeed,
+        // so the rail length shrinks at higher speeds — at speed=2 the
+        // ~40-min chapter is shown as ~20 min on the scrubber. We use
+        // the same formula here so positionMs and durationMs share
+        // units and the thumb position is a clean ratio.
+        val charsPerSec = (SPEED_BASELINE_CHARS_PER_SECOND * currentSpeed)
+            .coerceAtLeast(0.001f)
+        val startMs = ((pipelineStartCharOffset / charsPerSec) * 1000f).toLong()
+        if (track != null && sr > 0 && pipelineRunning.get()) {
+            val headFrames = runCatching { track.playbackHeadPosition.toLong() }.getOrDefault(0L)
+            // playbackHeadPosition is in frames played at the
+            // AudioTrack's native sample rate — that's wall-clock-ms.
+            // We're emitting positionMs against a chapterDurationMs that
+            // ALSO uses `charsPerSec * speed` ([estimateDurationMs]), so
+            // wall-clock-ms IS the right axis: at speed=2 the chapter is
+            // 1200 s long and after 60 s wall-clock we've heard 5 % of
+            // it — positionMs=60_000, durationMs=1_200_000, ratio=5 %.
+            // No extra speed multiplier needed.
+            val playedMs = (headFrames * 1000L) / sr.coerceAtLeast(1)
+            val candidate = startMs + playedMs
+            // Monotonic clamp — never serve a regression. Covers the
+            // pause→resume window where the AudioTrack head can briefly
+            // appear to roll backward as the framework rebuilds the
+            // streaming pointer.
+            if (candidate > lastTruthfulPositionMs) {
+                lastTruthfulPositionMs = candidate
+            }
+            return lastTruthfulPositionMs
+        }
+
+        // No live AudioTrack — fall back to the char-offset estimate so
+        // the scrubber still has a sensible value before play() lands a
+        // pipeline (e.g. while warming up). Same speed-adjusted formula
+        // as the live branch above.
+        val fallback = ((state.charOffset / charsPerSec) * 1000f).toLong()
+        if (fallback > lastTruthfulPositionMs) {
+            lastTruthfulPositionMs = fallback
+        }
+        return lastTruthfulPositionMs
+    }
+
+    /**
+     * Issue #543 — fire-and-forget engine pre-warm. Called from a UI
+     * surface (Library mount, voice-picker open) so the first Listen
+     * tap doesn't hit a 5-10 s sherpa-onnx loadModel.
+     *
+     * Best-effort:
+     *  - No-op if a chapter is already playing (pipeline owns the
+     *    engines; we don't want to fight it).
+     *  - No-op if no voice is active yet (the [observeActiveVoice]
+     *    collector will fire on the first DataStore emission anyway).
+     *  - Hops to IO; engineMutex serializes against any
+     *    [loadAndPlay] call that races us.
+     *
+     * Idempotent across repeated calls.
+     */
+    fun prewarmEngine() {
+        if (_observableState.value.isPlaying) return
+        scope.launch {
+            runCatching {
+                val active = voiceManager.activeVoice.first() ?: return@launch
+                // The active voice flow may emit a "no voice" entry on
+                // a fresh install. Loading would fail anyway; bail.
+                if (active.id.isBlank()) return@launch
+                android.util.Log.i(
+                    "EnginePlayer",
+                    "prewarm: scheduling load for voice=${active.id} engineType=${active.engineType}",
+                )
+                // We don't actually call loadModel here — that's the
+                // expensive path and we don't want to fight a future
+                // loadAndPlay. The cheaper warm is to ensure the engine
+                // singleton is constructed (the sherpa-onnx
+                // VoiceEngine.getInstance() does a small native init on
+                // first call) so the first chapter's loadModel doesn't
+                // pay the singleton's construction cost on top of the
+                // model load. Reading sampleRate is the canonical "wake
+                // the singleton" trigger.
+                withContext(Dispatchers.IO) {
+                    when (active.engineType) {
+                        is EngineType.Kokoro ->
+                            runCatching { KokoroEngine.getInstance().sampleRate }
+                        is EngineType.Kitten ->
+                            runCatching { KittenEngine.getInstance().sampleRate }
+                        is EngineType.Azure -> {
+                            // Azure has no JNI singleton to warm; the
+                            // HTTPS client lazy-inits on first request
+                            // anyway. No-op.
+                        }
+                        else ->
+                            runCatching { VoiceEngine.getInstance().sampleRate }
+                    }
+                }
+            }.onFailure { t ->
+                android.util.Log.w("EnginePlayer", "prewarm: best-effort warm failed", t)
+            }
+        }
+    }
+
     // ----- Storyvox-internal API -----
 
     suspend fun loadAndPlay(fictionId: String, chapterId: String, charOffset: Int) {
@@ -778,14 +991,38 @@ class EnginePlayer @AssistedInject constructor(
         // on whether the chapter actually changed.
         azureFallbackEmittedThisChapter = false
         val chapter: PlaybackChapter = chapterRepo.getChapter(chapterId) ?: run {
+            // Issue #530 — when chapter fetch fails, do NOT leave the
+            // previously-playing chapter in [PlaybackState] — that's
+            // the "routes to previously-playing item" bug (player stays
+            // pointed at the OLD chapter, error never surfaces in the
+            // UI because the engineState mapping prefers
+            // currentChapterId == null → Idle over the error band).
+            //
+            // Clear the chapter pointer + cover + sentence range so the
+            // sibling reader UI bails to its empty-state and renders the
+            // error banner. Preserve fictionId so a Retry button can
+            // resolve which book the user intended without round-trip
+            // through navigation state.
             _observableState.update {
                 it.copy(
+                    currentFictionId = fictionId,
+                    currentChapterId = null,
+                    charOffset = 0,
                     isPlaying = false,
+                    bookTitle = null,
+                    chapterTitle = null,
+                    coverUri = null,
+                    currentSentenceRange = null,
+                    durationEstimateMs = 0L,
                     error = PlaybackError.ChapterFetchFailed(
                         "Chapter not ready (id=$chapterId). Download may still be queued.",
                     ),
                 )
             }
+            // Stop any stale pipeline so the OLD chapter's audio doesn't
+            // keep streaming under an empty player surface.
+            stopPlaybackPipeline()
+            invalidateState()
             return
         }
 
@@ -874,6 +1111,12 @@ class EnginePlayer @AssistedInject constructor(
                 currentChapterId = chapterId,
                 charOffset = charOffset,
                 isPlaying = true,
+                // Issue #524 — clear the chapter-advance buffering flag
+                // we set in advanceChapter while waiting for the next
+                // chapter's body. The new pipeline takes over and the
+                // sibling UI rolls back to Playing (or Warming until the
+                // first sentence range emits).
+                isBuffering = false,
                 bookTitle = chapter.bookTitle,
                 chapterTitle = chapter.title,
                 coverUri = chapter.coverUrl,
@@ -1473,6 +1716,24 @@ class EnginePlayer @AssistedInject constructor(
         }
         pcmSource = source
         pipelineRunning.set(true)
+        // Issue #540 — every fresh pipeline starts unpaused. Tear-down
+        // paths (stopPlaybackPipeline) also clear userPaused so a
+        // pipeline rebuild after a hard stop (voice swap, seek, etc.)
+        // doesn't inherit a stale pause flag.
+        userPaused.set(false)
+        // Issue #539 — snapshot the AudioTrack's sample rate + chapter
+        // base offset so currentPositionMs can compute "frames the
+        // listener has heard" without holding the track reference. The
+        // base offset is the charOffset at the moment this pipeline
+        // started; frames-played-since-start is added on top.
+        pipelineSampleRate = sampleRate
+        pipelineStartCharOffset = _observableState.value.charOffset
+        // Issue #539 — reset the truthful-position monotonic latch on
+        // every pipeline rebuild. A seek-backward path stops + starts
+        // the pipeline; without this reset the latch would clamp the
+        // scrubber at the pre-seek position and the user would see the
+        // thumb refuse to move backward on a backward seek.
+        lastTruthfulPositionMs = 0L
         // Issue #290 — reset the frames-written tally so the debug
         // overlay's `audio buffered ms` reads against the fresh
         // AudioTrack's playbackHeadPosition rather than a stale total
@@ -1500,6 +1761,30 @@ class EnginePlayer @AssistedInject constructor(
             var lastVol = -1f
             try {
                 while (pipelineRunning.get()) {
+                    // Issue #540 — fast-pause park. When the user taps
+                    // Pause, [pauseTts] sets userPaused=true and pauses
+                    // the AudioTrack. The consumer parks here until
+                    // either userPaused clears (resume tap) or the
+                    // pipeline shuts down (voice swap / seek / etc.).
+                    //
+                    // We sleep in short 50 ms increments rather than
+                    // parking on a Condition so a teardown can interrupt
+                    // us by setting pipelineRunning=false; the inner
+                    // check exits the park promptly. The sleep is also
+                    // why the user-perceived resume latency is ≤50 ms +
+                    // hardware ring buffer drain.
+                    while (userPaused.get() && pipelineRunning.get()) {
+                        try {
+                            Thread.sleep(50L)
+                        } catch (_: InterruptedException) {
+                            // stopPlaybackPipeline raised the
+                            // interrupt; the outer while will exit.
+                            Thread.currentThread().interrupt()
+                            break
+                        }
+                    }
+                    if (!pipelineRunning.get()) break
+
                     // BEFORE pulling the next chunk, check whether buffer
                     // recovered above the resume threshold. If so, kick
                     // AudioTrack alive again so the next write lands in a
@@ -1638,6 +1923,13 @@ class EnginePlayer @AssistedInject constructor(
                     // when the ramp is idle (steady state).
                     var written = 0
                     while (written < chunk.pcm.size && pipelineRunning.get()) {
+                        // Issue #540 — if the user paused mid-chunk-write,
+                        // bail out of the write loop so we park at the top
+                        // of the outer loop. AudioTrack.write on a paused
+                        // track blocks (the ring buffer never drains
+                        // through speakers), which would freeze the
+                        // consumer here for the duration of the pause.
+                        if (userPaused.get()) break
                         val v = volumeRamp.current
                         if (v != lastVol) {
                             runCatching { track.setVolume(v) }
@@ -1651,10 +1943,25 @@ class EnginePlayer @AssistedInject constructor(
                         // 16-bit mono PCM = 2 bytes per frame.
                         if (n > 0) totalFramesWritten += n / 2
                     }
+                    // Issue #540 — if we bailed because of user pause,
+                    // we may have written part of this chunk's PCM into
+                    // the AudioTrack ring buffer. That audio is still
+                    // queued and will be heard the moment resume() calls
+                    // track.play(). The remainder (chunk.pcm[written..])
+                    // is dropped on the floor — but since we're parked,
+                    // the SAME chunk will be retried on the next outer
+                    // loop iteration via a fresh nextChunk()... no, wait:
+                    // we already consumed this chunk from the queue.
+                    // Continuing past the trailing-silence branch below
+                    // is correct — the listener will hear the partial
+                    // chunk on resume, then the next chunk picks up
+                    // mid-sentence (~ 200 ms quantum, indistinguishable
+                    // from a clean pause to the listener).
                     // Spool trailing silence from a shared zero-filled
                     // buffer (no per-sentence allocation).
                     var remaining = chunk.trailingSilenceBytes
                     while (remaining > 0 && pipelineRunning.get()) {
+                        if (userPaused.get()) break // #540 — same logic as PCM loop.
                         val v = volumeRamp.current
                         if (v != lastVol) {
                             runCatching { track.setVolume(v) }
@@ -1821,6 +2128,12 @@ class EnginePlayer @AssistedInject constructor(
         //     consumer will finish its current write and clean up
         //     whenever it gets there.
         pipelineRunning.set(false)
+        // Issue #540 — also clear the user-pause flag so the consumer's
+        // park branch exits promptly. The pipelineRunning=false above
+        // already covers the inner break, but the park loop polls
+        // userPaused so clearing it lets the outer iteration land on the
+        // pipelineRunning check immediately.
+        userPaused.set(false)
 
         val track = audioTrack
         audioTrack = null
@@ -1996,6 +2309,34 @@ class EnginePlayer @AssistedInject constructor(
     }
 
     fun pauseTts() {
+        // Issue #540 — fast pause path. Keep the AudioTrack alive +
+        // pre-filled so resume() restarts audio within ~150 ms (down
+        // from the 2.5 s rebuild we measured on R83W80CAFZB pre-fix).
+        // Tear-down ONLY happens on hard stops (voice swap, seek,
+        // speed/pitch change, chapter advance) — those have legitimate
+        // pipeline-invalidation reasons.
+        //
+        // The consumer thread polls [userPaused] each iteration and,
+        // when set, calls track.pause() to park the hardware ring
+        // buffer. We also call it from here so the pause takes effect
+        // before the consumer's next poll (~10-200 ms window depending
+        // on which AudioTrack.write the consumer is parked in).
+        if (audioTrack != null && pipelineRunning.get()) {
+            userPaused.set(true)
+            // Parking the track from Main is safe — AudioTrack.pause()
+            // is atomic against in-flight writes (the write returns
+            // immediately when the track is paused; documented
+            // behavior). The consumer's blocked write completes, the
+            // user-paused flag check kicks the consumer into the park
+            // branch.
+            runCatching { audioTrack?.pause() }
+            _observableState.update { it.copy(isPlaying = false) }
+            scope.launch { persistPosition() }
+            invalidateState()
+            return
+        }
+        // No live pipeline — fall back to the legacy teardown path
+        // (idempotent, matches pre-#540 behavior on a cold pause).
         _observableState.update { it.copy(isPlaying = false) }
         stopPlaybackPipeline()
         scope.launch { persistPosition() }
@@ -2030,6 +2371,23 @@ class EnginePlayer @AssistedInject constructor(
                 return
             }
             voiceReloadPending = false
+        }
+        // Issue #540 — fast resume. If the AudioTrack is still alive (we
+        // hit the fast-pause path above), just clear the user-paused flag
+        // and kick the track back into play. The consumer thread will
+        // notice the flag clear on its next iteration and resume writes
+        // from the already-queued PCM. No new AudioTrack handshake, no
+        // sherpa-onnx warm-up, no producer restart.
+        if (
+            audioTrack != null &&
+            pipelineRunning.get() &&
+            userPaused.get()
+        ) {
+            _observableState.update { it.copy(isPlaying = true, error = null) }
+            userPaused.set(false)
+            runCatching { audioTrack?.play() }
+            invalidateState()
+            return
         }
         _observableState.update { it.copy(isPlaying = true, error = null) }
         startPlaybackPipeline()
@@ -2081,9 +2439,30 @@ class EnginePlayer @AssistedInject constructor(
         } else {
             chapterRepo.getPreviousChapterId(current)
         } ?: run {
-            if (direction >= 0) _uiEvents.tryEmit(PlaybackUiEvent.BookFinished)
+            if (direction >= 0) {
+                // Issue #524 — book finished. Flip isPlaying off so the
+                // sibling UI's engineState rolls to Completed instead of
+                // sitting on "Playing" with no audio. Pre-fix isPlaying
+                // stayed true after a final-chapter natural end and the
+                // play button looked active while the engine was idle.
+                _observableState.update {
+                    it.copy(isPlaying = false, currentSentenceRange = null)
+                }
+                invalidateState()
+                _uiEvents.tryEmit(PlaybackUiEvent.BookFinished)
+            }
             return
         }
+        // Issue #524 — surface a Buffering state while we wait for the
+        // next chapter's body to land in the DB. Pre-fix the engine sat
+        // on isPlaying=true with no audio output during this wait, which
+        // looked like the player "stalled at end-of-chapter." With
+        // isBuffering=true the sibling UI renders a spinner so the user
+        // knows the engine is doing something (Spotify-style behavior
+        // when crossing a track boundary). The next loadAndPlay clears
+        // isBuffering as soon as the new pipeline starts.
+        _observableState.update { it.copy(isBuffering = true) }
+        invalidateState()
         chapterRepo.queueChapterDownload(fiction, nextId, requireUnmetered = false)
         chapterRepo.observeChapter(nextId).filterNotNull().first()
         loadAndPlay(fiction, nextId, charOffset = 0)

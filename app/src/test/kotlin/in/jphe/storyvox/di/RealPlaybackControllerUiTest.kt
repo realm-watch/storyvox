@@ -168,14 +168,25 @@ class RealPlaybackControllerUiTest {
             MutableSharedFlow<PlaybackUiEvent>().asSharedFlow()
         override val recapPlayback: StateFlow<RecapPlaybackState> =
             MutableStateFlow(RecapPlaybackState.Idle).asStateFlow()
+        // audio-fidelity-fixer batch (#524 #530 #536 #539 #543) —
+        // additional surfaces the controller now exposes. Test fakes
+        // return idle/zero so existing assertions stay unaffected.
+        override val engineState: StateFlow<`in`.jphe.storyvox.playback.EngineState> =
+            MutableStateFlow<`in`.jphe.storyvox.playback.EngineState>(
+                `in`.jphe.storyvox.playback.EngineState.Idle,
+            ).asStateFlow()
+        override val playbackPositionMs: StateFlow<Long> = MutableStateFlow(0L).asStateFlow()
+        override val chapterDurationMs: StateFlow<Long> = MutableStateFlow(0L).asStateFlow()
 
         override suspend fun play(fictionId: String, chapterId: String, charOffset: Int) = Unit
         override fun pause() = Unit
         override fun resume() = Unit
         override fun togglePlayPause() = Unit
         override fun seekTo(charOffset: Int) = Unit
+        override fun seekToPositionMs(positionMs: Long) = Unit
         override fun skipForward30s() = Unit
         override fun skipBack30s() = Unit
+        override fun prewarmEngine() = Unit
         // #120 — sentence stepping. Vesper drive-by fix: test wasn't
         // updated when PlaybackController grew these two; the missing
         // overrides broke `:app:compileDebugUnitTestKotlin` until now.
