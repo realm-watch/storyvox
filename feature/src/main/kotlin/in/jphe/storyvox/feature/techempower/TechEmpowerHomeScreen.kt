@@ -249,15 +249,23 @@ private fun TechEmpowerHero() {
                 .clip(MaterialTheme.shapes.large),
             contentScale = ContentScale.Fit,
         )
+        // Issue #603 (v1.0). Lead with a plain-English benefit headline
+        // ("Free help — read out loud.") instead of TechEmpower's
+        // marketing tagline. The TechEmpower mission tagline still
+        // surfaces on the About sub-screen where readers go to learn
+        // about the nonprofit; on this landing card we answer the
+        // first-time visitor's actual question — "what is this app
+        // for, in plain words?".
         Text(
-            text = TechEmpowerLinks.MISSION_TAGLINE,
+            text = "Free help — read out loud.",
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.primary,
             textAlign = TextAlign.Center,
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            text = "A 501(c)(3) nonprofit. storyvox is built on TechEmpower's mission.",
+            text = "Books, guides, and how-tos. " +
+                "TechEmpower's free library — pick something and we'll read it to you.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,

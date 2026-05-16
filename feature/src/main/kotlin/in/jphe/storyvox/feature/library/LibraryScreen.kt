@@ -453,14 +453,26 @@ private fun TechEmpowerHeroCard(onClick: () -> Unit) {
                     style = MaterialTheme.typography.labelMedium,
                     color = brass,
                 )
+                // Issues #603 + #626 (v1.0). The card now leads with a
+                // plain-English benefit headline that answers "what
+                // does this app do?" in seven words, not the marketing-
+                // y MISSION_TAGLINE which made sense only to readers
+                // who already knew TechEmpower. The subtitle was
+                // previously "Browse free tech guides, call 211, or
+                // join the peer-support Discord →" — three CTAs in
+                // one tagline, which the auditor flagged for #626. We
+                // pick ONE supporting line that points at the lead
+                // affordance (Browse the free guides), and let the
+                // TechEmpower Home drill-down handle Discord / call
+                // 211 with dedicated affordances.
                 Text(
-                    TechEmpowerLinks.MISSION_TAGLINE,
+                    "Free books, guides, and help read out loud.",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                 )
                 Text(
-                    "Browse free tech guides, call 211, or join the peer-support Discord →",
+                    "Tap to see TechEmpower's free guides →",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,

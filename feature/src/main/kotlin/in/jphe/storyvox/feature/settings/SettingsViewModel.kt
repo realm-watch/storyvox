@@ -158,6 +158,12 @@ class SettingsViewModel @Inject constructor(
      *  (the live "Currently used" indicator surfaces the new state on
      *  the next 5 s poll). */
     fun clearCache() = viewModelScope.launch { repo.clearCache() }
+    /** Issue #599 (v1.0) — manual reset of the first-launch welcome
+     *  flow flag. Flips `pref_onboarding_completed_v1` back to false
+     *  so the OnboardingHost shows the three-screen welcome again on
+     *  the next composition. Strictly a QA / dress-rehearsal hook;
+     *  surfaced in Settings → Developer. */
+    fun resetOnboarding() = viewModelScope.launch { repo.resetOnboardingV1() }
     /** Issue #85 — Voice-Determinism preset (Steady / Expressive). */
     fun setVoiceSteady(enabled: Boolean) = viewModelScope.launch { repo.setVoiceSteady(enabled) }
     fun signIn() = viewModelScope.launch { repo.signIn() }

@@ -745,6 +745,18 @@ fun SettingsScreen(
                 subtitle = "Pipeline · engine · Azure · network · events · export.",
                 onClick = onOpenDebug,
             )
+            // Issue #599 (v1.0) — manual reset of the first-launch
+            // welcome flow. Flips `pref_onboarding_completed_v1` back
+            // to false so the three-screen welcome runs on next cold
+            // launch (or, on a hot re-entry to the LIBRARY route, on
+            // the next OnboardingHost recomposition). Surfaced here
+            // rather than as a top-level affordance because it's
+            // strictly a QA / dress-rehearsal control.
+            SettingsLinkRow(
+                title = "Reset onboarding",
+                subtitle = "Show the first-launch welcome flow again. Restart the app to see it.",
+                onClick = { viewModel.resetOnboarding() },
+            )
         }
 
         // ── 10. About ────────────────────────────────────────────────

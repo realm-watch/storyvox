@@ -1912,6 +1912,35 @@ interface SettingsRepositoryUi {
     /** Flip the sync-onboarding-dismissed flag to true. Idempotent.
      *  Default no-op for fakes; the DataStore impl persists. */
     suspend fun markSyncOnboardingDismissed() {}
+
+    // ── v1.0 first-launch onboarding (#599) ───────────────────────────
+    /**
+     * Issue #599 (v1.0 blocker) — has the user completed (or skipped)
+     * the three-screen first-launch welcome flow? Default false; the
+     * flow renders before the [VoicePickerGate] when this is false, and
+     * persists `true` on either "Get started → Pick a voice → Pick what
+     * to listen to" completion OR an explicit "I've used storyvox
+     * before" skip. Once true the flow never re-prompts; Settings →
+     * Advanced → "Reset onboarding" flips it back to false for testing.
+     *
+     * Defaults to `true` here so test fakes never accidentally show the
+     * flow during unit tests for unrelated surfaces; the real DataStore
+     * impl in `:app` overrides with the persisted value (defaulting to
+     * `false` on first launch).
+     */
+    val onboardingCompletedV1: Flow<Boolean>
+        get() = kotlinx.coroutines.flow.flowOf(true)
+
+    /** Flip the onboarding-completed flag to true. Idempotent; called
+     *  from the final onboarding screen's CTA and from the "skip"
+     *  affordance on the Welcome screen. */
+    suspend fun markOnboardingCompletedV1() {}
+
+    /** Flip the onboarding-completed flag back to false — Settings →
+     *  Advanced → "Reset onboarding" exposes this so JP (and any QA
+     *  flow) can re-experience the welcome screens without clearing
+     *  app data. */
+    suspend fun resetOnboardingV1() {}
 }
 
 /**

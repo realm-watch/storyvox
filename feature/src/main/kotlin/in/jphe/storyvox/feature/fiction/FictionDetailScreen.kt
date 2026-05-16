@@ -713,6 +713,23 @@ private fun NotebookSection(
     val summaryFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
 
+    // Issue #624 (v1.0). When the user has no notes yet AND the add
+    // sheet isn't open, the entire section hides — header, empty-state
+    // copy, "Add note" button, the lot. A first-launch user landing on
+    // a FictionDetail shouldn't see a Notebook section that points at a
+    // workflow they haven't started; characters and places appear
+    // automatically as they listen (AI-driven extraction in
+    // :core-playback fills [entries]). Once the first entry lands —
+    // either AI-extracted or via the long-press "save to notebook"
+    // path on the reader surface — the section appears with its
+    // header + the entry, and the "Add note" affordance becomes
+    // available for editing.
+    //
+    // Kept as an early-return rather than a wrapping `if` so the
+    // composable's whole body remains one indent level — easier to
+    // diff against future surface changes.
+    if (entries.isEmpty() && !addOpen) return
+
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.md, vertical = spacing.sm),
         verticalArrangement = Arrangement.spacedBy(spacing.xs),
@@ -736,22 +753,6 @@ private fun NotebookSection(
                     }
                 },
                 variant = BrassButtonVariant.Text,
-            )
-        }
-        if (entries.isEmpty() && !addOpen) {
-            // Issue #456 — copy promised "as you chat about this book"
-            // but FictionDetail has no Chat button (the chat surface
-            // only opens from the player's options sheet). Soften the
-            // copy so the empty state matches the affordances actually
-            // present on this screen — Listen + Add note + AI-driven
-            // discovery during playback — instead of pointing at a CTA
-            // that doesn't exist here.
-            Text(
-                "Characters and places appear here as you listen — the AI " +
-                    "extracts them from chapter context. Tap Add note to " +
-                    "record an entry by hand.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         entries.forEach { e ->

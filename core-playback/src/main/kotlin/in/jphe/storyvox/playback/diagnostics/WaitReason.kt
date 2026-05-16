@@ -55,7 +55,12 @@ sealed interface WaitReason {
         val voiceName: String,
         val progress: Float? = null,
     ) : WaitReason {
-        override val message: String get() = "Warming $voiceName"
+        // Plain-English headline (#606, v1.0). The voice display name
+        // is interpolated so the user sees the voice they actually
+        // picked ("Warming up Brian's voice…") rather than a generic
+        // "Warming voice" or an engine identifier. Phrasing matches
+        // how a person would describe what's happening to a friend.
+        override val message: String get() = "Warming up $voiceName's voice. This happens once per session."
         override val progressFraction: Float? get() = progress
         override val isRecoverable: Boolean get() = false
         override val isUserActionable: Boolean get() = false
@@ -67,7 +72,12 @@ sealed interface WaitReason {
      * anything because there's no text to feed it.
      */
     data class LoadingChapter(val chapterTitle: String) : WaitReason {
-        override val message: String get() = "Loading $chapterTitle"
+        // Plain-English (#606). Drops the per-chapter title from the
+        // headline so the panel doesn't fill the whole top edge with
+        // a 60-character "Loading <very long chapter title>" line;
+        // the chapter title is already visible elsewhere on the
+        // reader. "Loading the chapter." reads as a single thought.
+        override val message: String get() = "Loading the chapter."
         override val progressFraction: Float? get() = null
         override val isRecoverable: Boolean get() = false
         override val isUserActionable: Boolean get() = false
@@ -79,7 +89,12 @@ sealed interface WaitReason {
      * we're waiting for the next sentence's PCM to land.
      */
     data class BufferingNextSentence(val queueDepth: Int) : WaitReason {
-        override val message: String get() = "Buffering the next sentence"
+        // Plain-English (#606). "Buffering" is engineering jargon —
+        // a 5-year-old hears "loading" but not "buffering". "The
+        // next bit of audio" is more concrete than "next sentence";
+        // it's also true (the chunk in flight is usually a phrase,
+        // not always a full sentence).
+        override val message: String get() = "Loading the next bit of audio."
         override val progressFraction: Float? get() = null
         override val isRecoverable: Boolean get() = false
         override val isUserActionable: Boolean get() = false
@@ -92,7 +107,12 @@ sealed interface WaitReason {
      * loading message.
      */
     data class NetworkSlow(val secondsWaiting: Int) : WaitReason {
-        override val message: String get() = "Network is slow ($secondsWaiting s)"
+        // Plain-English (#606). Drops the "(N s)" parenthetical from
+        // the headline — the count adds technical clutter without
+        // helping a user decide what to do. "Internet is slow. Hang
+        // tight." is two short sentences anyone can parse, including
+        // a child or a TalkBack listener.
+        override val message: String get() = "Internet is slow. Hang tight."
         override val progressFraction: Float? get() = null
         override val isRecoverable: Boolean get() = true
         override val isUserActionable: Boolean get() = true
@@ -105,7 +125,16 @@ sealed interface WaitReason {
      * the constructor argument.
      */
     data class FocusLost(val cause: String) : WaitReason {
-        override val message: String get() = "Paused for $cause"
+        // Plain-English (#606). "Paused for a call" assumes the
+        // common case (the focus-loss cause is overwhelmingly a
+        // phone call or alarm); "will resume when you're done" tells
+        // the user what happens next, which is the question they
+        // actually have when audio drops out mid-chapter. The
+        // original [cause] argument is retained as part of the data
+        // class so future variants (assistant invocation, video in
+        // another app) can branch on it; for v1.0 we keep the
+        // headline simple.
+        override val message: String get() = "Paused for a call — will resume when you're done."
         override val progressFraction: Float? get() = null
         override val isRecoverable: Boolean get() = true
         override val isUserActionable: Boolean get() = true
@@ -117,7 +146,10 @@ sealed interface WaitReason {
      * disconnect; on connect the user often expects a re-play.
      */
     data object AudioRouteChange : WaitReason {
-        override val message: String get() = "Audio output changed"
+        // Plain-English (#606). Adds the trailing period for parity
+        // with the other reason headlines — they all read as complete
+        // sentences now, which TalkBack pauses cleanly between.
+        override val message: String get() = "Audio output changed."
         override val progressFraction: Float? get() = null
         override val isRecoverable: Boolean get() = true
         override val isUserActionable: Boolean get() = true
@@ -125,7 +157,13 @@ sealed interface WaitReason {
 
     /** Device volume is at 0 or the music stream is system-muted. */
     data object DeviceMuted : WaitReason {
-        override val message: String get() = "Device is muted"
+        // Plain-English (#606). "Your phone is muted" is concrete
+        // (the user knows what "phone" means; "device" reads as
+        // engineering speak). "Turn up volume to hear" tells them
+        // exactly what to do — the panel's chip still surfaces the
+        // Open-settings affordance for users on the Volume / Do Not
+        // Disturb permissions case.
+        override val message: String get() = "Your phone is muted. Turn up volume to hear."
         override val progressFraction: Float? get() = null
         override val isRecoverable: Boolean get() = false
         override val isUserActionable: Boolean get() = true
@@ -133,7 +171,11 @@ sealed interface WaitReason {
 
     /** A voice model download failed (404, network, OOM). */
     data class VoiceDownloadFailed(val voiceName: String) : WaitReason {
-        override val message: String get() = "Couldn't download $voiceName"
+        // Plain-English (#606). Adds "Tap to try again." inline so
+        // the headline names the recovery action even on a TalkBack
+        // user's first sweep through the panel — they don't have to
+        // hunt for the chip to know what to do.
+        override val message: String get() = "Couldn't download $voiceName. Tap to try again."
         override val progressFraction: Float? get() = null
         override val isRecoverable: Boolean get() = true
         override val isUserActionable: Boolean get() = true
@@ -147,9 +189,16 @@ sealed interface WaitReason {
      * the retry chip to kick the pipeline.
      */
     data class AudioOutputStuck(val secondsSilent: Int) : WaitReason {
+        // Plain-English (#606). Below the 4 s threshold the panel is
+        // a friendly "we're listening" hint; once we cross 4 s
+        // without audio the headline shifts to "Reconnecting" so the
+        // user knows we're actively re-arming the pipeline rather
+        // than hung. Drops the "$secondsSilent s" parenthetical —
+        // the user doesn't need the count, they need to know
+        // someone's working on it.
         override val message: String
-            get() = if (secondsSilent < 4) "Listening for the first words"
-            else "No audio for $secondsSilent s — preparing to recover"
+            get() = if (secondsSilent < 4) "Listening for the first words."
+            else "Reconnecting — please wait."
         override val progressFraction: Float? get() = null
         override val isRecoverable: Boolean get() = secondsSilent >= 4
         override val isUserActionable: Boolean get() = secondsSilent >= 4

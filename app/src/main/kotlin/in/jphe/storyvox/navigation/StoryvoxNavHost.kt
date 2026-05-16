@@ -33,6 +33,7 @@ import `in`.jphe.storyvox.feature.browse.BrowseScreen
 import `in`.jphe.storyvox.feature.chat.ChatScreen
 import `in`.jphe.storyvox.feature.debug.DebugScreen
 import `in`.jphe.storyvox.feature.engine.VoicePickerGate
+import `in`.jphe.storyvox.feature.onboarding.OnboardingHost
 import `in`.jphe.storyvox.feature.fiction.FictionDetailScreen
 import `in`.jphe.storyvox.feature.follows.FollowsScreen
 import `in`.jphe.storyvox.feature.library.LibraryScreen
@@ -247,6 +248,39 @@ fun StoryvoxNavHost(
     navController: NavHostController,
     modifier: Modifier = Modifier,
 ) {
+    // Issue #599 (v1.0 blocker) — first-launch welcome flow wraps the
+    // VoicePickerGate so a brand-new user sees the plain-English three-
+    // screen welcome BEFORE the engineering-themed voice picker. The
+    // host's [shouldShow] flow gates on the persisted
+    // `pref_onboarding_completed_v1` flag; once flipped it never re-
+    // arms for the life of the install (Settings → Developer → Reset
+    // onboarding flips it back for QA / dress rehearsal).
+    //
+    // Mounted OUTSIDE the VoicePickerGate so the gate's tap-swallow
+    // shield doesn't trap welcome-screen taps. The welcome's own
+    // shield handles its swallow.
+    OnboardingHost(
+        onOpenTechEmpower = {
+            navController.navigate(StoryvoxRoutes.TECHEMPOWER_HOME)
+        },
+        onAddFromWebsite = { clipboardUrl ->
+            // Route to Library with the magic-add sheet pre-opened.
+            // If we read a URL off the clipboard, surface it via the
+            // existing libraryWithShare route (the same query-arg
+            // path system share-intents use). Otherwise we fall
+            // through to plain Library — the magic-add affordance
+            // is one tap away on the Library top bar.
+            if (!clipboardUrl.isNullOrBlank()) {
+                navController.navigate(StoryvoxRoutes.libraryWithShare(clipboardUrl))
+            } else {
+                navController.navigate(StoryvoxRoutes.LIBRARY) {
+                    popUpTo(StoryvoxRoutes.LIBRARY) { inclusive = true }
+                    launchSingleTop = true
+                }
+            }
+        },
+        onOpenVoiceLibrary = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
+    ) {
     VoicePickerGate(
         onOpenVoiceLibrary = { navController.navigate(StoryvoxRoutes.VOICE_LIBRARY) },
     ) {
@@ -272,6 +306,7 @@ fun StoryvoxNavHost(
         `in`.jphe.storyvox.feature.sync.SyncOnboardingHost(
             onOpenSignIn = { navController.navigate(StoryvoxRoutes.SYNC) },
         )
+    }
     }
 }
 
