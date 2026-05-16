@@ -9,6 +9,63 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.61] — 2026-05-16
+
+**v1.0 readiness wave.** JP set a new goal: "v1.0 release on app store — 5-year-old or sight-impaired user can pick it up and know what to do; beautiful, smooth, performant." 5 PRs landed addressing 38 issues, plus latent auto-advance regression root-caused.
+
+### Fixed — auto-advance regression (#636, closes #588)
+Latent bug since #156 surfaced in v0.5.60. **`Pattern.UNICODE_CHARACTER_CLASS` is unsupported on Android's `java.util.regex` runtime.** `PronunciationDict.compileEntries` requested it + caught only `PatternSyntaxException`, so first playback with any pronunciation entry threw `IllegalArgumentException`. `EngineStreamingSource` producer's silent `catch (_: Throwable)` swallowed it without setting `producedAll=true` or pushing `END_PILL`. Consumer parked on `queue.take()` forever; `handleChapterDone` never fired; `isBuffering` stayed false so the #553 watchdog couldn't fire either. Chapter stuck at end with **zero log lines** — invisible bug.
+
+Fix:
+- `PronunciationDict.kt` — drop the unsupported flag, catch `IllegalArgumentException`, wrap lazy `compiled` access in `runCatching`.
+- `EngineStreamingSource.kt` — serial + parallel producer catch handlers log non-cancellation faults at WARN and ALWAYS push `END_PILL` so consumer can exit cleanly. Watchdog recovers via #553 path. All loggers `runCatching`-wrapped.
+- `EnginePlayer.kt` — consumer `nextChunk()` catch logs the Throwable.
+
+**Verified BOTH devices**: phone Notion Guides ch01 → ch02 in ~45s wall at 2× (1:18 audio + 1.5s watchdog window); tablet same path. Both within v1.0 < 2000ms bar.
+
+### Safety — 988 hotline reachable in one tap for TalkBack (#632, closes #608)
+988 Suicide & Crisis Lifeline was only reachable via long-press — TalkBack users can't reliably long-press. Split `TechEmpowerHelpIcons` into three single-tap glyphs: `MonitorHeart` → 988, `Phone` → 211, `Forum` → Discord. Each with explicit `contentDescription`. Verified with TalkBack ON on tablet: announces "Call 988, Suicide and Crisis Lifeline."
+
+### Fixed — visible Play button + TalkBack semantics (#633, closes #604 #605 #607 #609 #611 #612 #613 #614 #615 #616 #617 #628 #630)
+13 v1.0 a11y / discoverability issues in one bundle:
+- **#604 / #605** — FictionDetail BottomBar leads with brass-bordered Play/Resume button; player transport play button always visible (cover-tap now redundant, not required)
+- **#607** — Speed FilterChip's overriding `contentDescription` removed; built-in `selected`/`checked` semantics restored
+- **#609** — Voice chip humanized via new `humanizeVoiceLabel` helper (Piper VCTK → `Pick voice. Current: Piper Lessac English (United States) Low quality`)
+- **#611** — Sync icon "Sync — signed in" → "Manage sync — currently signed in"
+- **#612** — `ChapterCard` `clearAndSetSemantics` collapses descendant Text nodes to single TalkBack stop
+- **#613 / #628** — Library top tabs + bottom nav get explicit `Role.Tab` + `selected`
+- **#614** — `WhyAreWeWaitingPanel` coalesces rapid live-region announcements with 350 ms debounce
+- **#615** — Scrubber gesture Box 40dp → 48dp (WCAG 2.5.5)
+- **#616** — Cover-tap `onClickLabel = "Pause" / "Play"`
+- **#617** — `VoiceRow` outer semantics consolidates one focus stop with `clearAndSetSemantics` body
+- **#630** — Star toggle `Modifier.toggleable(value, role = Role.Switch)`
+
+### Added — book cover style toggle Monogram default + v1.0 beauty + tablet polish (#634, closes #618 #619 #620 #621 #622 #623 #625 #629)
+- **#629 NavigationRail at 600dp+** — tablet no longer wastes wider screen on phone-shaped bottom nav. New `SideNavRail` mirrors `BottomTabBar` semantics
+- **#618 Cold-launch perf CI guard** — `ColdLaunchThresholds.kt` (tablet 1500ms, phone 500ms) + `scripts/check-cold-launch.sh` + new step in `android.yml`
+- **#619 humanizeVoiceLabel** — raw filenames become plain English (e.g. `piper:en_US-amy-medium` → `Amy · medium quality`)
+- **#620 progress bar contrast bumped** — rail height 3→4 dp, timecodes labelMedium SemiBold
+- **#621 "Demo content"** → "Showing TechEmpower starter collection" (later softened to "TechEmpower's free guides" by onboarding merge)
+- **#622 21 fiction backends chip consistency** — uniform brass-outline / brass-primaryContainer styling
+- **#623 Ken-Burns slow zoom on cover during warming** — honors `LocalReducedMotion`
+- **#625 advanced expandable chevron** — `animateFloatAsState` 0° → 180° rotation
+
+### Added — v1.0 first-launch onboarding flow + plain-English copy refresh (#635, closes #599 #600 #602 #603 #606 #624 #626 #627)
+- **#599 Three-screen welcome flow** — Welcome ("Stories, read aloud.") → Pick a voice (friendly cards: Lessac/Cori/Amy/Ryan with one-line descriptions) → Pick what to listen to (3 big cards). Gated by `pref_onboarding_completed_v1`. Settings → Developer → "Reset onboarding" replay hook.
+- **#600** voice cards use first names + "Free · NN MB" tags (no engine jargon)
+- **#602** Browse Notion banner: "TechEmpower's free guides. Free, no account needed." (was "Add a Notion integration token...")
+- **#603** TechEmpower hero copy: "Free help — read out loud."
+- **#606** All 9 `WaitReason` headlines rewritten plain English ("Warming up Brian's voice. This happens once per session." / "Internet is slow. Hang tight." / etc.)
+- **#624** `NotebookSection` hides entirely until first note lands
+- **#626** Library TechEmpower hero card: "Tap to see TechEmpower's free guides →"
+- **#627** "Activate" → "Pick this voice"
+
+### Under the hood
+- 7 parallel agents in worktrees (settings-coverage-auditor, autoadvance-regression-fixer, v1-readiness-auditor, v1-release-prereqs, safety-hotfix-988, onboarding-flow-builder, player-discoverability-fixer, beauty-and-tablet-polish — read-only audits + isolated fixes).
+- 33 v1.0-readiness issues filed (#599-#631) — most closed in this release.
+- 10 settings-coverage issues filed (#589-#598) — top-3 (animation speed, skip distance, rewind window) queued for next wave.
+- Auto-advance recovery turned a 100-min investigation into a 4-line root-cause fix in `PronunciationDict.kt` — the kind of bug that hides for months because no log line ever fires.
+
 ## [0.5.60] — 2026-05-16
 
 Crash bundle from the #579 stress-test pair (one agent driving the Z Flip 3 through monkey + scripted scenarios, one fixing in a worktree). 5 crashes / ANR-class issues closed in PR #587.
