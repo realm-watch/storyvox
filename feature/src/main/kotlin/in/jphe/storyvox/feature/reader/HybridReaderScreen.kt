@@ -11,7 +11,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import `in`.jphe.storyvox.feature.BuildConfig
 import `in`.jphe.storyvox.feature.debug.DebugOverlay
 import `in`.jphe.storyvox.feature.debug.DebugViewModel
 import `in`.jphe.storyvox.ui.component.HybridReaderShell
@@ -86,14 +85,22 @@ fun HybridReaderScreen(
     // playback controls still respond to taps (the overlay only takes
     // pointer events on its own bounding box). Hoisting outside the
     // shell would intercept reader gestures.
+    //
+    // Issue #529 follow-up (v0.5.58): the overlay is intentionally
+    // available in the release variant. JP relies on the live "sent
+    // #N · queue X/12" strip + Voice-Roster / Playback-Speed metrics
+    // for diagnostic gold on the same APK end users run. The Settings
+    // → Advanced → "Show debug overlay" toggle (defaulting OFF — see
+    // [UiSettings.showDebugOverlay] = false) is the SOLE gate. We
+    // dropped the earlier `BuildConfig.DEBUG` compile-time gate
+    // because, with `release` now being the shipped variant, that
+    // would have permanently hidden the overlay even for users who
+    // explicitly opted in — exactly the opposite of what we want.
+    // Pre-existing default of `false` means a fresh install still
+    // shows nothing; only the Settings toggle reveals the strip.
     val debugVm: DebugViewModel = hiltViewModel()
     val debugEnabled by debugVm.overlayEnabled.collectAsStateWithLifecycle()
-    // Issue #529 — the on-reader debug overlay is a developer-only surface;
-    // shipping it in release builds shows the "sent #N · queue X/12" strip
-    // to end users (audit 2026-05-15: visible in 0.5.52 release on R5CRB0W66MK).
-    // BuildConfig.DEBUG closes the gate at compile time so a stale
-    // DataStore flag from a developer build can never bleed through.
-    val debugOverlayVisible = debugEnabled && BuildConfig.DEBUG
+    val debugOverlayVisible = debugEnabled
 
     // Playing-tab "no chapter loaded" path — replace the bare
     // "No chapter loaded." stub with the magical Resume prompt. Two

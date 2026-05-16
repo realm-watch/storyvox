@@ -29,13 +29,15 @@ android {
 
     buildFeatures {
         compose = true
-        // Issue #529 — feature module needs BuildConfig.DEBUG to gate the
-        // on-reader DebugOverlay so it can never render in release builds
-        // regardless of the legacy DataStore `pref_show_debug_overlay` flag.
-        // A user who flipped the toggle on in v0.5.4x would otherwise carry
-        // it forward into release shipments. BuildConfig.DEBUG is the
-        // belt-and-suspenders gate; the DataStore flag stays so debug-build
-        // users can still hide the overlay if they don't want it on screen.
+        // BuildConfig generation kept on for the feature module. The
+        // earlier #529 compile-time gate on the on-reader DebugOverlay
+        // (BuildConfig.DEBUG && debugEnabled in HybridReaderScreen) was
+        // removed in v0.5.58 — JP relies on the overlay as diagnostic
+        // gold on the same APK end users run, so the Settings →
+        // Advanced toggle is now the sole gate (default false, see
+        // UiSettings.showDebugOverlay). Leaving `buildConfig = true`
+        // costs nothing and keeps the field available for future
+        // variant-aware UI affordances without a build-script flip.
         buildConfig = true
     }
 

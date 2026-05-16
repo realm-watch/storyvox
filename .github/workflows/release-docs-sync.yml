@@ -224,7 +224,9 @@ jobs:
             --base main \
             --head "$BRANCH" \
             --label "ci,docs" 2>&1 || true
-          # Auto-merge once the required "Build debug APK" check passes.
+          # Auto-merge once the required "Build APK" check passes
+          # (renamed from "Build debug APK" in #529 follow-up; branch
+          # protection updated to match — see android.yml header note).
           # --admin would bypass the check but requires user-level admin
           # rights the GITHUB_TOKEN doesn't have. --auto queues the
           # merge for when the protection rules are satisfied: the

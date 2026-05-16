@@ -114,9 +114,11 @@ gradle wrapper --gradle-version 8.10 --distribution-type bin
 echo "sdk.dir=$ANDROID_HOME" > local.properties
 
 # Build
-./gradlew :app:assembleDebug          # phone APK
-./gradlew :wear:assembleDebug         # wear APK
-./gradlew :app:installDebug           # install on connected device
+./gradlew :app:assembleRelease        # phone APK (shipped variant)
+./gradlew :wear:assembleDebug         # wear APK (wear stays on debug; no release variant yet)
+./gradlew :app:installRelease         # install on connected device
+# Local iteration with debugger attach:
+./gradlew :app:installDebug           # non-minified, isDebuggable=true
 ```
 
 The CI workflow (`.github/workflows/android.yml`) shows the canonical build steps.
