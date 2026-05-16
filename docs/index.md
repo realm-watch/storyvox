@@ -433,6 +433,11 @@ image: /screenshots/03-reader.png
     Built by <a href="https://github.com/jphein">JP Hein</a>
     with teams of <a href="https://www.anthropic.com/claude-code">Claude Code</a> agents.
   </p>
+  <p class="muted">
+    <a href="/privacy/">Privacy policy</a> ·
+    <a href="https://github.com/techempower-org/storyvox">Source</a> ·
+    <a href="https://github.com/techempower-org/storyvox/issues">Report an issue</a>
+  </p>
 </footer>
 
 <script>

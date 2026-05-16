@@ -34,6 +34,14 @@ Thumbs.db
 *.jks
 *.keystore
 keystore.properties
+# Belt-and-suspenders: also ignore anything that looks like the Play
+# Store release keystore by name, in case someone copies it into the
+# repo by mistake. The real file lives OUTSIDE the repo (default
+# location: ~/.storyvox-keystore/storyvox-release.keystore) and is
+# wired in via `storyvox.releaseStoreFile` in local.properties.
+# See docs/release-keystore.md.
+storyvox-release.keystore
+storyvox-upload.keystore
 # …except the debug-only keystore used for sideload installs. Stable
 # cert across CI + dev machines so APKs install over each other
 # without "package conflicts" errors. No security value, intentional.
