@@ -9,6 +9,35 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.54] — 2026-05-15
+
+Spotify-grade playback smoothness pass. Two parallel agents, two clusters of fixes covering everything the on-device audit found in the player surface, plus a magical new launcher icon.
+
+### Added — Magical Library Nocturne launcher icon
+- Adaptive icon redrawn: layered hearth-glow + candlelight bloom + constellation stars in the background; gradient-filled book pages, fine gilt text-rules, gradient sound-wave arcs, candle flame at the apex inside the 72 dp safe zone, floating brass embers. Still pure `VectorDrawable` — crisp at every density, zero APK size impact.
+
+### Fixed — Audio fidelity (#552, closes #524 #530 #531 #536 #539 #540 #543 #550)
+- **#539 Scrubber drift fixed at the source** — `EnginePlayer.currentPositionMs()` now derives position from `AudioTrack.playbackHeadPosition + pipelineStartCharOffset` instead of wall-clock interpolation. `PlaybackController.playbackPositionMs: StateFlow<Long>` polls at 100 ms. The scrubber is now the truth, not a guess.
+- **#540 Pause→Resume 2.5 s rebuild gone** — `pauseTts()` parks the AudioTrack (`track.pause()` + `userPaused.set(true)`); `resume()` re-kicks via `track.play()`. Consumer thread polls the flag in 50 ms increments. Target ~150 ms vs the pre-fix 2.5 s.
+- **#524 Auto-advance reliable** — `advanceChapter` flips `isPlaying=false` on book-end + sets `isBuffering=true` while awaiting the next chapter's body; controller flips `_completed` on `BookFinished` so engineState rolls to `Completed`.
+- **#530 ChapterFetchFailed no longer silent** — `loadAndPlay` clears current chapter state on fetch failure; new `EngineState.Error(msg, retryable)` surfaces it. No more routing back to the previous chapter.
+- **#531 Seek tap 5 % offset gone** — new `PlaybackController.seekToPositionMs(ms)` uses the same speed-aware `baseline * speed` formula as `estimateDurationMs`. Roundtrip drift ≤ 100 ms verified by test.
+- **#536 MediaSession position=0 transient gone** — `setContentPositionMs` now routes through `currentPositionMs()` which has a monotonic latch (`lastTruthfulPositionMs`) that never regresses within a chapter.
+- **#543 Voice warming indicator** — new `EngineState.Warming(message)` flips true the moment `play()` is invoked with a render-ready label ("Warming Brian…"); cleared on first sentence range emit. `PlaybackController.prewarmEngine()` hook for Library to anticipate.
+- **#550 Skip ±30 s consistent** — root cause was wall-clock interpolation racing the pipeline-rebuild during seek; resolved by #539's truthful position feed.
+
+### Fixed — Player UX polish (#551, closes #525 #526 #527 #529 #537 #543 (UI))
+- **#525 Cover-tap no longer silent** — tap captures `isPlaying` at the moment of tap, fades a Play/Pause icon overlay for 400 ms so the user sees what happened. Long-press still unbound for chapter actions.
+- **#526 Play/Pause button no longer jumps 25 dp** — fixed 96 dp host `Box` + `Crossfade` icon vector inside `FilledIconButton`. Zero layout shift between buffering and playing states.
+- **#527 Speed / sleep timer / voice picker reachable from the player** — new `PlayerQuickChips` row under transport: 5 speed presets (0.75× / 1.0× / 1.25× / 1.5× / 2.0×), 6 sleep-timer presets (off / 5 / 15 / 30 / 60 min / end of chapter), voice quick-switch chip linking to Voice Library.
+- **#529 Debug overlay gated** — `:feature` gains `buildConfig = true`; `HybridReaderScreen` gates the overlay on `BuildConfig.DEBUG && pref_show_debug_overlay`. Verified absent from the release variant.
+- **#537 Engine state semantic** — `pipelineStateText` maps paused → "paused", truly idle → "" (empty). No more "idle" label while audio is paused.
+- **#543 (UI) Voice warming surface** — `warmingMessageForVoice(voiceLabel)` derives the speaker name (Brian/Ava/Amy/Lessac/Ryan/…); surfaced as "Warming Brian…" in the player subtitle the moment the engine cold-starts.
+
+### Under the hood
+- **45 new tests** across the bundle: `PlaybackControllerSkipSeekTest` (8), `EngineStateDerivationTest` (8), `AudiobookViewTextTest`, `AudiobookViewLayoutTest`, `PlayerQuickChipsTest`, `DebugOverlayStateLabelTest`, `DebugOverlayReleaseGateTest`.
+- **Two-agent contract pattern**: `audio-fidelity-fixer` published `EngineState` + the position/state flows; `player-ux-polish` consumed them in parallel via a temporary derived helper. The two agents never touched each other's files; merge was conflict-free.
+
 ## [0.5.53] — 2026-05-15
 
 Hotfix release. v0.5.52 ships a launch-crash regression introduced in PR #520 (Royal Road tag sync); v0.5.53 fixes it.
