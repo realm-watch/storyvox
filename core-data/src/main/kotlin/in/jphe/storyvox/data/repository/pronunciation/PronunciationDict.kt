@@ -138,9 +138,29 @@ data class PronunciationDict(
      * `types.py:248-257` is the same pattern.
      */
     fun apply(text: String): String {
-        if (text.isEmpty() || compiled.isEmpty()) return text
+        if (text.isEmpty()) return text
+        // Issue #588 — defensive: a previous build's `compiled` lazy
+        // could throw on first access (e.g. Pattern.compile with an
+        // Android-unsupported flag) and propagate to the playback
+        // producer, which silently swallowed it and stranded the
+        // chapter. We now catch any failure in [compileEntries]
+        // itself, but if a future regression re-introduces a
+        // throwing path here, return the unmodified text rather than
+        // taking down the audio pipeline.
+        val patterns = try {
+            compiled
+        } catch (t: Throwable) {
+            android.util.Log.w(
+                "PronunciationDict",
+                "#588 compiled lazy threw (${t.javaClass.simpleName}: ${t.message}) — " +
+                    "returning text unchanged; chapter will play without pronunciation overrides",
+                t,
+            )
+            return text
+        }
+        if (patterns.isEmpty()) return text
         var s = text
-        for ((pattern, replacement) in compiled) {
+        for ((pattern, replacement) in patterns) {
             s = try {
                 pattern.matcher(s).replaceAll(replacement)
             } catch (_: IndexOutOfBoundsException) {
@@ -235,14 +255,46 @@ internal fun compileEntries(
             MatchType.GLOB -> "\\b" + globToRegex(e.pattern) + "\\b"
             MatchType.REGEX -> e.pattern
         }
-        val flags = (if (e.caseSensitive) 0 else Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE) or
-            Pattern.UNICODE_CHARACTER_CLASS
+        // Issue #588 — `Pattern.UNICODE_CHARACTER_CLASS` is **declared
+        // but unsupported** on Android's java.util.regex. Calling
+        // `Pattern.compile` with this flag throws
+        // `IllegalArgumentException: UNICODE_CHARACTER_CLASS flag not
+        // supported` on every Android runtime we've shipped against
+        // (API 26-35 verified). The pre-fix code requested the flag
+        // unconditionally; once any user had a non-empty pronunciation
+        // dict, the lazy `compiled` initializer threw on first
+        // playback, the EngineStreamingSource producer caught and
+        // silently swallowed the Throwable, and the chapter stuck at
+        // end-of-pcm forever (auto-advance failed, watchdog never
+        // fired). Reproduced on R5CRB0W66MK Z Flip 3 in v0.5.60.
+        //
+        // Android's regex implementation uses ICU under the hood and
+        // `\b` is **already Unicode-aware by default** — the flag was
+        // requested defensively to mirror desktop JDK behavior but
+        // it's redundant on Android. We keep `UNICODE_CASE` because
+        // that one IS supported and gives the case-folding the dict
+        // expects for non-ASCII letters.
+        //
+        // `IllegalArgumentException` is also caught below as a final
+        // safety net — any future Android API change that flips
+        // another flag from "declared" to "unsupported" should drop
+        // the entry rather than crash the producer.
+        val flags = if (e.caseSensitive) 0 else Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE
         val compiled = try {
             Pattern.compile(raw, flags)
         } catch (_: PatternSyntaxException) {
             // User typed broken regex (REGEX mode) or — extremely
             // unlikely — Pattern.quote produced something invalid. Drop
             // this entry; the rest of the list still applies.
+            continue
+        } catch (_: IllegalArgumentException) {
+            // Issue #588 — Android can throw IAE on unsupported flags
+            // (UNICODE_CHARACTER_CLASS historically; future flags
+            // unknown). Same recovery as PatternSyntaxException: drop
+            // this entry, keep the rest. Without this catch the
+            // throw propagates to the producer's outer try block
+            // which (pre-#588) swallowed it silently and stranded the
+            // chapter pipeline.
             continue
         }
         out.add(compiled to e.replacement)

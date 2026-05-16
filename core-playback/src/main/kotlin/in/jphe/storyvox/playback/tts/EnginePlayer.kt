@@ -2068,7 +2068,23 @@ class EnginePlayer @AssistedInject constructor(
                     // exactly as queue.take() did pre-PR-A.
                     val chunk = try {
                         runBlocking { source.nextChunk() }
-                    } catch (_: Throwable) {
+                    } catch (t: Throwable) {
+                        // Issue #588 — pre-fix this was a silent
+                        // `catch (_: Throwable)`. Log the exception so a
+                        // future producer-side failure (the one that
+                        // caused the v0.5.60 regression in the first
+                        // place) leaves a breadcrumb instead of an
+                        // unobservable "chapter just sits there"
+                        // symptom. Wrapped in runCatching so a logger
+                        // fault can't itself crash the consumer thread.
+                        runCatching {
+                            android.util.Log.w(
+                                "EnginePlayer",
+                                "#588 consumer-thread: nextChunk threw " +
+                                    "(${t.javaClass.simpleName}: ${t.message}) — treating as null",
+                                t,
+                            )
+                        }
                         null
                     }
                     if (chunk == null) {

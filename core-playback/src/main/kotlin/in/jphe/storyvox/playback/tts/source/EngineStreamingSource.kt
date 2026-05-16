@@ -624,8 +624,31 @@ class EngineStreamingSource(
             )
             // Natural end — push pill once all workers are drained.
             runInterruptible { queue.put(END_PILL) }
-        } catch (_: Throwable) {
-            // Cancelled (close, seek, voice swap) — silent.
+        } catch (t: Throwable) {
+            // Issue #588 — pre-fix this swallowed every Throwable
+            // silently, which would mask a non-cancellation failure
+            // (e.g. JNI fault on a secondary engine, OutOfMemory on a
+            // long sentence, etc.) the same way as the serial path.
+            if (t is kotlinx.coroutines.CancellationException) {
+                runCatching {
+                    android.util.Log.d(
+                        "EngineStreamingSource",
+                        "#588 parallel producer: cancelled — silent exit",
+                    )
+                }
+            } else {
+                runCatching {
+                    android.util.Log.w(
+                        "EngineStreamingSource",
+                        "#588 parallel producer: UNCAUGHT ${t.javaClass.simpleName} mid-chapter " +
+                            "(${t.message}) — pushing END_PILL so consumer can exit",
+                        t,
+                    )
+                }
+                runCatching {
+                    runInterruptible { queue.put(END_PILL) }
+                }
+            }
         } finally {
             feeder.cancel()
             workers.forEach { it.cancel() }
@@ -774,10 +797,59 @@ class EngineStreamingSource(
             // Natural end-of-chapter: push the pill so the consumer's
             // next nextChunk() returns null.
             runInterruptible { queue.put(END_PILL) }
-        } catch (_: Throwable) {
-            // Cancelled (close, seek, voice swap) — silent. A subsequent
-            // nextChunk() either gets the pill from close() or the next
-            // chunk from a restarted producer (seek).
+        } catch (t: Throwable) {
+            // Issue #588 — pre-fix this was a silent swallow ("Cancelled
+            // (close, seek, voice swap) — silent"). The silent path
+            // masked any non-cancellation failure: if generateAudioPCM
+            // or queue.put threw an unchecked Throwable mid-chapter we
+            // exited the producer WITHOUT setting producedAll=true and
+            // WITHOUT pushing END_PILL, so the consumer's next
+            // nextChunk() parked on queue.take() forever and the
+            // chapter-end auto-advance never fired. The watchdog
+            // ALSO never fired because isBuffering only flips true
+            // inside handleChapterDone, which the consumer never
+            // reached. Net result: stuck at chapter-end forever.
+            //
+            // Log every Throwable so the bug we're hunting (#588) is
+            // visible the next time it reproduces. CancellationException
+            // is logged at debug grain (expected on close/seek/voice
+            // swap); anything else is a warning the chapter-end auto-
+            // advance is at risk.
+            if (t is kotlinx.coroutines.CancellationException) {
+                // runCatching around the logger so a logger fault (e.g.
+                // an unmocked android.util.Log call on a pure-JVM unit
+                // test) can't itself escape from this catch block.
+                runCatching {
+                    android.util.Log.d(
+                        "EngineStreamingSource",
+                        "#588 serial producer: cancelled (close/seek/voice swap) — silent exit",
+                    )
+                }
+            } else {
+                runCatching {
+                    android.util.Log.w(
+                        "EngineStreamingSource",
+                        "#588 serial producer: UNCAUGHT ${t.javaClass.simpleName} mid-chapter " +
+                            "(${t.message}) — producedAll NOT set, END_PILL NOT pushed; " +
+                            "consumer will park on queue.take() forever unless we push END_PILL here",
+                        t,
+                    )
+                }
+                // Issue #588 — push END_PILL even on producer crash so
+                // the consumer can exit cleanly via the null-chunk
+                // branch. producedAll is still false (we didn't finish
+                // every sentence) so naturalEnd will be false at the
+                // consumer's nextChunk-returned-null check, and the
+                // consumer takes the non-natural-end path. The
+                // controller's #553 watchdog can then fire because
+                // isBuffering=false at end-of-pcm → handleChapterDone
+                // doesn't run, but the pipeline-state engine surfaces
+                // the stop and the next manual nudge (or watchdog)
+                // recovers.
+                runCatching {
+                    runInterruptible { queue.put(END_PILL) }
+                }
+            }
         }
     }
 
