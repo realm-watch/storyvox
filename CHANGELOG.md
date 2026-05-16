@@ -9,6 +9,60 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.59] — 2026-05-16
+
+The "go full auto" release — 7 PRs, ~25 issues, 2 major features in one bundle. Spawned 7 parallel agents in worktrees off v0.5.58 after JP requested broad cleanup + the audit's hard `dumpsys` evidence revealed a deeper bug surface than v0.5.58 caught.
+
+### Fixed — Crashes (#575)
+- **#559 InstantDB sign-in crash** — `InstantHttpTransport.postJson` was non-suspend; `SyncAuthViewModel.sendCode → viewModelScope.launch` ran the blocking OkHttp call on `Dispatchers.Main.immediate`. `FATAL: NetworkOnMainThreadException`. Made `postJson` suspend + `withContext(Dispatchers.IO)`. Test fake updated. Verified on both devices: Send code completes the network round trip; the UI shows the server-side validation error instead of crashing.
+- **#544 Background-resume crash loop** — already resolved by v0.5.53's foregroundServiceType + DataStore fix. Verified clean: 90s background → resume sweeps on both devices completed without crashes.
+
+### Fixed — Playback fidelity (#573)
+- **#564 AudioTrack churn on phone** — `userPaused` flag was getting cleared between pause/resume on Z Flip3, forcing full rebuild. Broadened the resume fast-path gate to accept any live pipeline (`haveTrack + pipelineRunning`) regardless of `userPaused`; `track.play()` is idempotent.
+- **#565 Skip ±30 slop** — skip was anchored on sentence-aligned `state.charOffset` (start of current sentence). Re-anchored on `playbackPositionMs` (truthful audible position). Speed-invariant + position-anchored tests added.
+- **#566 Warming scrubber drift** — `AudioTrack.playbackHeadPosition` reports stale frames during the window between `pipelineRunning=true` and first `track.play()`. `currentPositionMs()` now skips the AudioTrack-derived branch until `state.currentSentenceRange != null`.
+- **#568 Cover-tap pause -6s phone regression** — pinned position was `currentPositionMs()` which could regress on Flip 3's deep audio buffer. Now pins to `max(currentPositionMs, sentenceStartMs)` — forward-biased, regression-proof by construction.
+- **#569 Tier 3 Piper ONNX init 1.2s/chapter** — `loadAndPlay` unconditionally called `loadModel`. Added compound cache-key skip-guard `(voiceId, engineType, parallel-instances, parallel-threads)`; same voice + same parallel state → skip loadModel.
+- **#570 F2FS SELinux denials** — SQLite WAL mode invokes `F2FS_IOC_SET_PIN_FILE` which Samsung One UI 4 audits. Set Room journal mode to TRUNCATE.
+
+### Fixed — True gapless auto-advance (#580)
+- **#553-extension** — consumer thread treated `nextChunk()=null` (END_PILL) as end-of-chapter immediately, but the AudioTrack hardware buffer still held ~1-2s of unplayed PCM. By the time those frames played, `pipelineRunning` had been flipped false by the abandon path; `handleChapterDone` never fired. The 1.5s watchdog (v0.5.57) rescued. Fix: 2-second drain deadline after END_PILL — wait for `AudioTrack.playbackHeadPosition >= totalFramesWritten` before firing `handleChapterDone` with reliable invariants. Chapter N → N+1 now fires within ~50-300ms of last audible frame instead of relying on the watchdog. Spotify-grade transitions. 206-line `EngineStreamingSourceGaplessTest`.
+
+### Fixed — Phone narrow-width clipping + Emergency safety (#574)
+- **#532 Library tab strip overflow** — Bumped `SecondaryScrollableTabRow.edgePadding` 0.dp → `spacing.md`. History reachable via swipe on 360dp.
+- **#533 Top-bar 4 icons 0dp gap** — added 8dp `Spacer`s between TechEmpower icons + Sync + Settings. Now 72px gaps.
+- **#534 VoiceLibrary lang chip strip at capacity** — moved horizontal padding into `contentPadding` with asymmetric end (`xl=32dp`).
+- **#535 AO3 Browse tab strip clipping** — same `edgePadding` fix as #532. "Marked" clears the edge.
+- **#546 Emergency Help dial picker on WiFi-only tablet (SAFETY)** — added `PackageManager.hasSystemFeature(FEATURE_TELEPHONY)` probe before `ACTION_DIAL`. On telephony-absent devices, surface `NoTelephonyFallbackDialog` with the number, Copy-to-clipboard, and Open-web fallback (`988lifeline.org/chat`, `211.org`, FCC text-to-911 guidance). Manifest now declares `<uses-feature android:name="android.hardware.telephony" android:required="false"/>`.
+
+### Fixed — UX polish (#576)
+- **#547 Voice picker re-prompt every launch** — added `voice_picker_dismissed` Boolean key. `markPickerDismissed()` flips it on Continue; `setActive(voiceId)` also sets it atomically. Verified: pm clear → picker shows → tap Continue → cold relaunch → picker stays dismissed.
+- **#538 Listen button redundancy** — removed standalone "Listen" `BrassButton` from FictionDetail's BottomBar. Promoted "Add to library" to Primary. One tap from list → chapter list → tap chapter → audio.
+- **#545 Single-chapter Pause→Replay** — new `derivePlayPauseIconState(isPlaying, positionMs, durationMs, chapterId)` pure helper; `PlayPauseIconState` enum with Play/Pause/Replay. Tap at Replay state seeks to 0 first.
+- **#542 Widget Play/Pause TalkBack** — `RemoteViews.setContentDescription` on the transport button.
+- **#549 Widget cover duplicate TalkBack announcement** — set `importantForAccessibility="no"` on 4x1/4x2 cover ImageViews.
+- **#541/#548 Voice download diagnostic + retry** — new `FailedDownload(voiceId, reason, lastProgress)` data class; `_failedDownloads: MutableStateFlow<Map<String, FailedDownload>>`; per-row "Tap to retry" + "Dismiss" affordances rendered in `FailedDownloadSubtile`.
+
+### Added — Magical "why are we waiting" diagnostic (#578)
+The app now KNOWS when audio isn't reaching the speakers and surfaces a specific reason every time — JP's exact words: "we need to the app to know if the audio is actually coming out of the speakers, and if not it needs to tell us beautifully and magically why we are waiting EVERY time."
+
+- **New `AudioOutputMonitor`** (`@Singleton` in `:core-playback`) ticks at 200ms, cross-references the truthful `AudioTrack.playbackHeadPosition` with `AudioFocusController` state, `AudioManager.getStreamVolume(STREAM_MUSIC)`/mute, and `AudioDeviceCallback` route events.
+- **9 `WaitReason` variants** — `WarmingVoice`, `LoadingChapter`, `BufferingNextSentence`, `NetworkSlow`, `FocusLost`, `AudioRouteChange`, `DeviceMuted`, `VoiceDownloadFailed`, `AudioOutputStuck` (catch-all — the "EVERY time" guarantee).
+- **`WhyAreWeWaitingPanel`** Composable above the cover — Library Nocturne brass surface with pulsing sigil, EB Garamond headline, optional progress bar, brass-bordered retry chip. `AnimatedVisibility` for graceful slide-in/out.
+
+### Added — Book cover style toggle (#577)
+JP's preference: the old MonogramSigilTile (v0.4.x design) over the v0.5.51-introduced BrandedCoverTile.
+
+- **New `pref_cover_style`** in DataStore + `:core-sync` allowlist. Three values: `monogram` (DEFAULT), `branded`, `cover_only`.
+- **New Settings → Appearance** subscreen reached from a Palette-icon hub row between Reading and Performance. Three picker rows + a 64dp live preview chip-row that walks the exact production cascade.
+- **`FictionCoverThumb` cascade rewired** — real cover URL always wins when present; on fallback the dispatch goes through `chooseFallbackStyle(LocalCoverStyle, title)` → Monogram (default) / Branded / `DimCoverPlaceholderTile` (new — faint brass-ring outline, no title/monogram).
+- **Migration**: existing users on v0.5.51-v0.5.58 don't have `pref_cover_style`, so the absent-key read resolves to Monogram on first launch — the old covers come back automatically.
+
+### Under the hood
+- **7 parallel agents in worktrees** (cap policy validated): polish-bundle-fixer, gapless-investigator, crash-fixer, ux-polish-bundle, phone-narrow-and-safety, cover-style-toggle, audio-out-diagnostic. One ran out of usage tokens mid-task; recovered by resuming the in-progress worktree.
+- **~50 new tests** across the 7 PRs.
+- **CI workflow `cp` self-copy bug** caught + fixed (`cp $SRC $DST` errored exit 1 when AGP's variant-rename already produced the tag-named file). v0.5.58's GitHub release publish had been silently broken until this; retag fixed it.
+
 ## [0.5.58] — 2026-05-15
 
 A serious bug pass after v0.5.57. JP's on-device testing on the Z Flip 3 surfaced that **storyvox never called `requestAudioFocus()`** — `dumpsys audio` showed the focus stack empty for the storyvox pid. On Samsung's strict audio policy the AudioTrack would silently park while MediaSession reported PLAYING; this is the master bug behind every "silent stuck state" observation. Plus three parallel concerns: real release variant, chips visible on phone, slider → chip transition.
