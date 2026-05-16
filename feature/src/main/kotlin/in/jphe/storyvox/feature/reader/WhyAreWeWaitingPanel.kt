@@ -26,9 +26,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.delay
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -95,6 +100,37 @@ fun WhyAreWeWaitingPanel(
             .compositeOver(MaterialTheme.colorScheme.surface)
         val borderColor = brass.copy(alpha = 0.30f)
 
+        // Issue #614 (v1.0 blocker) — pre-fix the panel re-announced its
+        // full message on every state transition, including rapid
+        // engine flips (Warming → Buffering → Warming) and animation
+        // recompositions that happened to re-evaluate the contentDesc
+        // string. TalkBack on R5CRB0W66MK ended up reading the full
+        // 2-sentence panel description multiple times per second under
+        // load, drowning out the chapter audio it was supposed to
+        // narrate over.
+        //
+        // Fix: coalesce. We hold the "currently announced" string in a
+        // mutableState, then debounce-update it after 350 ms of no
+        // change. The actual semantics node always carries the latest
+        // *stable* string, so TalkBack only sees a fresh value when
+        // the diagnostic genuinely settled. Identical-content
+        // transitions (the same WaitReason re-emitted) never bump the
+        // state, so they never trigger a polite-region announcement.
+        val intended = "${r.message}. ${secondaryLineFor(r)}"
+        var announced by remember { mutableStateOf(intended) }
+        LaunchedEffect(intended) {
+            // Coalesce window. Rapid Warming ⇄ Buffering oscillations
+            // (sub-300 ms apart on slow-voice cold start) collapse to
+            // the *last* state inside the window instead of announcing
+            // each one. 350 ms is long enough to ride out the engine's
+            // transition jitter but short enough that a genuine state
+            // change is felt within a TalkBack listener's reaction
+            // window.
+            if (announced != intended) {
+                delay(350)
+                announced = intended
+            }
+        }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -104,7 +140,7 @@ fun WhyAreWeWaitingPanel(
                 .padding(horizontal = spacing.md, vertical = spacing.sm)
                 .semantics {
                     liveRegion = LiveRegionMode.Polite
-                    contentDescription = "${r.message}. ${secondaryLineFor(r)}"
+                    contentDescription = announced
                 },
             verticalArrangement = Arrangement.spacedBy(spacing.xs),
         ) {
