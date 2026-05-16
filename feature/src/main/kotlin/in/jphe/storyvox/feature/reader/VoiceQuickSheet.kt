@@ -8,6 +8,8 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,6 +24,7 @@ import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -68,7 +71,7 @@ import `in`.jphe.storyvox.ui.theme.LocalSpacing
  * for continuous live-tune (cheap per-call), mirroring the Player
  * Options sheet's pattern documented in AudiobookView.kt.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun VoiceQuickSheetContent(
     state: UiPlaybackState,
@@ -85,6 +88,17 @@ internal fun VoiceQuickSheetContent(
 ) {
     val spacing = LocalSpacing.current
     var advancedOpen by remember { mutableStateOf(false) }
+    // #527 follow-up — chip-first quick sheet. Each tuning row is a
+    // chip preset row (one tap, persisted immediately) with a
+    // "Custom…" toggle that reveals the continuous slider for users
+    // who want fine-grained control. Default-closed: the chips cover
+    // the audit benchmark set (Spotify / Apple Music / Pocket Casts /
+    // Libby) so most listeners never need the slider. The slider
+    // stays available behind the toggle so we don't strip the
+    // continuous-knob path from anyone who currently relies on it.
+    var speedSliderOpen by remember { mutableStateOf(false) }
+    var pitchSliderOpen by remember { mutableStateOf(false) }
+    var pausesSliderOpen by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -94,17 +108,40 @@ internal fun VoiceQuickSheetContent(
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         // ── 1. Speed (most-used) ───────────────────────────────────
+        // Chip presets first; "Custom…" expands the continuous slider
+        // below. The chip presets are the *fast path* — one tap and
+        // the value is committed immediately. The slider stays
+        // available for fine-tuning between presets.
         QuickSheetHeader("Speed", "${"%.2f".format(state.speed)}×")
-        Slider(
-            value = state.speed,
-            onValueChange = onSetSpeed,
-            onValueChangeFinished = { onPersistSpeed(state.speed) },
-            valueRange = 0.5f..3.0f,
-            modifier = Modifier.semantics {
-                contentDescription = "Speech speed"
-                stateDescription = "%.2f times".format(state.speed)
+        QuickSheetPresetChipRow(
+            presets = SPEED_PRESETS,
+            isSelected = { preset -> isSpeedPresetSelected(state.speed, preset) },
+            label = ::formatSpeedPreset,
+            contentDescriptionFor = { preset ->
+                "Playback speed ${formatSpeedPreset(preset)}"
             },
+            onPick = { preset ->
+                // Discrete preset → commit immediately (the user
+                // expressed intent exactly). Mirrors the
+                // [PlayerQuickChips] persistence pattern.
+                onSetSpeed(preset)
+                onPersistSpeed(preset)
+            },
+            customExpanded = speedSliderOpen,
+            onToggleCustom = { speedSliderOpen = !speedSliderOpen },
         )
+        AnimatedVisibility(visible = speedSliderOpen) {
+            Slider(
+                value = state.speed,
+                onValueChange = onSetSpeed,
+                onValueChangeFinished = { onPersistSpeed(state.speed) },
+                valueRange = 0.5f..3.0f,
+                modifier = Modifier.semantics {
+                    contentDescription = "Speech speed"
+                    stateDescription = "%.2f times".format(state.speed)
+                },
+            )
+        }
 
         // ── 2. Pitch ───────────────────────────────────────────────
         // Hidden on Media3-routed live audio (#373) — Sonic pitch-shifting
@@ -112,16 +149,32 @@ internal fun VoiceQuickSheetContent(
         // Hiding rather than disabling keeps the sheet visually clean.
         if (!state.isLiveAudioChapter) {
             QuickSheetHeader("Pitch", "${"%.2f".format(state.pitch)}×")
-            Slider(
-                value = state.pitch,
-                onValueChange = onSetPitch,
-                onValueChangeFinished = { onPersistPitch(state.pitch) },
-                valueRange = 0.6f..1.4f,
-                modifier = Modifier.semantics {
-                    contentDescription = "Pitch"
-                    stateDescription = "%.2f, neutral at one".format(state.pitch)
+            QuickSheetPresetChipRow(
+                presets = PITCH_PRESETS,
+                isSelected = { preset -> isPitchPresetSelected(state.pitch, preset) },
+                label = ::formatPitchPreset,
+                contentDescriptionFor = { preset ->
+                    "Pitch ${formatPitchPreset(preset)}"
                 },
+                onPick = { preset ->
+                    onSetPitch(preset)
+                    onPersistPitch(preset)
+                },
+                customExpanded = pitchSliderOpen,
+                onToggleCustom = { pitchSliderOpen = !pitchSliderOpen },
             )
+            AnimatedVisibility(visible = pitchSliderOpen) {
+                Slider(
+                    value = state.pitch,
+                    onValueChange = onSetPitch,
+                    onValueChangeFinished = { onPersistPitch(state.pitch) },
+                    valueRange = 0.6f..1.4f,
+                    modifier = Modifier.semantics {
+                        contentDescription = "Pitch"
+                        stateDescription = "%.2f, neutral at one".format(state.pitch)
+                    },
+                )
+            }
         }
 
         // ── 3. Voice picker chip ───────────────────────────────────
@@ -159,20 +212,42 @@ internal fun VoiceQuickSheetContent(
         }
 
         // ── 4. Pause / sentence silence (#109) ─────────────────────
-        // Engine clamps to [0..4]; the slider matches Settings → Voice
-        // & Playback's PunctuationPauseSlider range. 0× = no trailing
-        // silence (rapid listening); 1× = audiobook-tuned default;
-        // higher = slow, narrator-cadence pacing.
+        // Engine clamps to [0..4]; chip presets cover the practical
+        // listening range (0×..3×). The 4× extreme is reachable via
+        // "Custom…" for users who want extra-slow narrator cadence.
+        // 0× = rapid listening; 1× = audiobook-tuned default;
+        // 2-3× = slow, a11y / language-learning cadence.
         QuickSheetHeader("Sentence silence", "${"%.2f".format(punctuationPauseMultiplier)}×")
-        Slider(
-            value = punctuationPauseMultiplier,
-            onValueChange = onSetPunctuationPause,
-            valueRange = 0f..4f,
-            modifier = Modifier.semantics {
-                contentDescription = "Inter-sentence pause"
-                stateDescription = "%.2f times".format(punctuationPauseMultiplier)
+        QuickSheetPresetChipRow(
+            presets = PUNCTUATION_PAUSE_PRESETS,
+            isSelected = { preset ->
+                isPunctuationPausePresetSelected(punctuationPauseMultiplier, preset)
             },
+            label = ::formatPunctuationPausePreset,
+            contentDescriptionFor = { preset ->
+                "Sentence silence ${formatPunctuationPausePreset(preset)}"
+            },
+            onPick = { preset ->
+                // The slider's onValueChange was both live AND persist
+                // (Settings VM persists on the same callback the engine
+                // listens on). Chip taps keep that single-callback
+                // semantic — the engine + the pref key both update.
+                onSetPunctuationPause(preset)
+            },
+            customExpanded = pausesSliderOpen,
+            onToggleCustom = { pausesSliderOpen = !pausesSliderOpen },
         )
+        AnimatedVisibility(visible = pausesSliderOpen) {
+            Slider(
+                value = punctuationPauseMultiplier,
+                onValueChange = onSetPunctuationPause,
+                valueRange = 0f..4f,
+                modifier = Modifier.semantics {
+                    contentDescription = "Inter-sentence pause"
+                    stateDescription = "%.2f times".format(punctuationPauseMultiplier)
+                },
+            )
+        }
 
         // ── 5. Sonic high-quality toggle (#193) ────────────────────
         // Persisted-only; engine reads at the start of the next chapter
@@ -289,6 +364,67 @@ private fun QuickSheetHeader(title: String, valueLabel: String?) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+/**
+ * #527 follow-up — chip-preset row used by every continuous-tuning
+ * control in the quick sheet (Speed, Pitch, Sentence silence). Renders
+ * `presets.size` [FilterChip]s plus a trailing "Custom…" chip that
+ * toggles the slider's visibility (see callers — each row's slider
+ * is wrapped in an [AnimatedVisibility] gated on `customExpanded`).
+ *
+ * The chip row uses [FlowRow] so a 5-chip preset list + a Custom chip
+ * wraps gracefully on narrow phones (R5CRB0W66MK reports a Compose
+ * width of ~360 dp; the chip row needs at least 2 rows of wrapping
+ * when all 6 chips have label "1.25×"-shape text).
+ */
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+private fun QuickSheetPresetChipRow(
+    presets: List<Float>,
+    isSelected: (Float) -> Boolean,
+    label: (Float) -> String,
+    contentDescriptionFor: (Float) -> String,
+    onPick: (Float) -> Unit,
+    customExpanded: Boolean,
+    onToggleCustom: () -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+    ) {
+        presets.forEach { preset ->
+            FilterChip(
+                selected = isSelected(preset),
+                onClick = { onPick(preset) },
+                label = { Text(label(preset)) },
+                colors = brassFilterChipColors(),
+                modifier = Modifier.semantics {
+                    contentDescription = contentDescriptionFor(preset)
+                },
+            )
+        }
+        // "Custom…" chip — secondary affordance for users who want the
+        // continuous-knob path. Selected-state reflects expanded-ness
+        // so the chip's brass fill reads as "the slider is open right
+        // now". Doesn't itself change the value — just opens / closes
+        // the slider below.
+        FilterChip(
+            selected = customExpanded,
+            onClick = onToggleCustom,
+            label = { Text(if (customExpanded) "Custom" else "Custom…") },
+            colors = brassFilterChipColors(),
+            modifier = Modifier.semantics {
+                contentDescription = if (customExpanded) {
+                    "Hide custom slider"
+                } else {
+                    "Show custom slider"
+                }
+            },
+        )
     }
 }
 

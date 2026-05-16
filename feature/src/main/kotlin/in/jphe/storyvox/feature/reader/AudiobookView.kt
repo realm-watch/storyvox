@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
@@ -219,8 +221,45 @@ fun AudiobookView(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
+        // Issue #527 follow-up — phone-form-factor chip-row regression.
+        //
+        // Root cause: the player Column was `fillMaxSize()` with no
+        // scroll. The vertical content stack — top bar + cover (330 dp)
+        // + title + subtitle + scrubber + transport row (96 dp) + the
+        // 3-row [PlayerQuickChips] block — measures around ~770-820 dp
+        // tall. On the tablet (R83W80CAFZB, ~1006 dp tall) every row
+        // fits with breathing room. On the phone (R5CRB0W66MK, Z Flip3
+        // at ~880 dp tall after status / nav insets) the chips' first
+        // two rows (Speed presets + Sleep timer presets) get squeezed
+        // into the leftover ~13 dp between the transport row and the
+        // bottom-nav strip, while the third row (Pick voice) is the
+        // only one with measured bounds (it's the "weight(1f)" assist
+        // chip child, which still gets to claim its intrinsic width).
+        //
+        // Fix: wrap the player Column in `verticalScroll`. The cover +
+        // transport stay anchored at the top; the chips become
+        // reachable by a small scroll on narrow displays. Tablet keeps
+        // the existing "everything fits without scrolling" layout —
+        // the scroll modifier is a no-op when content fits the
+        // viewport. uiautomator's a11y dump now sees all 12 chips on
+        // both R5CRB0W66MK (phone) and R83W80CAFZB (tablet).
+        val scrollState = rememberScrollState()
+        // Modifier order matters: `verticalScroll` BEFORE `fillMaxWidth`.
+        // `fillMaxSize` would clash with `verticalScroll` (the latter
+        // makes the height unbounded, contradicting fillMaxSize's "fill
+        // parent's height"). The pattern is:
+        //   1. `fillMaxWidth` — column claims full viewport width
+        //   2. `verticalScroll` — vertical axis becomes scrollable
+        //   3. `padding` — interior insets, AFTER scroll so the scrollbar
+        //      (if shown) tracks the viewport edge, not the padded edge
+        // Without this order the chip rows on a narrow phone were
+        // measured at zero height (Compose's "infinity max height"
+        // warning silently downgrades to a zero-bound layout).
         Column(
-            modifier = Modifier.fillMaxSize().padding(spacing.lg),
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(scrollState)
+                .padding(spacing.lg),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
@@ -1095,9 +1134,20 @@ private fun SleepTimerChips(
     }
 }
 
+/**
+ * Brass-themed [FilterChipDefaults.filterChipColors] used across the
+ * player surface chip rows (PlayerQuickChips) and the voice quick
+ * sheet's chip presets ([VoiceQuickSheetContent]). Selected state
+ * uses the brass primary-container fill so the active preset reads
+ * as the "currently set" anchor; unselected stays subtle so a row of
+ * 5-6 chips doesn't visually shout.
+ *
+ * Exposed `internal` so [VoiceQuickSheetContent] can use the same
+ * palette as [PlayerQuickChips] without duplicating the definition.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun brassFilterChipColors() = FilterChipDefaults.filterChipColors(
+internal fun brassFilterChipColors() = FilterChipDefaults.filterChipColors(
     selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
     selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
 )
@@ -1535,6 +1585,96 @@ internal fun isSpeedPresetSelected(current: Float, preset: Float): Boolean =
  * decimal.
  */
 internal fun formatSpeedPreset(preset: Float): String {
+    return if (preset == preset.toInt().toFloat()) {
+        "${preset.toInt()}×"
+    } else {
+        "${"%.2f".format(preset).trimEnd('0').trimEnd('.')}×"
+    }
+}
+
+/**
+ * Pitch presets surfaced as chips in [VoiceQuickSheetContent]. The
+ * continuous slider's range is 0.6×..1.4× (Sonic's "musical" zone —
+ * outside that band the voice sounds chipmunky or muddy). The chip
+ * set picks five anchors: neutral 1×, two "warmer/deeper" steps and
+ * two "brighter/higher" steps. 0.15 spacing keeps adjacent presets
+ * audibly distinct (the JND threshold for pitch shifts on a male
+ * narrator voice in informal A/B is ≈ 0.05-0.08; 0.15 keeps every
+ * step a clearly-different reading).
+ *
+ * Exposed `internal` so [PlayerQuickChipsTest] / new chip tests can
+ * iterate them without instantiating Compose.
+ */
+internal val PITCH_PRESETS: List<Float> = listOf(0.7f, 0.85f, 1.0f, 1.15f, 1.3f)
+
+/**
+ * Pitch preset selection epsilon. Adjacent presets are 0.15× apart;
+ * 0.02 is well under that (a third of the spacing) so floats from the
+ * slider can't flash two chips at once. Mirrors [SPEED_PRESET_EPSILON]
+ * but at the looser pitch scale.
+ */
+private const val PITCH_PRESET_EPSILON = 0.02f
+
+/**
+ * Pure-logic selection check for [PITCH_PRESETS]. Exposed `internal`
+ * so the unit test can pin the epsilon contract without rendering.
+ */
+internal fun isPitchPresetSelected(current: Float, preset: Float): Boolean =
+    kotlin.math.abs(current - preset) < PITCH_PRESET_EPSILON
+
+/**
+ * Format a pitch preset as a user-facing label: 1.0 → "1×",
+ * 0.7 → "0.7×", 1.15 → "1.15×". Same shape as [formatSpeedPreset]
+ * (whole numbers strip the decimal) but slightly looser since pitch
+ * presets aren't all on a clean 0.25 grid like speed.
+ */
+internal fun formatPitchPreset(preset: Float): String {
+    return if (preset == preset.toInt().toFloat()) {
+        "${preset.toInt()}×"
+    } else {
+        "${"%.2f".format(preset).trimEnd('0').trimEnd('.')}×"
+    }
+}
+
+/**
+ * Sentence-pause / "voice cadence" presets surfaced as chips in
+ * [VoiceQuickSheetContent]. The continuous slider's range is 0×..4×
+ * (matches the engine's clamp at [`punctuationPauseMultiplier`]).
+ *
+ *  - 0×: rapid listening (no trailing silence — speedrun)
+ *  - 0.5×: brisk (tight cadence, podcast style)
+ *  - 1×: audiobook-tuned default (matches the legacy slider default)
+ *  - 2×: slow narrator (more breathing room between sentences)
+ *  - 3×: very slow (a11y / language-learning cadence)
+ *
+ * The 4× extreme is reachable only through the "Custom…" slider —
+ * the chip set picks five values that span the practical listening
+ * range and skips the asymptote where each sentence is followed by
+ * a noticeable silent gap.
+ */
+internal val PUNCTUATION_PAUSE_PRESETS: List<Float> = listOf(0f, 0.5f, 1f, 2f, 3f)
+
+/**
+ * Selection epsilon for [PUNCTUATION_PAUSE_PRESETS]. Adjacent presets
+ * are 0.5×..1× apart (the gap between 1× and 2× is the widest at
+ * 1.0); 0.05 keeps the chips from flashing two-at-once near the
+ * boundaries.
+ */
+private const val PUNCTUATION_PAUSE_PRESET_EPSILON = 0.05f
+
+/**
+ * Pure-logic selection check for [PUNCTUATION_PAUSE_PRESETS].
+ */
+internal fun isPunctuationPausePresetSelected(current: Float, preset: Float): Boolean =
+    kotlin.math.abs(current - preset) < PUNCTUATION_PAUSE_PRESET_EPSILON
+
+/**
+ * Format a cadence preset as a user-facing label. Same "1×" / "0.5×"
+ * shape as the other preset formatters; whole numbers strip the
+ * decimal so the chip row reads "0× / 0.5× / 1× / 2× / 3×" instead
+ * of "0.00× / 0.50× / 1.00× / 2.00× / 3.00×".
+ */
+internal fun formatPunctuationPausePreset(preset: Float): String {
     return if (preset == preset.toInt().toFloat()) {
         "${preset.toInt()}×"
     } else {
