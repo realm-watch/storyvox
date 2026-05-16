@@ -348,6 +348,12 @@ fun VoiceLibraryScreen(
                             onTap = { if (downloading == null || voice.isInstalled) viewModel.onRowTapped(voice) },
                             onLongPress = if (voice.isInstalled) ({ viewModel.requestDelete(voice) }) else null,
                             onToggleFavorite = { viewModel.toggleFavorite(voice.id) },
+                            // Issue #541 / #548 — surface the most-recent
+                            // failure record (if any) so the row tile
+                            // renders the diagnostic + retry affordance.
+                            failed = state.failedDownloads[voice.id],
+                            onRetry = { viewModel.retryDownload(voice.id) },
+                            onDismissFailure = { viewModel.dismissFailedDownload(voice.id) },
                             modifier = Modifier
                                 .animateItem()
                                 .cascadeReveal(index = index, key = "fav-${voice.id}"),
@@ -425,6 +431,18 @@ fun VoiceLibraryScreen(
                                         onTap = { viewModel.onRowTapped(voice) },
                                         onLongPress = { viewModel.requestDelete(voice) },
                                         onToggleFavorite = { viewModel.toggleFavorite(voice.id) },
+                                        // Installed rows are unlikely to
+                                        // hold a failure record (the row
+                                        // is in the Installed bucket
+                                        // because the previous download
+                                        // succeeded) but pass it through
+                                        // anyway — a re-download attempt
+                                        // that failed AFTER an old install
+                                        // would still want the retry
+                                        // affordance.
+                                        failed = state.failedDownloads[voice.id],
+                                        onRetry = { viewModel.retryDownload(voice.id) },
+                                        onDismissFailure = { viewModel.dismissFailedDownload(voice.id) },
                                         modifier = Modifier
                                             .animateItem()
                                             .cascadeReveal(index = index, key = voice.id),
@@ -507,6 +525,14 @@ fun VoiceLibraryScreen(
                                     onTap = { if (downloading == null) viewModel.onRowTapped(voice) },
                                     onLongPress = null,
                                     onToggleFavorite = { viewModel.toggleFavorite(voice.id) },
+                                    // Issue #541 / #548 — Available
+                                    // section is where the user
+                                    // initially fires a download, so
+                                    // this is the most common surface
+                                    // for the failure tile + retry.
+                                    failed = state.failedDownloads[voice.id],
+                                    onRetry = { viewModel.retryDownload(voice.id) },
+                                    onDismissFailure = { viewModel.dismissFailedDownload(voice.id) },
                                     modifier = Modifier
                                         .animateItem()
                                         .cascadeReveal(index = index, key = voice.id),
@@ -717,6 +743,18 @@ private fun VoiceRow(
     onTap: () -> Unit,
     onLongPress: (() -> Unit)?,
     onToggleFavorite: () -> Unit,
+    /** Issue #541 / #548 — non-null when the most recent download
+     *  attempt for this voice terminated in Failed. Surfaces a
+     *  "Tap to retry · $reason" subtitle and tap routes to [onRetry]
+     *  instead of [onTap]. Null on the common path (no failure to
+     *  surface). */
+    failed: FailedDownload? = null,
+    /** Issue #548 — re-arm the download for this voice. Routed when
+     *  the row is rendered in the "failed" state. */
+    onRetry: () -> Unit = {},
+    /** Issue #541 — dismiss the failure record without retrying. The
+     *  row reverts to its standard "available, tap to download" shape. */
+    onDismissFailure: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val spacing = LocalSpacing.current
@@ -842,7 +880,82 @@ private fun VoiceRow(
                     progress = if (downloadingProgress < 0f) null else downloadingProgress,
                     modifier = Modifier.fillMaxWidth(),
                 )
+            } else if (failed != null) {
+                // Issue #541 / #548 — failure subtitle + retry affordance.
+                // Pre-fix the row went silent ("timeout" elsewhere with no
+                // context); this surfaces the upstream reason and adds an
+                // explicit Tap-to-retry button so the user has an action
+                // to take, not just a status.
+                Spacer(modifier = Modifier.size(spacing.xs))
+                FailedDownloadSubtile(
+                    failed = failed,
+                    onRetry = onRetry,
+                    onDismiss = onDismissFailure,
+                )
             }
+        }
+    }
+}
+
+/**
+ * Issue #541 / #548 — failure tile rendered under a [VoiceRow] when
+ * the most recent download attempt terminated in
+ * [VoiceManager.DownloadProgress.Failed]. Shows:
+ *   - Error icon + the upstream reason (HTTP code or exception
+ *     message, verbatim — so a support thread can pattern-match it).
+ *   - Optional "stopped at $pct %" if we got past Resolving before
+ *     the failure.
+ *   - "Tap to retry" Primary button — re-arms the download via the
+ *     viewmodel's retryDownload() path.
+ *   - "Dismiss" Text button — clears the failure record without
+ *     retrying (e.g. user wants to deal with it later).
+ *
+ * Color: error container + onErrorContainer per Material3 conventions
+ * so the tile reads as "needs attention" without screaming.
+ */
+@Composable
+private fun FailedDownloadSubtile(
+    failed: FailedDownload,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    val percentSuffix = failed.lastProgress?.let { p ->
+        val pct = (p * 100f).toInt().coerceIn(0, 100)
+        " · stopped at $pct%"
+    }.orEmpty()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.55f))
+            .padding(spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(spacing.xxs),
+    ) {
+        Text(
+            // Network timeouts have no HTTP code so the upstream
+            // reason often reads "Read timed out" / "java.net…".
+            // We prefix the human-friendly description and append the
+            // raw reason so both a glance-reader and a debug-reader
+            // get what they need from one line.
+            text = "Download failed: ${failed.reason}$percentSuffix",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onErrorContainer,
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BrassButton(
+                label = "Tap to retry",
+                onClick = onRetry,
+                variant = BrassButtonVariant.Primary,
+            )
+            BrassButton(
+                label = "Dismiss",
+                onClick = onDismiss,
+                variant = BrassButtonVariant.Text,
+            )
         }
     }
 }

@@ -3,6 +3,7 @@ package `in`.jphe.storyvox.playback.voice
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
@@ -36,6 +37,22 @@ private val Context.voicesSettingsStore: DataStore<Preferences> by preferencesDa
 private object VoiceKeys {
     val INSTALLED_IDS = stringSetPreferencesKey("installed_voice_ids")
     val ACTIVE_ID = stringPreferencesKey("active_voice_id")
+
+    /**
+     * Issue #547 — sticky persistent "user has made an onboarding
+     * decision" flag. Flipped to true when the user taps "Continue
+     * without audio" on the [VoicePickerGate], or when [ACTIVE_ID]
+     * is set for the first time (handled implicitly: a non-null
+     * activeVoice already suppresses the gate). Once true, the gate
+     * stays dismissed across cold launches — even if the active voice
+     * is later deleted, the user explicitly chose reader-only at some
+     * point and the gate should not re-pester them.
+     *
+     * To force the gate to re-appear (manual "Help me pick a voice
+     * again" flow), the user clears Storage → app data, or a future
+     * settings entry can call [markPickerForgotten].
+     */
+    val PICKER_DISMISSED = booleanPreferencesKey("voice_picker_dismissed")
 }
 
 /**
@@ -203,6 +220,34 @@ class VoiceManager @Inject constructor(
                 entry.engineType is EngineType.Azure
             entry.toUiVoiceInfo(installed = isInstalled)
         }
+
+    /**
+     * Issue #547 — sticky onboarding-dismissed flag, DataStore-backed.
+     * `true` means the user has made a choice about the voice picker
+     * (either picked a voice or tapped "Continue without audio"); the
+     * gate stays down on subsequent cold launches even if [activeVoice]
+     * is null. `false` (the default) means the gate may still appear.
+     *
+     * Distinct from [activeVoice] being non-null because the user may
+     * delete every installed voice and we still don't want to bombard
+     * them with the gate on next launch — they already declined to
+     * commit once.
+     */
+    val pickerDismissed: Flow<Boolean> = store.data
+        .map { prefs -> prefs[VoiceKeys.PICKER_DISMISSED] == true }
+
+    /**
+     * Issue #547 — flip the sticky dismissed flag to true. Idempotent;
+     * safe to call from "Continue without audio" tap, from the picker's
+     * first successful [setActive] (defensive — the active-voice check
+     * would already suppress the gate, but this keeps the two paths
+     * symmetric), and from any future "I'm fine without a voice" tap.
+     */
+    suspend fun markPickerDismissed() {
+        store.edit { prefs ->
+            prefs[VoiceKeys.PICKER_DISMISSED] = true
+        }
+    }
 
     /** Strip the historical `_int8` suffix so legacy stored IDs resolve
      *  against the current catalog. Used on every read; the async migration
@@ -445,9 +490,18 @@ class VoiceManager @Inject constructor(
     }
 
     /** Persist [voiceId] as the user's active voice. Does not validate
-     *  installation — the picker UI is responsible for downloading first. */
+     *  installation — the picker UI is responsible for downloading first.
+     *
+     *  Issue #547 — also flips [VoiceKeys.PICKER_DISMISSED] true. The
+     *  user has explicitly chosen a voice, so the onboarding gate
+     *  should not re-prompt on cold launch even if the voice is later
+     *  deleted. Done in the same `edit` block so both writes commit
+     *  atomically. */
     suspend fun setActive(voiceId: String) {
-        store.edit { prefs -> prefs[VoiceKeys.ACTIVE_ID] = voiceId }
+        store.edit { prefs ->
+            prefs[VoiceKeys.ACTIVE_ID] = voiceId
+            prefs[VoiceKeys.PICKER_DISMISSED] = true
+        }
     }
 
     /**

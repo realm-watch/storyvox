@@ -33,6 +33,7 @@ import androidx.compose.material3.ripple
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Forward30
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Replay30
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -603,8 +604,26 @@ fun AudiobookView(
                     ) {
                         MagicSpinner(modifier = Modifier.size(96.dp))
                     }
+                    // Issue #545 — at natural end, tapping the button
+                    // should seek-to-0 + play (Replay semantic) rather
+                    // than the default play/pause toggle. If we left
+                    // onPlayPause alone, the engine would call play()
+                    // on a playhead already at durationMs and nothing
+                    // would happen — the button would visually do
+                    // nothing on tap. Seeking to 0 first restarts the
+                    // chapter from the beginning, matching the icon's
+                    // visual promise.
+                    val isAtNaturalEndForClick = !state.isPlaying &&
+                        state.durationMs > 0L &&
+                        state.positionMs >= state.durationMs - END_TOLERANCE_MS &&
+                        state.chapterId != null
                     FilledIconButton(
-                        onClick = onPlayPause,
+                        onClick = {
+                            if (isAtNaturalEndForClick) {
+                                onSeekTo(0L)
+                            }
+                            onPlayPause()
+                        },
                         modifier = Modifier.size(72.dp),
                         colors = IconButtonDefaults.filledIconButtonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
@@ -617,17 +636,37 @@ fun AudiobookView(
                         // reduced motion is on, the icon swap becomes
                         // instantaneous (matches the rest of Library
                         // Nocturne's reduced-motion fall-back pattern).
+                        // Issue #545 — when the playhead is at/past
+                        // natural end with !isPlaying, the button labels
+                        // itself "Replay" rather than the misleading
+                        // "Play" (tapping it loops back to start — it
+                        // doesn't resume mid-chapter, because there's
+                        // nothing left to resume). For multi-chapter
+                        // books the engine's auto-advance flips
+                        // isPlaying back to true on advance, so this
+                        // branch only fires when there's literally no
+                        // more audio to play — single-chapter books or
+                        // the last chapter of a multi-chapter book.
+                        // Tolerance constant captures both the engine's
+                        // duration-estimate slop and the parallel
+                        // gapless-investigator's truncation fix window.
+                        val playPauseIconState = derivePlayPauseIconState(
+                            isPlaying = state.isPlaying,
+                            positionMs = state.positionMs,
+                            durationMs = state.durationMs,
+                            chapterId = state.chapterId,
+                        )
                         androidx.compose.animation.Crossfade(
-                            targetState = state.isPlaying,
+                            targetState = playPauseIconState,
                             animationSpec = tween(
                                 if (reducedMotion) 0 else motion.standardDurationMs,
                                 easing = motion.standardEasing,
                             ),
                             label = "play-pause-icon",
-                        ) { playing ->
+                        ) { iconState ->
                             Icon(
-                                imageVector = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                contentDescription = if (playing) "Pause" else "Play",
+                                imageVector = iconState.imageVector,
+                                contentDescription = iconState.label,
                                 modifier = Modifier.size(40.dp),
                             )
                         }
@@ -1197,6 +1236,73 @@ internal fun formatVoiceLabel(raw: String): String {
  * host size doesn't grow alongside.
  */
 internal const val PLAY_BUTTON_HOST_SIZE_DP: Int = 96
+
+// ─── Issue #545 — natural-end detection tolerance ────────────────────
+/**
+ * Issue #545 — how close to durationMs the playhead has to be for the
+ * Play button to relabel itself "Replay." 5.5s tolerance accounts for
+ * the truncation bug being fixed in parallel by the gapless-investigator
+ * agent (the PCM stream apparently drops ~5s before the actual chapter
+ * end on some chapters) AND general durationEstimateMs imprecision —
+ * the engine's duration is computed from sentence token counts, not
+ * from rendering the audio, so it carries 1-3s of estimation slop.
+ *
+ * If the gapless-investigator's truncation fix lands and tightens the
+ * actual playback-end-vs-duration gap, this tolerance can shrink to
+ * ~1500 ms without losing the "Replay button is correct" UX. Until
+ * then 5.5s captures both modes.
+ */
+internal const val END_TOLERANCE_MS: Long = 5_500L
+
+/**
+ * Issue #545 — three-state icon enum for the play/pause button.
+ * `Replay` is the new state added in this patch: surfaces when the
+ * playhead is at natural end of the loaded chapter and !isPlaying.
+ * Carries both the imageVector and the TalkBack content description
+ * inline so the Crossfade content-lambda stays trivial.
+ *
+ * Exposed `internal` so a future Crossfade key test (or
+ * AudiobookViewLayoutTest) can pin which state renders for given
+ * (isPlaying, positionMs, durationMs) tuples.
+ */
+internal enum class PlayPauseIconState(
+    val imageVector: androidx.compose.ui.graphics.vector.ImageVector,
+    val label: String,
+) {
+    Play(Icons.Filled.PlayArrow, "Play"),
+    Pause(Icons.Filled.Pause, "Pause"),
+    Replay(Icons.Filled.Replay, "Replay"),
+}
+
+/**
+ * Issue #545 — pure derivation of the play/pause/replay state from
+ * the [UiPlaybackState] surface fields. Extracted from the composable
+ * so the (isPlaying, positionMs, durationMs, chapterId) → state map
+ * can be unit-tested without Compose.
+ *
+ * Rules (precedence top-to-bottom):
+ *  1. `isPlaying` → Pause.
+ *  2. `!isPlaying && chapterId != null && durationMs > 0 &&
+ *     positionMs >= durationMs - [END_TOLERANCE_MS]` → Replay.
+ *  3. otherwise → Play.
+ *
+ * The `chapterId != null` gate keeps the Idle/no-chapter state on
+ * Play instead of Replay (positionMs is 0 in that case but durationMs
+ * is also 0, so the inequality folds to "0 >= -5500" which is true
+ * without the chapter-id gate).
+ */
+internal fun derivePlayPauseIconState(
+    isPlaying: Boolean,
+    positionMs: Long,
+    durationMs: Long,
+    chapterId: String?,
+): PlayPauseIconState = when {
+    isPlaying -> PlayPauseIconState.Pause
+    chapterId != null &&
+        durationMs > 0L &&
+        positionMs >= durationMs - END_TOLERANCE_MS -> PlayPauseIconState.Replay
+    else -> PlayPauseIconState.Play
+}
 
 // ─── Issue #525 — cover-tap transient feedback ───────────────────────
 /**

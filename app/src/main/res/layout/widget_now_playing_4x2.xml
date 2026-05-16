@@ -30,13 +30,22 @@
         android:orientation="horizontal"
         android:gravity="center_vertical">
 
+        <!-- Issue #549 — the cover ImageView no longer carries
+             contentDescription. The parent text block (book_title /
+             chapter_title) is what TalkBack should announce; with the
+             cover also labelled "storyvox — Now playing", TalkBack
+             read "storyvox — Now playing" twice in a row before getting
+             to the actual book title. importantForAccessibility="no"
+             on a non-focusable decorative ImageView is the recommended
+             pattern (CDD A11y §3.10) — leaves the visual cover intact
+             while removing the duplicate announcement. -->
         <ImageView
             android:id="@+id/widget_cover"
             android:layout_width="64dp"
             android:layout_height="64dp"
             android:scaleType="centerCrop"
             android:src="@drawable/ic_widget_book_placeholder"
-            android:contentDescription="@string/widget_now_playing_label" />
+            android:importantForAccessibility="no" />
 
         <LinearLayout
             android:id="@+id/widget_text_block"

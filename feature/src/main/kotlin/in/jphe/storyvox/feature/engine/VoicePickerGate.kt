@@ -34,6 +34,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
@@ -158,11 +159,19 @@ class VoicePickerGateViewModel @Inject constructor(
     private val _progress = MutableStateFlow<DownloadProgress?>(null)
     val progress: StateFlow<DownloadProgress?> = _progress.asStateFlow()
 
-    /** Sticky session-only opt-out so a user without a voice can still use
-     *  the reader without staring at the gate. Not persisted across app
-     *  restart — that's by design (next launch nudges toward picking). */
-    private val _bypassed = MutableStateFlow(false)
-    val bypassed: StateFlow<Boolean> = _bypassed.asStateFlow()
+    /** Issue #547 — sticky persistent dismissed flag, sourced from
+     *  [VoiceManager.pickerDismissed]. Once the user taps "Continue
+     *  without audio" (or picks any voice via [setActive]), the flag
+     *  flips true in DataStore and the gate stops re-prompting on
+     *  cold launch. Replaces the previous session-only flag that
+     *  re-armed every app start — JP filed #547 on that exact behavior.
+     *
+     *  Two-stage `stateIn`: the underlying Flow is cold (reads DataStore
+     *  on first collect); we expose a hot StateFlow so the gate's
+     *  composition can short-circuit synchronously. Eager start so the
+     *  initial DataStore read overlaps with cold-launch composition. */
+    val bypassed: StateFlow<Boolean> = voices.pickerDismissed
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     fun pick(voiceId: String) {
         if (_downloadingVoiceId.value != null) return
@@ -189,8 +198,14 @@ class VoicePickerGateViewModel @Inject constructor(
         }
     }
 
+    /** Issue #547 — fires when the user taps "Continue without audio"
+     *  (or "More voices →", since both routes mean "stop showing me
+     *  this onboarding screen"). Writes through to VoiceManager so the
+     *  next cold launch's gate sees the dismissed flag and stays down.
+     *  Fire-and-forget — the DataStore edit is single-key and the UI
+     *  doesn't need to wait for the write to commit before dismissing. */
     fun bypass() {
-        _bypassed.value = true
+        viewModelScope.launch { voices.markPickerDismissed() }
     }
 
     fun dismissProgress() {

@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 @Immutable
@@ -67,6 +68,19 @@ data class VoiceLibraryUiState(
     val currentDownload: DownloadingVoice? = null,
     val pendingDelete: UiVoiceInfo? = null,
     val errorMessage: String? = null,
+    /** Issue #541 / #548 — per-voice terminal-failure tracking. Keyed by
+     *  voice id; presence means the most recent download attempt for
+     *  that voice ended in [VoiceManager.DownloadProgress.Failed].
+     *  Survives `currentDownload = null` (which is required by the
+     *  pre-existing "row goes back to idle" UX) so the row's tile can
+     *  render a "Tap to retry · reason" subtitle.
+     *
+     *  Entries are cleared on retry (the new download attempt clears
+     *  the entry before starting), on successful download (Done), or
+     *  on explicit user dismissal. No automatic timeout — a stale
+     *  failure record next time the user lands on the screen is still
+     *  the right UX (it's the most recent ground truth). */
+    val failedDownloads: Map<String, FailedDownload> = emptyMap(),
     /** Engine sub-headers currently rendered as **collapsed** (#130).
      *  Derived from [VoiceLibraryCollapse]'s flipped set + per-section
      *  default policy in the ViewModel — the screen only needs to ask
@@ -101,6 +115,27 @@ data class DownloadingVoice(
     val progress: Float?,
 )
 
+/**
+ * Issue #541 / #548 — per-voice terminal-failure record. Persists
+ * after the download flow terminates so the row's tile can render
+ * a "Tap to retry · $reason" subtitle. `lastProgress` is the last
+ * determinate progress fraction seen on the failing attempt (0.0..1.0,
+ * null for resolving / indeterminate) so the subtitle can show
+ * "stopped at 37 %" for context.
+ *
+ * `reason` carries the upstream [VoiceManager.DownloadProgress.Failed.reason]
+ * directly. For HTTP errors that's "HTTP 404 fetching $url"; for IO
+ * timeouts it's the IOException message; for unknown-voiceId
+ * misconfigurations it's "Unknown voiceId: $id". The screen surfaces
+ * this verbatim so the user can hand it to support if they need to.
+ */
+@Immutable
+data class FailedDownload(
+    val voiceId: String,
+    val reason: String,
+    val lastProgress: Float?,
+)
+
 @OptIn(FlowPreview::class)
 @HiltViewModel
 class VoiceLibraryViewModel @Inject constructor(
@@ -132,6 +167,12 @@ class VoiceLibraryViewModel @Inject constructor(
     private val _currentDownload = MutableStateFlow<DownloadingVoice?>(null)
     private val _pendingDelete = MutableStateFlow<UiVoiceInfo?>(null)
     private val _error = MutableStateFlow<String?>(null)
+    /** Issue #541 / #548 — per-voice last-failure store. Map keys are
+     *  voice ids; values carry the upstream Failed reason plus the
+     *  last-seen progress fraction so the row can render
+     *  "Tap to retry · timeout at 37 %" subtitle copy. Cleared per-voice
+     *  on retry / successful download / explicit dismiss. */
+    private val _failedDownloads = MutableStateFlow<Map<String, FailedDownload>>(emptyMap())
 
     // Issue #264 — search + language filter state lives in the VM so it
     // survives rotation / process death and so the filter pipeline runs
@@ -155,6 +196,15 @@ class VoiceLibraryViewModel @Inject constructor(
     val voiceFilterLanguage: StateFlow<String?> = _selectedLanguage.asStateFlow()
 
     private val azureKeyConfigured = settingsRepo.settings.map { it.azure.isConfigured }
+
+    /** Issue #541 — pack azure-configured bit + failed-download map
+     *  into one inner-combine slot so the existing 5-slot inner
+     *  combine stays at 5. Adding failedDownloads as its own slot
+     *  would push past the typed-combine ceiling. */
+    private val azureAndFailures: kotlinx.coroutines.flow.Flow<AzureAndFailures> =
+        combine(azureKeyConfigured, _failedDownloads.asStateFlow()) { azure, failed ->
+            AzureAndFailures(azureConfigured = azure, failedDownloads = failed)
+        }
 
     /** Issue #197 / #198 — observe just the two per-voice override maps
      *  so a flip surfaces in the Voice Library's Advanced expander
@@ -217,9 +267,16 @@ class VoiceLibraryViewModel @Inject constructor(
             _pendingDelete.asStateFlow(),
             _error.asStateFlow(),
             voiceLibraryCollapse.flippedKeys,
-            azureKeyConfigured,
-        ) { d, p, e, flipped, azureConfigured ->
-            CollapsedAndLocal(d, p, e, flipped, azureConfigured)
+            azureAndFailures,
+        ) { d, p, e, flipped, azureAndFail ->
+            CollapsedAndLocal(
+                download = d,
+                pendingDelete = p,
+                error = e,
+                flipped = flipped,
+                azureConfigured = azureAndFail.azureConfigured,
+                failedDownloads = azureAndFail.failedDownloads,
+            )
         },
     ) { installedFromManager, available, active, favIds, locals ->
         // PR-4: when an Azure key is configured, project all Azure
@@ -281,6 +338,7 @@ class VoiceLibraryViewModel @Inject constructor(
             currentDownload = locals.download,
             pendingDelete = locals.pendingDelete,
             errorMessage = locals.error,
+            failedDownloads = locals.failedDownloads,
             collapsedEngines = computeCollapsedEngines(
                 installedEngines = installedGrouped.keys,
                 availableEngines = availableGrouped.keys,
@@ -430,9 +488,22 @@ class VoiceLibraryViewModel @Inject constructor(
 
     fun download(voiceId: String) {
         if (_currentDownload.value != null) return
+        // Issue #541 — clear any stale failure record for this voice
+        // before the new attempt. A successful download below leaves
+        // the entry absent; a fresh Failed terminal writes a new
+        // record. The row's "Tap to retry · $reason" subtitle
+        // disappears the instant the user taps to retry — visual
+        // feedback that the retry is in flight.
+        _failedDownloads.update { it - voiceId }
         _currentDownload.value = DownloadingVoice(voiceId, progress = null)
         downloadJob?.cancel()
         downloadJob = viewModelScope.launch {
+            // Issue #541 — track the last determinate progress fraction
+            // so a Failed terminal can report "stopped at X %" in the
+            // tile subtitle. Survives the collect lambda's per-emission
+            // scope so the terminal branch can read it after the
+            // Downloading emissions finish.
+            var lastProgress: Float? = null
             try {
                 voiceManager.download(voiceId).collect { p ->
                     when (p) {
@@ -443,10 +514,32 @@ class VoiceLibraryViewModel @Inject constructor(
                             val frac = if (p.totalBytes > 0L) {
                                 (p.bytesRead.toFloat() / p.totalBytes).coerceIn(0f, 1f)
                             } else null
+                            if (frac != null) lastProgress = frac
                             _currentDownload.value = DownloadingVoice(voiceId, frac)
                         }
-                        is VoiceManager.DownloadProgress.Done -> Unit
+                        is VoiceManager.DownloadProgress.Done -> {
+                            // Clear any failure entry on success — the
+                            // most recent ground truth is "downloaded
+                            // fine," and the tile should drop the
+                            // retry affordance immediately.
+                            _failedDownloads.update { it - voiceId }
+                        }
                         is VoiceManager.DownloadProgress.Failed -> {
+                            // Issue #541 / #548 — record the failure
+                            // PER-VOICE so the row can render
+                            // "Tap to retry · $reason" instead of the
+                            // pre-fix terminal-but-blank tile. Also
+                            // surfaces in the global snackbar via
+                            // `_error` so the user gets a transient
+                            // toast as well as the persistent row
+                            // affordance — belt-and-suspenders.
+                            _failedDownloads.update { current ->
+                                current + (voiceId to FailedDownload(
+                                    voiceId = voiceId,
+                                    reason = p.reason,
+                                    lastProgress = lastProgress,
+                                ))
+                            }
                             _error.value = p.reason
                         }
                     }
@@ -457,11 +550,47 @@ class VoiceLibraryViewModel @Inject constructor(
                 // block. Re-throw so structured concurrency unwinds cleanly.
                 throw ce
             } catch (t: Throwable) {
-                _error.value = t.message ?: "Download failed"
+                // Issue #541 — exception path mirrors the Failed
+                // emission's per-voice tracking. Without this branch a
+                // SocketTimeoutException thrown FROM the flow would
+                // silently clear _currentDownload in the finally block
+                // and leave the user with no clue why the row stopped
+                // animating.
+                val reason = t.message ?: "Download failed"
+                _failedDownloads.update { current ->
+                    current + (voiceId to FailedDownload(
+                        voiceId = voiceId,
+                        reason = reason,
+                        lastProgress = lastProgress,
+                    ))
+                }
+                _error.value = reason
             } finally {
                 _currentDownload.value = null
             }
         }
+    }
+
+    /** Issue #548 — retry a previously-failed voice download. Same
+     *  effect as [download] but explicit so the screen's "Tap to retry"
+     *  semantic is auditable from the public API. Clears the failure
+     *  record before starting (the row's subtitle reverts to
+     *  the in-flight progress indicator). */
+    fun retryDownload(voiceId: String) {
+        // download() already clears the failure record on entry; this
+        // wrapper exists so the screen + tests can express "retry"
+        // intent at the call site without re-stating the
+        // recovery-from-failure path.
+        download(voiceId)
+    }
+
+    /** Issue #541 — explicitly clear a per-voice failure record without
+     *  re-triggering the download. Used by a row's "× Dismiss" action
+     *  in case the user wants to drop the retry affordance (e.g. they
+     *  hit Settings → cellular-only off and want to deal with the row
+     *  later, on a different network). */
+    fun dismissFailedDownload(voiceId: String) {
+        _failedDownloads.update { it - voiceId }
     }
 
     fun cancelDownload() {
@@ -560,10 +689,10 @@ private fun UiVoiceInfo.voiceEngine(): VoiceEngine = when (engineType) {
     is EngineType.Azure -> VoiceEngine.Azure
 }
 
-/** Tuple holding the four "local + collapse" flow values that get
- *  packed into a single nested combine slot — the outer combine is
- *  capped at 5 sources, so we group these here instead of using
- *  positional destructuring. Named for readability at the call site. */
+/** Tuple holding the "local + collapse" flow values that get packed
+ *  into a single nested combine slot — the outer combine is capped at
+ *  5 sources, so we group these here instead of using positional
+ *  destructuring. Named for readability at the call site. */
 private data class CollapsedAndLocal(
     val download: DownloadingVoice?,
     val pendingDelete: UiVoiceInfo?,
@@ -572,6 +701,17 @@ private data class CollapsedAndLocal(
     /** PR-4 (#183) — projected from `settings.azure.isConfigured`.
      *  Drives whether Azure rows in the picker are tappable. */
     val azureConfigured: Boolean,
+    /** Issue #541 / #548 — per-voice last-failure map. Source-of-truth
+     *  for the screen's "Tap to retry · $reason" row subtitles. */
+    val failedDownloads: Map<String, FailedDownload>,
+)
+
+/** Issue #541 — packed inner-combine slot. The outer combine capacity
+ *  is 5; packing `azureConfigured` + `failedDownloads` here keeps the
+ *  outer at 5 slots without forcing an untyped Iterable<Flow<*>> path. */
+private data class AzureAndFailures(
+    val azureConfigured: Boolean,
+    val failedDownloads: Map<String, FailedDownload>,
 )
 
 /** Compute the rendered collapsed-engines set from the persisted
