@@ -9,6 +9,16 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.56] — 2026-05-15
+
+Tiny but critical fix to v0.5.55: the auto-advance watchdog from #556 was firing correctly but throwing `Player is accessed on the wrong thread` when it tried to dispatch the fallback advance. Caught by JP's on-device re-verification right after v0.5.55 shipped.
+
+### Fixed
+- **#553 follow-up — auto-advance watchdog wrong-thread crash** — Media3's `Player` object is thread-confined to the application's Main looper. `PlaybackController.runBufferingWatchdog` was launching on `scope` (which uses `Dispatchers.Default`) and calling `p.advanceChapter(1)` directly, which throws "Player is accessed on the wrong thread" deep inside the player call chain. Fix: wrap the watchdog's fallback dispatch in `withContext(Dispatchers.Main)` — same dispatcher the manual skip-next button uses via `ReaderViewModel.viewModelScope`. **On-device**: chapter 01→02 auto-advance now actually fires after the 8 s watchdog window, ~70 ms from watchdog-fire to next-chapter `loadAndPlay`. The 8 s threshold itself is the next thing to shrink for true Spotify-grade transitions.
+
+### Why this slipped v0.5.55's verification
+The agent ran a JVM unit test for the watchdog timing logic which doesn't exercise the real Media3 player thread-confinement. The on-device test path the agent measured (~340 ms) hit a different branch — chapter body already pre-rendered, engine-side advance ran on the Main thread directly. The watchdog branch only fires when the engine-side primary advance silently fails to trigger; that branch was never exercised on-device until now.
+
 ## [0.5.55] — 2026-05-15
 
 Three residual smoothness fixes caught on R83W80CAFZB after v0.5.54 landed. Auto-advance, pause-position pinning, and speed-change position stability — the last three gaps between storyvox and Spotify/Apple Music-grade playback.

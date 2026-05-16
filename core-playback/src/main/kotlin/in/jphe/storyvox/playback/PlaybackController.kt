@@ -408,14 +408,26 @@ class DefaultPlaybackController @Inject constructor(
                             "#553 watchdog: isBuffering stuck on $armedFor for " +
                                 "${BUFFERING_STUCK_WATCHDOG_MS}ms; firing fallback advance via nextChapter()",
                         )
-                        runCatching { p.advanceChapter(direction = 1) }
-                            .onFailure { t ->
-                                android.util.Log.e(
-                                    "PlaybackController",
-                                    "#553 watchdog fallback advance threw: ${t.message}",
-                                    t,
-                                )
+                        // #553 follow-up — Media3's Player object is
+                        // thread-confined to the application's Main
+                        // looper; calling advanceChapter from the
+                        // controller's Default-dispatcher scope threw
+                        // "Player is accessed on the wrong thread"
+                        // (observed on R83W80CAFZB). Hop to Main before
+                        // dispatching the fallback advance — that's the
+                        // same dispatcher the manual skip-next button
+                        // uses via ReaderViewModel.viewModelScope.
+                        runCatching {
+                            kotlinx.coroutines.withContext(Dispatchers.Main) {
+                                p.advanceChapter(direction = 1)
                             }
+                        }.onFailure { t ->
+                            android.util.Log.e(
+                                "PlaybackController",
+                                "#553 watchdog fallback advance threw: ${t.message}",
+                                t,
+                            )
+                        }
                     }
                 }
             }
