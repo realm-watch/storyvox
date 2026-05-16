@@ -669,11 +669,7 @@ private fun NotionDemoBanner(onOpenSettings: () -> Unit) {
             // collection explicitly so the user reads the cards as
             // intentional, not stub.
             Text(
-<<<<<<< HEAD
                 "TechEmpower's free guides",
-=======
-                "Showing TechEmpower starter collection",
->>>>>>> origin/main
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
             )
