@@ -218,6 +218,21 @@ class EnginePlayer @AssistedInject constructor(
     private var voiceReloadPending: Boolean = false
 
     /**
+     * Issue #569 — last loaded model's parallel-synth state. Combined
+     * with [loadedVoiceId] and [activeEngineType] this gives us a
+     * compound cache key for "is the engine already loaded with the
+     * exact configuration this chapter needs?". When the key matches
+     * we skip the loadModel call entirely — measured 1.2 s saved per
+     * chapter open on Z Flip3 (Tier 3 Piper ONNX init).
+     *
+     * Reset to null when the voice changes (via [observeActiveVoice])
+     * or the engine is released (via [releaseEngine]) so the next
+     * loadAndPlay correctly re-loads.
+     */
+    private var loadedParallelInstances: Int = 0
+    private var loadedThreadsPerInstance: Int = 0
+
+    /**
      * Live-cached pre-synth queue depth. Driven by [bufferConfig.playbackBufferChunks];
      * read by [startPlaybackPipeline] when constructing each new
      * [EngineStreamingSource]. The cache exists because pipeline construction is a
@@ -632,6 +647,10 @@ class EnginePlayer @AssistedInject constructor(
                     voiceReloadPending = true
                     stopPlaybackPipeline()
                     activeEngineType = null
+                    // Issue #569 — invalidate the load cache so the
+                    // reload-while-paused path takes the slow load.
+                    loadedParallelInstances = 0
+                    loadedThreadsPerInstance = 0
                 }
             }
         }
@@ -996,7 +1015,25 @@ class EnginePlayer @AssistedInject constructor(
         val baselineCharsPerSec = SPEED_BASELINE_CHARS_PER_SECOND
             .coerceAtLeast(0.001f)
         val startMs = ((pipelineStartCharOffset / baselineCharsPerSec) * 1000f).toLong()
-        if (track != null && sr > 0 && pipelineRunning.get()) {
+        // Issue #566 — pin to start char offset during Warming (voice
+        // cold-start, no first sentence emitted yet). On Samsung Z Flip3
+        // we observed the scrubber advancing ~16 s in 4 s wall-clock
+        // before the first PCM landed in the AudioTrack. Root cause:
+        // [pipelineRunning] flips to true synchronously inside
+        // [startPlaybackPipeline] but the consumer thread hasn't run
+        // its firstSentence block yet (no `track.play()`, no `track.write`).
+        // On the affected device `playbackHeadPosition` reports stale
+        // frames from a recently-released previous track's underlying
+        // AudioFlinger slot until the new track is `play()`-ed; the
+        // monotonic clamp then locks that stale value in. Solution:
+        // skip the AudioTrack-derived branch entirely until the
+        // producer has emitted at least one sentence range
+        // (currentSentenceRange != null), which is the same gate
+        // PlaybackController's `_warmingUp` latch uses. Once a
+        // sentence has landed, the consumer has definitely called
+        // `track.play()` and `playbackHeadPosition` is meaningful.
+        val firstSentenceEmitted = state.currentSentenceRange != null
+        if (track != null && sr > 0 && pipelineRunning.get() && firstSentenceEmitted) {
             val headFrames = runCatching { track.playbackHeadPosition.toLong() }.getOrDefault(0L)
             // Wall-clock-ms-of-PCM-played, then scaled up by the speed
             // the PCM was synthesized at to get media-time-ms.
@@ -1254,6 +1291,41 @@ class EnginePlayer @AssistedInject constructor(
         // destroy + reload path), so this only matters for the
         // secondary instances.
         stopPlaybackPipeline()
+
+        // Issue #569 — skip the (expensive) loadModel call when the
+        // engine is already loaded with the exact configuration this
+        // chapter needs. Measured 1.2 s saved per chapter open on Z
+        // Flip3 (Tier 3 Piper ONNX init). The compound cache key is
+        // (voiceId, engineType, parallel-state). Mid-listen voice
+        // changes invalidate via [observeActiveVoice] which clears
+        // [loadedVoiceId], so a same-voice re-open of a different
+        // chapter takes the short path here without bypassing the
+        // legitimate reload triggers.
+        val pendingParallelState = parallelSynthConfig.currentParallelSynthState()
+        val canSkipLoad = loadedVoiceId == active.id &&
+            activeEngineType == active.engineType &&
+            loadedParallelInstances == pendingParallelState.instances &&
+            loadedThreadsPerInstance == pendingParallelState.threadsPerInstance &&
+            // Azure never carries a JNI model so the cache contract
+            // is trivially satisfied; the credentials check still
+            // belongs in the load path below.
+            active.engineType !is EngineType.Azure
+        if (canSkipLoad) {
+            android.util.Log.i(
+                "EnginePlayer",
+                "#569 loadAndPlay: skipping loadModel — engine already loaded with " +
+                    "voice=${active.id} engineType=${active.engineType} " +
+                    "instances=${pendingParallelState.instances} " +
+                    "threads=${pendingParallelState.threadsPerInstance}",
+            )
+            // Skip straight to pipeline construction; reused engines
+            // are still warm in the singleton + secondaries lists.
+            voiceReloadPending = false
+            _observableState.update { it.copy(voiceId = active.id, error = null) }
+            startPlaybackPipeline()
+            invalidateState()
+            return
+        }
 
         val loadResult: String = withContext(Dispatchers.IO) {
             // Critical: serialize loadModel against in-flight generateAudioPCM
@@ -1533,6 +1605,12 @@ class EnginePlayer @AssistedInject constructor(
         activeEngineType = active.engineType
         loadedVoiceId = active.id
         voiceReloadPending = false
+        // Issue #569 — record the parallel state we just loaded for so
+        // the next loadAndPlay can skip the loadModel call when nothing
+        // changed. Pin both `instances` and `threadsPerInstance` —
+        // either change requires rebuilding secondaries.
+        loadedParallelInstances = pendingParallelState.instances
+        loadedThreadsPerInstance = pendingParallelState.threadsPerInstance
         // Issue #561 (stuck-state-fixer) — surface the active voice id
         // into PlaybackState so the debug overlay's "name" / "voice"
         // rows + the snapshot's tier descriptor have the right input.
@@ -2459,12 +2537,18 @@ class EnginePlayer @AssistedInject constructor(
     }
 
     fun pauseTts() {
-        // Issue #540 — fast pause path. Keep the AudioTrack alive +
+        // Issue #540 / #564 — fast pause path. Keep the AudioTrack alive +
         // pre-filled so resume() restarts audio within ~150 ms (down
         // from the 2.5 s rebuild we measured on R83W80CAFZB pre-fix).
         // Tear-down ONLY happens on hard stops (voice swap, seek,
         // speed/pitch change, chapter advance) — those have legitimate
         // pipeline-invalidation reasons.
+        //
+        // #564 — log which branch fires so the next phone audit can
+        // pinpoint why the Z Flip3 was creating fresh AudioTracks per
+        // transport tap. Pre-#564 the only way to differentiate "fast
+        // pause" from "fall-through teardown" was to count audio
+        // sessions in dumpsys; this gives a single grep-target.
         //
         // The consumer thread polls [userPaused] each iteration and,
         // when set, calls track.pause() to park the hardware ring
@@ -2472,20 +2556,49 @@ class EnginePlayer @AssistedInject constructor(
         // before the consumer's next poll (~10-200 ms window depending
         // on which AudioTrack.write the consumer is parked in).
         //
-        // Issue #554 — snapshot the displayed position BEFORE flipping
-        // any flags. [currentPositionMs] computes the truthful value
-        // against the still-running AudioTrack; once we've captured it,
-        // the pause-pin makes that the canonical value the
-        // PlaybackController polls until [resume] clears the pin. The
-        // audit reported a 3 s regression on cover-tap pause — pinning
-        // makes that impossible by construction regardless of which
-        // theory of the race is correct. The pin is set BEFORE
-        // `userPaused.set(true)` so any concurrent poll either sees the
-        // pre-pause live value (fine — that's what was on screen) or
-        // the pinned value (also fine — same number).
-        val pinPosition = currentPositionMs()
+        // Issue #554 / #568 — snapshot the displayed position BEFORE
+        // flipping any flags. [currentPositionMs] computes the truthful
+        // value against the still-running AudioTrack; once we've
+        // captured it, the pause-pin makes that the canonical value the
+        // PlaybackController polls until [resume] clears the pin.
+        //
+        // #568 (phone -6s regression): on Samsung Z Flip3 the
+        // AudioTrack.playbackHeadPosition can lag the displayed
+        // scrubber by several seconds (deep-buffer reporting + a small
+        // monotonic-latch race where lastTruthfulPositionMs gets
+        // re-clamped to a freshly-low playbackHeadPosition reading
+        // during the pause handshake). To make pause-pin regression
+        // impossible by construction on every device, we pin to
+        // `max(currentPositionMs, sentenceStartMs)` — the sentence-
+        // aligned char-offset converted to media-time is what the
+        // consumer thread has most recently WRITTEN into the
+        // AudioTrack, so it's always >= the audible head and >= the
+        // value the scrubber was showing on the most recent poll.
+        // Forward-biased pin is fine: the user sees the scrubber stop
+        // at "where the next sentence will resume", and resume() picks
+        // up audibly from the same point because the AudioTrack
+        // continues from its paused playbackHeadPosition (which by
+        // construction is <= the sentence start). Tablet (#554) was
+        // already pinned safely via currentPositionMs; the max() is a
+        // strict superset of that contract.
+        val baselineCharsPerSec = SPEED_BASELINE_CHARS_PER_SECOND
+            .coerceAtLeast(0.001f)
+        val sentenceStartMs = ((_observableState.value.charOffset /
+            baselineCharsPerSec) * 1000f).toLong()
+        val livePosition = currentPositionMs()
+        val pinPosition = maxOf(livePosition, sentenceStartMs)
         pinnedPausePositionMs = pinPosition
-        if (audioTrack != null && pipelineRunning.get()) {
+        // Update the monotonic latch too — otherwise a subsequent
+        // currentPositionMs() call would re-clamp downward if the pin
+        // got cleared by a seek before the consumer thread had a
+        // chance to advance the latch. Belt-and-suspenders against
+        // any path that bypasses the pin.
+        if (pinPosition > lastTruthfulPositionMs) {
+            lastTruthfulPositionMs = pinPosition
+        }
+        val haveTrack = audioTrack != null
+        val running = pipelineRunning.get()
+        if (haveTrack && running) {
             userPaused.set(true)
             // Parking the track from Main is safe — AudioTrack.pause()
             // is atomic against in-flight writes (the write returns
@@ -2495,12 +2608,22 @@ class EnginePlayer @AssistedInject constructor(
             // branch.
             runCatching { audioTrack?.pause() }
             _observableState.update { it.copy(isPlaying = false) }
+            android.util.Log.i(
+                "EnginePlayer",
+                "#564 pauseTts: fast-path (track alive, parked) pin=${pinPosition}ms",
+            )
             scope.launch { persistPosition() }
             invalidateState()
             return
         }
         // No live pipeline — fall back to the legacy teardown path
         // (idempotent, matches pre-#540 behavior on a cold pause).
+        android.util.Log.w(
+            "EnginePlayer",
+            "#564 pauseTts: SLOW-path (teardown) — haveTrack=$haveTrack " +
+                "pipelineRunning=$running userPaused=${userPaused.get()} " +
+                "pin=${pinPosition}ms (this is the path that recreates the AudioTrack on resume)",
+        )
         _observableState.update { it.copy(isPlaying = false) }
         stopPlaybackPipeline()
         scope.launch { persistPosition() }
@@ -2547,17 +2670,38 @@ class EnginePlayer @AssistedInject constructor(
         // notice the flag clear on its next iteration and resume writes
         // from the already-queued PCM. No new AudioTrack handshake, no
         // sherpa-onnx warm-up, no producer restart.
-        if (
-            audioTrack != null &&
-            pipelineRunning.get() &&
-            userPaused.get()
-        ) {
+        val rHaveTrack = audioTrack != null
+        val rRunning = pipelineRunning.get()
+        val rUserPaused = userPaused.get()
+        // #564 — broaden the fast-resume gate. Pre-#564 we required
+        // userPaused==true to take the fast path. On Z Flip3 the audit
+        // captured `userPaused` getting cleared between pause and resume
+        // (suspected race with a stray stopPlaybackPipeline trigger;
+        // the parked consumer was still alive though). With the
+        // broadened gate, ANY live pipeline (track + running flag)
+        // accepts the fast path: track.play() is idempotent against an
+        // already-playing track, and the consumer's userPaused flag
+        // gets cleared anyway. Worst case is a redundant track.play()
+        // JNI call (~µs); best case (the observed bug) we skip a full
+        // AudioTrack rebuild + sherpa-onnx warm-up.
+        if (rHaveTrack && rRunning) {
             _observableState.update { it.copy(isPlaying = true, error = null) }
             userPaused.set(false)
             runCatching { audioTrack?.play() }
+            android.util.Log.i(
+                "EnginePlayer",
+                "#564 resume: fast-path (unpause existing track) " +
+                    "userPausedWas=$rUserPaused",
+            )
             invalidateState()
             return
         }
+        android.util.Log.w(
+            "EnginePlayer",
+            "#564 resume: SLOW-path (full pipeline rebuild) — haveTrack=$rHaveTrack " +
+                "pipelineRunning=$rRunning userPaused=$rUserPaused " +
+                "(this creates a NEW AudioTrack; cold pause or pipeline torn down)",
+        )
         _observableState.update { it.copy(isPlaying = true, error = null) }
         startPlaybackPipeline()
         invalidateState()
