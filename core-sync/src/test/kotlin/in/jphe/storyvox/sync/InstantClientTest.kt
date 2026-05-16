@@ -21,7 +21,7 @@ class InstantClientTest {
         private val responses: Map<String, TransportResult>,
     ) : InstantHttpTransport {
         val calls = mutableListOf<Pair<String, String>>()
-        override fun postJson(url: String, jsonBody: String): TransportResult {
+        override suspend fun postJson(url: String, jsonBody: String): TransportResult {
             calls += url to jsonBody
             // Match by suffix so the test doesn't need to spell the full URL.
             val match = responses.entries.firstOrNull { url.endsWith(it.key) }
