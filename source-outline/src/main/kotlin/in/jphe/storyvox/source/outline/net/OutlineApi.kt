@@ -3,7 +3,9 @@ package `in`.jphe.storyvox.source.outline.net
 import `in`.jphe.storyvox.data.source.model.FictionResult
 import `in`.jphe.storyvox.data.source.model.map
 import `in`.jphe.storyvox.source.outline.config.OutlineConfig
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -57,6 +59,15 @@ internal class OutlineApi @Inject constructor(
             body = """{"id":"$id"}""",
         ).map { it.data }
 
+    /**
+     * Issue #585 — sync OkHttp `execute()` on `Dispatchers.IO`. See
+     * `ArxivApi.getRaw` kdoc for full context; same crash class.
+     *
+     * The `inline` modifier requires the body's `withContext` lambda
+     * to be marked `crossinline` or the `inline` to be dropped. We
+     * drop `inline` because the reified-T benefit (avoiding a
+     * `KClass` parameter) is dwarfed by the dispatcher-pin safety.
+     */
     private suspend inline fun <reified T> post(
         path: String,
         body: String,
@@ -64,35 +75,40 @@ internal class OutlineApi @Inject constructor(
         val state = config.state.first()
         if (!state.isConfigured) return FictionResult.AuthRequired("Outline host or API key not set")
         val url = state.baseUrl + path
-        return try {
-            val req = Request.Builder()
-                .url(url)
-                .header("Authorization", "Bearer ${state.apiKey}")
-                .header("Content-Type", "application/json")
-                .header("Accept", "application/json")
-                .header("User-Agent", USER_AGENT)
-                .post(body.toRequestBody("application/json".toMediaType()))
-                .build()
-            client.newCall(req).execute().use { resp ->
-                when {
-                    resp.code == 401 || resp.code == 403 ->
-                        FictionResult.AuthRequired("Outline rejected the API token (HTTP ${resp.code})")
-                    !resp.isSuccessful ->
-                        FictionResult.NetworkError(
-                            "HTTP ${resp.code} from $url",
-                            IOException("HTTP ${resp.code}"),
-                        )
-                    else -> {
-                        val text = resp.body?.string()
-                            ?: return FictionResult.NetworkError("empty body", IOException("empty body"))
-                        FictionResult.Success(json.decodeFromString<T>(text))
+        return withContext(Dispatchers.IO) {
+            try {
+                val req = Request.Builder()
+                    .url(url)
+                    .header("Authorization", "Bearer ${state.apiKey}")
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "application/json")
+                    .header("User-Agent", USER_AGENT)
+                    .post(body.toRequestBody("application/json".toMediaType()))
+                    .build()
+                client.newCall(req).execute().use { resp ->
+                    when {
+                        resp.code == 401 || resp.code == 403 ->
+                            FictionResult.AuthRequired("Outline rejected the API token (HTTP ${resp.code})")
+                        !resp.isSuccessful ->
+                            FictionResult.NetworkError(
+                                "HTTP ${resp.code} from $url",
+                                IOException("HTTP ${resp.code}"),
+                            )
+                        else -> {
+                            val text = resp.body?.string()
+                                ?: return@use FictionResult.NetworkError(
+                                    "empty body",
+                                    IOException("empty body"),
+                                )
+                            FictionResult.Success(json.decodeFromString<T>(text))
+                        }
                     }
                 }
+            } catch (e: IOException) {
+                FictionResult.NetworkError(e.message ?: "fetch failed", e)
+            } catch (e: kotlinx.serialization.SerializationException) {
+                FictionResult.NetworkError("Outline returned unexpected JSON shape", e)
             }
-        } catch (e: IOException) {
-            FictionResult.NetworkError(e.message ?: "fetch failed", e)
-        } catch (e: kotlinx.serialization.SerializationException) {
-            FictionResult.NetworkError("Outline returned unexpected JSON shape", e)
         }
     }
 

@@ -69,7 +69,7 @@ class CacheStateInspectorTest {
             ByteArray(bytes) { 0x42 },
             trailingSilenceMs = 350,
         )
-        app.finalize()
+        app.complete()
     }
 
     /** Write meta + pcm (no finalize) — leaves the cache in

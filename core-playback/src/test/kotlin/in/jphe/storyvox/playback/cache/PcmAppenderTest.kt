@@ -47,7 +47,7 @@ class PcmAppenderTest {
 
         app.appendSentence(s0, pcm0, trailingSilenceMs = 350)
         app.appendSentence(s1, pcm1, trailingSilenceMs = 350)
-        app.finalize()
+        app.complete()
 
         // pcm = concat of both
         val pcmRead = File(dir, "abc.pcm").readBytes()
@@ -99,7 +99,7 @@ class PcmAppenderTest {
         val app = newAppender()
         app.appendSentence(Sentence(0, 0, 10, "Hi."), ByteArray(0), trailingSilenceMs = 350)
         app.appendSentence(Sentence(1, 11, 20, "There."), ByteArray(40) { 0x33 }, trailingSilenceMs = 350)
-        app.finalize()
+        app.complete()
 
         val idx = pcmCacheJson.decodeFromString(
             PcmIndex.serializer(),
@@ -116,7 +116,7 @@ class PcmAppenderTest {
         val app = newAppender()
         app.abandon()
         var threw = false
-        try { app.finalize() } catch (_: IllegalStateException) { threw = true }
+        try { app.complete() } catch (_: IllegalStateException) { threw = true }
         assertTrue(threw)
     }
 
@@ -124,11 +124,44 @@ class PcmAppenderTest {
     fun `append after finalize throws`() {
         val app = newAppender()
         app.appendSentence(Sentence(0, 0, 10, "Hi."), ByteArray(10), trailingSilenceMs = 350)
-        app.finalize()
+        app.complete()
         var threw = false
         try {
             app.appendSentence(Sentence(1, 11, 20, "Bye."), ByteArray(10), trailingSilenceMs = 350)
         } catch (_: IllegalStateException) { threw = true }
         assertTrue(threw)
+    }
+
+    @Test
+    fun `PcmAppender no longer declares its own finalize method`() {
+        // Issue #581 — the GC's `FinalizerDaemon` invokes
+        // `Object.finalize()` on every reclaimed instance. PcmAppender
+        // historically had its own `fun finalize()` that silently
+        // shadowed Object's hook (Kotlin doesn't require the `override`
+        // keyword for the deprecated GC hook). When the GC reclaimed a
+        // leaked already-completed appender it re-invoked the same
+        // method and the `check(!closed)` precondition threw an
+        // uncaught IllegalStateException on the finalizer thread.
+        //
+        // The fix renamed `finalize()` → `complete()`. We pin the
+        // structural contract here: `PcmAppender` does not declare a
+        // `finalize` method on its own class. The inherited
+        // Object.finalize() is a no-op and module-protected; the GC
+        // can still call it (and on Android it does, every GC cycle
+        // an object is reclaimed), but it can never throw because
+        // we no longer override it.
+        val ownMethods = PcmAppender::class.java.declaredMethods
+        val finalizeOwn = ownMethods.firstOrNull { it.name == "finalize" }
+        assertTrue(
+            "PcmAppender must not declare a finalize() method (Issue #581); " +
+                "found: $finalizeOwn",
+            finalizeOwn == null,
+        )
+        // And the rename is in place — `complete` IS a declared method.
+        val completeOwn = ownMethods.firstOrNull { it.name == "complete" }
+        assertTrue(
+            "PcmAppender must declare a complete() method after the #581 rename",
+            completeOwn != null,
+        )
     }
 }

@@ -36,6 +36,7 @@ import `in`.jphe.storyvox.data.repository.playback.PlaybackModeConfig
 import `in`.jphe.storyvox.data.repository.playback.VoiceTuningConfig
 import `in`.jphe.storyvox.data.repository.pronunciation.PronunciationDict
 import `in`.jphe.storyvox.data.repository.pronunciation.PronunciationDictRepository
+import `in`.jphe.storyvox.playback.EngineSampleRateCache
 import `in`.jphe.storyvox.playback.PlaybackError
 import `in`.jphe.storyvox.playback.PlaybackState
 import `in`.jphe.storyvox.playback.PlaybackUiEvent
@@ -1111,6 +1112,12 @@ class EnginePlayer @AssistedInject constructor(
                         else ->
                             runCatching { VoiceEngine.getInstance().sampleRate }
                     }
+                    // Issue #582 — seed the @Volatile sample-rate cache
+                    // off the engine on this IO prewarm pass. Any
+                    // subsequent UI read (speed-chip cycle re-entering
+                    // startPlaybackPipeline mid-loadModel) hits the
+                    // volatile rather than the contended engine lock.
+                    EngineSampleRateCache.refreshFromEngine()
                 }
             }.onFailure { t ->
                 android.util.Log.w("EnginePlayer", "prewarm: best-effort warm failed", t)
@@ -1605,6 +1612,15 @@ class EnginePlayer @AssistedInject constructor(
         activeEngineType = active.engineType
         loadedVoiceId = active.id
         voiceReloadPending = false
+        // Issue #582 — populate the @Volatile sample-rate cache now that
+        // loadModel has returned (the engine's intrinsic monitor is no
+        // longer held by the loader). Any UI-thread read of sampleRate
+        // from here on (e.g. a speed-chip cycle that re-enters
+        // startPlaybackPipeline) hits the volatile field instead of
+        // contending on the engine lock — that 2.054 s `Long monitor
+        // contention` the stress test captured can't fire from this
+        // path anymore.
+        EngineSampleRateCache.refreshFromEngine()
         // Issue #569 — record the parallel state we just loaded for so
         // the next loadAndPlay can skip the loadModel call when nothing
         // changed. Pin both `instances` and `threadsPerInstance` —
@@ -1684,13 +1700,25 @@ class EnginePlayer @AssistedInject constructor(
         }
 
         val engineType = activeEngineType
+        // Issue #582 — ANR-grade lock contention guard. The native
+        // VoxSherpa engines (Piper/Kokoro/Kitten) share a single
+        // intrinsic monitor between `loadModel()` and the property
+        // accessors like `sampleRate`. `startPlaybackPipeline()` is
+        // called from main-thread Compose handlers (e.g. speed-chip
+        // cycling — #3280, #3287) so a direct `VoiceEngine.getInstance()
+        // .sampleRate` read here can block the UI thread for the full
+        // duration of an in-flight `loadModel` (2.05 s captured on
+        // Z Flip 3). Route through the @Volatile cache instead — the
+        // post-loadModel callsite below already populated it with the
+        // engine's actual rate, so this is a lock-free read on every
+        // pipeline rebuild after the first.
         val sampleRate = when (engineType) {
-            is EngineType.Kokoro -> KokoroEngine.getInstance().sampleRate
+            is EngineType.Kokoro -> EngineSampleRateCache.kokoroRate()
             // Issue #119 — Kitten native sample rate is 24 kHz (same as
             // Kokoro) but the runtime accessor is the source of truth.
-            is EngineType.Kitten -> KittenEngine.getInstance().sampleRate
+            is EngineType.Kitten -> EngineSampleRateCache.kittenRate()
             is EngineType.Azure -> azureVoiceEngine.sampleRate
-            else -> VoiceEngine.getInstance().sampleRate
+            else -> EngineSampleRateCache.piperRate()
         }.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
         val track = createAudioTrack(sampleRate)
         audioTrack = track
@@ -2467,11 +2495,16 @@ class EnginePlayer @AssistedInject constructor(
         when (engineType) {
             is EngineType.Azure -> azureStreamingHandle(engineType)
             else -> object : EngineStreamingSource.VoiceEngineHandle {
+                // Issue #582 — same lock-contention guard as
+                // startPlaybackPipeline's sampleRate read; this object
+                // is constructed on the call to startPlaybackPipeline
+                // (main thread in the speed-chip path), so the lock-
+                // free volatile read prevents a 2 s UI stall.
                 override val sampleRate: Int = when (engineType) {
-                    is EngineType.Kokoro -> KokoroEngine.getInstance().sampleRate
+                    is EngineType.Kokoro -> EngineSampleRateCache.kokoroRate()
                     // Issue #119 — Kitten dispatch.
-                    is EngineType.Kitten -> KittenEngine.getInstance().sampleRate
-                    else -> VoiceEngine.getInstance().sampleRate
+                    is EngineType.Kitten -> EngineSampleRateCache.kittenRate()
+                    else -> EngineSampleRateCache.piperRate()
                 }.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
 
                 override fun generateAudioPCM(text: String, speed: Float, pitch: Float): ByteArray? {
@@ -3694,11 +3727,15 @@ class EnginePlayer @AssistedInject constructor(
      */
     private fun startRecapPipeline(recapSentences: List<Sentence>) {
         val engineType = activeEngineType
+        // Issue #582 — startRecapPipeline is reachable from main-thread
+        // Compose handlers (the "play recap" button in the reader). Use
+        // the @Volatile cache so a concurrent loadModel on a background
+        // dispatcher can't stall the UI through the engine monitor.
         val sampleRate = when (engineType) {
-            is EngineType.Kokoro -> KokoroEngine.getInstance().sampleRate
+            is EngineType.Kokoro -> EngineSampleRateCache.kokoroRate()
             // Issue #119 — Kitten recap sample rate.
-            is EngineType.Kitten -> KittenEngine.getInstance().sampleRate
-            else -> VoiceEngine.getInstance().sampleRate
+            is EngineType.Kitten -> EngineSampleRateCache.kittenRate()
+            else -> EngineSampleRateCache.piperRate()
         }.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
         val track = createAudioTrack(sampleRate)
         recapAudioTrack = track

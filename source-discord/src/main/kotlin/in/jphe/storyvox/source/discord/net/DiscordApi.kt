@@ -4,6 +4,8 @@ import `in`.jphe.storyvox.data.source.model.FictionResult
 import `in`.jphe.storyvox.source.discord.config.DiscordConfig
 import `in`.jphe.storyvox.source.discord.config.DiscordConfigState
 import `in`.jphe.storyvox.source.discord.config.DiscordDefaults
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -130,7 +132,7 @@ internal class DiscordApi @Inject constructor(
 
     // ─── transport ────────────────────────────────────────────────────
 
-    private inline fun <reified T> getJson(url: String, state: DiscordConfigState): FictionResult<T> =
+    private suspend inline fun <reified T> getJson(url: String, state: DiscordConfigState): FictionResult<T> =
         when (val raw = doRequest(url, state)) {
             is FictionResult.Success -> try {
                 FictionResult.Success(json.decodeFromString<T>(raw.value))
@@ -144,12 +146,19 @@ internal class DiscordApi @Inject constructor(
      * Single GET with Discord's required headers + structured
      * failure mapping. Token comes from [state] (a fresh snapshot per
      * call) so a Settings change applies on the next request.
+     *
+     * Issue #585 — wrapped in [withContext]`(Dispatchers.IO)`. See
+     * `ArxivApi.getRaw` for the full context: the suspend caller's
+     * dispatcher (often `Dispatchers.Main.immediate` via a Compose
+     * ViewModel scope) is inherited without an explicit pin, and the
+     * underlying OkHttp `execute()` blocks on DNS / TCP / TLS — fatal
+     * `NetworkOnMainThreadException`.
      */
-    private fun doRequest(
+    private suspend fun doRequest(
         url: String,
         state: DiscordConfigState,
-    ): FictionResult<String> {
-        return try {
+    ): FictionResult<String> = withContext(Dispatchers.IO) {
+        try {
             val request = Request.Builder()
                 .url(url)
                 // Literal "Bot" prefix per Discord's auth spec. Without

@@ -1,6 +1,8 @@
 package `in`.jphe.storyvox.source.plos.net
 
 import `in`.jphe.storyvox.data.source.model.FictionResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
@@ -125,42 +127,50 @@ internal class PlosApi @Inject constructor(
             is FictionResult.Failure -> raw
         }
 
-    private fun getRaw(url: String): FictionResult<String> {
-        return try {
-            val req = Request.Builder()
-                .url(url)
-                .header("Accept", "application/json, text/html, */*")
-                .header("Accept-Language", "en")
-                .header("User-Agent", USER_AGENT)
-                .get()
-                .build()
-            client.newCall(req).execute().use { resp ->
-                when {
-                    resp.code == 404 ->
-                        FictionResult.NotFound("PLOS article or query not found")
-                    resp.code == 429 ->
-                        FictionResult.RateLimited(
-                            retryAfter = resp.header("Retry-After")
-                                ?.toLongOrNull()
-                                ?.seconds,
-                            message = "PLOS rate-limited the request",
-                        )
-                    !resp.isSuccessful ->
-                        FictionResult.NetworkError(
-                            "HTTP ${resp.code} from $url",
-                            IOException("HTTP ${resp.code}"),
-                        )
-                    else -> {
-                        val text = resp.body?.string()
-                            ?: return FictionResult.NetworkError("empty body", IOException("empty body"))
-                        FictionResult.Success(text)
+    /**
+     * Issue #585 — sync OkHttp `execute()` on `Dispatchers.IO`. See
+     * `ArxivApi.getRaw` kdoc for full context; same crash class.
+     */
+    private suspend fun getRaw(url: String): FictionResult<String> =
+        withContext(Dispatchers.IO) {
+            try {
+                val req = Request.Builder()
+                    .url(url)
+                    .header("Accept", "application/json, text/html, */*")
+                    .header("Accept-Language", "en")
+                    .header("User-Agent", USER_AGENT)
+                    .get()
+                    .build()
+                client.newCall(req).execute().use { resp ->
+                    when {
+                        resp.code == 404 ->
+                            FictionResult.NotFound("PLOS article or query not found")
+                        resp.code == 429 ->
+                            FictionResult.RateLimited(
+                                retryAfter = resp.header("Retry-After")
+                                    ?.toLongOrNull()
+                                    ?.seconds,
+                                message = "PLOS rate-limited the request",
+                            )
+                        !resp.isSuccessful ->
+                            FictionResult.NetworkError(
+                                "HTTP ${resp.code} from $url",
+                                IOException("HTTP ${resp.code}"),
+                            )
+                        else -> {
+                            val text = resp.body?.string()
+                                ?: return@use FictionResult.NetworkError(
+                                    "empty body",
+                                    IOException("empty body"),
+                                )
+                            FictionResult.Success(text)
+                        }
                     }
                 }
+            } catch (e: IOException) {
+                FictionResult.NetworkError(e.message ?: "fetch failed", e)
             }
-        } catch (e: IOException) {
-            FictionResult.NetworkError(e.message ?: "fetch failed", e)
         }
-    }
 
     companion object {
         /** PLOS Search API endpoint. Documented at

@@ -1,6 +1,8 @@
 package `in`.jphe.storyvox.source.rss.net
 
 import `in`.jphe.storyvox.data.source.model.FictionResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
@@ -21,12 +23,21 @@ import javax.inject.Singleton
 class RssFetcher @Inject constructor(
     @`in`.jphe.storyvox.source.rss.di.RssHttp private val client: OkHttpClient,
 ) {
+    /**
+     * Issue #585 — synchronous OkHttp `execute()` MUST run off the
+     * main thread. `RssFetcher.fetch` is suspend but doesn't pin a
+     * dispatcher, so the caller's context (often
+     * `BrowseViewModel.viewModelScope` = `Dispatchers.Main.immediate`)
+     * is inherited and the DNS lookup happens on the UI thread,
+     * fatal `NetworkOnMainThreadException`. Same fix pattern as
+     * `ArxivApi.getRaw`.
+     */
     suspend fun fetch(
         url: String,
         previousEtag: String? = null,
         previousLastModified: String? = null,
-    ): FictionResult<FetchResult> {
-        return try {
+    ): FictionResult<FetchResult> = withContext(Dispatchers.IO) {
+        try {
             val builder = Request.Builder()
                 .url(url)
                 .header("User-Agent", USER_AGENT)
@@ -43,7 +54,7 @@ class RssFetcher @Inject constructor(
                     )
                     else -> {
                         val body = response.body?.string()
-                            ?: return FictionResult.NetworkError("empty body", IOException("empty body from $url"))
+                            ?: return@use FictionResult.NetworkError("empty body", IOException("empty body from $url"))
                         FictionResult.Success(
                             FetchResult.Body(
                                 xml = body,

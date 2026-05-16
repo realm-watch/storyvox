@@ -67,7 +67,7 @@ class CacheStatsRepositoryTest {
             ByteArray(bytes) { 0x44 },
             trailingSilenceMs = 350,
         )
-        app.finalize()
+        app.complete()
     }
 
     @Test

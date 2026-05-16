@@ -18,6 +18,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import `in`.jphe.storyvox.data.repository.ChapterRepository
 import `in`.jphe.storyvox.data.repository.pronunciation.PronunciationDict
+import `in`.jphe.storyvox.playback.EngineSampleRateCache
 import `in`.jphe.storyvox.playback.tts.CHUNKER_VERSION
 import `in`.jphe.storyvox.playback.tts.SentenceChunker
 import `in`.jphe.storyvox.playback.tts.source.trailingPauseMs
@@ -177,6 +178,12 @@ class ChapterRenderJob @AssistedInject constructor(
             )
             return Result.retry()
         }
+        // Issue #582 — populate the @Volatile sample-rate cache off
+        // this background load, so any concurrent main-thread reader
+        // (e.g. user starts playback mid-prerender) hits the lock-free
+        // volatile rather than contending on the engine monitor with
+        // this worker's loadModel.
+        EngineSampleRateCache.refreshFromEngine()
 
         // 9. Generate sentences + write to cache.
         val sentences = chunker.chunk(chapter.text)
@@ -201,12 +208,15 @@ class ChapterRenderJob @AssistedInject constructor(
                         return Result.retry()
                     }
             }
-            // 10. Finalize + evict. evictToQuota pins the just-finalized
+            // 10. Complete + evict. evictToQuota pins the just-completed
             // basename so mtime-tie races don't evict the fresh entry.
-            runCatching { appender.finalize() }
+            // Issue #581 — `complete()` (was `finalize()`) avoids the
+            // Object.finalize() shadow that produced uncaught
+            // IllegalStateExceptions on the FinalizerDaemon thread.
+            runCatching { appender.complete() }
                 .onFailure {
                     appender.abandon()
-                    Log.w(LOG_TAG, "pcm-cache PRERENDER-FAIL chapterId=$chapterId finalize", it)
+                    Log.w(LOG_TAG, "pcm-cache PRERENDER-FAIL chapterId=$chapterId complete", it)
                     return Result.retry()
                 }
             runCatching {

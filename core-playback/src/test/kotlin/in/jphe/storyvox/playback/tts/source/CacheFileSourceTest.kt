@@ -82,7 +82,7 @@ class CacheFileSourceTest {
         app.appendSentence(sentences[0], ByteArray(100) { 0xA1.toByte() }, trailingSilenceMs = 350)
         app.appendSentence(sentences[1], ByteArray(80)  { 0xB2.toByte() }, trailingSilenceMs = 200)
         app.appendSentence(sentences[2], ByteArray(120) { 0xC3.toByte() }, trailingSilenceMs = 350)
-        app.finalize()
+        app.complete()
     }
 
     @Test
