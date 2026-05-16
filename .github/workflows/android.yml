@@ -15,8 +15,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-debug:
-    name: Build debug APK
+  build:
+    # Job key + name kept verbatim ("build" / "Build APK") so the
+    # workflow's required-status-check context on `main` flips to a
+    # debug-free label as part of this PR. The branch-protection rule
+    # is updated to require "Build APK" at merge time — see PR body.
+    name: Build APK
     # Self-hosted runner on katana (jp-desktop). Switched off
     # ubuntu-latest 2026-05-12 after the jphein account hit its 3,000
     # Actions-min/mo cap. The desktop has JDK 17, Android SDK 34/35,
@@ -56,18 +60,38 @@ jobs:
             cp /home/jp/Projects/storyvox/local.properties ./local.properties
           fi
 
-      - name: Assemble debug APK
-        run: PATH="$JAVA_HOME/bin:$PATH" ./gradlew :app:assembleDebug --no-daemon --stacktrace
+      - name: Assemble release APK
+        # Issue #529 — was `:app:assembleDebug` through v0.5.57. Flipped
+        # to `:app:assembleRelease` so the shipped artifact carries
+        # `BuildConfig.DEBUG = false`, R8 minification stays on, and
+        # the on-reader debug overlay can never reach end users. See
+        # `app/build.gradle.kts` for the build-type rewrite that
+        # backs this change. The signing config still points at the
+        # checked-in debug keystore (no signature change for users —
+        # existing sideload installs upgrade in place).
+        run: PATH="$JAVA_HOME/bin:$PATH" ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
       - name: Rename APK with tag
         # Only runs on tag builds — for PR / main pushes we just
-        # verify the build compiles and stop. The renamed file is
-        # uploaded directly to the GitHub release in the next step
-        # (no actions/upload-artifact hop, see the comment below).
+        # verify the build compiles and stop. The local-build path
+        # in `app/build.gradle.kts` (applicationVariants.all) already
+        # renames `app-release.apk` -> `storyvox-v<versionName>.apk`
+        # at AGP-output time. We still re-cp here using the tag name
+        # so the published asset uses the GIT TAG (which may diverge
+        # from versionName in pathological cases — historical sanity
+        # check from v0.4.x tagging mishaps).
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           TAG: ${{ github.ref_name }}
-        run: cp app/build/outputs/apk/debug/app-debug.apk "app/build/outputs/apk/debug/storyvox-${TAG}.apk"
+        run: |
+          OUT_DIR=app/build/outputs/apk/release
+          # Prefer the AGP-renamed file; fall back to app-release.apk
+          # if the variant rename ever stops firing.
+          SRC=$(ls "$OUT_DIR"/storyvox-v*.apk 2>/dev/null | head -1)
+          if [ -z "$SRC" ]; then
+            SRC="$OUT_DIR/app-release.apk"
+          fi
+          cp "$SRC" "$OUT_DIR/storyvox-${TAG}.apk"
 
       - name: Create GitHub release
         # Used to be a separate `release:` job that pulled the APK
@@ -86,7 +110,7 @@ jobs:
           name: ${{ github.ref_name }}
           generate_release_notes: true
           body: |
-            Debug APK build for `${{ github.ref_name }}`.
+            Release APK build for `${{ github.ref_name }}`.
 
-            > Unsigned debug build. Sideload at your own risk; signed release builds will arrive in a future version.
-          files: app/build/outputs/apk/debug/storyvox-${{ github.ref_name }}.apk
+            > Signed with the project's checked-in keystore (stable since v0.4.15). Sideload-only distribution today.
+          files: app/build/outputs/apk/release/storyvox-${{ github.ref_name }}.apk

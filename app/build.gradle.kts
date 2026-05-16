@@ -92,91 +92,112 @@ android {
     }
 
     buildTypes {
-        debug {
-            // R8 minification + tree-shaking (#409 part 3). Storyvox
-            // ships a single sideload APK signed with the checked-in
-            // debug cert (see signingConfigs comment above) — there is
-            // no separate release flavor today, so the "debug" build
-            // type IS the shipped artifact. Flipping isMinifyEnabled
-            // here is what actually delivers the R8 win to users.
+        release {
+            // Issue #529 follow-up — `release` is the SHIPPED build type.
             //
-            // Resource shrinking stays OFF on debug because
-            // androidTest / instrumentation runs reference resources by
-            // name and the shrinker would strip them. The release
-            // build (which nothing currently consumes) has it on.
+            // Prior history (kept for context): v0.4.15 through v0.5.57
+            // shipped from `:app:assembleDebug` because the historical
+            // setup put R8 + Baseline Profile + isDebuggable=false on
+            // the `debug` block. Functionally a release build wearing
+            // a `debug` label. The user-visible side effects — APK
+            // filename `app-debug.apk`, `BuildConfig.DEBUG=true`,
+            // settings overlay strip leaking onto the reader — were
+            // never acceptable; JP filed #529 as a release-quality
+            // bug after the 0.5.52/0.5.57 sideload installs showed
+            // the "sent #N · queue X/12" debug strip on R5CRB0W66MK.
             //
-            // Comprehensive `app/proguard-rules.pro` carries keep rules
-            // for every reflection surface in the app: KSP-generated
-            // SourcePluginModule factories, kotlinx-serialization
-            // synthesised serializers, Hilt entry points, Room
-            // entities/DAOs, Jsoup, OkHttp. See that file's header for
-            // the per-rule rationale.
+            // This block carries forward EVERY production-relevant
+            // setting from the old debug block:
+            //   - isMinifyEnabled = true     (R8 + tree-shaking, #409 pt3)
+            //   - isShrinkResources = false  (matches the legacy debug
+            //                                 setting; androidTest / IT
+            //                                 runs reference resources
+            //                                 by name and the shrinker
+            //                                 would strip them — same
+            //                                 reasoning JP locked in
+            //                                 for the debug block)
+            //   - proguardFiles              (proguard-android-optimize
+            //                                 + the project's own
+            //                                 `app/proguard-rules.pro`
+            //                                 which carries keep rules
+            //                                 for KSP-generated source
+            //                                 plugin factories,
+            //                                 kotlinx-serialization
+            //                                 synthesised serializers,
+            //                                 Hilt entry points, Room
+            //                                 entities/DAOs, Jsoup,
+            //                                 OkHttp)
+            //   - signingConfig = debug      (intentional — see the
+            //                                 long comment in
+            //                                 signingConfigs.debug
+            //                                 above; the checked-in
+            //                                 keystore is the only
+            //                                 signing cert storyvox
+            //                                 has used since v0.4.15
+            //                                 and sideload upgrade
+            //                                 continuity DEPENDS on
+            //                                 keeping it; F-Droid /
+            //                                 Play migration will
+            //                                 introduce a separate
+            //                                 keystore in CI secrets)
+            //
+            // What changes vs the old debug block:
+            //   - BuildConfig.DEBUG flips to false naturally because
+            //     AGP wires DEBUG=isDebuggable, and the release
+            //     buildType's isDebuggable defaults to false
+            //     (matching what the old debug block forced
+            //     explicitly).
+            //   - `isShrinkResources = false` matches the legacy
+            //     debug block deliberately. Flipping it on alongside
+            //     this rename is a separate decision — leave for a
+            //     follow-up so this PR is a clean variant flip and
+            //     a R8-rules audit, not a resource-stripping audit.
             isMinifyEnabled = true
             isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            // Issue #409 part 4 — flip isDebuggable=false on the shipped
-            // build so ProfileInstaller AOT-compiles the bundled
-            // Baseline Profile at install time. Activates the ~4.5 s
-            // tablet cold-launch win that #495 wired but couldn't
-            // realize while the build stayed debuggable. JP decision
-            // (2026-05-14, post-v0.5.45 ship): the lost Android Studio
-            // debugger attach is not in use; storyvox dev happens
-            // through agents + ./gradlew installDebug + logcat. If a
-            // future workflow needs Studio attach, introduce a
-            // separate `localDev` build type with isDebuggable=true
-            // rather than flipping this back.
-            isDebuggable = false
-            // No applicationIdSuffix / versionNameSuffix: the build is
-            // marketed and tested as the real app. The label "debug"
-            // here is just AGP-internal terminology for "build that
-            // gets the dev cert" — there's no separate release
-            // flavor being shipped, and forcing ".debug" / "-debug"
-            // into the package id and version string was just visual
-            // noise on a sideload-only app. (Pre-#409 part 3 this
-            // build was also non-minified; that's no longer true.)
             signingConfig = signingConfigs.getByName("debug")
         }
-        release {
-            // Release build type isn't shipped today (sideload via the
-            // debug build) — kept as a forward-looking placeholder for
-            // when storyvox graduates to Play Store / F-Droid (issue
-            // #16 / v1.0 prerequisite). R8 stays on; the BaselineProfile
-            // producer overrides per-variant (its `nonMinifiedRelease`
-            // variant disables R8 specifically so the generator sees
-            // un-AOT'd code paths during profile capture).
-            // The single-keystore signingConfig reuse mirrors the debug
-            // block — without it, AGP refuses to assemble the release
-            // variant for the BaselineProfile producer (`./gradlew
-            // :baselineprofile:assembleNonMinifiedRelease` fails at
-            // signing time).
-            isMinifyEnabled = true
-            isShrinkResources = true
+        debug {
+            // Developer-only variant for local `./gradlew installDebug`
+            // workflows that want a fast iteration loop (no R8) and the
+            // ability to attach Android Studio's debugger. NOT shipped —
+            // the GitHub release artifact comes from `:app:assembleRelease`
+            // per the workflow in `.github/workflows/android.yml`.
+            //
+            // isDebuggable defaults to true on the debug block; we let
+            // AGP keep it that way. BuildConfig.DEBUG = true here,
+            // which keeps the on-reader debug overlay's defense-in-depth
+            // gate (HybridReaderScreen.kt) active for local iteration.
+            //
+            // Signing config still points at the checked-in debug
+            // keystore so an `installDebug` over a sideloaded release
+            // doesn't trip the "package conflicts" upgrade error —
+            // same cert chain, same applicationId.
+            isMinifyEnabled = false
+            isShrinkResources = false
             signingConfig = signingConfigs.getByName("debug")
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro",
-            )
         }
         // Issue #409 — Macrobenchmark target build type. Non-debuggable
         // (so ART honors the installed Baseline Profile), no R8 (JP's
         // design call queued separately), debug-signed (single
         // keystore). Mirrors release; the BaselineProfile plugin uses
         // this as the producer side's target variant. The output APK
-        // is NOT what we ship — sideload distribution still rides the
-        // `debug` build type. This variant exists so:
+        // is NOT what we ship — the shipped artifact comes from
+        // `:app:assembleRelease` now (post-#529). This variant exists so:
         //   1. The BaselineProfileGenerator can install a
         //      non-debuggable target and measure AOT-compiled cold
         //      launch (ART skips profile compilation for debuggable
         //      builds, which would invalidate the with-profile number).
         //   2. The StartupBenchmark gets honest "with profile" /
         //      "without profile" comparisons.
-        // The generated `baseline-prof.txt` still gets copied into
-        // :app/src/main/ so it's bundled into the debug APK as well,
-        // ready to apply when/if storyvox switches its shipped build
-        // type to a non-debuggable one.
+        // The generated `baseline-prof.txt` is merged into
+        // :app/src/main/ (mergeIntoMain = true below) so every variant
+        // — release, debug, benchmark — bundles it; ProfileInstaller
+        // AOT-compiles it on first launch of the non-debuggable
+        // release APK.
         create("benchmark") {
             initWith(getByName("release"))
             // signingConfig already inherited from release.initWith.
@@ -231,6 +252,14 @@ android {
         getByName("test") {
             java.srcDirs("src/test/kotlin")
         }
+        // Issue #529 follow-up — release-variant test source set. Holds
+        // `ReleaseBuildConfigTest` which pins `BuildConfig.DEBUG == false`
+        // for the shipped variant. AGP infers the source set name from
+        // the `release` build type; we only need to point java/kotlin at
+        // the conventional `kotlin/` subdir (default is `java/`).
+        getByName("testRelease") {
+            java.srcDirs("src/testRelease/kotlin")
+        }
     }
 
     testOptions {
@@ -251,6 +280,34 @@ android {
                 "/META-INF/NOTICE*",
                 "/META-INF/*.kotlin_module",
             )
+        }
+    }
+
+    // Issue #529 follow-up — rename the local-build APK so the file on
+    // disk matches the GitHub release asset naming (storyvox-vX.Y.Z.apk).
+    // Without this `./gradlew :app:assembleRelease` writes
+    // `app/build/outputs/apk/release/app-release.apk` — fine for AGP
+    // internals but JP's sideload muscle memory (and any installer
+    // tooling like `adb install storyvox-*.apk`) expects the branded
+    // name. The CI workflow's `cp app-release.apk storyvox-${TAG}.apk`
+    // step still works regardless because we don't rename when there's
+    // no versionName attached — but for tagged local builds this hands
+    // back the same filename CI publishes.
+    //
+    // We rename for `release` and `benchmark` only; `debug` stays
+    // `app-debug.apk` so a developer running `./gradlew installDebug`
+    // sees AGP's default naming and can't confuse the dev APK with the
+    // shipped one.
+    applicationVariants.all {
+        val variantName = name
+        if (variantName == "release" || variantName == "benchmark") {
+            val versionLabel = versionName
+            outputs.all {
+                val output = this as
+                    com.android.build.gradle.internal.api.BaseVariantOutputImpl
+                val suffix = if (variantName == "benchmark") "-benchmark" else ""
+                output.outputFileName = "storyvox-v$versionLabel$suffix.apk"
+            }
         }
     }
 }
@@ -391,32 +448,27 @@ dependencies {
  * `mergeIntoMain = true` makes the plugin write the generated profile
  * to `app/src/main/generated/baselineProfiles/baseline-prof.txt`
  * rather than the default per-variant path
- * (`app/src/release/generated/baselineProfiles/`). Because storyvox
- * ships its `debug` build type (sideload-only, see signingConfigs
- * comment above), a release-only profile wouldn't actually reach
- * users. Merging into `main` makes the profile available to every
- * variant — debug, release, benchmark.
+ * (`app/src/release/generated/baselineProfiles/`). This keeps the
+ * profile available to every variant — release (shipped), debug
+ * (local iteration), benchmark — without per-variant src dirs.
  *
  * `saveInSrc = true` means the profile is checked into git (default
  * behavior in 1.4.x). Without this the profile would land in the
  * build directory only, forcing a regenerate on every clean CI run.
- * We want it committed so the debug APK has it from the start.
+ * We want it committed so the release APK has it from the start.
  *
  * `automaticGenerationDuringBuild = false` keeps the BaselineProfile
- * generation OFF the critical-path build. CI's `:app:assembleDebug`
+ * generation OFF the critical-path build. CI's `:app:assembleRelease`
  * path needs to stay fast (~2 min); profile regeneration is an
  * instrumented test (~6 min on Tab A7 Lite) so we run it manually on
  * tag pushes or when the nav graph changes.
  *
- * NOTE: ProfileInstaller will only AOT-compile the bundled profile on
- * NON-debuggable APKs. The current `debug` build type IS debuggable,
- * so the profile bundles but doesn't activate at run time for the
- * shipped APK as of v0.5.43. The win this PR captures lands when:
- *   (a) storyvox switches the shipped build type to non-debuggable
- *       (the new `benchmark` variant is ready), OR
- *   (b) JP's separate R8 design call resolves and a release flavor
- *       starts shipping.
- * The infrastructure is fully wired ahead of either of those.
+ * NOTE (#529 follow-up, v0.5.58): ProfileInstaller AOT-compiles the
+ * bundled profile on non-debuggable APKs. Since the shipped variant
+ * is now `release` (isDebuggable=false naturally), the bundled
+ * Baseline Profile is finally active on the artifact JP sideloads.
+ * The cold-launch win this infrastructure was wired for (sub-1.5 s
+ * on R83W80CAFZB) lands with this variant flip.
  */
 baselineProfile {
     mergeIntoMain = true
