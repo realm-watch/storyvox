@@ -1,24 +1,27 @@
 package `in`.jphe.storyvox.feature.techempower
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import `in`.jphe.storyvox.data.TechEmpowerLinks
 
 /**
  * Issue #517 — paired brass-tinted help icons (Phone + Discord Forum)
@@ -52,44 +55,42 @@ import `in`.jphe.storyvox.data.TechEmpowerLinks
 fun TechEmpowerHelpIcons() {
     val context = LocalContext.current
 
+    // Issue #546 — fallback dialog state for the top-app-bar phone
+    // icon. Without this, a tap on a WiFi-only tablet routes to the
+    // contact picker. The shared [NoTelephonyDialog]-equivalent path
+    // is owned by [TechEmpowerHomeScreen]; here we use the same
+    // [dialOrSurfaceFallback] helper and surface the dialog locally
+    // so Library users get the same protection.
+    var noTelephonyTarget by remember { mutableStateOf<EmergencyTarget?>(null) }
+
     // ─── Call 211 (primary) / 988 (long-press) ───────────────────────
     // tel: URIs go through ACTION_DIAL so the user lands in the dialer
     // with the number pre-filled but NOT auto-dialled — accidental
     // top-app-bar taps surface as "huh, the dialer opened" rather than
     // an actual phone call. ACTION_CALL would require CALL_PHONE
     // permission and is the wrong UX for an in-bar shortcut.
+    //
+    // Issue #546 — both tap and long-press route through
+    // [dialOrSurfaceFallback] so devices without telephony land on the
+    // explanatory fallback dialog instead of the AOSP contact picker.
     Box(
         modifier = Modifier
             .size(48.dp)
             .combinedClickable(
                 role = Role.Button,
                 onClick = {
-                    runCatching {
-                        context.startActivity(
-                            Intent(
-                                Intent.ACTION_DIAL,
-                                Uri.parse(
-                                    TechEmpowerLinks.telUri(
-                                        TechEmpowerLinks.PRIMARY_HELP_NUMBER,
-                                    ),
-                                ),
-                            ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) },
-                        )
-                    }
+                    dialOrSurfaceFallback(
+                        context = context,
+                        target = EmergencyTarget.Help211,
+                        onNoTelephony = { noTelephonyTarget = it },
+                    )
                 },
                 onLongClick = {
-                    runCatching {
-                        context.startActivity(
-                            Intent(
-                                Intent.ACTION_DIAL,
-                                Uri.parse(
-                                    TechEmpowerLinks.telUri(
-                                        TechEmpowerLinks.CRISIS_HELP_NUMBER,
-                                    ),
-                                ),
-                            ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) },
-                        )
-                    }
+                    dialOrSurfaceFallback(
+                        context = context,
+                        target = EmergencyTarget.Crisis988,
+                        onNoTelephony = { noTelephonyTarget = it },
+                    )
                 },
             ),
         contentAlignment = Alignment.Center,
@@ -102,6 +103,13 @@ fun TechEmpowerHelpIcons() {
             modifier = Modifier.size(24.dp),
         )
     }
+
+    // Issue #533 — 8dp gap between the phone and Discord icons. The
+    // two 48dp Boxes used to pack flush together, making mis-taps
+    // trivial on the Flip3 (1080dp narrow). Spacer keeps both icons
+    // at their full 48dp tap targets while giving the user enough
+    // visual + finger separation to choose one deliberately.
+    Spacer(Modifier.width(8.dp))
 
     // ─── Open peer-support Discord ───────────────────────────────────
     // The Forum icon is the most thematically-correct standard Material
@@ -123,6 +131,18 @@ fun TechEmpowerHelpIcons() {
             contentDescription = "Open the TechEmpower peer-support Discord.",
             tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(24.dp),
+        )
+    }
+
+    // Issue #546 — render the fallback dialog when telephony is
+    // absent. Same content/affordances as [TechEmpowerHomeScreen]'s
+    // dialog so users see consistent recovery regardless of which
+    // entry point they tapped (top-bar icon vs Emergency Help card).
+    val target = noTelephonyTarget
+    if (target != null) {
+        NoTelephonyFallbackDialog(
+            target = target,
+            onDismiss = { noTelephonyTarget = null },
         )
     }
 }

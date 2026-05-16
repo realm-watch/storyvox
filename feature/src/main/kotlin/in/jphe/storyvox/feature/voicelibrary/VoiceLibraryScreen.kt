@@ -197,10 +197,24 @@ fun VoiceLibraryScreen(
             // every chip on first paint — the 1188-voice catalog has
             // long since taught us not to render the whole world
             // upfront. Brass-pill colors match the Library/Browse chips.
+            //
+            // Issue #534 — asymmetric end-padding (spacing.xl = 32dp vs
+            // start spacing.md = 16dp) via contentPadding so the
+            // rightmost chip lands as an obviously-partial chip on
+            // narrow Flip3 portrait — clear "scroll for more →"
+            // affordance. Mirrors the secondary chip row pattern below
+            // (#420). The outer horizontal padding moved INTO
+            // contentPadding so the LazyRow's lazy clipping kicks in
+            // at the right place — without this, an outer padding clips
+            // chips before they can pan into view.
             LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = spacing.md, vertical = spacing.xxs),
+                    .padding(vertical = spacing.xxs),
+                contentPadding = ComposePaddingValues(
+                    start = spacing.md,
+                    end = spacing.xl,
+                ),
                 horizontalArrangement = Arrangement.spacedBy(spacing.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

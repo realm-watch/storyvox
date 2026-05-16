@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -176,6 +177,16 @@ fun LibraryScreen(
             CenterAlignedTopAppBar(
                 title = { Text("Library", style = MaterialTheme.typography.titleMedium) },
                 actions = {
+                    // Issue #533 — top-bar action icons used to pack
+                    // flush together at 0dp gap on the Flip3 (1080dp
+                    // narrow). Four 48dp Boxes (2x TechEmpower help +
+                    // SyncCloudIcon + Settings IconButton) lined up
+                    // edge-to-edge made mis-taps trivial. Inserting an
+                    // 8dp Spacer between each icon adds the visual
+                    // breathing room (and tap-target separation) that
+                    // Material 3 spec recommends for grouped action
+                    // icons without bumping the row past Flip3 width.
+                    //
                     // Issue #517 — TechEmpower help icons (phone +
                     // Discord) — leftmost so the cross-cutting "I
                     // need help" affordances read before the
@@ -184,6 +195,7 @@ fun LibraryScreen(
                     // opens the peer-support invite URL. See
                     // [TechEmpowerHelpIcons] for the design rationale.
                     TechEmpowerHelpIcons()
+                    Spacer(Modifier.width(spacing.xs))
                     // Issue #500 — brass cloud-icon affordance for the
                     // InstantDB sync surface. Sits to the LEFT of the
                     // Settings gear so the "primary" cross-cutting state
@@ -195,6 +207,7 @@ fun LibraryScreen(
                     `in`.jphe.storyvox.feature.sync.SyncCloudIcon(
                         onClick = { syncSheetOpen = true },
                     )
+                    Spacer(Modifier.width(spacing.xs))
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Outlined.Settings, contentDescription = "Settings")
                     }
@@ -225,10 +238,20 @@ fun LibraryScreen(
             // on Tab.Library — on Tab.Browse / Follows the embedded
             // surfaces own their own scoping, on Tab.Inbox / History
             // the chip row isn't meaningful.
+            // Issue #532 — the tab row used to use `edgePadding = 0.dp`
+            // which lined the rightmost tab flush with the screen edge.
+            // On the Flip3 cover (1080dp narrow) only 4 of the 5 tabs
+            // fit visibly with no visual hint that "History" (the
+            // fifth) is reachable by horizontal swipe. Bumping
+            // edgePadding to spacing.md (16dp) lets the rightmost
+            // visible tab land as an obviously-partial chip — the same
+            // "scroll for more →" discoverability fix the
+            // VoiceLibrary chip row uses (#420 + #534). Scroll
+            // mechanics were already wired; this is the discovery fix.
             SecondaryScrollableTabRow(
                 selectedTabIndex = state.tab.ordinal,
                 modifier = Modifier.fillMaxWidth(),
-                edgePadding = 0.dp,
+                edgePadding = spacing.md,
             ) {
                 LibraryTab.entries.forEach { tab ->
                     Tab(

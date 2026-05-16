@@ -204,13 +204,18 @@ fun BrowseScreen(
         ) {
             // Scrollable so 'Popular' / 'Best Rated' don't truncate when
             // sharing the row with the filter funnel on narrow phones.
-            // edgePadding=0 keeps the active-tab indicator flush with the
-            // left edge to match the tighter tab look from the previous
-            // SecondaryTabRow.
+            //
+            // Issue #535 — edgePadding bumped from 0 to spacing.md so
+            // the rightmost AO3 tab ("Marked") lands as an
+            // obviously-partial chip on Flip3 narrow rather than
+            // sitting 5dp from the screen edge (which reads as a
+            // rendering glitch and hides the scroll affordance). Same
+            // discoverability fix the Library tab row got for #532 and
+            // the VoiceLibrary chip row got for #420.
             SecondaryScrollableTabRow(
                 selectedTabIndex = supportedTabs.indexOf(state.tab).coerceAtLeast(0),
                 modifier = Modifier.weight(1f),
-                edgePadding = 0.dp,
+                edgePadding = spacing.md,
             ) {
                 supportedTabs.forEach { tab ->
                     Tab(
