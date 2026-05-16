@@ -40,6 +40,7 @@ import `in`.jphe.storyvox.feature.reader.HybridReaderScreen
 import `in`.jphe.storyvox.feature.settings.AboutSettingsScreen
 import `in`.jphe.storyvox.feature.settings.AccessibilitySettingsScreen
 import `in`.jphe.storyvox.feature.settings.AccountSettingsScreen
+import `in`.jphe.storyvox.feature.settings.AppearanceSettingsScreen
 import `in`.jphe.storyvox.feature.settings.AiSettingsScreen
 import `in`.jphe.storyvox.feature.settings.MemoryPalaceSettingsScreen
 import `in`.jphe.storyvox.feature.settings.PerformanceSettingsScreen
@@ -108,6 +109,10 @@ object StoryvoxRoutes {
      *  scale override, reading-direction override. Phase 2 agents wire
      *  the actual behavior; Phase 1 only persists the prefs. */
     const val SETTINGS_ACCESSIBILITY = "settings/accessibility"
+    /** Settings → Appearance (v0.5.59, #cover-style-toggle). Book-cover
+     *  fallback style picker (Monogram / Branded / Cover only) with a
+     *  live preview chip-row. Future visual-style knobs land here. */
+    const val SETTINGS_APPEARANCE = "settings/appearance"
     /** Settings → Account. Royal Road sign-in, GitHub OAuth + scope. */
     const val SETTINGS_ACCOUNT = "settings/account"
     /** Settings → Memory Palace. Daemon host, API key, test probe. */
@@ -723,6 +728,7 @@ private fun StoryvoxNavHostContent(
                     onOpenPerformance = { navController.navigate(StoryvoxRoutes.SETTINGS_PERFORMANCE) },
                     onOpenAi = { navController.navigate(StoryvoxRoutes.SETTINGS_AI) },
                     onOpenAccessibility = { navController.navigate(StoryvoxRoutes.SETTINGS_ACCESSIBILITY) },
+                    onOpenAppearance = { navController.navigate(StoryvoxRoutes.SETTINGS_APPEARANCE) },
                     onOpenAccount = { navController.navigate(StoryvoxRoutes.SETTINGS_ACCOUNT) },
                     onOpenMemoryPalace = { navController.navigate(StoryvoxRoutes.SETTINGS_MEMORY_PALACE) },
                     onOpenAbout = { navController.navigate(StoryvoxRoutes.SETTINGS_ABOUT) },
@@ -882,6 +888,20 @@ private fun StoryvoxNavHostContent(
                 popExitTransition = popExit,
             ) {
                 AccessibilitySettingsScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            // v0.5.59 (#cover-style-toggle) — Appearance subscreen. Book-
+            // cover fallback style picker (Monogram / Branded / Cover
+            // only) with a live preview chip-row.
+            composable(
+                StoryvoxRoutes.SETTINGS_APPEARANCE,
+                enterTransition = pushEnter,
+                exitTransition = pushExit,
+                popEnterTransition = popEnter,
+                popExitTransition = popExit,
+            ) {
+                AppearanceSettingsScreen(
                     onBack = { navController.popBackStack() },
                 )
             }

@@ -82,6 +82,14 @@ class SettingsSubscreenContractTest {
         assertComposableExists("AccessibilitySettingsScreen")
     }
 
+    @Test
+    fun `AppearanceSettingsScreen composable is present`() {
+        // v0.5.59 (#cover-style-toggle) — Appearance subscreen with the
+        // book-cover fallback style picker (Monogram / Branded / Cover
+        // only). Pin so a rename/deletion regression surfaces here.
+        assertComposableExists("AppearanceSettingsScreen")
+    }
+
     /**
      * The hub still names every section that has a dedicated subscreen
      * (Voice & Playback, Reading, Performance, AI, Accessibility,
@@ -99,6 +107,8 @@ class SettingsSubscreenContractTest {
             "Performance",
             "AI",
             "Accessibility",
+            // v0.5.59 — Appearance subscreen (#cover-style-toggle).
+            "Appearance",
             "Account",
             "Memory Palace",
             "About",

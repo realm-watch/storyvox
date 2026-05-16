@@ -12,6 +12,7 @@ import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Accessibility
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.BugReport
@@ -103,6 +104,7 @@ fun SettingsHubScreen(
     onOpenPerformance: () -> Unit,
     onOpenAi: () -> Unit,
     onOpenAccessibility: () -> Unit,
+    onOpenAppearance: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenMemoryPalace: () -> Unit,
     onOpenAbout: () -> Unit,
@@ -161,6 +163,16 @@ fun SettingsHubScreen(
                     title = "Reading",
                     subtitle = "Theme, sleep timer.",
                     onClick = onOpenReading,
+                )
+                // v0.5.59 (#cover-style-toggle) — Appearance. Book-
+                // cover fallback style (Monogram / Branded / Cover
+                // only). Sits next to Reading because both are
+                // visual-style knobs; future visual rows land here.
+                SettingsHubRow(
+                    icon = Icons.Outlined.Palette,
+                    title = "Appearance",
+                    subtitle = "Book cover style.",
+                    onClick = onOpenAppearance,
                 )
                 SettingsHubRow(
                     icon = Icons.Outlined.Speed,
@@ -297,6 +309,8 @@ val SettingsHubSections: List<SettingsHubSection> = listOf(
     SettingsHubSection("Voice & Playback", "Voice, speed, cadence, pitch."),
     SettingsHubSection("Voice library", "Pick a voice and hear samples."),
     SettingsHubSection("Reading", "Theme, sleep timer."),
+    // v0.5.59 (#cover-style-toggle) — Appearance.
+    SettingsHubSection("Appearance", "Book cover style."),
     SettingsHubSection("Performance", "Buffer, parallel synth, decoder choice."),
     SettingsHubSection("AI", "Chat model, grounding, recap."),
     // Phase 1 scaffold — v0.5.42. Phase 2 wires the actual behavior.

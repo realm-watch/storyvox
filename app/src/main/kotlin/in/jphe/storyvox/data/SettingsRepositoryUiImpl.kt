@@ -37,6 +37,7 @@ import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_MIN_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_NORMAL_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.PUNCTUATION_PAUSE_OFF_MULTIPLIER
 import `in`.jphe.storyvox.feature.api.AzureProbeResult
+import `in`.jphe.storyvox.feature.api.CoverStyle
 import `in`.jphe.storyvox.feature.api.PalaceProbeResult
 import `in`.jphe.storyvox.feature.api.ReadingDirection
 import `in`.jphe.storyvox.feature.api.SettingsRepositoryUi
@@ -692,6 +693,23 @@ private object Keys {
      * the Accessibility subscreen.
      */
     val A11Y_TALKBACK_NUDGE_DISMISSED = booleanPreferencesKey("pref_a11y_talkback_nudge_dismissed")
+
+    // ── Appearance (v0.5.59) ───────────────────────────────────────
+    /**
+     * Book-cover fallback style — see [`CoverStyle`] in `:feature/api`
+     * and the [`LocalCoverStyle`] CompositionLocal in `:core-ui` that
+     * routes to the right tile. Persisted as the enum's `name` so a
+     * future-added value falls back cleanly to [CoverStyle.Monogram]
+     * on read.
+     *
+     * Default on read is [CoverStyle.Monogram] — the JP-preferred
+     * classic minimalist tile, and the visual revert from the v0.5.51
+     * BrandedCoverTile experiment (#514). Existing users on
+     * v0.5.51..v0.5.58 don't have this key in their DataStore, so the
+     * absent-key path resolves to Monogram on first launch of v0.5.59;
+     * they see the old covers come back automatically.
+     */
+    val COVER_STYLE = stringPreferencesKey("pref_cover_style")
 }
 
 /** Issue #195 — flat string codec for `Map<voiceId, Float>` overrides.
@@ -1116,6 +1134,14 @@ class SettingsRepositoryUiImpl(
                 ?.let { runCatching { ReadingDirection.valueOf(it) }.getOrNull() }
                 ?: ReadingDirection.FollowSystem,
             a11yTalkBackNudgeDismissed = prefs[Keys.A11Y_TALKBACK_NUDGE_DISMISSED] ?: false,
+            // v0.5.59 — book-cover fallback style. Absent key →
+            // CoverStyle.Monogram (the JP-preferred default + the
+            // visual revert from the v0.5.51 BrandedCoverTile). Unknown
+            // string values (a future-rolled-back enum value coming in
+            // via sync) also fall back to Monogram rather than crashing.
+            coverStyle = prefs[Keys.COVER_STYLE]
+                ?.let { runCatching { CoverStyle.valueOf(it) }.getOrNull() }
+                ?: CoverStyle.Monogram,
         )
     }
 
@@ -1867,6 +1893,20 @@ class SettingsRepositoryUiImpl(
         // sync across the user's devices.
     }
 
+    // ── Appearance (v0.5.59) ───────────────────────────────────────
+
+    /**
+     * Persist the user's book-cover fallback preference. Stamped via
+     * [stampSyncedWrite] so the choice rides the next InstantDB sync
+     * round to the user's other devices — cover preference is the
+     * kind of visual-style intent users want mirrored everywhere
+     * they've signed in (same logic as `pref_theme_override`).
+     */
+    override suspend fun setCoverStyle(style: CoverStyle) {
+        store.edit { it[Keys.COVER_STYLE] = style.name }
+        stampSyncedWrite()
+    }
+
     // ── Azure Speech Services BYOK (#182, PR-3) ────────────────────
 
     override suspend fun setAzureKey(key: String?) {
@@ -2398,6 +2438,10 @@ class SettingsRepositoryUiImpl(
             // their phone sees the toggle reflected on their tablet.
             "pref_rr_tag_sync_enabled",
             "pref_rr_tag_sync_last_synced_at",
+            // v0.5.59 — Appearance: book-cover fallback style. Visual
+            // preference that users want mirrored across devices, same
+            // rationale as `pref_theme_override`.
+            "pref_cover_style",
         )
 
         /**
@@ -2491,6 +2535,9 @@ class SettingsRepositoryUiImpl(
             // Issue #178 — Royal Road tag-sync metadata.
             "pref_rr_tag_sync_enabled" to SyncedType.BOOLEAN,
             "pref_rr_tag_sync_last_synced_at" to SyncedType.LONG,
+            // v0.5.59 — Appearance: book-cover fallback style stored as
+            // CoverStyle enum's `name` string ("Monogram"/"Branded"/"CoverOnly").
+            "pref_cover_style" to SyncedType.STRING,
         )
     }
 
