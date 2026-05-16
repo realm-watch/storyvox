@@ -22,10 +22,18 @@ class PlaybackControllerSkipSeekTest {
     }
 
     @Test
-    fun `positionMsToCharOffset at speed 2`() {
-        // 60s at speed=2 → 60 * (12.5 * 2) = 1500 chars.
-        val chars = DefaultPlaybackController.positionMsToCharOffset(60_000L, 2.0f)
-        assertEquals(1500, chars)
+    fun `positionMsToCharOffset is speed-invariant (#555)`() {
+        // #555 — media-time axis means a tap at position 60s lands at
+        // the same char regardless of speed. Pre-#555 a tap at 60s with
+        // speed=2 would have hit char 1500 (the "chars in 60s of wall-
+        // clock at speed 2"); post-#555 it always hits char 750 (the
+        // "chars in 60s of media-time"). Same outcome at every speed.
+        val chars1 = DefaultPlaybackController.positionMsToCharOffset(60_000L, 1.0f)
+        val chars2 = DefaultPlaybackController.positionMsToCharOffset(60_000L, 2.0f)
+        val chars05 = DefaultPlaybackController.positionMsToCharOffset(60_000L, 0.5f)
+        assertEquals(750, chars1)
+        assertEquals(chars1, chars2)
+        assertEquals(chars1, chars05)
     }
 
     @Test
@@ -40,42 +48,43 @@ class PlaybackControllerSkipSeekTest {
 
     @Test
     fun `skipDeltaChars 30s at default speed`() {
-        // 30s at speed=1 → 30 * 12.5 = 375 chars.
+        // 30s at any speed → 30 * 12.5 = 375 chars (media-time axis).
         val delta = DefaultPlaybackController.skipDeltaChars(30f, 1.0f)
         assertEquals(375, delta)
     }
 
     @Test
-    fun `skipDeltaChars scales with speed`() {
-        // At speed=2 the rail's 30s slot covers 2x the chapter chars.
+    fun `skipDeltaChars is speed-invariant (#555)`() {
+        // #555 — "skip 30 s" means 30 s on the media-time axis. Same
+        // char delta at every speed. The audio plays through it faster
+        // or slower depending on the speed, but the SCRUBBER jump is
+        // identical. This matches Spotify's "+30 s" UX where the bar
+        // always moves the same visual distance.
         val deltaSpeed2 = DefaultPlaybackController.skipDeltaChars(30f, 2.0f)
         val deltaSpeed1 = DefaultPlaybackController.skipDeltaChars(30f, 1.0f)
-        assertEquals(2 * deltaSpeed1, deltaSpeed2)
-    }
-
-    @Test
-    fun `skipDeltaChars under speed`() {
-        // speed=0.5 → half the chars per second → half the skip delta.
         val deltaSlow = DefaultPlaybackController.skipDeltaChars(30f, 0.5f)
-        val deltaNorm = DefaultPlaybackController.skipDeltaChars(30f, 1.0f)
-        assertEquals(deltaNorm / 2, deltaSlow)
+        assertEquals(deltaSpeed1, deltaSpeed2)
+        assertEquals(deltaSpeed1, deltaSlow)
     }
 
     @Test
-    fun `roundtrip position then offset back`() {
-        // #531 — tap on the rail at 12.345 s. Seeking should land at the
-        // char offset whose own displayed-time matches within rounding.
+    fun `roundtrip position then offset back is speed-invariant (#555)`() {
+        // #531 / #555 — tap on the rail at 12.345 s. Seeking should land
+        // at the char offset whose own media-time matches within
+        // rounding. The result is independent of speed.
         val targetMs = 12_345L
-        val speed = 1.5f
-        val char = DefaultPlaybackController.positionMsToCharOffset(targetMs, speed)
-        // Reverse: positionMs = char / (baseline * speed) * 1000
-        val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * speed
-        val backMs = ((char / charsPerSec) * 1000f).toLong()
-        // Allow 50 ms slack — the Int truncation in the forward path
-        // costs ≤1 char ≈ 50 ms at default baseline; that's well inside
-        // the 100 ms drift gate the brief asks for after 60 s playback.
-        val drift = kotlin.math.abs(targetMs - backMs)
-        assertTrue("roundtrip drift $drift ms exceeded 100 ms gate", drift <= 100)
+        for (speed in listOf(0.5f, 1.0f, 1.5f, 2.0f)) {
+            val char = DefaultPlaybackController.positionMsToCharOffset(targetMs, speed)
+            // Reverse: positionMs = char / baseline * 1000 (no speed
+            // factor — the axis is media-time).
+            val backMs = ((char / SPEED_BASELINE_CHARS_PER_SECOND) * 1000f).toLong()
+            // Allow 100 ms slack for Int truncation.
+            val drift = kotlin.math.abs(targetMs - backMs)
+            assertTrue(
+                "speed=$speed roundtrip drift $drift ms exceeded 100 ms gate",
+                drift <= 100,
+            )
+        }
     }
 }
 
