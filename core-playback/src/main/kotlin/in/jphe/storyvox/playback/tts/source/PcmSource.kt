@@ -131,6 +131,32 @@ sealed interface PcmSource {
      */
     fun finalizeCache() {}
 
+    /**
+     * #573 — Gapless: authoritative "did the producer emit every
+     * sentence then push END_PILL?" flag, set BEFORE the END_PILL is
+     * pushed. The consumer reads this when [nextChunk] returns null to
+     * disambiguate:
+     *
+     *   - true = producer walked the whole sentence list naturally, then
+     *     pushed END_PILL → this IS a chapter-end; the consumer should
+     *     fire `handleChapterDone` regardless of any concurrent
+     *     `pipelineRunning` flip.
+     *   - false = END_PILL came from [close] (stopPlaybackPipeline),
+     *     producer was cancelled mid-sentence, or the source has no
+     *     end-of-stream concept (CacheFileSource → see override).
+     *
+     * Pre-#573 the consumer inferred this from
+     * `pipelineRunning.get()` captured at END_PILL dequeue time, then
+     * re-checked it AGAIN in the finally block ~100 ms later — opening
+     * a race window where `stopPlaybackPipeline` mid-finally would
+     * silently skip the natural-end fanout. The producer-set flag is
+     * a stable, monotonic signal across that window.
+     *
+     * Default false keeps the seam non-breaking; sources without an
+     * intrinsic end (live audio, recap loop) just leave it false.
+     */
+    val producedAllSentences: Boolean get() = false
+
     private companion object {
         /** Shared singleton "infinity" headroom for non-streaming sources.
          *  Allocated once at class load so the default getter doesn't

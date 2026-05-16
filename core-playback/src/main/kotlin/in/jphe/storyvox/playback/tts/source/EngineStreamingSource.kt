@@ -179,6 +179,19 @@ class EngineStreamingSource(
     override val isStreaming: Boolean = false
 
     /**
+     * #573 — Gapless: set true by the producer the moment it has
+     * iterated every sentence in [sentences] AND is about to push the
+     * END_PILL. The consumer reads this when [nextChunk] returns null
+     * to know "this was a natural chapter end" without inferring from
+     * the racy `pipelineRunning` flag. Volatile because the producer
+     * (on its dedicated executor) writes and the consumer (on the
+     * audio thread) reads. See [PcmSource.producedAllSentences] doc
+     * for the race this closes.
+     */
+    @Volatile private var producedAll: Boolean = false
+    override val producedAllSentences: Boolean get() = producedAll
+
+    /**
      * PR-7-bonus / Tier 2 (#87) — dedicated single-thread executor for
      * the producer. Pre-Tier-2 the producer ran on `Dispatchers.IO`,
      * a shared coroutine pool that migrates threads on every suspend.
@@ -497,6 +510,13 @@ class EngineStreamingSource(
                     _bufferHeadroomMs.update { it + pcmDurationMs(silenceBytes) }
                 }
             }
+            // #573 — Gapless: see startSerialProducer for the rationale.
+            producedAll = true
+            android.util.Log.i(
+                "EngineStreamingSource",
+                "streaming producer: natural end (all ${sentences.size} sentences streamed), " +
+                    "pushing END_PILL",
+            )
             runInterruptible { queue.put(END_PILL) }
         } catch (_: Throwable) {
             // Cancelled (close, seek, voice swap) — silent.
@@ -589,6 +609,13 @@ class EngineStreamingSource(
                 }
                 next++
             }
+            // #573 — Gapless: see startSerialProducer for the rationale.
+            producedAll = true
+            android.util.Log.i(
+                "EngineStreamingSource",
+                "parallel producer: natural end (all ${sentences.size} sentences sequenced), " +
+                    "pushing END_PILL",
+            )
             // Natural end — push pill once all workers are drained.
             runInterruptible { queue.put(END_PILL) }
         } catch (_: Throwable) {
@@ -726,6 +753,18 @@ class EngineStreamingSource(
                         .onFailure { _cacheTeeErrors.update { it + 1 } }
                 }
             }
+            // #573 — Gapless: stamp the authoritative "producer walked
+            // every sentence" flag BEFORE pushing END_PILL. The consumer
+            // reads `producedAllSentences` when nextChunk returns null;
+            // setting it pre-push guarantees the consumer never sees a
+            // null+false pair on a natural end (which would otherwise
+            // race against stopPlaybackPipeline's close() pill).
+            producedAll = true
+            android.util.Log.i(
+                "EngineStreamingSource",
+                "serial producer: natural end (all ${sentences.size} sentences emitted), " +
+                    "pushing END_PILL",
+            )
             // Natural end-of-chapter: push the pill so the consumer's
             // next nextChunk() returns null.
             runInterruptible { queue.put(END_PILL) }

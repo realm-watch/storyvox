@@ -2045,10 +2045,33 @@ class EnginePlayer @AssistedInject constructor(
                     }
                     if (chunk == null) {
                         // null = source exhausted (chapter end) OR closed
-                        // by stopPlaybackPipeline. Distinguish by the run
-                        // flag: if we're still meant to be running, the
-                        // null is an honest end-of-chapter.
-                        naturalEnd = pipelineRunning.get()
+                        // by stopPlaybackPipeline. Distinguish via the
+                        // source's authoritative
+                        // [PcmSource.producedAllSentences] flag — the
+                        // producer (EngineStreamingSource) sets it true
+                        // RIGHT BEFORE pushing END_PILL on natural end;
+                        // close() / cancellation paths never set it.
+                        // The cache source sets it true when its cursor
+                        // walks past the last sentence (also right
+                        // before returning null).
+                        //
+                        // #573 — Pre-fix this line read
+                        // `pipelineRunning.get()` instead, which was
+                        // racy: stopPlaybackPipeline could flip the
+                        // flag between this read and the post-finally
+                        // gate at the bottom of the thread, silently
+                        // skipping handleChapterDone. The
+                        // producer-set flag is monotonic across that
+                        // window — once true, always true for the
+                        // source's lifetime.
+                        naturalEnd = source.producedAllSentences
+                        android.util.Log.i(
+                            "EnginePlayer",
+                            "end-of-pcm: naturalEnd=$naturalEnd " +
+                                "producedAll=${source.producedAllSentences} " +
+                                "pipelineRunning=${pipelineRunning.get()} " +
+                                "userPaused=${userPaused.get()}",
+                        )
                         break
                     }
 
@@ -2215,46 +2238,116 @@ class EnginePlayer @AssistedInject constructor(
                     // against. Pre-Fix-B the decrement fired at dequeue,
                     // making the trigger pessimistic by ~one chunk.
                     source.decrementHeadroomForChunk(chunk)
-                }
-            } finally {
-                // Release the AudioTrack from the same thread that owns
-                // its write() loop. Doing this from the main thread (as
-                // [stopPlaybackPipeline] used to) raced with whatever
-                // write() was in flight and could JNI-crash. Now release
-                // happens *after* the write loop has definitely exited.
-                runCatching { track.pause() }
-                runCatching { track.flush() }
-                runCatching { track.release() }
-                // Don't leave the UI stuck in "Buffering..." after we've
-                // shut down — pause/stop tears the pipeline down via
-                // stopPlaybackPipeline which sets isPlaying=false; we
-                // additionally clear isBuffering so a subsequent resume
-                // that builds a fresh pipeline starts from a clean slate.
-                if (paused) {
-                    scope.launch {
-                        _observableState.update { it.copy(isBuffering = false) }
+
+                    // #573 — Gapless: post-write early-end detection.
+                    //
+                    // BEFORE this check: the consumer fell through to
+                    // the top of the while(pipelineRunning) loop and
+                    // blocked in nextChunk() to dequeue END_PILL — but
+                    // if track.write() for THIS chunk parked the
+                    // consumer for the full duration of the audio
+                    // (~3-5 s for a long sentence's PCM through a
+                    // small AudioTrack ring buffer), the consumer
+                    // didn't reach nextChunk() until seconds after
+                    // the producer pushed END_PILL. During that
+                    // window the controller-level watchdog (fires on
+                    // isBuffering=true at chapter boundary) hit its
+                    // 1.5 s threshold and tore the pipeline down via
+                    // stopPlaybackPipeline → pcmSource.close() → the
+                    // consumer's track.write() unblocked when
+                    // track.pause() flushed the AudioTrack. The
+                    // consumer then exited the outer loop with
+                    // naturalEnd STILL false (it never dequeued
+                    // END_PILL — close() set pipelineRunning=false
+                    // first), and the natural-end fanout was
+                    // silently skipped. The 1.5 s watchdog drove
+                    // every Notion auto-advance instead of the
+                    // engine's primary path. (Symptom: zero
+                    // `handleChapterDone` log lines at chapter end on
+                    // v0.5.58.)
+                    //
+                    // AFTER this check: as soon as the producer
+                    // signals "all sentences emitted" AND the only
+                    // queue item left is END_PILL (depth == 1), we
+                    // know this just-written chunk was the LAST real
+                    // chunk of the chapter. Skip the redundant
+                    // nextChunk() round-trip; jump straight to the
+                    // natural-end exit. The HW ring buffer still has
+                    // the chunk's PCM queued; the finally block
+                    // drains it before releasing the track.
+                    //
+                    // Why `queue.size == 1` (not == 0): the producer
+                    // sets producedAll=true BEFORE pushing END_PILL,
+                    // so by the time we observe producedAll, END_PILL
+                    // may be in the queue (size 1) or about to be
+                    // (size 0, transient — the producer is between
+                    // `producedAll = true` and `queue.put(END_PILL)`).
+                    // We accept both: depth <= 1 captures both
+                    // states. Depth > 1 means there are still real
+                    // chunks queued — keep consuming through the
+                    // normal path.
+                    if (source.producedAllSentences &&
+                        source.producerQueueDepth() <= 1
+                    ) {
+                        naturalEnd = true
+                        android.util.Log.i(
+                            "EnginePlayer",
+                            "end-of-pcm (post-write fast path): naturalEnd=true " +
+                                "producedAll=true queueDepth=${source.producerQueueDepth()} " +
+                                "pipelineRunning=${pipelineRunning.get()} — " +
+                                "skipping the END_PILL round-trip (#573 gapless)",
+                        )
+                        break
                     }
                 }
-                if (naturalEnd && pipelineRunning.get()) {
+            } finally {
+                // #573 — Gapless: fire the natural-end fanout FIRST,
+                // BEFORE we tear the AudioTrack down. Pre-fix the
+                // order was:
+                //
+                //   1. track.pause() / flush() / release()   ← drops HW buffer tail (~130 ms)
+                //   2. if (naturalEnd && pipelineRunning) { handleChapterDone() }
+                //
+                // That order introduced two problems:
+                //   a) track.flush() killed ~130 ms of trailing audio
+                //      that was already queued in the AudioTrack ring
+                //      buffer — the listener heard the chapter end
+                //      slightly truncated.
+                //   b) The second `pipelineRunning.get()` check (~50 ms
+                //      after the first) raced against
+                //      stopPlaybackPipeline and could silently skip the
+                //      chapter-done fanout entirely (Notion symptom:
+                //      handleChapterDone NEVER logged at chapter end on
+                //      v0.5.58).
+                //
+                // Post-fix: dispatch handleChapterDone IMMEDIATELY based
+                // on [PcmSource.producedAllSentences] (set by the
+                // producer right before END_PILL, so it's stable across
+                // any pipelineRunning race), let it run in parallel
+                // with the HW-buffer drain wait below, then tear the
+                // track down. The next chapter's body fetch (~50-300 ms
+                // for a cached Notion chapter) overlaps the HW drain;
+                // when stopPlaybackPipeline calls join() on this
+                // thread, the thread has already exited cleanly.
+                //
+                // Net result: chapter N's last sentence audibly
+                // completes (HW buffer drain finishes naturally) AND
+                // chapter N+1's audio starts ≤300 ms later — Spotify-
+                // style gapless on cached Notion sources.
+                if (naturalEnd) {
+                    android.util.Log.i(
+                        "EnginePlayer",
+                        "post-finally: naturalEnd=true producedAll=${source.producedAllSentences} " +
+                            "pipelineRunning=${pipelineRunning.get()} — dispatching handleChapterDone " +
+                            "and draining HW buffer (#573 gapless)",
+                    )
                     // PR-D (#86) — finalize the cache on natural end so
                     // the index sidecar lands and the cache is complete
                     // for next play. Must happen BEFORE the chapter-done
                     // coroutine because handleChapterDone advances and
                     // calls loadAndPlay → startPlaybackPipeline, which
                     // constructs a NEW source and overwrites the field.
-                    // We call finalizeCache on the SAME `source` local
-                    // captured by the Thread closure, so the field
-                    // reassignment doesn't affect us.
                     runCatching { source.finalizeCache() }
-                    // Eviction runs AFTER finalize so the just-finalized
-                    // entry isn't visible to evictTo as an oldest LRU
-                    // candidate (it has the freshest mtime). The pinned
-                    // set is the just-finalized basename — defense in
-                    // depth in case mtime granularity makes it look
-                    // "old" relative to a same-second-finalized
-                    // neighbor. Runs on scope (Main+SupervisorJob); the
-                    // suspend body delegates to Dispatchers.IO inside
-                    // PcmCache.evictTo.
                     scope.launch {
                         runCatching {
                             pcmCache.evictToQuota(
@@ -2263,11 +2356,102 @@ class EnginePlayer @AssistedInject constructor(
                             )
                         }
                     }
-                    scope.launch {
+                    // #573 — Dispatchers.Main.immediate so that if Main
+                    // is idle we resume on this thread immediately and
+                    // dispatch handleChapterDone with zero queueing
+                    // delay. The default Main dispatcher queues through
+                    // the Choreographer (~16 ms vsync grain under heavy
+                    // compositing); .immediate skips that when feasible.
+                    // Without .immediate the chapter-N+1 download
+                    // doesn't even START until the next Choreographer
+                    // tick, adding ~16-60 ms to the perceived gap.
+                    scope.launch(Dispatchers.Main.immediate) {
                         sleepTimer.signalChapterEnd()
                         handleChapterDone()
                     }
+                    // #573 — drain the AudioTrack HW buffer before
+                    // releasing. AudioTrack.playbackHeadPosition counts
+                    // frames the hardware has actually consumed
+                    // (delivered to the speaker). When it catches up to
+                    // totalFramesWritten, the audible audio has fully
+                    // played. Poll at 20 ms grain (the OS audio
+                    // callback period is ~10-20 ms on Samsung devices,
+                    // so any finer is noise) with a 2 s hard cap as a
+                    // safety net — a stalled HW buffer (rare but
+                    // possible during audio focus transitions) must not
+                    // leak the consumer thread.
+                    //
+                    // While we drain, the launched handleChapterDone
+                    // above is racing: it suspends inside advanceChapter
+                    // on the chapter-body wait. The two coroutines run
+                    // concurrently — first to finish wakes its
+                    // continuation. On a cached chapter the wait is
+                    // <50 ms, well under the typical HW drain (~130 ms
+                    // of trailing PCM the consumer wrote before END_PILL).
+                    val drainDeadlineMs = System.nanoTime() / 1_000_000L + 2_000L
+                    val targetFrames = totalFramesWritten
+                    while (System.nanoTime() / 1_000_000L < drainDeadlineMs) {
+                        // Exit immediately if stopPlaybackPipeline
+                        // beat us here (next chapter's
+                        // loadAndPlay → stopPlaybackPipeline raced
+                        // ahead). That call paused+flushed our track
+                        // already, so further draining is pointless;
+                        // we'd just spin to the deadline. The release
+                        // below is still safe — releasing a paused
+                        // track is idempotent w.r.t. additional
+                        // pause/flush from main.
+                        if (!pipelineRunning.get()) break
+                        val played = runCatching { track.playbackHeadPosition.toLong() }
+                            .getOrDefault(targetFrames)
+                        // playbackHeadPosition is unsigned 32-bit
+                        // wrapped to signed Int; on a 24 kHz mono track
+                        // that's ~24 h before wrap, so we don't need
+                        // wrap-handling for chapter-length playback.
+                        if (played >= targetFrames) break
+                        try {
+                            Thread.sleep(20L)
+                        } catch (_: InterruptedException) {
+                            // stopPlaybackPipeline interrupted us
+                            // (unlikely on natural end — it should be
+                            // gated behind handleChapterDone →
+                            // advanceChapter → loadAndPlay, all of
+                            // which see this same consumer thread
+                            // exited and skip the join wait). Either
+                            // way, abort the drain and proceed to
+                            // release.
+                            Thread.currentThread().interrupt()
+                            break
+                        }
+                    }
+                    runCatching { track.pause() }
+                    runCatching { track.flush() }
+                    runCatching { track.release() }
+                    android.util.Log.i(
+                        "EnginePlayer",
+                        "post-finally: HW buffer drained, AudioTrack released " +
+                            "(target=$targetFrames frames, naturalEnd path)",
+                    )
+                    return@Thread
                 }
+                // Non-natural-end path (user pause, voice swap, seek,
+                // book-end). Tear the AudioTrack down from this thread
+                // for the JNI-safety reason in the pre-#573 comment:
+                // releasing from Main while a write() is in flight on
+                // this consumer thread races and can JNI-crash.
+                runCatching { track.pause() }
+                runCatching { track.flush() }
+                runCatching { track.release() }
+                if (paused) {
+                    scope.launch {
+                        _observableState.update { it.copy(isBuffering = false) }
+                    }
+                }
+                android.util.Log.i(
+                    "EnginePlayer",
+                    "post-finally: naturalEnd=false producedAll=${source.producedAllSentences} " +
+                        "pipelineRunning=${pipelineRunning.get()} — non-natural exit " +
+                        "(pause/swap/seek), AudioTrack released",
+                )
             }
         }, "storyvox-audio-out").apply {
             isDaemon = true
