@@ -54,7 +54,16 @@ fun BrassProgressTrack(
     modifier: Modifier = Modifier,
     loading: Boolean = false,
 ) {
-    val rail = MaterialTheme.colorScheme.outlineVariant
+    // Issue #620 — pre-fix the rail used `outlineVariant` (very low
+    // contrast against the surface) and the fill used `primary` at
+    // default alpha. On a dim cover the scrubber was nearly invisible
+    // — the brass rail blended into the surface and the user couldn't
+    // tell where in the chapter they were. Bump the rail to a slightly
+    // brighter `outline` (still subtle, doesn't compete with the cover)
+    // and let the fill use the full brass primary so the filled
+    // portion of the rail reads as a confident "you are here" marker
+    // against both light and dark themes.
+    val rail = MaterialTheme.colorScheme.outline
     val fill = MaterialTheme.colorScheme.primary
     val spacing = LocalSpacing.current
 
@@ -150,7 +159,12 @@ fun BrassProgressTrack(
                 }
                 .drawBehind {
                     val railY = size.height / 2f
-                    val railH = 3.dp.toPx()
+                    // Issue #620 — bump rail height from 3 dp to 4 dp so
+                    // the filled portion has more visual weight against
+                    // the cover. 4 dp is the upper limit before the
+                    // scrubber starts to fight the play button visually;
+                    // verified on R83W80CAFZB (tablet) + Flip3 (phone).
+                    val railH = 4.dp.toPx()
                     drawRect(rail, topLeft = Offset(0f, railY - railH / 2f), size = Size(size.width, railH))
                     drawRect(fill, topLeft = Offset(0f, railY - railH / 2f), size = Size(size.width * displayed, railH))
                     val thumbX = size.width * displayed
@@ -182,9 +196,17 @@ fun BrassProgressTrack(
                 .padding(top = 24.dp, start = spacing.xxs, end = spacing.xxs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(formatMs(positionMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // Issue #620 — timecodes previously used onSurfaceVariant
+            // which dropped to ~50 % contrast on dark surfaces; on a
+            // dim cover the "0:00 / 47:12" was illegible. Bump to
+            // onSurface for full contrast so the chapter position
+            // reads at a glance, and use labelMedium (was labelSmall)
+            // for a slightly larger digit — the scrubber timecode is
+            // a critical at-a-glance field, it shouldn't be the
+            // tiniest text on the screen.
+            Text(formatMs(positionMs), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
             Box(modifier = Modifier.weight(1f))
-            Text(formatMs(durationMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(formatMs(durationMs), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
         }
     }
 }

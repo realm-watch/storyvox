@@ -80,6 +80,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import `in`.jphe.storyvox.feature.api.UiPlaybackState
 import `in`.jphe.storyvox.feature.api.UiSleepTimerMode
@@ -91,6 +92,7 @@ import `in`.jphe.storyvox.ui.component.ErrorBlock
 import `in`.jphe.storyvox.ui.component.ErrorPlacement
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
 import `in`.jphe.storyvox.ui.component.fictionMonogram
+import `in`.jphe.storyvox.ui.component.humanizeVoiceLabel
 import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
 import `in`.jphe.storyvox.ui.component.MagicSpinner
 import `in`.jphe.storyvox.ui.theme.LocalMotion
@@ -444,6 +446,35 @@ fun AudiobookView(
                 // flow's swap.
                 var coverFeedbackAtMs by remember { mutableLongStateOf(0L) }
                 var feedbackShowsPause by remember { mutableStateOf(false) }
+                // Issue #623 — slow Ken-Burns scale on the cover while the
+                // engine warms. Pre-fix the warmup window (1-3s typical,
+                // 5-15s on slow voices) showed a static cover + a spinner
+                // ring + a "Warming Brian…" subtitle. The static cover
+                // read as "did the app freeze?" — even with the spinner,
+                // motion on the focal element (the cover) is what
+                // confirms "alive, working" at a glance.
+                //
+                // Fix: 0.95x → 1.05x scale over 4000 ms, EaseInOut,
+                // infinite reverse. Drives only while `showSpinner` is
+                // true; clamps to 1.0f when not warming so the cover
+                // doesn't pulse during normal playback. Honors
+                // `LocalReducedMotion` (vestibular-sensitive users get
+                // a static cover during warmup too — the spinner +
+                // subtitle copy carries the "we're working" signal).
+                val coverInfinite = rememberInfiniteTransition(label = "cover-ken-burns")
+                val kenBurnsScale by if (reducedMotion || !showSpinner) {
+                    remember { androidx.compose.runtime.mutableFloatStateOf(1f) }
+                } else {
+                    coverInfinite.animateFloat(
+                        initialValue = 0.95f,
+                        targetValue = 1.05f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(durationMillis = 4000, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse,
+                        ),
+                        label = "ken-burns-scale",
+                    )
+                }
                 Box(contentAlignment = Alignment.Center) {
                     FictionCoverThumb(
                         coverUrl = state.coverUrl,
@@ -451,6 +482,17 @@ fun AudiobookView(
                         monogram = fictionMonogram(author = "", title = state.fictionTitle),
                         modifier = Modifier
                             .size(width = 220.dp, height = 330.dp)
+                            // Issue #623 — graphicsLayer is cheap (a
+                            // single matrix transform, no relayout) so
+                            // we drive the warmup pulse from here. When
+                            // not warming the scale snaps to 1f (no
+                            // recomposition cost beyond the layer
+                            // creation itself, since the value is
+                            // remember-stable).
+                            .graphicsLayer {
+                                scaleX = kenBurnsScale
+                                scaleY = kenBurnsScale
+                            }
                             .clickable(
                                 role = androidx.compose.ui.semantics.Role.Button,
                                 onClickLabel = if (state.isPlaying) "Pause" else "Play",
@@ -1818,11 +1860,17 @@ internal fun PlayerQuickChips(
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(18.dp),
             )
+            // Issue #619 — humanize the raw `engine:voiceId` into a
+            // chip-friendly `"Brian · US English"` / `"Amy · medium
+            // quality"`. The accessibility label still includes the
+            // engine prefix via [formatVoiceLabel] so a TalkBack user
+            // can disambiguate Piper-Amy vs Azure-Amy when both ship.
+            val humanized = humanizeVoiceLabel(state.voiceLabel)
             AssistChip(
                 onClick = onPickVoice,
                 label = {
                     Text(
-                        formatVoiceLabel(state.voiceLabel).ifBlank { "Pick a voice" },
+                        humanized.ifBlank { "Pick a voice" },
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
