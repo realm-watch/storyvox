@@ -21,6 +21,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
@@ -105,6 +106,20 @@ fun ChapterCard(
     // live on a single a11y node — the row is now reliably a Button with
     // an onClick. Use `Card { … }` (the non-clickable overload) for the
     // visual chrome only.
+    //
+    // Issue #612 (v1.0 blocker) — pre-fix the outer Card carried
+    // `.semantics(mergeDescendants = true) { contentDescription = ... }`
+    // which announced the computed chapterDescription AND merged in
+    // the children Texts (chapter number, stripped title, published,
+    // duration). TalkBack on R5CRB0W66MK then read the row twice:
+    // once via the explicit description ("Chapter 6, The Brass Sigil,
+    // 28 minutes") and again via the merged child labels (the index
+    // numeral "06" then the title, etc.). Swap mergeDescendants for
+    // `clearAndSetSemantics` so the children's text nodes are
+    // suppressed and only the curated description is announced. The
+    // clickable still owns the action — `clearAndSetSemantics` doesn't
+    // strip merged actions from the SAME modifier chain (only from
+    // descendants), so the row stays tappable.
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -113,7 +128,7 @@ fun ChapterCard(
                 onClickLabel = "Open chapter",
                 onClick = onClick,
             )
-            .semantics(mergeDescendants = true) {
+            .clearAndSetSemantics {
                 role = Role.Button
                 contentDescription = chapterDescription
                 onClick(label = "Open chapter") { onClick(); true }

@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -419,6 +420,13 @@ fun FictionDetailScreen(
                     }
                 },
                 onFollowOnSource = viewModel::toggleFollowOnSource,
+                // Issue #604 — Play CTA. Chooses the first non-finished
+                // chapter (resume) or falls back to chapter 1 on a
+                // fully-fresh or fully-finished fiction.
+                onPlay = pickChapterToPlay(state.chapters)?.let { picked ->
+                    { viewModel.listen(picked.id) }
+                },
+                playLabel = playButtonLabel(state.chapters, pickChapterToPlay(state.chapters)),
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         } else {
@@ -473,6 +481,13 @@ fun FictionDetailScreen(
                     }
                 },
                 onFollowOnSource = viewModel::toggleFollowOnSource,
+                // Issue #604 — Play CTA. Chooses the first non-finished
+                // chapter (resume) or falls back to chapter 1 on a
+                // fully-fresh or fully-finished fiction.
+                onPlay = pickChapterToPlay(state.chapters)?.let { picked ->
+                    { viewModel.listen(picked.id) }
+                },
+                playLabel = playButtonLabel(state.chapters, pickChapterToPlay(state.chapters)),
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
@@ -882,19 +897,32 @@ private fun BottomBar(
     followOnSource: FollowOnSourceUiState? = null,
     onFollow: () -> Unit,
     onFollowOnSource: () -> Unit = {},
+    /** Issue #604 (v1.0 blocker) — Play button restored to the BottomBar.
+     *  Pre-#538 a "Listen" button lived here and was removed because it
+     *  duplicated chapter-row taps. Post-audit the discoverability cost
+     *  was worse than the duplication: cold-launch users with a book in
+     *  hand had no visible primary CTA on the detail surface. The Play
+     *  button is now the row's primary action (brass-bordered, leading
+     *  slot), with library / follow-on-source still present as secondary
+     *  affordances. Null disables the slot — used when no chapter is
+     *  resolvable (loading state, parse failure). */
+    onPlay: (() -> Unit)? = null,
+    /** Issue #604 — label switches between "Play" and "Resume" depending
+     *  on whether the fiction has any chapter the user already started.
+     *  Drives the TalkBack onClickLabel too. */
+    playLabel: String = "Play",
     modifier: Modifier = Modifier,
 ) {
-    // Issue #538 — the third button in this bar used to be "Listen",
-    // wired to `state.chapters.firstOrNull()` → viewModel.listen(...).
-    // That duplicated what tapping any ChapterCard in the list already
-    // does (the list cards each fire `viewModel.listen(ch.id)` on tap),
-    // so the bottom-bar Listen button was always "play whatever chapter
-    // 1 happens to be." Two-tap flow (Library → fiction → Listen) felt
-    // confusing because users perceived "Listen" as a separate route
-    // distinct from "tap chapter 1." Removing the button collapses to
-    // a single canonical entry-point per chapter — the chapter card
-    // tap. Library + follow-on-source buttons stay; both have no other
-    // surfaced control on this screen.
+    // Issue #604 (v1.0 blocker) — Play CTA is back. The original
+    // removal in #538 ("standalone Listen duplicates chapter-row taps")
+    // was correct for power users who know to scroll to the chapter
+    // list, but the 2026-05-15 TalkBack/discoverability audit logged
+    // FictionDetail as a v1.0 blocker: a sighted user with no prior
+    // muscle memory has no visible primary action on the screen, and
+    // a TalkBack user couldn't even reach the chapter list without
+    // first knowing it existed. Restoring Play as the primary slot
+    // fixes both. The chapter-row tap path stays (still canonical for
+    // "play THIS specific chapter").
     val spacing = LocalSpacing.current
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -906,13 +934,26 @@ private fun BottomBar(
             horizontalArrangement = Arrangement.spacedBy(spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (onPlay != null) {
+                BrassButton(
+                    label = playLabel,
+                    onClick = onPlay,
+                    // Brass-bordered Primary — the row's most visually
+                    // prominent affordance. The user-tap-test
+                    // (R5CRB0W66MK, 2026-05-15) confirmed cold-launch
+                    // users tap the leading button first; putting Play
+                    // there means the first tap reaches audio.
+                    variant = BrassButtonVariant.Primary,
+                    modifier = Modifier.weight(1f),
+                )
+            }
             BrassButton(
                 label = if (isInLibrary) "In library" else "Add to library",
                 onClick = onFollow,
-                // Issue #538 — promoted to Primary now that the standalone
-                // Listen button is gone. Add-to-library is the row's
-                // primary action; Follow-on-source stays Secondary.
-                variant = if (isInLibrary) BrassButtonVariant.Secondary else BrassButtonVariant.Primary,
+                // Pre-#604 Add-to-library was the row's Primary slot;
+                // demoted to Secondary now that Play occupies primary
+                // and library state is a lower-frequency action.
+                variant = BrassButtonVariant.Secondary,
                 modifier = Modifier.weight(1f),
             )
             if (followOnSource != null) {
@@ -925,6 +966,27 @@ private fun BottomBar(
             }
         }
     }
+}
+
+/** Issue #604 — pick the chapter the Play button should open.
+ *  Strategy: first non-finished chapter, fall back to first chapter.
+ *  Returns null when there are no chapters to play (loading state,
+ *  empty fiction). Exposed `internal` so FictionDetailScreenTest can
+ *  pin the contract without rendering the whole composable.
+ */
+internal fun pickChapterToPlay(chapters: List<UiChapter>): UiChapter? {
+    if (chapters.isEmpty()) return null
+    return chapters.firstOrNull { !it.isFinished } ?: chapters.first()
+}
+
+/** Issue #604 — derive the Play button label. Reads "Resume" when the
+ *  picked chapter isn't the first one (user has finished earlier
+ *  chapters); reads "Play" on first-listen or a fully-finished fiction
+ *  where pickChapterToPlay falls back to chapter 1. */
+internal fun playButtonLabel(chapters: List<UiChapter>, picked: UiChapter?): String {
+    if (picked == null) return "Play"
+    val firstId = chapters.firstOrNull()?.id
+    return if (firstId != null && picked.id != firstId) "Resume" else "Play"
 }
 
 /** Issue #211 — payload for the source-side follow chip. Held as a

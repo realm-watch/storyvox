@@ -109,7 +109,23 @@ fun BrassProgressTrack(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(40.dp)
+                // Issue #615 (v1.0 blocker) — pre-fix the scrubber's
+                // interactive zone was 40 dp tall (the rail centered
+                // inside) and the visible thumb was a 29 dp tall hit
+                // surface from the user's perspective: WCAG 2.5.5
+                // requires 48 dp × 48 dp minimum for any touch target,
+                // and Samsung Accessibility Suite (R5CRB0W66MK,
+                // 2026-05-15) flagged the rail as the only sub-48 dp
+                // control on the player surface. Bumping the gesture
+                // Box to 48 dp tall gives a compliant target without
+                // changing the visible rail or thumb radii — the
+                // pointerInput consumes anywhere in the 48 dp band,
+                // the drawBehind still paints the rail centered, so
+                // there is no perceptible visual difference. Add ~8 dp
+                // of vertical real-estate in the player column; the
+                // surrounding verticalScroll absorbs it on phone
+                // viewports.
+                .height(48.dp)
                 .pointerInput(durationMs) {
                     // Hand-rolled gesture so a single tap also seeks. The built-in
                     // detectHorizontalDragGestures only fires after enough drag
