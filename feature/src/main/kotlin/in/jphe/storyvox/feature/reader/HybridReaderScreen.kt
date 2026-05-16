@@ -11,6 +11,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import `in`.jphe.storyvox.feature.BuildConfig
 import `in`.jphe.storyvox.feature.debug.DebugOverlay
 import `in`.jphe.storyvox.feature.debug.DebugViewModel
 import `in`.jphe.storyvox.ui.component.HybridReaderShell
@@ -87,6 +88,12 @@ fun HybridReaderScreen(
     // shell would intercept reader gestures.
     val debugVm: DebugViewModel = hiltViewModel()
     val debugEnabled by debugVm.overlayEnabled.collectAsStateWithLifecycle()
+    // Issue #529 — the on-reader debug overlay is a developer-only surface;
+    // shipping it in release builds shows the "sent #N · queue X/12" strip
+    // to end users (audit 2026-05-15: visible in 0.5.52 release on R5CRB0W66MK).
+    // BuildConfig.DEBUG closes the gate at compile time so a stale
+    // DataStore flag from a developer build can never bleed through.
+    val debugOverlayVisible = debugEnabled && BuildConfig.DEBUG
 
     // Playing-tab "no chapter loaded" path — replace the bare
     // "No chapter loaded." stub with the magical Resume prompt. Two
@@ -140,7 +147,7 @@ fun HybridReaderScreen(
             // Debug overlay still mounts on top so the inspector can see
             // the loading-phase state machine even before a chapter is
             // loaded. Same gating as below.
-            if (debugEnabled) {
+            if (debugOverlayVisible) {
                 DebugOverlay(viewModel = debugVm)
             }
         }
@@ -240,7 +247,7 @@ fun HybridReaderScreen(
     // modal) when enabled. Pinned to the top of the screen via
     // statusBarsPadding inside DebugOverlay itself, so the player
     // controls at the bottom stay free.
-    if (debugEnabled) {
+    if (debugOverlayVisible) {
         DebugOverlay(viewModel = debugVm)
     }
 

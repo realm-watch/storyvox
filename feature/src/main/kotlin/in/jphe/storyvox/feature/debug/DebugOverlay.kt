@@ -430,15 +430,45 @@ private fun headerSubtitle(s: DebugSnapshot): String {
     return "sent #$sent · queue $q$errBadge"
 }
 
-private fun pipelineStateText(s: DebugSnapshot): String {
+/**
+ * Issue #537 — human-readable engine-state label for the overlay strip.
+ *
+ * Pre-#537 this returned "idle" whenever the user paused a chapter
+ * mid-listen — the pipeline was still loaded (`pipelineRunning = true`)
+ * but `isPlaying = false`, which fell through to the "idle" branch. That
+ * read as "the engine is doing nothing / has no chapter", causing
+ * audit confusion: a paused chapter looked indistinguishable from a
+ * fresh app launch.
+ *
+ * The fix:
+ *  - When a chapter is loaded but not playing AND no other state owns
+ *    the moment (not warming, not buffering, no error), the engine is
+ *    PAUSED, not idle.
+ *  - Real idle ("no chapter loaded, no pipeline running") still maps
+ *    to an empty label rather than the word "idle" — there's nothing
+ *    useful to surface, and a blank slot reads as "nothing to report"
+ *    while "idle" reads as a stuck state.
+ *
+ * Exposed `internal` so [DebugOverlayReleaseTest] can pin the mapping
+ * without rendering the composable.
+ */
+internal fun pipelineStateText(s: DebugSnapshot): String {
     val p = s.playback
     return when {
         p.lastErrorTag != null -> "ERROR"
         p.isWarmingUp -> "warming up"
         p.isBuffering -> "buffering"
         p.isPlaying -> "playing"
-        p.pipelineRunning -> "running"
-        else -> "idle"
+        // #537 — pipeline loaded but not playing → paused, not idle.
+        // `pipelineRunning` is the loaded-chapter signal; without
+        // playing/warming/buffering taking precedence, this is the
+        // user-paused branch and must surface as such.
+        p.pipelineRunning -> "paused"
+        // No chapter loaded — surface nothing rather than "idle". A
+        // blank label avoids the false-positive read of "the engine is
+        // stuck". An empty string keeps the column position stable for
+        // the monospace header layout.
+        else -> ""
     }
 }
 
