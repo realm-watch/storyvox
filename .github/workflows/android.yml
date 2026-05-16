@@ -91,7 +91,13 @@ jobs:
           if [ -z "$SRC" ]; then
             SRC="$OUT_DIR/app-release.apk"
           fi
-          cp "$SRC" "$OUT_DIR/storyvox-${TAG}.apk"
+          DST="$OUT_DIR/storyvox-${TAG}.apk"
+          # `cp file file` errors with exit 1 — happens when AGP's
+          # applicationVariants rename already produced the
+          # tag-named file. Skip the copy in that case.
+          if [ "$SRC" != "$DST" ]; then
+            cp "$SRC" "$DST"
+          fi
 
       - name: Create GitHub release
         # Used to be a separate `release:` job that pulled the APK
