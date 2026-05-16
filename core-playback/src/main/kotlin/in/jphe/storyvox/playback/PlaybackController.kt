@@ -691,11 +691,19 @@ class DefaultPlaybackController @Inject constructor(
         /** Issue #553 — buffering-stuck watchdog threshold. If
          *  `isBuffering=true` holds on the same chapter id for this long
          *  without a state transition (advance, error, user pause), fire
-         *  a fallback `advanceChapter(1)` to recover. A healthy chapter-
-         *  boundary spinner clears within ~1 s on LAN; 8 s is a generous
-         *  ceiling that catches genuine stalls without false-positiving
-         *  on slow networks. */
-        internal const val BUFFERING_STUCK_WATCHDOG_MS = 8_000L
+         *  a fallback `advanceChapter(1)` to recover. Started at 8 s
+         *  (cautious), lowered to 1.5 s once on-device testing confirmed
+         *  the engine-side primary advance silently fails to fire at
+         *  natural chapter end on Notion sources — the watchdog is the
+         *  *only* working advance path on that backend, and 8 s is far
+         *  too noticeable as the gap between chapters (target:
+         *  Spotify/Apple Music-grade, essentially imperceptible). If
+         *  the next chapter body isn't downloaded by the time the
+         *  watchdog fires, advanceChapter itself still has a 30 s
+         *  internal timeout, so a false-positive is harmless — the
+         *  fallback advance just waits on the same future the engine-
+         *  side advance would have waited on. */
+        internal const val BUFFERING_STUCK_WATCHDOG_MS = 1_500L
 
         /**
          * #531 / #550 — pure-function exports of the seek math so JVM unit

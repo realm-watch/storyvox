@@ -9,6 +9,16 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.57] — 2026-05-15
+
+The Spotify-grade gap fix: watchdog threshold dropped from 8 s to 1.5 s so the auto-advance "safety net" path is essentially imperceptible.
+
+### Changed
+- **`BUFFERING_STUCK_WATCHDOG_MS`: 8000 → 1500** — On-device testing revealed the engine-side primary advance (`handleChapterDone → advanceChapter`) silently fails to fire at natural chapter end on Notion sources. The watchdog in `PlaybackController` is currently the *only* working advance path on that backend. 8 s was chosen conservatively when the watchdog was intended as belt-and-suspenders; now that it's the primary path, the gap was too noticeable. 1.5 s is short enough to feel near-instant but still wide enough to avoid false-positives on legitimate chapter-boundary buffer spinners. `advanceChapter` itself still has a 30 s internal timeout on chapter-body wait, so a false-trigger is harmless — it just waits on the same future the engine-side advance would have.
+
+### Known limitation (next pass)
+- The engine-side `handleChapterDone` never fires on Notion chapter end. Either `naturalEnd` reads false at the end-of-pcm moment, or `pipelineRunning.get()` is already false by the time the consumer-thread check runs. The 1.5 s watchdog masks this; the next iteration should root-cause the primary path so auto-advance happens within ~50 ms of chapter end (true gapless).
+
 ## [0.5.56] — 2026-05-15
 
 Tiny but critical fix to v0.5.55: the auto-advance watchdog from #556 was firing correctly but throwing `Player is accessed on the wrong thread` when it tried to dispatch the fallback advance. Caught by JP's on-device re-verification right after v0.5.55 shipped.
