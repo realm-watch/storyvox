@@ -71,6 +71,23 @@ jobs:
         # existing sideload installs upgrade in place).
         run: PATH="$JAVA_HOME/bin:$PATH" ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
+      - name: Cold-launch perf guard (Issue #618)
+        # Reads the StartupBenchmark JSON (if present) and fails the
+        # build when the cold-launch median exceeds the threshold
+        # pinned in baselineprofile/.../ColdLaunchThresholds.kt
+        # (tablet 1500 ms, phone 500 ms). Skips quietly when no
+        # benchmark output exists — PR runs do not attach a device,
+        # so the guard is a no-op there. On tag builds with a
+        # connected device the previous step's macrobench leaves a
+        # JSON report under the conventional location.
+        #
+        # The guard ALWAYS runs (even on PR) so the script's
+        # threshold-file integrity check + threshold parsing is
+        # exercised on every CI run — a regression that breaks the
+        # parser is caught at PR time even though the threshold check
+        # itself is skipped without a device.
+        run: ./scripts/check-cold-launch.sh
+
       - name: Rename APK with tag
         # Only runs on tag builds — for PR / main pushes we just
         # verify the build compiles and stop. The local-build path

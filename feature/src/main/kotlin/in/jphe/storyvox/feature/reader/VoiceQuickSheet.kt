@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import `in`.jphe.storyvox.feature.api.UiPlaybackState
+import `in`.jphe.storyvox.ui.component.humanizeVoiceLabel
 import `in`.jphe.storyvox.ui.theme.LocalReducedMotion
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
@@ -197,7 +198,14 @@ internal fun VoiceQuickSheetContent(
                 tint = MaterialTheme.colorScheme.primary,
             )
             Column(modifier = Modifier.weight(1f)) {
-                Text(formatVoiceLabel(state.voiceLabel), style = MaterialTheme.typography.bodyMedium)
+                // Issue #619 — humanize the raw voice id to a chip-
+                // friendly form like "Brian · US English" instead of
+                // the raw `azure:en-US-BrianNeural` token. Falls back
+                // to "Pick a voice" via `ifBlank` when no voice is set.
+                Text(
+                    humanizeVoiceLabel(state.voiceLabel).ifBlank { "Pick a voice" },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
                 Text(
                     "Tap to change",
                     style = MaterialTheme.typography.bodySmall,

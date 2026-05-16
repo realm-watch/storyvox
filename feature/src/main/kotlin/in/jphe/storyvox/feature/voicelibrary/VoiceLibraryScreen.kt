@@ -72,6 +72,10 @@ import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.BrassProgressBar
 import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
 import `in`.jphe.storyvox.ui.component.cascadeReveal
+import `in`.jphe.storyvox.ui.theme.LocalReducedMotion
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.rotate
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
 @Composable
@@ -1282,6 +1286,30 @@ internal fun VoiceAdvancedExpander(
                 .padding(horizontal = spacing.sm, vertical = spacing.xs),
         ) {
             // a11y (#481): expand/collapse — Role.Button + label.
+            // Issue #625 — pre-fix the chevron icon swapped between
+            // ExpandMore and ExpandLess on expand, but the swap was an
+            // instantaneous vector change with no rotation animation,
+            // and the icon was tiny (16 dp) with low-contrast tint —
+            // visually it read as "not expandable" at first glance.
+            //
+            // Fix: keep a single ExpandMore icon and rotate it 0° → 180°
+            // via animateFloatAsState. The brass primary tint replaces
+            // the onSurfaceVariant so the chevron pops, and the size
+            // bumps to 20 dp so it reads as a deliberate affordance.
+            // The "Advanced" label gets the same brass primary tint so
+            // the whole row reads as one cohesive tappable affordance.
+            // Honors LocalReducedMotion via a snap-instead-of-tween
+            // animation spec (the icon still flips correctly but
+            // doesn't sweep through the intermediate angles).
+            val rotationReduced = LocalReducedMotion.current
+            val chevronRotation by animateFloatAsState(
+                targetValue = if (expanded) 180f else 0f,
+                animationSpec = tween(
+                    durationMillis = if (rotationReduced) 0 else 200,
+                    easing = androidx.compose.animation.core.FastOutSlowInEasing,
+                ),
+                label = "advanced-chevron-rotation",
+            )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1296,21 +1324,28 @@ internal fun VoiceAdvancedExpander(
                 Icon(
                     imageVector = Icons.Outlined.Settings,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
                 )
                 Text(
                     "Advanced",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Medium,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
                 Icon(
-                    imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                    // Issue #625 — single icon + rotation; no
+                    // ExpandLess/ExpandMore swap. The 180° rotation on
+                    // expand produces a smooth visual cue that matches
+                    // the established affordance vocabulary (Material 3
+                    // expandable cards, gmail thread expanders, etc.).
+                    imageVector = Icons.Outlined.ExpandMore,
                     contentDescription = if (expanded) "Collapse Advanced" else "Expand Advanced",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .size(20.dp)
+                        .rotate(chevronRotation),
                 )
             }
             if (expanded) {
