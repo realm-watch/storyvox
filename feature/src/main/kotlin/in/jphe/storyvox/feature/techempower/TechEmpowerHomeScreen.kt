@@ -1,7 +1,5 @@
 package `in`.jphe.storyvox.feature.techempower
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -18,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -38,6 +35,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -98,6 +99,12 @@ fun TechEmpowerHomeScreen(
     val spacing = LocalSpacing.current
     val context = LocalContext.current
 
+    // Issue #546 — when telephony is absent (WiFi-only tablets), pop a
+    // fallback dialog instead of routing the user into the contact
+    // picker. Hoisted to the screen scope so all dial entry points
+    // (Call 211 card + each EmergencyDialButton) can drive it.
+    var noTelephonyTarget by remember { mutableStateOf<EmergencyTarget?>(null) }
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -156,24 +163,22 @@ fun TechEmpowerHomeScreen(
                     onClick = { launchDiscord(context) },
                 )
             }
+            // Issue #546 — surface a "no-telephony" fallback dialog if
+            // the device can't dial. Without this guard, WiFi-only
+            // tablets like the Tab A7 Lite route ACTION_DIAL to the
+            // system Contacts picker — exactly the wrong UX when the
+            // user explicitly wants to reach 211 / 988 / 911.
             item {
                 TechEmpowerCard(
                     title = "Call 211",
                     body = "Local help — housing, food, utilities, mental health referrals via United Way.",
                     icon = Icons.Filled.Phone,
                     onClick = {
-                        runCatching {
-                            context.startActivity(
-                                Intent(
-                                    Intent.ACTION_DIAL,
-                                    Uri.parse(
-                                        TechEmpowerLinks.telUri(
-                                            TechEmpowerLinks.PRIMARY_HELP_NUMBER,
-                                        ),
-                                    ),
-                                ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) },
-                            )
-                        }
+                        dialOrSurfaceFallback(
+                            context = context,
+                            target = EmergencyTarget.Help211,
+                            onNoTelephony = { noTelephonyTarget = it },
+                        )
                     },
                 )
             }
@@ -184,7 +189,9 @@ fun TechEmpowerHomeScreen(
             // the full row width keeps the 988 / 211 / 911 trio
             // visible without scrolling on the Flip3 cover.
             item(span = { GridItemSpan(maxLineSpan) }) {
-                TechEmpowerEmergencyCard()
+                TechEmpowerEmergencyCard(
+                    onNoTelephony = { noTelephonyTarget = it },
+                )
             }
             item {
                 TechEmpowerCard(
@@ -200,6 +207,21 @@ fun TechEmpowerHomeScreen(
                 FeaturedGuidesStrip(onOpenFiction = onOpenFiction)
             }
         }
+    }
+
+    // Issue #546 — no-telephony fallback dialog. The user explicitly
+    // asked to dial a helpline; on a WiFi-only tablet we owe them a
+    // clear "this device can't make calls" message plus actionable
+    // recovery (copy the number, open the helpline's web resource).
+    // Routing them to a contact picker — the AOSP default fallback
+    // for ACTION_DIAL on a device without telephony — is dangerous in
+    // a crisis.
+    val target = noTelephonyTarget
+    if (target != null) {
+        NoTelephonyFallbackDialog(
+            target = target,
+            onDismiss = { noTelephonyTarget = null },
+        )
     }
 }
 
@@ -336,7 +358,9 @@ private fun TechEmpowerCard(
  * [TechEmpowerLinks.EMERGENCY_DISPATCH_NUMBER] kdoc).
  */
 @Composable
-private fun TechEmpowerEmergencyCard() {
+private fun TechEmpowerEmergencyCard(
+    onNoTelephony: (EmergencyTarget) -> Unit,
+) {
     val spacing = LocalSpacing.current
     val brass = MaterialTheme.colorScheme.primary
     val substrate = MaterialTheme.colorScheme.surfaceContainerHigh
@@ -383,21 +407,18 @@ private fun TechEmpowerEmergencyCard() {
         )
         // ─── 988 — Suicide & Crisis Lifeline (top of the list) ────
         EmergencyDialButton(
-            number = TechEmpowerLinks.CRISIS_HELP_NUMBER,
-            label = "Suicide & Crisis Lifeline",
-            body = "National 24/7 mental health crisis support.",
+            target = EmergencyTarget.Crisis988,
+            onNoTelephony = onNoTelephony,
         )
         // ─── 211 — United Way social services ─────────────────────
         EmergencyDialButton(
-            number = TechEmpowerLinks.PRIMARY_HELP_NUMBER,
-            label = "United Way social services",
-            body = "Housing, food, utilities, mental health referrals.",
+            target = EmergencyTarget.Help211,
+            onNoTelephony = onNoTelephony,
         )
         // ─── 911 — Emergency dispatch (last on purpose) ───────────
         EmergencyDialButton(
-            number = TechEmpowerLinks.EMERGENCY_DISPATCH_NUMBER,
-            label = "Emergency dispatch",
-            body = "Life-threatening situations — police, fire, ambulance.",
+            target = EmergencyTarget.Dispatch911,
+            onNoTelephony = onNoTelephony,
         )
     }
 }
@@ -428,9 +449,8 @@ private fun TechEmpowerEmergencyCard() {
  */
 @Composable
 private fun EmergencyDialButton(
-    number: String,
-    label: String,
-    body: String,
+    target: EmergencyTarget,
+    onNoTelephony: (EmergencyTarget) -> Unit,
 ) {
     val spacing = LocalSpacing.current
     val context = LocalContext.current
@@ -448,14 +468,11 @@ private fun EmergencyDialButton(
             .clickable(
                 role = Role.Button,
                 onClick = {
-                    runCatching {
-                        context.startActivity(
-                            Intent(
-                                Intent.ACTION_DIAL,
-                                Uri.parse(TechEmpowerLinks.telUri(number)),
-                            ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) },
-                        )
-                    }
+                    dialOrSurfaceFallback(
+                        context = context,
+                        target = target,
+                        onNoTelephony = onNoTelephony,
+                    )
                 },
             )
             .padding(horizontal = spacing.md, vertical = spacing.sm),
@@ -469,7 +486,7 @@ private fun EmergencyDialButton(
         // body-adjacent surfaces; bumping to Bold would clash with the
         // titleMedium "Emergency Help" header above.
         Text(
-            text = number,
+            text = target.number,
             style = MaterialTheme.typography.headlineSmall,
             color = brass,
             fontWeight = FontWeight.SemiBold,
@@ -481,13 +498,13 @@ private fun EmergencyDialButton(
             verticalArrangement = Arrangement.spacedBy(spacing.xxs),
         ) {
             Text(
-                text = label,
+                text = target.label,
                 style = MaterialTheme.typography.titleSmall,
                 color = brass,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = body,
+                text = target.body,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
@@ -495,6 +512,13 @@ private fun EmergencyDialButton(
         }
     }
 }
+
+// [EmergencyTarget], [dialOrSurfaceFallback], and the no-telephony
+// fallback dialog live in [TechEmpowerIntents.kt] because they're
+// shared between the Emergency Help card here AND the top-app-bar
+// phone icon in [TechEmpowerHelpIcons]. Keeping them in one place
+// means a behavioural change (e.g., add a new helpline, swap a
+// fallback URL) is a one-file edit.
 
 /**
  * Horizontal strip of the eight hand-curated TechEmpower guides. The
