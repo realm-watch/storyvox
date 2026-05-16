@@ -217,6 +217,11 @@ fun HybridReaderScreen(
                 pitchInterpolationHighQuality = state.pitchInterpolationHighQuality,
                 onSetPunctuationPause = viewModel::setPunctuationPauseMultiplier,
                 onSetPitchHighQuality = viewModel::setPitchInterpolationHighQuality,
+                // "Why are we waiting?" — pipe AudioOutputMonitor's
+                // diagnostic through the view so the brass panel above
+                // the cover surfaces a typed reason whenever no audio
+                // is reaching the speakers.
+                waitReason = state.waitReason,
             )
         },
         readerContent = {

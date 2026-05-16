@@ -906,6 +906,13 @@ internal class RealPlaybackControllerUi(
      *  add a stale duplication seam. */
     override val events: Flow<PlaybackUiEvent> = controller.events
 
+    /** "Why are we waiting?" — forward the AudioOutputMonitor's
+     *  diagnostic flow through the UI contract. The monitor lives in
+     *  core-playback as a Singleton; this adapter doesn't transform the
+     *  value, just opens the seam for the feature layer to subscribe. */
+    override val waitReason: Flow<`in`.jphe.storyvox.playback.diagnostics.WaitReason?> =
+        controller.waitReason
+
     override suspend fun speakText(text: String) {
         controller.speakText(text)
     }

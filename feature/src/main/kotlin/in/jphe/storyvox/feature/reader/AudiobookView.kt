@@ -178,6 +178,15 @@ fun AudiobookView(
     /** Issue #418 — toggle Sonic high-quality flag. Persisted via
      *  SettingsRepositoryUi; engine reads at next chapter render. */
     onSetPitchHighQuality: (Boolean) -> Unit = {},
+    /**
+     * "Why are we waiting?" — typed diagnostic explaining why no audio
+     * is reaching the speakers right now. Null when playback is happily
+     * flowing (or the engine is idle/paused/errored — those have their
+     * own UI surfaces). Default null so older callsites (tests,
+     * previews) keep compiling. Drives the brass
+     * [WhyAreWeWaitingPanel] above the cover.
+     */
+    waitReason: `in`.jphe.storyvox.playback.diagnostics.WaitReason? = null,
     modifier: Modifier = Modifier,
 ) {
     val spacing = LocalSpacing.current
@@ -365,6 +374,20 @@ fun AudiobookView(
                     }
                 }
             }
+            // "Why are we waiting?" — magical diagnostic panel. Lives
+            // between the top app bar and the cover so it doesn't fight
+            // the transport row (chip-ui-fixer owns lines 580-640) and
+            // the user can see WHY playback isn't producing sound the
+            // moment it stops. AnimatedVisibility inside the panel
+            // handles slide-in / slide-out so we don't need to gate the
+            // call site itself — passing `waitReason = null` collapses
+            // the panel to zero height.
+            WhyAreWeWaitingPanel(
+                reason = waitReason,
+                modifier = Modifier.fillMaxWidth(),
+                onRetry = onPlayPause,
+                onOpenSettings = onOpenSettings,
+            )
             // While the chapter body + voice model are still loading we don't
             // have a cover URL or chapter title yet — show the brass arcane
             // sigil placeholder instead of a "?" thumb. As soon as state

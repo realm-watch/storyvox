@@ -177,6 +177,11 @@ class RealPlaybackControllerUiTest {
             ).asStateFlow()
         override val playbackPositionMs: StateFlow<Long> = MutableStateFlow(0L).asStateFlow()
         override val chapterDurationMs: StateFlow<Long> = MutableStateFlow(0L).asStateFlow()
+        // "Why are we waiting?" — test fakes default to null (audio
+        // flowing). Tests that exercise the diagnostic flow can swap
+        // in a MutableStateFlow if needed.
+        override val waitReason: StateFlow<`in`.jphe.storyvox.playback.diagnostics.WaitReason?> =
+            MutableStateFlow<`in`.jphe.storyvox.playback.diagnostics.WaitReason?>(null).asStateFlow()
 
         override suspend fun play(fictionId: String, chapterId: String, charOffset: Int) = Unit
         override fun pause() = Unit

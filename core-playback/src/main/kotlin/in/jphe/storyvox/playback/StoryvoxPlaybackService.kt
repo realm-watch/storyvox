@@ -24,6 +24,7 @@ import androidx.media3.session.MediaSessionService
 import androidx.media3.session.MediaStyleNotificationHelper
 import androidx.media3.session.SimpleBitmapLoader
 import dagger.hilt.android.AndroidEntryPoint
+import `in`.jphe.storyvox.playback.diagnostics.AudioOutputMonitor
 import `in`.jphe.storyvox.playback.sleep.ShakeDetector
 import `in`.jphe.storyvox.playback.tts.EnginePlayer
 import `in`.jphe.storyvox.playback.wear.PhoneWearBridge
@@ -65,6 +66,14 @@ class StoryvoxPlaybackService : MediaSessionService() {
      *  Singleton instance via Hilt. */
     @Inject lateinit var audioFocus: AudioFocusController
 
+    /** "Why are we waiting?" — process-wide audio-output diagnostic
+     *  singleton. Started at onCreate so it's listening before the user
+     *  taps play; stopped at onDestroy. The monitor reads truthful
+     *  signals (head-position advance, focus state, route, volume) and
+     *  exposes a [WaitReason] flow that the reader UI surfaces in the
+     *  brass diagnostic panel above the cover. */
+    @Inject lateinit var audioOutputMonitor: AudioOutputMonitor
+
     private lateinit var session: MediaSession
     private lateinit var player: EnginePlayer
 
@@ -104,6 +113,12 @@ class StoryvoxPlaybackService : MediaSessionService() {
         audioFocus.setOnFocusLost {
             scope.launch { controller.pause() }
         }
+
+        // "Why are we waiting?" — start the diagnostic monitor here so
+        // it's live before the user taps play. The monitor's own start()
+        // is idempotent + re-anchors on every call, so a chapter advance
+        // mid-session doesn't fight itself.
+        audioOutputMonitor.start()
 
         session = MediaSession.Builder(this, player)
             .setCallback(StoryvoxSessionCallback(controller, scope))
@@ -317,6 +332,10 @@ class StoryvoxPlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         wearBridge.stop()
+        // "Why are we waiting?" — stop the diagnostic monitor before
+        // the controller unbinds; otherwise the tick loop would briefly
+        // see a null player + emit a spurious AudioOutputStuck reason.
+        audioOutputMonitor.stop()
         controller.unbindPlayer()
         session.release()
         player.releaseEngine()
