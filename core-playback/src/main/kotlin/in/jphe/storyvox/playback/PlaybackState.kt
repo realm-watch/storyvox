@@ -128,9 +128,15 @@ sealed class PlaybackUiEvent {
 }
 
 fun PlaybackState.scrubProgress(): Float {
+    // Issue #555 — duration lives on the media-time (speed-1) axis so
+    // the rail and the position both speak the same speed-invariant
+    // language. Total chars on the rail = duration / baseline (no
+    // `* speed`); progress = charOffset / totalChars. The result is the
+    // text-consumption fraction, stable across speed changes — exactly
+    // what the scrubber thumb's pixel position should track.
     if (durationEstimateMs <= 0L) return 0f
     val totalChars = (durationEstimateMs.toFloat() / 1000f) *
-        SPEED_BASELINE_CHARS_PER_SECOND * speed
+        SPEED_BASELINE_CHARS_PER_SECOND
     if (totalChars <= 0f) return 0f
     return (charOffset / totalChars).coerceIn(0f, 1f)
 }

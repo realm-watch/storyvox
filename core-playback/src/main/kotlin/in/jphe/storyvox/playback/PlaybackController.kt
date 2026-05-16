@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
@@ -347,6 +348,77 @@ class DefaultPlaybackController @Inject constructor(
         scope.launch {
             p.uiEvents.collect { _events.tryEmit(it) }
         }
+        // Issue #553 — buffering-stuck watchdog. The EnginePlayer's own
+        // auto-advance from handleChapterDone → advanceChapter now has
+        // a 30 s timeout on the chapter-body wait + per-step
+        // runCatching wrappers, so the "isBuffering=true forever"
+        // symptom from the audit should be impossible by construction.
+        // This watchdog is belt-and-suspenders: if the underlying
+        // engine flow somehow gets stuck on isBuffering for a full 8 s
+        // (a chapter-boundary spinner normally clears within <1 s on
+        // LAN), fire ONE retry through the same path the manual skip-
+        // next button uses. The retry sets `currentChapterId` to the
+        // new chapter via `loadAndPlay` and the buffering flag
+        // naturally clears.
+        //
+        // 8 s threshold: longer than the longest plausible legitimate
+        // buffer spinner (a slow N+1 download), short enough that the
+        // user doesn't notice. One retry only — if it ALSO stalls
+        // (e.g. WiFi truly down), the EnginePlayer's own 30 s timeout
+        // will surface a typed error and the user can intervene.
+        scope.launch { runBufferingWatchdog(p) }
+    }
+
+    /**
+     * Issue #553 — buffering-stuck watchdog. See [bindPlayer] for the
+     * rationale. Collects [PlaybackState] and arms a 8-second timer
+     * whenever `isBuffering` flips on with a non-null chapter id; if
+     * the same (chapter id, isBuffering) pair holds when the timer
+     * fires, kick `nextChapter()` once to drive the same path the
+     * manual skip button uses. State changes (chapter advances, error
+     * surfaces, user pauses) cancel the timer naturally.
+     *
+     * Lives in its own method so the watchdog logic is auditable +
+     * unit-testable in isolation. Bound to controller scope; dies on
+     * unbindPlayer along with the rest of the bind-launches.
+     */
+    private suspend fun runBufferingWatchdog(p: EnginePlayer) {
+        var watchdogJob: kotlinx.coroutines.Job? = null
+        p.observableState
+            .map { (it.isBuffering && it.currentChapterId != null) to it.currentChapterId }
+            .distinctUntilChanged()
+            .collect { (buffering, chapterId) ->
+                watchdogJob?.cancel()
+                watchdogJob = null
+                if (!buffering || chapterId == null) return@collect
+                val armedFor = chapterId
+                watchdogJob = scope.launch {
+                    kotlinx.coroutines.delay(BUFFERING_STUCK_WATCHDOG_MS)
+                    val nowState = p.observableState.value
+                    // Only fire if we're STILL buffering AND still on
+                    // the same chapter id (i.e. nothing else has
+                    // happened — no advance, no pause, no error).
+                    if (
+                        nowState.isBuffering &&
+                        nowState.currentChapterId == armedFor &&
+                        nowState.error == null
+                    ) {
+                        android.util.Log.w(
+                            "PlaybackController",
+                            "#553 watchdog: isBuffering stuck on $armedFor for " +
+                                "${BUFFERING_STUCK_WATCHDOG_MS}ms; firing fallback advance via nextChapter()",
+                        )
+                        runCatching { p.advanceChapter(direction = 1) }
+                            .onFailure { t ->
+                                android.util.Log.e(
+                                    "PlaybackController",
+                                    "#553 watchdog fallback advance threw: ${t.message}",
+                                    t,
+                                )
+                            }
+                    }
+                }
+            }
     }
 
     fun unbindPlayer() {
@@ -445,63 +517,49 @@ class DefaultPlaybackController @Inject constructor(
     override fun seekTo(charOffset: Int) { player?.seekToCharOffset(charOffset) }
 
     override fun seekToPositionMs(positionMs: Long) {
-        // #531 — UI gives us a ms position on the scrubber rail (clamped
-        // to [0, chapterDuration] by the seekbar widget). Reverse the
-        // SAME baseline conversion EnginePlayer uses in
-        // [estimateDurationMs] / [getState.setContentPositionMs]:
-        //   `chapterDurationMs = text.length / (baseline * speed) * 1000`
-        //   ⇒ `charOffset = positionMs / 1000 * (baseline * speed)`
-        // so a tap at 50 % of the displayed rail lands at the 50 %
-        // char-offset, regardless of speed.
+        // #531 / #555 — UI gives us a ms position on the scrubber rail
+        // (clamped to [0, chapterDuration] by the seekbar widget). Both
+        // rail and position now live on the speed-invariant media-time
+        // axis (see EnginePlayer.estimateDurationMs / currentPositionMs),
+        // so the conversion uses the baseline rate without applying
+        // speed: `charOffset = positionMs / 1000 * baseline`. A tap at
+        // 50 % of the displayed rail lands at the 50 % char-offset
+        // regardless of speed, AND the post-seek displayed position
+        // matches the tap (no jump on a speed change because the axis
+        // is invariant).
         //
         // Pre-fix this method (the legacy `seekTo(ms: Long)` in
-        // RealPlaybackControllerUi) used the correct formula but bypassed
-        // controller-side bound enforcement — and the AudioTrack-vs-rail
-        // ms math drifted because positionMs displayed by the UI was the
-        // wall-clock-interpolated estimate, not the truthful audio frame
-        // counter. The ~5 % seek offset in #531 surfaces from that
-        // drift: the user taps "where the audio says it is" but the
-        // displayed position has slid ahead during the wall-clock
-        // interpolation between sentence boundaries. Fix is two-fold:
-        // (a) this method does the speed-aware ms→chars conversion
-        // here so callers don't reinvent it (and don't reinvent it
-        // wrong); (b) [playbackPositionMs] is now sourced from the
-        // truthful frame counter, so the displayed rail matches what
-        // the user hears.
-        val s = state.value
-        val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * s.speed
-        val targetChar = ((positionMs.coerceAtLeast(0L) / 1000.0) * charsPerSec).toInt()
+        // RealPlaybackControllerUi) used a speed-aware formula. After
+        // PR #552 the displayed rail was speed-aware too, so the seek
+        // math was internally consistent — but a speed change mid-
+        // chapter would silently relabel the axis, surfacing as the
+        // ~19 s position jump #555 reported. The media-time axis kills
+        // that whole class of glitch.
+        val targetChar = ((positionMs.coerceAtLeast(0L) / 1000.0) *
+            SPEED_BASELINE_CHARS_PER_SECOND).toInt()
         player?.seekToCharOffset(targetChar)
     }
 
     override fun skipForward30s() {
-        // #550 — seek by exactly 30 seconds on the scrubber rail. The
-        // rail's axis is "chapter-time at current speed" — durationMs =
-        // text.length / (baseline * speed) * 1000 — so "30 seconds of
-        // rail" = `(baseline * speed) * 30` chars. At speed=2 that's
-        // 60 s of chapter content played in 30 wall-clock seconds; the
-        // user feels the thumb jump 30 s forward, matching Spotify's
-        // "+30 s" behavior on a sped-up podcast.
-        //
-        // Pre-fix the math used speed correctly but the surrounding
-        // pipeline rebuild interleaved with the wall-clock interpolation
-        // — the displayed thumb would race ahead during the rebuild
-        // (post-#539 it's pinned to the truthful audio frame counter so
-        // the visual jump matches the audio jump within ~100 ms).
-        //
-        // The audit's "sometimes wrong direction" finding was that
-        // wall-clock interpolation occasionally jumped the thumb FORWARD
-        // during a skip-back's brief teardown; with the truthful
-        // position feed in #539 the symptom can't manifest.
+        // #550 / #555 — seek by exactly 30 seconds on the media-time
+        // rail. Both position and duration live on the speed-invariant
+        // axis now, so "30 s of rail" = `baseline * 30` chars
+        // regardless of speed. At speed=2 the user hears those 30 s of
+        // chapter content in 15 wall-clock seconds; the scrubber thumb
+        // jumps the same 30 s either way, matching Spotify's "+30 s" on
+        // a sped-up podcast (which is "30 s of media-time" not "30 s of
+        // wall-clock").
         val cur = state.value.charOffset
-        val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * state.value.speed
+        val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND
         val target = (cur + (charsPerSec * 30).toInt()).coerceAtLeast(0)
         player?.seekToCharOffset(target)
     }
 
     override fun skipBack30s() {
+        // #550 / #555 — see [skipForward30s]. 30 s of media-time
+        // regardless of speed.
         val cur = state.value.charOffset
-        val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * state.value.speed
+        val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND
         val target = (cur - (charsPerSec * 30).toInt()).coerceAtLeast(0)
         player?.seekToCharOffset(target)
     }
@@ -618,6 +676,15 @@ class DefaultPlaybackController @Inject constructor(
          *  Android MediaSession default behavior. */
         internal const val REWIND_TO_START_THRESHOLD_SEC = 3f
 
+        /** Issue #553 — buffering-stuck watchdog threshold. If
+         *  `isBuffering=true` holds on the same chapter id for this long
+         *  without a state transition (advance, error, user pause), fire
+         *  a fallback `advanceChapter(1)` to recover. A healthy chapter-
+         *  boundary spinner clears within ~1 s on LAN; 8 s is a generous
+         *  ceiling that catches genuine stalls without false-positiving
+         *  on slow networks. */
+        internal const val BUFFERING_STUCK_WATCHDOG_MS = 8_000L
+
         /**
          * #531 / #550 — pure-function exports of the seek math so JVM unit
          * tests can verify the controller-side conversions without
@@ -625,17 +692,25 @@ class DefaultPlaybackController @Inject constructor(
          * Android context).
          */
 
-        /** #531 — convert a scrubber-rail position in ms to a chapter
-         *  char offset, using the same formula as
-         *  [in.jphe.storyvox.playback.tts.EnginePlayer.estimateDurationMs]. */
+        /** #531 / #555 — convert a scrubber-rail position in ms to a
+         *  chapter char offset. The rail lives on the speed-invariant
+         *  media-time axis (see [in.jphe.storyvox.playback.tts.EnginePlayer.estimateDurationMs]),
+         *  so the conversion is speed-independent. The [speed] parameter
+         *  is preserved for binary-compat with existing tests but
+         *  IGNORED — kept here so the contract is auditable.
+         */
+        @Suppress("UNUSED_PARAMETER")
         fun positionMsToCharOffset(positionMs: Long, speed: Float): Int {
-            val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * speed
+            val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND
             return ((positionMs.coerceAtLeast(0L) / 1000.0) * charsPerSec).toInt()
         }
 
-        /** #550 — convert "30 s on the rail" to a char delta at this speed. */
+        /** #550 / #555 — convert "N s on the rail" to a char delta.
+         *  Rail is media-time so the answer is speed-invariant. [speed]
+         *  kept for binary-compat, IGNORED. */
+        @Suppress("UNUSED_PARAMETER")
         fun skipDeltaChars(seconds: Float, speed: Float): Int {
-            val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * speed
+            val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND
             return (charsPerSec * seconds).toInt()
         }
     }

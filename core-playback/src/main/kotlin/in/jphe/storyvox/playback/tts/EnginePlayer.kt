@@ -703,6 +703,26 @@ class EnginePlayer @AssistedInject constructor(
     private var pipelineStartCharOffset: Int = 0
 
     /**
+     * Issue #555 — speed at the moment [startPlaybackPipeline] ran. The
+     * AudioTrack PCM was synthesized at this speed; each played frame
+     * represents (1 / sampleRate) wall-clock seconds AND (speed /
+     * sampleRate) seconds of chapter-text content. We multiply
+     * `headFrames / sampleRate` by [pipelineStartSpeed] inside
+     * [currentPositionMs] to convert wall-clock-played into media-time
+     * (the speed-1 axis), so the displayed position stays constant when
+     * the user changes speed mid-chapter. Without this snapshot the
+     * playhead jumps visibly: at speed=1.5 the same charOffset
+     * represents 2/3 the displayed seconds as at speed=1.
+     *
+     * Constant within a pipeline lifetime — [setSpeed] tears down +
+     * rebuilds the pipeline, capturing the new speed here on the
+     * rebuild. Defaults to 1.0 so a fresh EnginePlayer with no pipeline
+     * yet computes positions on the 1× axis.
+     */
+    @Volatile
+    private var pipelineStartSpeed: Float = 1.0f
+
+    /**
      * Issue #539 — sample rate of the currently-live AudioTrack. Captured
      * at pipeline-construction time so [currentPositionMs] can compute
      * `playbackHeadPosition * 1000 / sampleRate` without holding the
@@ -726,6 +746,45 @@ class EnginePlayer @AssistedInject constructor(
 
     @Volatile
     private var lastTruthfulPositionChapter: String? = null
+
+    /**
+     * Issue #554 — pinned displayed position while the user has paused.
+     * Set in [pauseTts] to the value [currentPositionMs] returns at the
+     * moment of pause; cleared in [resume] and on any pipeline rebuild.
+     * While non-null, [currentPositionMs] returns this verbatim — so the
+     * scrubber thumb cannot regress between the pause-tap and the user
+     * resuming.
+     *
+     * Defense against subtle backward jumps where a paused AudioTrack
+     * briefly reports a stale [AudioTrack.getPlaybackHeadPosition], or a
+     * pipeline rebuild on the pause-edge resets the monotonic latch. The
+     * audit reported a ~3 s regression on cover-tap pause (0:27 → 0:24);
+     * pinning makes it impossible by construction.
+     */
+    @Volatile
+    private var pinnedPausePositionMs: Long? = null
+
+    /**
+     * Issue #555 — handoff char-offset across a speed-change pipeline
+     * rebuild. [setSpeed] computes the truthful audible position via
+     * [currentPositionMs] BEFORE tearing the pipeline down, converts it
+     * to a char-offset on the speed-invariant baseline axis, and stores
+     * it here. [startPlaybackPipeline] reads + clears this when present,
+     * using it for [pipelineStartCharOffset] instead of
+     * `state.charOffset` (which can lag the audible head by many seconds
+     * because the consumer thread's state updates are queued through
+     * Main). Without this handoff the new pipeline anchors its position
+     * axis at a stale charOffset and the scrubber jumps visibly
+     * backward — the exact "1:21 → 1:02" the audit reported on a 1× →
+     * 1.5× tap.
+     *
+     * `null` outside the [setSpeed] → [startPlaybackPipeline] window so
+     * other rebuild paths (seek, voice swap, chapter advance) use their
+     * own correct value of `state.charOffset` (which for those is set
+     * synchronously inline, not via the lagging consumer thread).
+     */
+    @Volatile
+    private var speedHandoffCharOffset: Int? = null
 
     /** Serializes [VoiceEngine.generateAudioPCM] / [KokoroEngine.generateAudioPCM]
      *  calls. The VoxSherpa engines are process-singletons and the underlying
@@ -869,7 +928,17 @@ class EnginePlayer @AssistedInject constructor(
         if (chapterId != lastTruthfulPositionChapter) {
             lastTruthfulPositionChapter = chapterId
             lastTruthfulPositionMs = 0L
+            // Pinned pause position belongs to a prior chapter; drop it.
+            pinnedPausePositionMs = null
         }
+
+        // Issue #554 — pause-pin trumps everything else. While the user
+        // has paused, the displayed position MUST equal the value we
+        // computed at the moment of pause. Even a transient AudioTrack
+        // glitch or a latch reset on a stale path can't punch through
+        // this. Cleared by [resume] / [seekToCharOffset] / pipeline
+        // restart so live playback resumes serving fresh values.
+        pinnedPausePositionMs?.let { return it }
 
         // Audio-stream chapters route through ExoPlayer, which owns
         // its own currentPosition. Defer to it; the UI scrubber for
@@ -882,28 +951,32 @@ class EnginePlayer @AssistedInject constructor(
 
         val track = audioTrack
         val sr = pipelineSampleRate
-        // Chapter-time math is consistent with [estimateDurationMs]
-        // (which sets durationEstimateMs) and `scrubProgress` (which
-        // measures fraction-of-chapter). Both multiply by currentSpeed,
-        // so the rail length shrinks at higher speeds — at speed=2 the
-        // ~40-min chapter is shown as ~20 min on the scrubber. We use
-        // the same formula here so positionMs and durationMs share
-        // units and the thumb position is a clean ratio.
-        val charsPerSec = (SPEED_BASELINE_CHARS_PER_SECOND * currentSpeed)
+        // Issue #555 — position and duration both live on the speed-1
+        // (media-time) axis. `startMs` converts the pipeline's start
+        // char-offset to media-time using the speed-invariant baseline
+        // (no `* speed`). `playedMs` then converts wall-clock-frames-
+        // played into media-time by scaling with [pipelineStartSpeed]:
+        // at speed=2 the PCM was synthesized so each played frame
+        // represents 2 ms of chapter-text content, not 1.
+        //
+        // Result: displayed position stays put when the user changes
+        // speed mid-chapter (the audit reported 1:21 → 1:02 on a 1× →
+        // 1.5× speed-chip tap; this formula keeps position rock-stable
+        // because neither the axis nor the conversion changes). Duration
+        // (see [estimateDurationMs]) is also speed-invariant on this
+        // axis, so the rail length stays put too — exactly the Spotify/
+        // Apple Music behavior where the bar stops in place and the
+        // audio underneath gets faster/slower.
+        val baselineCharsPerSec = SPEED_BASELINE_CHARS_PER_SECOND
             .coerceAtLeast(0.001f)
-        val startMs = ((pipelineStartCharOffset / charsPerSec) * 1000f).toLong()
+        val startMs = ((pipelineStartCharOffset / baselineCharsPerSec) * 1000f).toLong()
         if (track != null && sr > 0 && pipelineRunning.get()) {
             val headFrames = runCatching { track.playbackHeadPosition.toLong() }.getOrDefault(0L)
-            // playbackHeadPosition is in frames played at the
-            // AudioTrack's native sample rate — that's wall-clock-ms.
-            // We're emitting positionMs against a chapterDurationMs that
-            // ALSO uses `charsPerSec * speed` ([estimateDurationMs]), so
-            // wall-clock-ms IS the right axis: at speed=2 the chapter is
-            // 1200 s long and after 60 s wall-clock we've heard 5 % of
-            // it — positionMs=60_000, durationMs=1_200_000, ratio=5 %.
-            // No extra speed multiplier needed.
-            val playedMs = (headFrames * 1000L) / sr.coerceAtLeast(1)
-            val candidate = startMs + playedMs
+            // Wall-clock-ms-of-PCM-played, then scaled up by the speed
+            // the PCM was synthesized at to get media-time-ms.
+            val wallClockMs = (headFrames * 1000L) / sr.coerceAtLeast(1)
+            val playedMediaMs = (wallClockMs * pipelineStartSpeed).toLong()
+            val candidate = startMs + playedMediaMs
             // Monotonic clamp — never serve a regression. Covers the
             // pause→resume window where the AudioTrack head can briefly
             // appear to roll backward as the framework rebuilds the
@@ -916,9 +989,9 @@ class EnginePlayer @AssistedInject constructor(
 
         // No live AudioTrack — fall back to the char-offset estimate so
         // the scrubber still has a sensible value before play() lands a
-        // pipeline (e.g. while warming up). Same speed-adjusted formula
+        // pipeline (e.g. while warming up). Same speed-invariant axis
         // as the live branch above.
-        val fallback = ((state.charOffset / charsPerSec) * 1000f).toLong()
+        val fallback = ((state.charOffset / baselineCharsPerSec) * 1000f).toLong()
         if (fallback > lastTruthfulPositionMs) {
             lastTruthfulPositionMs = fallback
         }
@@ -1727,13 +1800,32 @@ class EnginePlayer @AssistedInject constructor(
         // base offset is the charOffset at the moment this pipeline
         // started; frames-played-since-start is added on top.
         pipelineSampleRate = sampleRate
-        pipelineStartCharOffset = _observableState.value.charOffset
+        // Issue #555 — prefer the speed-handoff char-offset if setSpeed
+        // captured one (truthful audible position at the moment of the
+        // speed tap). Falls back to state.charOffset for all other
+        // rebuild paths (seek, voice swap, chapter advance) where the
+        // value is set inline by the caller and is therefore current.
+        pipelineStartCharOffset = speedHandoffCharOffset
+            ?: _observableState.value.charOffset
+        speedHandoffCharOffset = null
+        // Issue #555 — snapshot the speed too. PCM in the AudioTrack was
+        // synthesized at this speed; [currentPositionMs] uses it to
+        // convert wall-clock-frames-played into media-time. setSpeed
+        // tears down + rebuilds the pipeline, so this is constant
+        // within a pipeline lifetime even when the user pumps the
+        // speed-chips.
+        pipelineStartSpeed = currentSpeed
         // Issue #539 — reset the truthful-position monotonic latch on
         // every pipeline rebuild. A seek-backward path stops + starts
         // the pipeline; without this reset the latch would clamp the
         // scrubber at the pre-seek position and the user would see the
         // thumb refuse to move backward on a backward seek.
         lastTruthfulPositionMs = 0L
+        // Issue #554 — clear the pause-pin on every fresh pipeline. A
+        // pipeline restart unambiguously means we're moving (resume,
+        // seek, speed change, chapter advance), so a stale pin from a
+        // previous pause shouldn't gag the live position feed.
+        pinnedPausePositionMs = null
         // Issue #290 — reset the frames-written tally so the debug
         // overlay's `audio buffered ms` reads against the fresh
         // AudioTrack's playbackHeadPosition rather than a stale total
@@ -2298,6 +2390,10 @@ class EnginePlayer @AssistedInject constructor(
      */
     fun pauseRouted() {
         if (_observableState.value.isLiveAudioChapter) {
+            // Issue #554 — pin position on live-radio pause too. The
+            // ExoPlayer-backed branch has its own currentPosition feed
+            // and isn't as bouncy, but pinning is cheap defense.
+            pinnedPausePositionMs = currentPositionMs()
             audioStreamPlayer?.let { p ->
                 p.playWhenReady = false
                 _observableState.update { it.copy(isPlaying = false) }
@@ -2321,6 +2417,20 @@ class EnginePlayer @AssistedInject constructor(
         // buffer. We also call it from here so the pause takes effect
         // before the consumer's next poll (~10-200 ms window depending
         // on which AudioTrack.write the consumer is parked in).
+        //
+        // Issue #554 — snapshot the displayed position BEFORE flipping
+        // any flags. [currentPositionMs] computes the truthful value
+        // against the still-running AudioTrack; once we've captured it,
+        // the pause-pin makes that the canonical value the
+        // PlaybackController polls until [resume] clears the pin. The
+        // audit reported a 3 s regression on cover-tap pause — pinning
+        // makes that impossible by construction regardless of which
+        // theory of the race is correct. The pin is set BEFORE
+        // `userPaused.set(true)` so any concurrent poll either sees the
+        // pre-pause live value (fine — that's what was on screen) or
+        // the pinned value (also fine — same number).
+        val pinPosition = currentPositionMs()
+        pinnedPausePositionMs = pinPosition
         if (audioTrack != null && pipelineRunning.get()) {
             userPaused.set(true)
             // Parking the track from Main is safe — AudioTrack.pause()
@@ -2344,6 +2454,11 @@ class EnginePlayer @AssistedInject constructor(
     }
 
     fun resume() {
+        // Issue #554 — clear the pause-pin so the live position feed
+        // takes over again on resume. Cleared up-front (before any
+        // audio-stream / voice-reload guard returns) so EVERY resume
+        // path drops the pin.
+        pinnedPausePositionMs = null
         // Audio-stream chapter — bring ExoPlayer back online. Mirror of
         // the Media3 handleSetPlayWhenReady(true) branch so the play-
         // screen Play button works on radio chapters too. Returns early
@@ -2427,26 +2542,64 @@ class EnginePlayer @AssistedInject constructor(
                 currentSentenceRange = SentenceRange(s.index, s.startChar, s.endChar),
             )
         }
+        // Issue #554 — seek MOVES the playhead; a stale pause-pin would
+        // freeze the display at the pre-seek value. Clear it so the live
+        // position feed (or the seek's pipeline-rebuild path) takes
+        // over. Backward seeks also reset the monotonic latch to allow
+        // the scrubber to retreat.
+        pinnedPausePositionMs = null
+        lastTruthfulPositionMs = 0L
         if (_observableState.value.isPlaying) startPlaybackPipeline()
         invalidateState()
     }
 
     suspend fun advanceChapter(direction: Int) {
-        val current = _observableState.value.currentChapterId ?: return
-        val fiction = _observableState.value.currentFictionId ?: return
+        val current = _observableState.value.currentChapterId ?: run {
+            android.util.Log.w(
+                "EnginePlayer",
+                "advanceChapter(dir=$direction): no currentChapterId, bailing — #553 ",
+            )
+            return
+        }
+        val fiction = _observableState.value.currentFictionId ?: run {
+            android.util.Log.w(
+                "EnginePlayer",
+                "advanceChapter(dir=$direction): no currentFictionId, bailing — #553",
+            )
+            return
+        }
+        android.util.Log.i(
+            "EnginePlayer",
+            "advanceChapter dir=$direction from=$current fiction=$fiction",
+        )
         val nextId = if (direction >= 0) {
             chapterRepo.getNextChapterId(current)
         } else {
             chapterRepo.getPreviousChapterId(current)
         } ?: run {
+            android.util.Log.i(
+                "EnginePlayer",
+                "advanceChapter: no $direction-neighbor of $current — end of book",
+            )
             if (direction >= 0) {
                 // Issue #524 — book finished. Flip isPlaying off so the
                 // sibling UI's engineState rolls to Completed instead of
                 // sitting on "Playing" with no audio. Pre-fix isPlaying
                 // stayed true after a final-chapter natural end and the
                 // play button looked active while the engine was idle.
+                //
+                // Issue #553 — also clear isBuffering, in case it was
+                // set by a prior advanceChapter attempt that resolved
+                // the next-id null AFTER setting the buffering latch.
+                // Defensive: the natural-end path never sets isBuffering
+                // before this branch, but a controller-driven retry
+                // could.
                 _observableState.update {
-                    it.copy(isPlaying = false, currentSentenceRange = null)
+                    it.copy(
+                        isPlaying = false,
+                        isBuffering = false,
+                        currentSentenceRange = null,
+                    )
                 }
                 invalidateState()
                 _uiEvents.tryEmit(PlaybackUiEvent.BookFinished)
@@ -2463,8 +2616,57 @@ class EnginePlayer @AssistedInject constructor(
         // isBuffering as soon as the new pipeline starts.
         _observableState.update { it.copy(isBuffering = true) }
         invalidateState()
+        android.util.Log.i(
+            "EnginePlayer",
+            "advanceChapter: targeting next=$nextId, queueing download + waiting for body",
+        )
         chapterRepo.queueChapterDownload(fiction, nextId, requireUnmetered = false)
-        chapterRepo.observeChapter(nextId).filterNotNull().first()
+        // Issue #553 — wait for the chapter body, but with a hard cap.
+        // Pre-fix `observeChapter(nextId).filterNotNull().first()` could
+        // park indefinitely if the row never lands (download stuck,
+        // network down, scheduler queue blocked). The audit's stall
+        // symptom (isBuffering=true forever, no audio, MediaSession
+        // state=PLAYING) is exactly what an indefinite park produces.
+        //
+        // 30 s is generous for an in-library Notion chapter on LAN
+        // (typically <1 s) and short enough that the user can recover
+        // by tapping skip-next manually before the buffer-watchdog in
+        // PlaybackController fires its own retry (~5 s).
+        val readyChapter = try {
+            kotlinx.coroutines.withTimeoutOrNull(
+                CHAPTER_BODY_WAIT_TIMEOUT_MS,
+            ) {
+                chapterRepo.observeChapter(nextId).filterNotNull().first()
+            }
+        } catch (t: Throwable) {
+            android.util.Log.w(
+                "EnginePlayer",
+                "advanceChapter: observeChapter($nextId) failed (${t.javaClass.simpleName}) — surfacing error",
+            )
+            null
+        }
+        if (readyChapter == null) {
+            android.util.Log.w(
+                "EnginePlayer",
+                "advanceChapter: next chapter $nextId not ready within " +
+                    "${CHAPTER_BODY_WAIT_TIMEOUT_MS}ms; clearing buffering + surfacing error",
+            )
+            _observableState.update {
+                it.copy(
+                    isPlaying = false,
+                    isBuffering = false,
+                    error = PlaybackError.ChapterFetchFailed(
+                        "Next chapter is still downloading. Tap retry or wait a moment.",
+                    ),
+                )
+            }
+            invalidateState()
+            return
+        }
+        android.util.Log.i(
+            "EnginePlayer",
+            "advanceChapter: body ready for $nextId, calling loadAndPlay",
+        )
         loadAndPlay(fiction, nextId, charOffset = 0)
         // Issue #287 — persist the new chapter's id immediately so the
         // Library "Continue listening" join sees the freshly-loaded
@@ -2476,13 +2678,46 @@ class EnginePlayer @AssistedInject constructor(
         // mismatch every auto-advance.
         persistPosition()
         _uiEvents.tryEmit(PlaybackUiEvent.ChapterChanged(nextId))
+        android.util.Log.i(
+            "EnginePlayer",
+            "advanceChapter: complete, now playing $nextId",
+        )
     }
 
     private suspend fun handleChapterDone() {
         val chapterId = _observableState.value.currentChapterId
         val fictionId = _observableState.value.currentFictionId
-        persistPosition()
-        if (chapterId != null) chapterRepo.markChapterPlayed(chapterId)
+        android.util.Log.i(
+            "EnginePlayer",
+            "handleChapterDone: chapter=$chapterId fiction=$fictionId — starting natural-end housekeeping",
+        )
+        // Issue #553 — wrap each pre-advance step in runCatching so a
+        // single Room write hiccup or a missing repo dep can't strand us
+        // BEFORE advanceChapter even runs. Pre-fix any uncaught throw
+        // here would surface only via the consumer thread's catch-and-
+        // swallow, leaving the user on isBuffering=false / isPlaying=true
+        // forever (the natural-end never emits Buffering before
+        // advanceChapter — only advanceChapter sets it). The audit's
+        // "stuck in Buffering" symptom is consistent with advanceChapter
+        // having run its prologue and parked on the chapter-body wait;
+        // belt-and-suspenders runCatching here makes sure we always at
+        // LEAST reach advanceChapter.
+        runCatching { persistPosition() }
+            .onFailure {
+                android.util.Log.w(
+                    "EnginePlayer",
+                    "handleChapterDone: persistPosition failed (${it.message}) — continuing",
+                )
+            }
+        if (chapterId != null) {
+            runCatching { chapterRepo.markChapterPlayed(chapterId) }
+                .onFailure {
+                    android.util.Log.w(
+                        "EnginePlayer",
+                        "handleChapterDone: markChapterPlayed failed (${it.message}) — continuing",
+                    )
+                }
+        }
         // PR-F (#86) — schedule chapter N+2's background render. N+1 is
         // either already cached, in flight as the previous chapter-done
         // trigger's enqueue, or about to be teed by PR-D as the user
@@ -2491,6 +2726,12 @@ class EnginePlayer @AssistedInject constructor(
         // marker, ChapterDone event).
         if (chapterId != null) {
             runCatching { prerenderTriggers.onChapterCompleted(chapterId) }
+                .onFailure {
+                    android.util.Log.w(
+                        "EnginePlayer",
+                        "handleChapterDone: prerender hook failed (${it.message}) — continuing",
+                    )
+                }
         }
         // Issue #158 — piggyback the History `completed` flag on the
         // existing end-of-chapter event. Mirrors `markChapterPlayed`
@@ -2501,7 +2742,13 @@ class EnginePlayer @AssistedInject constructor(
         // 90% of the way through" path, which isn't in scope for this
         // issue.
         if (fictionId != null && chapterId != null) {
-            historyRepo.markCompleted(fictionId, chapterId, fraction = 1f)
+            runCatching { historyRepo.markCompleted(fictionId, chapterId, fraction = 1f) }
+                .onFailure {
+                    android.util.Log.w(
+                        "EnginePlayer",
+                        "handleChapterDone: history.markCompleted failed (${it.message}) — continuing",
+                    )
+                }
         }
         // Calliope (v0.5.00) — distinguish "chapter naturally finished" from
         // "user tapped Next chapter". Emit BEFORE advanceChapter so the
@@ -2514,7 +2761,33 @@ class EnginePlayer @AssistedInject constructor(
         }
         // advanceChapter now persists the new chapter's id internally
         // (issue #287 — see the comment on advanceChapter).
-        advanceChapter(direction = 1)
+        // Issue #553 — wrap advanceChapter so an unexpected throw can't
+        // strand us in Buffering. On failure we surface a typed error
+        // and clear the latches so the user can recover via the
+        // controller-level watchdog or by tapping skip-next manually.
+        runCatching { advanceChapter(direction = 1) }
+            .onFailure { t ->
+                android.util.Log.e(
+                    "EnginePlayer",
+                    "handleChapterDone: advanceChapter threw (${t.javaClass.simpleName}: " +
+                        "${t.message}) — surfacing error so the UI can prompt retry",
+                    t,
+                )
+                _observableState.update {
+                    it.copy(
+                        isPlaying = false,
+                        isBuffering = false,
+                        error = PlaybackError.ChapterFetchFailed(
+                            "Couldn't load the next chapter (${t.javaClass.simpleName}). Tap retry.",
+                        ),
+                    )
+                }
+                invalidateState()
+            }
+        android.util.Log.i(
+            "EnginePlayer",
+            "handleChapterDone: complete",
+        )
     }
 
     private suspend fun persistPosition() {
@@ -2530,8 +2803,44 @@ class EnginePlayer @AssistedInject constructor(
     }
 
     fun setSpeed(speed: Float) {
+        // Issue #555 — capture the truthful audible position BEFORE the
+        // pipeline rebuild so we can carry it across as the new
+        // pipelineStartCharOffset. Without this, `state.charOffset` (set
+        // by the consumer via `scope.launch` on Main) can lag the
+        // audible head by many seconds because the consumer's state
+        // updates are queued behind the foreground work; setSpeed would
+        // see a stale charOffset from 30-50 s ago and the new pipeline
+        // would restart its position axis there — exactly the audit's
+        // "1:21 → 1:02 jump backward" symptom.
+        //
+        // We compute the audible position via [currentPositionMs] (which
+        // uses the live AudioTrack frame counter — the only truthful
+        // value at this moment) and store its CHAR-OFFSET equivalent for
+        // the new pipeline to consume in [startPlaybackPipeline]. Both
+        // sides speak the speed-invariant baseline axis, so this is a
+        // clean handoff.
+        val priorAudibleMs = currentPositionMs()
+        val handoffChar = ((priorAudibleMs / 1000.0) *
+            SPEED_BASELINE_CHARS_PER_SECOND).toInt()
+        speedHandoffCharOffset = handoffChar
         currentSpeed = speed
-        _observableState.update { it.copy(speed = speed) }
+        // Issue #555 — also write the truthful audible char-offset into
+        // PlaybackState BEFORE the rebuild so the UI's position
+        // interpolation (which reads state.charOffset and computes
+        // baseMs = charOffset / BASELINE * 1000) anchors at the right
+        // value. The consumer thread's `scope.launch { _observableState
+        // .update { ... charOffset = chunk.range.startCharInChapter } }`
+        // updates are queued on Main and can land BEFORE we get here —
+        // setting charOffset = handoffChar here ensures the next UI
+        // composition reads the truthful value, not a sentence-start
+        // value that lags by one chunk.
+        //
+        // Coerced to be ≥ the current state.charOffset so we don't
+        // accidentally rewind the chapter cursor when handoff happens
+        // to round below it. Bookkeeping invariant: charOffset is
+        // monotonic within a chapter except across explicit seeks.
+        val anchorChar = handoffChar.coerceAtLeast(_observableState.value.charOffset)
+        _observableState.update { it.copy(speed = speed, charOffset = anchorChar) }
         if (_observableState.value.isPlaying) startPlaybackPipeline() // rebuild with new speed
         invalidateState()
     }
@@ -2577,7 +2886,15 @@ class EnginePlayer @AssistedInject constructor(
     }
 
     private fun estimateDurationMs(text: String): Long {
-        val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * currentSpeed
+        // Issue #555 — duration on the media-time (speed-1) axis. Stable
+        // across speed changes so the scrubber rail length doesn't jump
+        // when the user taps a different speed chip mid-chapter. The
+        // wall-clock time-to-completion DOES shrink at higher speeds —
+        // that's surfaced separately (in the "X min left" caption when
+        // wired) without disturbing the rail. [currentPositionMs] uses
+        // the same axis, so position-over-duration is the consumption
+        // fraction regardless of speed.
+        val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND
         if (charsPerSec <= 0f) return 0L
         return ((text.length / charsPerSec) * 1000f).toLong()
     }
@@ -3035,6 +3352,16 @@ class EnginePlayer @AssistedInject constructor(
         /** Fallback when the engine reports a non-positive sample rate (model
          *  not loaded yet). Piper voices are 22050Hz; Kokoro is 24000Hz. */
         const val DEFAULT_SAMPLE_RATE = 22050
+
+        /** Issue #553 — hard cap on the wait for the next chapter's body
+         *  to land in the DB during auto-advance. Beyond this we bail
+         *  with a typed [PlaybackError.ChapterFetchFailed] rather than
+         *  letting the user sit on a frozen Buffering state. 30 s
+         *  comfortably covers a LAN Notion fetch (typically <1 s) plus
+         *  a slow-network worst case; faster than the user's patience
+         *  but generous enough that a healthy auto-advance never trips
+         *  it. */
+        const val CHAPTER_BODY_WAIT_TIMEOUT_MS = 30_000L
 
         /** Issue #196 — Kokoro's previously-hardcoded silence scale
          *  (0.2f) is the multiplier=1.0 baseline. We linearly scale

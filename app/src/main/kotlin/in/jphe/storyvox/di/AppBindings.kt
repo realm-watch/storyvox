@@ -1014,7 +1014,22 @@ internal class RealPlaybackControllerUi(
             }
 
     private fun PlaybackState.toUi(nowMs: Long): UiPlaybackState {
-        val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND * speed
+        // Issue #555 — duration + position both live on the speed-1
+        // (media-time) axis now. [in.jphe.storyvox.playback.tts.EnginePlayer.estimateDurationMs]
+        // returns the media-time duration; `baseMs` here converts the
+        // engine's reported char-offset to media-time the same way (no
+        // `* speed`). Wall-clock interpolation between sentence anchors
+        // multiplies elapsed wall-clock-ms BY speed so the interpolated
+        // media-time advances at the same rate as the engine's actual
+        // playback through the chapter text — at speed=1.5, 1 s of
+        // wall-clock = 1.5 s of media-time.
+        //
+        // Result: when the user taps a different speed chip mid-chapter,
+        // the displayed position and total duration both stay rock-stable
+        // (rail length doesn't shrink/grow, thumb pixel position holds).
+        // The audit reported a ~19 s backward jump on a 1× → 1.5× tap;
+        // this formula makes the symptom impossible at the UI seam.
+        val baselineCharsPerSec = SPEED_BASELINE_CHARS_PER_SECOND
         // Re-anchor when the engine reports a new charOffset (sentence boundary,
         // seek, or chapter switch). Otherwise interpolate forward from the anchor
         // using wall time.
@@ -1023,7 +1038,9 @@ internal class RealPlaybackControllerUi(
             anchorCharOffset = charOffset
             anchorElapsedMs = nowMs
         }
-        val baseMs = if (charsPerSec > 0f) ((charOffset / charsPerSec) * 1000f).toLong() else 0L
+        val baseMs = if (baselineCharsPerSec > 0f) {
+            ((charOffset / baselineCharsPerSec) * 1000f).toLong()
+        } else 0L
         val sentence = currentSentenceRange
         // Freeze wall-time interpolation while the voice is warming up — i.e.
         // user hit play but no sentence audio has started yet. Otherwise the
@@ -1037,8 +1054,15 @@ internal class RealPlaybackControllerUi(
         // for visible "playing" feedback + silence.
         val rawWarmingUp = isPlaying && sentence == null
         val warmingUp = rawWarmingUp && cachedWarmupWait
-        val elapsedMs = if (isPlaying && !warmingUp) (nowMs - anchorElapsedMs).coerceAtLeast(0L) else 0L
-        val positionMs = (baseMs + elapsedMs).coerceAtMost(durationEstimateMs.coerceAtLeast(baseMs))
+        // Issue #555 — elapsed wall-clock-ms × speed = elapsed media-time-ms.
+        // Without this scaling, interpolation would advance at wall-clock
+        // rate while the engine plays at speed × wall-clock through the
+        // chapter — the scrubber would underrun the audio at higher
+        // speeds and overrun at lower speeds. Multiplying by speed keeps
+        // the interpolated thumb in sync with what's actually being heard.
+        val wallElapsedMs = if (isPlaying && !warmingUp) (nowMs - anchorElapsedMs).coerceAtLeast(0L) else 0L
+        val elapsedMediaMs = (wallElapsedMs * speed).toLong()
+        val positionMs = (baseMs + elapsedMediaMs).coerceAtMost(durationEstimateMs.coerceAtLeast(baseMs))
         return UiPlaybackState(
             fictionId = currentFictionId,
             chapterId = currentChapterId,

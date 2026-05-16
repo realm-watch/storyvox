@@ -20,9 +20,11 @@ class PlaybackStateTest {
     }
 
     @Test fun `scrubProgress at half-way charOffset is roughly half`() {
-        // 1000ms at speed=1.0 => 1.0 * 12.5 chars/s = 12.5 chars total.
-        // (SPEED_BASELINE_WPM 150 * 5 / 60 = 12.5 chars/sec.)
-        val total = (1_000f / 1000f) * SPEED_BASELINE_CHARS_PER_SECOND * 1.0f
+        // #555 — duration + position both live on the speed-invariant
+        // media-time axis. 1000ms / 12.5 chars/s = 12.5 chars total
+        // regardless of speed (SPEED_BASELINE_WPM 150 * 5 / 60 = 12.5
+        // chars/sec.)
+        val total = (1_000f / 1000f) * SPEED_BASELINE_CHARS_PER_SECOND
         val s = PlaybackState(
             durationEstimateMs = 1_000L,
             charOffset = (total / 2f).toInt(),
@@ -40,12 +42,14 @@ class PlaybackStateTest {
         assertEquals(1f, s.scrubProgress(), 0f)
     }
 
-    @Test fun `higher speed expands expected total chars and reduces progress`() {
+    @Test fun `scrubProgress is speed-invariant — same charOffset, same fraction`() {
+        // #555 — both the rail and the position now live on the speed-1
+        // axis. A given charOffset / duration pair yields the same
+        // progress fraction regardless of speed (which is the whole
+        // point — speed changes shouldn't shift the visual scrubber).
         val base = PlaybackState(durationEstimateMs = 10_000L, charOffset = 100, speed = 1.0f)
         val fast = base.copy(speed = 2.0f)
-        // At 2x speed, the same charOffset over the same duration represents
-        // half as much progress (twice as much total content fits).
-        assertEquals(base.scrubProgress() / 2f, fast.scrubProgress(), 1e-4f)
+        assertEquals(base.scrubProgress(), fast.scrubProgress(), 1e-4f)
     }
 
     @Test fun `speed baseline constants are stable contract`() {
