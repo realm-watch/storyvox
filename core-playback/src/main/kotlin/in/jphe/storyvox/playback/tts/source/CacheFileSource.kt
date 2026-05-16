@@ -81,10 +81,34 @@ class CacheFileSource private constructor(
     /** No headroom tracking for cache files — they don't underrun. */
     override fun decrementHeadroomForChunk(chunk: PcmChunk) = Unit
 
+    /**
+     * #573 — Gapless: stamped true when [nextChunk] returns null
+     * because the cursor walked past the last sentence (i.e. the cache
+     * file is fully drained). The consumer reads [producedAllSentences]
+     * to know "this is a natural chapter end" without inferring from
+     * the racy `pipelineRunning` flag. Volatile because the consumer
+     * (audio thread) writes it inside [nextChunk] (which dispatches to
+     * Dispatchers.IO) and the consumer's finally block reads it.
+     */
+    @Volatile private var producedAll: Boolean = false
+    override val producedAllSentences: Boolean get() = producedAll
+
     override suspend fun nextChunk(): PcmChunk? = withContext(Dispatchers.IO) {
         val entries = index.sentences
         val i = cursor
-        if (i >= entries.size) return@withContext null
+        if (i >= entries.size) {
+            // #573 — Gapless: stamp the natural-end flag BEFORE returning
+            // null so the consumer's finally block sees a stable
+            // "yes, the cache was fully drained" signal independent of
+            // any concurrent stopPlaybackPipeline call.
+            producedAll = true
+            android.util.Log.i(
+                "CacheFileSource",
+                "cache source: natural end (cursor=$i past last sentence ${entries.size}), " +
+                    "returning null",
+            )
+            return@withContext null
+        }
         val e = entries[i]
         cursor = i + 1
         val pcm = readPcmFor(e)
