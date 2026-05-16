@@ -9,6 +9,25 @@ Entries before v0.5.12 are reconstructed from the git log — see
 
 ## [Unreleased]
 
+## [0.5.60] — 2026-05-16
+
+Crash bundle from the #579 stress-test pair (one agent driving the Z Flip 3 through monkey + scripted scenarios, one fixing in a worktree). 5 crashes / ANR-class issues closed in PR #587.
+
+### Fixed (#587)
+- **#585 (FATAL) `NetworkOnMainThreadException` across 6 source plugins** — `ArxivSource.popular` reproduced 3/3 on Browse-tab source-chip cycling. Same crash class hit `GutendexApi.get` in v0.5.58 — root cause was missing `withContext(Dispatchers.IO)` at the transport seam. Fixed across **arxiv, discord, notion, outline, plos, rss** API classes. Audited remaining sources; `ao3`, `gutenberg`, `hackernews`, `wikipedia`, `standardebooks` already wrap correctly. Follow-up audit deferred for `MatrixApi`, `SlackApi`, `RadioBrowserApi`, `TelegramApi`, `ReadabilityFetcher`, `WikisourceApi`, partial `StandardEbooksApi`, `RoyalRoadSource` `CloudflareAwareFetcher`.
+- **#582 ANR-class monitor contention 2.05 s on `VoiceEngine.loadModel` ↔ `getSampleRate`** — UI thread blocked 2+ s on engine load while reading the sample rate. New `EngineSampleRateCache` (`@Volatile` per-engine fields). UI-thread reads in `startPlaybackPipeline` / `activeVoiceEngineHandle` / `startRecapPipeline` now hit the volatile instead of the contended engine lock; cache populated post-`loadModel` in `EnginePlayer` and `ChapterRenderJob`. 5 unit tests.
+- **#581 finalizer `IllegalStateException 'appender already closed'`** — `PcmAppender.fun finalize()` shadowed `java.lang.Object.finalize()` (Kotlin doesn't require `override` for the deprecated GC hook), so `FinalizerDaemon` called our user method on every reclaim and `check(!closed)` threw. Renamed `finalize() → complete()` across `PcmAppender`, `ChapterRenderJob`, `EngineStreamingSource`, `PcmCacheManifest`, + 5 test files. Regression test in `PcmAppenderTest` reflectively asserts `finalize` is no longer declared.
+- **#583 Sign-in raw `Malformed parameter: [\\` leak** — InstantDB server error surfaced verbatim to user. Added `isLikelyEmail` (RFC 5321 §4.5.3.1.1 64-char local cap rejects the 180-character stress repro) + `sanitizeAuthError` (strips JSON-path tokens, maps to friendly equivalents). Both wired into `SyncAuthViewModel.sendCode` + `verifyCode`. 18 unit tests pin every branch.
+- **#584 Add-fiction-by-URL accepts `file:///etc/passwd` + `javascript:alert(1)`** (security) — added `isLikelyAddByUrl` scheme allowlist (http/https only, case-insensitive, post-trim). Wired into `LibraryViewModel.submitAddByUrl` before resolver call. 10 unit tests cover every rejection class.
+
+### Deferred
+- **#586 ViewRootImpl `showInsets on window that no longer has views` during settings nav monkey** — sibling stress-test agent's triage classified as "polish for QA round 5" — no crash, no visible bug, just framework log noise during heavy navigation.
+
+### Under the hood
+- Stress-test agent ran 4 monkey rounds + 12,000 random events + 30x cover-style toggles + 90x sleep timer + 150x speed-chip taps + 20x voice download cancel-restart + theme switch x10 + lock-unlock + rotation + Z Flip 3 cover-screen simulation. Surfaces that withstood all stress: 60s/120s/300s background return, 10x force-stop relaunch, BT enable/disable mid-playback.
+- 6 issues filed total; 5 fixed; 1 deferred.
+- Recovery note: crash-fix-from-stress agent edited absolute paths in main's working tree instead of its assigned worktree (same slip pattern as a prior crash-fixer agent). Orchestrator captured the work cleanly via stash → branch → commit.
+
 ## [0.5.59] — 2026-05-16
 
 The "go full auto" release — 7 PRs, ~25 issues, 2 major features in one bundle. Spawned 7 parallel agents in worktrees off v0.5.58 after JP requested broad cleanup + the audit's hard `dumpsys` evidence revealed a deeper bug surface than v0.5.58 caught.
