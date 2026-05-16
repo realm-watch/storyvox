@@ -19,6 +19,10 @@
     android:background="@drawable/widget_background"
     android:padding="8dp">
 
+    <!-- 1x1: the cover IS the only element, so it has to carry the
+         a11y label. This is the one layout where #549's duplicate-
+         announcement complaint doesn't apply (no parent text to
+         duplicate). Keep the contentDescription. -->
     <ImageView
         android:id="@+id/widget_cover"
         android:layout_width="match_parent"

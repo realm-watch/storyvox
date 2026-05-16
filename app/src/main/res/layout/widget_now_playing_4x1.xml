@@ -21,13 +21,16 @@
     android:padding="10dp"
     android:gravity="center_vertical">
 
+    <!-- Issue #549 — cover is decorative; the title TextView is the
+         announceable element. See widget_now_playing_4x2.xml for the
+         full rationale. -->
     <ImageView
         android:id="@+id/widget_cover"
         android:layout_width="56dp"
         android:layout_height="56dp"
         android:scaleType="centerCrop"
         android:src="@drawable/ic_widget_book_placeholder"
-        android:contentDescription="@string/widget_now_playing_label" />
+        android:importantForAccessibility="no" />
 
     <LinearLayout
         android:id="@+id/widget_text_block"

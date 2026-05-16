@@ -419,7 +419,6 @@ fun FictionDetailScreen(
                     }
                 },
                 onFollowOnSource = viewModel::toggleFollowOnSource,
-                onListen = { state.chapters.firstOrNull()?.id?.let(viewModel::listen) },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         } else {
@@ -474,7 +473,6 @@ fun FictionDetailScreen(
                     }
                 },
                 onFollowOnSource = viewModel::toggleFollowOnSource,
-                onListen = { state.chapters.firstOrNull()?.id?.let(viewModel::listen) },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
@@ -884,9 +882,19 @@ private fun BottomBar(
     followOnSource: FollowOnSourceUiState? = null,
     onFollow: () -> Unit,
     onFollowOnSource: () -> Unit = {},
-    onListen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Issue #538 — the third button in this bar used to be "Listen",
+    // wired to `state.chapters.firstOrNull()` → viewModel.listen(...).
+    // That duplicated what tapping any ChapterCard in the list already
+    // does (the list cards each fire `viewModel.listen(ch.id)` on tap),
+    // so the bottom-bar Listen button was always "play whatever chapter
+    // 1 happens to be." Two-tap flow (Library → fiction → Listen) felt
+    // confusing because users perceived "Listen" as a separate route
+    // distinct from "tap chapter 1." Removing the button collapses to
+    // a single canonical entry-point per chapter — the chapter card
+    // tap. Library + follow-on-source buttons stay; both have no other
+    // surfaced control on this screen.
     val spacing = LocalSpacing.current
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -901,7 +909,10 @@ private fun BottomBar(
             BrassButton(
                 label = if (isInLibrary) "In library" else "Add to library",
                 onClick = onFollow,
-                variant = BrassButtonVariant.Secondary,
+                // Issue #538 — promoted to Primary now that the standalone
+                // Listen button is gone. Add-to-library is the row's
+                // primary action; Follow-on-source stays Secondary.
+                variant = if (isInLibrary) BrassButtonVariant.Secondary else BrassButtonVariant.Primary,
                 modifier = Modifier.weight(1f),
             )
             if (followOnSource != null) {
@@ -912,12 +923,6 @@ private fun BottomBar(
                     modifier = Modifier.weight(1f),
                 )
             }
-            BrassButton(
-                label = "Listen",
-                onClick = onListen,
-                variant = BrassButtonVariant.Primary,
-                modifier = Modifier.weight(1f),
-            )
         }
     }
 }

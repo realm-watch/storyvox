@@ -156,6 +156,20 @@ internal object NowPlayingWidgetRenderer {
             R.drawable.ic_widget_play
         }
         views.setImageViewResource(R.id.widget_btn_play_pause, playIcon)
+        // Issue #542 — also swap the contentDescription so TalkBack
+        // announces the correct verb. Pre-fix, the layout XML hardcoded
+        // "Play" so a TalkBack user heard "Play" even while audio was
+        // playing; sighted users saw the pause icon but the screen
+        // reader and the UI disagreed. RemoteViews has no public
+        // setContentDescription, but setCharSequence on the android
+        // attribute key works on every API we support (21+); this is
+        // the pattern Glance and AOSP MediaSession widgets use.
+        val playPauseLabel = if (snapshot.isPlaying) {
+            context.getString(R.string.widget_action_pause)
+        } else {
+            context.getString(R.string.widget_action_play)
+        }
+        views.setContentDescription(R.id.widget_btn_play_pause, playPauseLabel)
         views.setOnClickPendingIntent(
             R.id.widget_btn_play_pause,
             broadcast(context, NowPlayingWidgetProvider.ACTION_PLAY_PAUSE, REQ_PLAY_PAUSE),
