@@ -66,6 +66,22 @@ object DataModule {
     fun provideDb(@ApplicationContext ctx: Context): StoryvoxDatabase =
         Room.databaseBuilder(ctx, StoryvoxDatabase::class.java, StoryvoxDatabase.NAME)
             .addMigrations(*ALL_MIGRATIONS)
+            // Issue #570 — F2FS_IOC_SET_PIN_FILE SELinux denial silencer.
+            // Samsung's One UI 4+ (F2FS filesystem) audits SQLite's WAL
+            // file-pinning ioctl as `untrusted_app` cannot perform
+            // ioctl on app_data_file (ioctlcmd=0xf522 in dmesg). The
+            // denials are cosmetic (the WAL pin call falls through
+            // benignly when denied) but flood the audit log on Z
+            // Flip3, slowing every `adb shell dumpsys` and burying
+            // real failures. Switching the journal mode to TRUNCATE
+            // bypasses WAL entirely so SQLite never asks F2FS to pin
+            // the log file. Trade-off: slightly higher per-write
+            // latency on bulk transactions (storyvox's DB is small —
+            // chapter rows, history rows, playback positions — so
+            // the cost is negligible). Read concurrency is
+            // unaffected; readers + writer still serialize through
+            // a single connection regardless of mode.
+            .setJournalMode(androidx.room.RoomDatabase.JournalMode.TRUNCATE)
             .build()
 
     @Provides fun fictionDao(db: StoryvoxDatabase): FictionDao = db.fictionDao()

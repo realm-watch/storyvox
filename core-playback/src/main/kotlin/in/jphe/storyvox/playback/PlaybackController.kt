@@ -574,26 +574,41 @@ class DefaultPlaybackController @Inject constructor(
     }
 
     override fun skipForward30s() {
-        // #550 / #555 — seek by exactly 30 seconds on the media-time
-        // rail. Both position and duration live on the speed-invariant
-        // axis now, so "30 s of rail" = `baseline * 30` chars
-        // regardless of speed. At speed=2 the user hears those 30 s of
-        // chapter content in 15 wall-clock seconds; the scrubber thumb
-        // jumps the same 30 s either way, matching Spotify's "+30 s" on
-        // a sped-up podcast (which is "30 s of media-time" not "30 s of
-        // wall-clock").
-        val cur = state.value.charOffset
-        val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND
-        val target = (cur + (charsPerSec * 30).toInt()).coerceAtLeast(0)
+        // #550 / #555 / #565 — seek by exactly 30 seconds on the
+        // media-time rail. Both position and duration live on the
+        // speed-invariant axis now, so "30 s of rail" =
+        // `baseline * 30` chars regardless of speed. At speed=2 the
+        // user hears those 30 s of chapter content in 15 wall-clock
+        // seconds; the scrubber thumb jumps the same 30 s either
+        // way, matching Spotify's "+30 s" on a sped-up podcast
+        // (which is "30 s of media-time" not "30 s of wall-clock").
+        //
+        // #565 — anchor the skip to the truthful audible position
+        // (`playbackPositionMs`) rather than `state.charOffset`.
+        // `state.charOffset` is updated by the consumer thread only
+        // at sentence boundaries (it reflects the START of the
+        // currently-being-written sentence), so a skip from mid-
+        // sentence landed "from the sentence start", off by up to
+        // 30 s of sentence length on the phone audit (`-19s to +35s`
+        // slop band). Anchoring on the position feed converts ms →
+        // chars via the same baseline math the rail uses, then adds
+        // the +30 s char delta. Net effect: skip lands exactly 30 s
+        // ahead of where the listener actually was.
+        val anchorMs = playbackPositionMs.value
+        val anchorChars = positionMsToCharOffset(anchorMs, state.value.speed)
+        val target = (anchorChars + skipDeltaChars(30f, state.value.speed))
+            .coerceAtLeast(0)
         player?.seekToCharOffset(target)
     }
 
     override fun skipBack30s() {
-        // #550 / #555 — see [skipForward30s]. 30 s of media-time
-        // regardless of speed.
-        val cur = state.value.charOffset
-        val charsPerSec = SPEED_BASELINE_CHARS_PER_SECOND
-        val target = (cur - (charsPerSec * 30).toInt()).coerceAtLeast(0)
+        // #550 / #555 / #565 — see [skipForward30s]. 30 s of
+        // media-time regardless of speed; anchored on the audible
+        // position rather than the sentence-aligned charOffset.
+        val anchorMs = playbackPositionMs.value
+        val anchorChars = positionMsToCharOffset(anchorMs, state.value.speed)
+        val target = (anchorChars - skipDeltaChars(30f, state.value.speed))
+            .coerceAtLeast(0)
         player?.seekToCharOffset(target)
     }
 
