@@ -501,6 +501,20 @@ interface PlaybackControllerUi {
      */
     val events: Flow<`in`.jphe.storyvox.playback.PlaybackUiEvent>
         get() = kotlinx.coroutines.flow.emptyFlow()
+
+    /**
+     * "Why are we waiting?" diagnostic. Forwarded straight from
+     * [in.jphe.storyvox.playback.PlaybackController.waitReason]. Null when
+     * audio is genuinely flowing; non-null with a typed
+     * [in.jphe.storyvox.playback.diagnostics.WaitReason] otherwise. The
+     * reader UI subscribes through this flow to render the brass
+     * `WhyAreWeWaitingPanel` above the cover.
+     *
+     * Default emits null forever so test fakes that don't care about
+     * the diagnostic stay slim.
+     */
+    val waitReason: Flow<`in`.jphe.storyvox.playback.diagnostics.WaitReason?>
+        get() = kotlinx.coroutines.flow.flowOf(null)
     fun play()
     fun pause()
     fun seekTo(ms: Long)

@@ -1,5 +1,7 @@
 package `in`.jphe.storyvox.playback
 
+import `in`.jphe.storyvox.playback.diagnostics.AudioOutputMonitor
+import `in`.jphe.storyvox.playback.diagnostics.WaitReason
 import `in`.jphe.storyvox.playback.tts.EnginePlayer
 import `in`.jphe.storyvox.playback.tts.RecapPlaybackState
 import `in`.jphe.storyvox.playback.tts.SentenceChunker
@@ -56,6 +58,20 @@ interface PlaybackController {
      *  is called; flips to Speaking while the one-shot utterance is playing,
      *  back to Idle when it finishes naturally or [stopSpeaking] is called. */
     val recapPlayback: StateFlow<RecapPlaybackState>
+
+    /**
+     * "Why are we waiting?" — the magical user-facing diagnostic that
+     * answers the core question "is audio actually coming out of the
+     * speakers, and if not, why?". Null when audio is genuinely flowing
+     * (or playback is idle/paused/errored — those have dedicated UI
+     * surfaces). Non-null with a typed [WaitReason] otherwise.
+     *
+     * Fed by [AudioOutputMonitor], which polls the truthful audio
+     * position from EnginePlayer's AudioTrack head-position counter +
+     * cross-references audio focus state, device volume, and route
+     * changes. See WaitReason.kt for the variant catalogue.
+     */
+    val waitReason: StateFlow<WaitReason?>
 
     suspend fun play(fictionId: String, chapterId: String, charOffset: Int = 0)
     fun pause()
@@ -167,6 +183,10 @@ class DefaultPlaybackController @Inject constructor(
      *  jumps to bookmark positions; the player layer needs no
      *  awareness of bookmarks (they're a chapter-metadata concern). */
     private val chapterRepo: `in`.jphe.storyvox.data.repository.ChapterRepository,
+    /** "Why are we waiting?" — Lazy break of the Singleton-graph cycle
+     *  (monitor depends on controller, controller exposes monitor's
+     *  flow). Resolved once on first [waitReason] access. */
+    private val audioOutputMonitor: dagger.Lazy<AudioOutputMonitor>,
 ) : PlaybackController {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -253,6 +273,13 @@ class DefaultPlaybackController @Inject constructor(
      *  active player's flow while bound. */
     private val _recapPlayback = MutableStateFlow(RecapPlaybackState.Idle)
     override val recapPlayback: StateFlow<RecapPlaybackState> = _recapPlayback.asStateFlow()
+
+    /** "Why are we waiting?" — exposed via the monitor singleton. The
+     *  Lazy resolves on first access; consumers see a permanent
+     *  StateFlow that the monitor writes into. */
+    override val waitReason: StateFlow<WaitReason?> by lazy {
+        audioOutputMonitor.get().waitReason
+    }
 
     init {
         scope.launch {

@@ -58,6 +58,15 @@ data class ReaderUiState(
      *  on slow hardware can flip it off without diving into Settings.
      *  Default true matches the Settings default. */
     val pitchInterpolationHighQuality: Boolean = true,
+    /**
+     * "Why are we waiting?" — non-null whenever audio is NOT reaching
+     * the speakers (warming, buffering, focus lost, device muted, route
+     * change, stuck). The reader UI renders the brass diagnostic panel
+     * above the cover based on this value. Sourced from
+     * [PlaybackControllerUi.waitReason] which forwards
+     * AudioOutputMonitor's flow.
+     */
+    val waitReason: `in`.jphe.storyvox.playback.diagnostics.WaitReason? = null,
 )
 
 /** Issue #278 — the player loading screen used to be a silent eternity:
@@ -272,7 +281,22 @@ class ReaderViewModel @Inject constructor(
         // SettingsRepositoryUi flow updates and the next emission flows
         // straight back through this `combine`.
         settings.settings,
-    ) { state, text, pane, phase, settingsSnapshot ->
+        // "Why are we waiting?" — pipe the AudioOutputMonitor flow
+        // through ReaderUiState so AudiobookView can render the brass
+        // diagnostic panel without taking another flow subscription.
+        playback.waitReason,
+    ) { values ->
+        @Suppress("UNCHECKED_CAST")
+        val state = values[0] as UiPlaybackState
+        @Suppress("UNCHECKED_CAST")
+        val text = values[1] as String
+        @Suppress("UNCHECKED_CAST")
+        val pane = values[2] as ReaderView
+        @Suppress("UNCHECKED_CAST")
+        val phase = values[3] as LoadingPhase
+        val settingsSnapshot = values[4] as `in`.jphe.storyvox.feature.api.UiSettings
+        @Suppress("UNCHECKED_CAST")
+        val waitReason = values[5] as? `in`.jphe.storyvox.playback.diagnostics.WaitReason
         ReaderUiState(
             playback = state,
             chapterText = text,
@@ -280,6 +304,7 @@ class ReaderViewModel @Inject constructor(
             loadingPhase = phase,
             punctuationPauseMultiplier = settingsSnapshot.punctuationPauseMultiplier,
             pitchInterpolationHighQuality = settingsSnapshot.pitchInterpolationHighQuality,
+            waitReason = waitReason,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReaderUiState())
 
