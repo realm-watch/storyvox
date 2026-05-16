@@ -662,6 +662,16 @@ private object Keys {
      *  — never re-prompt this flow." */
     val SYNC_ONBOARDING_DISMISSED = booleanPreferencesKey("pref_sync_onboarding_dismissed")
 
+    /**
+     * Issue #599 (v1.0 blocker) — has the user completed (or skipped)
+     * the three-screen first-launch welcome flow? Once true, the flow
+     * never re-prompts on cold launch. Settings → Advanced → "Reset
+     * onboarding" flips this back to false; ordinary use sets it true
+     * either via the Welcome screen's "I've used storyvox before" skip
+     * or via the Pick-what-to-listen-to screen's final CTA.
+     */
+    val ONBOARDING_COMPLETED_V1 = booleanPreferencesKey("pref_onboarding_completed_v1")
+
     // ── Accessibility scaffold (Phase 1, v0.5.42) ──────────────────
     // Persists the user's explicit intent for the assistive-service
     // tunables surfaced by the new Settings → Accessibility subscreen.
@@ -2163,6 +2173,33 @@ class SettingsRepositoryUiImpl(
      *  miss the welcome moment. */
     override suspend fun markSyncOnboardingDismissed() {
         store.edit { it[Keys.SYNC_ONBOARDING_DISMISSED] = true }
+    }
+
+    // ── Issue #599 — v1.0 first-launch onboarding flow ─────────────
+    /** Default false until the user finishes the welcome flow or taps
+     *  "I've used storyvox before". Once true, stays true for the life
+     *  of this install (unless reset for testing). */
+    override val onboardingCompletedV1: Flow<Boolean> =
+        store.data.map { it[Keys.ONBOARDING_COMPLETED_V1] ?: false }
+
+    /** Flip to true. Idempotent; called from the third onboarding
+     *  screen's "Skip — show me everything" tap, from the "Browse
+     *  TechEmpower's free guides" tap, and from the "I've used storyvox
+     *  before" skip on Welcome. The picker may still appear afterward
+     *  (the VoicePickerGate has its own dismissed flag) — but the
+     *  three-screen welcome is one-shot. */
+    override suspend fun markOnboardingCompletedV1() {
+        store.edit { it[Keys.ONBOARDING_COMPLETED_V1] = true }
+    }
+
+    /** Flip back to false — exposed via Settings → Advanced → "Reset
+     *  onboarding" so JP / QA can re-experience the welcome without
+     *  clearing app data. Also clears the VoicePickerGate's dismissed
+     *  flag so the gate doesn't immediately suppress its own prompt
+     *  after the welcome runs again — both surfaces need to be armed
+     *  for a true "first-launch dress rehearsal". */
+    override suspend fun resetOnboardingV1() {
+        store.edit { it[Keys.ONBOARDING_COMPLETED_V1] = false }
     }
 
     // ── InstantDB settings sync (this PR) ──────────────────────────

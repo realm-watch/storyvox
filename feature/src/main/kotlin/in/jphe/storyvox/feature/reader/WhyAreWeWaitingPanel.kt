@@ -280,24 +280,33 @@ private fun BrassActionChip(
  * headline + Inter explanation = library card aesthetic.
  */
 internal fun secondaryLineFor(reason: WaitReason): String = when (reason) {
+    // Plain-English secondary lines (#606, v1.0). Every line is one
+    // short sentence that a child or TalkBack listener can parse on
+    // first hearing. Notable replacements:
+    //   - "The pipeline is rendering the next sentence's audio"
+    //     (engineering jargon) → "Just a moment — the next bit is
+    //     almost ready." (concrete, human).
+    //   - "If this persists, tap retry to nudge the pipeline" →
+    //     "Tap Retry if it doesn't come back on its own." (action
+    //     described in plain terms, no "pipeline" mention).
     is WaitReason.WarmingVoice ->
-        "Voice models load once per chapter session."
+        "Each voice gets ready once when you start."
     is WaitReason.LoadingChapter ->
-        "Fetching the chapter text from its source."
+        "Getting the chapter ready to read aloud."
     is WaitReason.BufferingNextSentence ->
-        "The pipeline is rendering the next sentence's audio."
+        "Just a moment — the next bit is almost ready."
     is WaitReason.NetworkSlow ->
-        "The chapter source is responding slowly."
+        "Your internet is taking longer than usual."
     is WaitReason.FocusLost ->
-        "Audio focus returns when the other audio ends."
+        "We'll pick up right where you left off."
     WaitReason.AudioRouteChange ->
-        "Adjusting for the new output device."
+        "Switching to the new speaker or headphones."
     WaitReason.DeviceMuted ->
-        "Raise the media volume to hear playback."
+        "Use the volume buttons on the side of your phone."
     is WaitReason.VoiceDownloadFailed ->
-        "Voice download didn't complete. Check your connection."
+        "Check your internet connection, then try again."
     is WaitReason.AudioOutputStuck ->
-        "If this persists, tap retry to nudge the pipeline."
+        "Tap Retry if it doesn't come back on its own."
 }
 
 /**

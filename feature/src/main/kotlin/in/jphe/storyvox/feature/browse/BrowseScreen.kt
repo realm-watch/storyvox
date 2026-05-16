@@ -633,10 +633,23 @@ private fun SkeletonGrid() {
  * integration token is configured. The Notion source falls back to
  * the TechEmpower public Notion content via the anonymous-public
  * reader (#393), which surfaces TechEmpower's Guides / Resources /
- * About / Donate as fictions. Without a banner the user reads the
- * cards as "Notion is broken — why is it showing TechEmpower?". The
- * banner names the demo state explicitly and routes to Settings →
- * Notion for the user's own token.
+ * About / Donate as fictions.
+ *
+ * Issue #602 (v1.0). The banner used to lead with "Add a Notion
+ * integration token to read your own database." — confusing to a
+ * brand-new user who hadn't asked for a Notion database in the first
+ * place. The anonymous content IS the user's content as far as
+ * first-launch is concerned (TechEmpower's free guides), and the
+ * "add your own" path is a power-user affordance, not a default
+ * call-to-action. v1.0 reframes:
+ *
+ *   - Headline: "TechEmpower's free guides" (concrete, true)
+ *   - Body: positive — what they ARE looking at, not what's missing
+ *   - Power-user CTA: smaller, off-message "Have your own Notion
+ *     workspace?" affordance that ONLY appears in the long-press /
+ *     advanced flow. For v1.0 we keep the button in place but with
+ *     softer copy so a brand-new user doesn't read it as a setup
+ *     blocker.
  */
 @Composable
 private fun NotionDemoBanner(onOpenSettings: () -> Unit) {
@@ -656,13 +669,16 @@ private fun NotionDemoBanner(onOpenSettings: () -> Unit) {
             // collection explicitly so the user reads the cards as
             // intentional, not stub.
             Text(
+<<<<<<< HEAD
+                "TechEmpower's free guides",
+=======
                 "Showing TechEmpower starter collection",
+>>>>>>> origin/main
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
             )
             Text(
-                "You're browsing TechEmpower's public Notion site. " +
-                    "Add a Notion integration token to read your own database.",
+                "Free, no account needed. Tap any card to listen.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = spacing.xxs),
@@ -670,7 +686,7 @@ private fun NotionDemoBanner(onOpenSettings: () -> Unit) {
             androidx.compose.material3.TextButton(
                 onClick = onOpenSettings,
                 modifier = Modifier.padding(top = spacing.xs),
-            ) { Text("Set up Notion in Settings") }
+            ) { Text("Have a Notion workspace? Connect it →") }
         }
     }
 }
