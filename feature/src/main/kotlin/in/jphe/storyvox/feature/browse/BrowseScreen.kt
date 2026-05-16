@@ -663,8 +663,17 @@ private fun NotionDemoBanner(onOpenSettings: () -> Unit) {
             .padding(horizontal = spacing.md, vertical = spacing.xs),
     ) {
         Column(modifier = Modifier.padding(spacing.md)) {
+            // Issue #621 — "Demo content" read as a debug placeholder
+            // ("did the dev forget to wire something up?"). Replace
+            // with a friendly TechEmpower phrasing that names the
+            // collection explicitly so the user reads the cards as
+            // intentional, not stub.
             Text(
+<<<<<<< HEAD
                 "TechEmpower's free guides",
+=======
+                "Showing TechEmpower starter collection",
+>>>>>>> origin/main
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -858,8 +867,23 @@ private fun BrowseSourcePicker(
     ) {
         items(visibleSources, key = { it.id }) { descriptor ->
             val label = BrowseSourceUi.chipLabel(descriptor.id, descriptor.displayName)
+            val isSelected = descriptor.id == selectedId
+            // Issue #622 — consistency sweep across the 21 backend chips.
+            // Pre-fix the chips relied on `FilterChipDefaults` for the
+            // unselected state, which on dark surfaces renders an almost-
+            // invisible outline. The result was a strip where the selected
+            // chip popped but the rest faded into the background, making
+            // it hard to count or scan the available sources.
+            //
+            // Fix: every chip carries the SAME shape, SAME border, SAME
+            // label style. Selected = brass primaryContainer fill.
+            // Unselected = transparent fill + brass outline at 35 % alpha
+            // (subtle, matches the WhyAreWeWaitingPanel border tone) +
+            // onSurfaceVariant label. The brass primary border on the
+            // active chip is suppressed (the fill already announces
+            // selection) so the strip reads as a uniform family.
             FilterChip(
-                selected = descriptor.id == selectedId,
+                selected = isSelected,
                 onClick = { onSelect(descriptor.id) },
                 label = {
                     Text(
@@ -871,8 +895,18 @@ private fun BrowseSourcePicker(
                     )
                 },
                 colors = FilterChipDefaults.filterChipColors(
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                     selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ),
+                border = FilterChipDefaults.filterChipBorder(
+                    enabled = true,
+                    selected = isSelected,
+                    borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                    selectedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
+                    borderWidth = 1.dp,
+                    selectedBorderWidth = 0.dp,
                 ),
             )
         }

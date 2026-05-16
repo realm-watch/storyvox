@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,6 +55,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -72,6 +79,10 @@ import `in`.jphe.storyvox.ui.component.BrassButtonVariant
 import `in`.jphe.storyvox.ui.component.BrassProgressBar
 import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
 import `in`.jphe.storyvox.ui.component.cascadeReveal
+import `in`.jphe.storyvox.ui.theme.LocalReducedMotion
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.rotate
 import `in`.jphe.storyvox.ui.theme.LocalSpacing
 
 @Composable
@@ -782,6 +793,41 @@ private fun VoiceRow(
     val borderColor = if (isActive) brass else outline.copy(alpha = 0.35f)
     val isAvailable = !voice.isInstalled
 
+    // Issue #617 (v1.0 blocker) — pre-fix the row's outer Box used
+    // `combinedClickable` with no explicit semantics, so TalkBack
+    // would visit the box, the star toggle, every child Text in
+    // order, and then the trailing action button. The user heard:
+    // "Pick this voice... voice star, off... double tap to
+    // activate, Adam, Piper, Medium, English, Download". The
+    // intermediate Text nodes are non-interactive and shouldn't be
+    // separate stops — TalkBack should hear the row identity in
+    // one announcement, then move to the star toggle and the
+    // action button as the only other focus stops.
+    //
+    // Fix: wrap the entire row in `semantics(mergeDescendants = true)`
+    // around the body, with `clearAndSetSemantics` on the inner
+    // Column that holds the title + subtitle texts. Star toggle and
+    // RowAction stay as their own focusable children because they
+    // each carry their own `clickable` (which beats a parent
+    // `clearAndSetSemantics` because of how Compose merges actions).
+    //
+    // Focus order outcome on R5CRB0W66MK (TalkBack ON):
+    //   1. Star toggle ("Add to starred" / "Remove from starred")
+    //   2. The voice row itself ("Adam, Piper Medium English,
+    //      double tap to pick this voice", with `selected` when
+    //      isActive). The body Column is descendant-cleared so
+    //      Text children don't fire their own announcements.
+    //   3. RowAction (trailing button — Download / Activate),
+    //      when it has its own clickable.
+    val rowDescription = buildString {
+        append(voice.displayName)
+        if (voice.language.isNotBlank()) {
+            append(", ")
+            append(voice.language)
+        }
+        if (isActive) append(", currently active")
+        if (isAvailable) append(", not yet downloaded")
+    }
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -795,7 +841,13 @@ private fun VoiceRow(
             .combinedClickable(
                 onClick = onTap,
                 onLongClick = onLongPress,
+                onClickLabel = if (isActive) "Already active" else "Pick this voice",
             )
+            .semantics {
+                role = Role.Button
+                selected = isActive
+                contentDescription = rowDescription
+            }
             .padding(horizontal = spacing.md, vertical = spacing.sm),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(spacing.xxs)) {
@@ -807,7 +859,20 @@ private fun VoiceRow(
                     isFavorite = isFavorite,
                     onToggle = onToggleFavorite,
                 )
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        // Issue #617 — descendant-clear the title +
+                        // subtitle Texts. The row's outer
+                        // `semantics { contentDescription = ... }`
+                        // already exposes the voice identity; these
+                        // Texts would otherwise become their own
+                        // TalkBack stops (4-5 extra Tab presses per
+                        // row). Star toggle + RowAction are siblings
+                        // of this Column, not descendants, so they're
+                        // unaffected.
+                        .clearAndSetSemantics { },
+                ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         // Title: "<flag> <name>". Flag is derived from
                         // language code at render time (see #128) so the
@@ -1002,6 +1067,19 @@ private fun FavoriteToggle(
     // minimum); bumped to 48dp baseline via Modifier.accessibleSize,
     // and #486 enlarged-targets opt-in widens further to 64dp under
     // Switch Access / the user toggle.
+    //
+    // Issue #630 (v1.0 blocker) — pre-fix the star carried
+    // `.clickable(role = Role.Checkbox, onClick = onToggle)` which
+    // is a *click* node, not a *toggleable* one. TalkBack on
+    // R5CRB0W66MK announced the star as "double tap to activate"
+    // (button copy) with no "checked" / "not checked" indication;
+    // a screen-reader user pressing it heard the activate sound but
+    // no state confirmation. Swap to `Modifier.toggleable(value =
+    // isFavorite, role = Role.Switch, onValueChange = …)` so the
+    // star presents as a binary on/off toggle. TalkBack now reads
+    // "Star, off, switch, double tap to toggle" / "Star, on,
+    // switch, double tap to toggle" with the state baked into the
+    // verb.
     Box(
         modifier = Modifier
             .accessibleSize(
@@ -1009,16 +1087,29 @@ private fun FavoriteToggle(
                 base = 48.dp,
             )
             .clip(CircleShape)
-            .clickable(
-                role = Role.Checkbox,
-                onClickLabel = if (isFavorite) "Remove from starred" else "Add to starred",
-                onClick = onToggle,
-            ),
+            .toggleable(
+                value = isFavorite,
+                role = Role.Switch,
+                onValueChange = { onToggle() },
+            )
+            // The toggleable above carries the state ("on"/"off")
+            // via `value`; the contentDescription here just names
+            // the thing being toggled so the readout is "Star this
+            // voice, on, switch" rather than the more verbose
+            // pre-fix copy that baked the action verb into the
+            // label and confused the auto-announced state.
+            .semantics {
+                contentDescription = "Star this voice"
+            },
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector = if (isFavorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
-            contentDescription = if (isFavorite) "Remove from starred" else "Add to starred",
+            // Issue #630 — Icon's contentDescription set to null
+            // because the toggleable Box owns the semantics. Two
+            // descriptions on a single focusable cluster would
+            // surface twice in TalkBack.
+            contentDescription = null,
             tint = tint,
             modifier = Modifier.size(20.dp),
         )
@@ -1282,6 +1373,30 @@ internal fun VoiceAdvancedExpander(
                 .padding(horizontal = spacing.sm, vertical = spacing.xs),
         ) {
             // a11y (#481): expand/collapse — Role.Button + label.
+            // Issue #625 — pre-fix the chevron icon swapped between
+            // ExpandMore and ExpandLess on expand, but the swap was an
+            // instantaneous vector change with no rotation animation,
+            // and the icon was tiny (16 dp) with low-contrast tint —
+            // visually it read as "not expandable" at first glance.
+            //
+            // Fix: keep a single ExpandMore icon and rotate it 0° → 180°
+            // via animateFloatAsState. The brass primary tint replaces
+            // the onSurfaceVariant so the chevron pops, and the size
+            // bumps to 20 dp so it reads as a deliberate affordance.
+            // The "Advanced" label gets the same brass primary tint so
+            // the whole row reads as one cohesive tappable affordance.
+            // Honors LocalReducedMotion via a snap-instead-of-tween
+            // animation spec (the icon still flips correctly but
+            // doesn't sweep through the intermediate angles).
+            val rotationReduced = LocalReducedMotion.current
+            val chevronRotation by animateFloatAsState(
+                targetValue = if (expanded) 180f else 0f,
+                animationSpec = tween(
+                    durationMillis = if (rotationReduced) 0 else 200,
+                    easing = androidx.compose.animation.core.FastOutSlowInEasing,
+                ),
+                label = "advanced-chevron-rotation",
+            )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1296,21 +1411,28 @@ internal fun VoiceAdvancedExpander(
                 Icon(
                     imageVector = Icons.Outlined.Settings,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
                 )
                 Text(
                     "Advanced",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Medium,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
                 Icon(
-                    imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                    // Issue #625 — single icon + rotation; no
+                    // ExpandLess/ExpandMore swap. The 180° rotation on
+                    // expand produces a smooth visual cue that matches
+                    // the established affordance vocabulary (Material 3
+                    // expandable cards, gmail thread expanders, etc.).
+                    imageVector = Icons.Outlined.ExpandMore,
                     contentDescription = if (expanded) "Collapse Advanced" else "Expand Advanced",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .size(20.dp)
+                        .rotate(chevronRotation),
                 )
             }
             if (expanded) {

@@ -72,10 +72,16 @@ internal fun SyncCloudIconContent(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Issue #611 — pre-fix the label described status ("Signed in to
+    // sync") rather than the action TalkBack should announce on tap.
+    // TalkBack reads contentDescription as "what this control IS plus
+    // what tapping it does" — so an icon button needs an action verb
+    // up front ("Manage sync"), with the status as a clarifying suffix.
+    // Sighted users don't see the label at all; only TalkBack does.
     val a11yLabel = when (indicator) {
-        SyncIndicator.SignedIn -> "Sync — signed in"
-        SyncIndicator.Syncing -> "Sync — currently syncing"
-        SyncIndicator.SignedOut -> "Sync — not signed in"
+        SyncIndicator.SignedIn -> "Manage sync — currently signed in"
+        SyncIndicator.Syncing -> "Manage sync — currently syncing"
+        SyncIndicator.SignedOut -> "Manage sync — not signed in"
     }
     IconButton(onClick = onClick, modifier = modifier) {
         Box(contentAlignment = Alignment.Center) {

@@ -55,6 +55,8 @@ import `in`.jphe.storyvox.feature.techempower.TechEmpowerHomeScreen
 import `in`.jphe.storyvox.feature.voicelibrary.VoiceLibraryScreen
 import `in`.jphe.storyvox.ui.component.BottomTabBar
 import `in`.jphe.storyvox.ui.component.HomeTab
+import `in`.jphe.storyvox.ui.component.SideNavRail
+import `in`.jphe.storyvox.ui.layout.isAtLeastTablet
 import `in`.jphe.storyvox.ui.theme.LocalMotion
 import `in`.jphe.storyvox.ui.theme.LocalReducedMotion
 
@@ -337,69 +339,74 @@ private fun StoryvoxNavHostContent(
 ) {
     val currentEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentEntry?.destination?.route
-    val showBottomBar = StoryvoxRoutes.showsBottomNav(currentRoute)
+    val showHomeNav = StoryvoxRoutes.showsBottomNav(currentRoute)
 
     val reducedMotion = LocalReducedMotion.current
+
+    // Issue #629 — at 600 dp+ screen width, use a NavigationRail at the
+    // start edge instead of the phone-shaped bottom bar. The 4-tab
+    // bottom-nav strip is fine on a 360-dp phone but wastes the wider
+    // tablet screen, forcing the content area into a phone-shaped
+    // column with a giant empty bottom margin. The rail pins to the
+    // left at 80 dp and the content area expands across the rest.
+    //
+    // Verified across the 600 dp threshold:
+    //  - R83W80CAFZB (Tab A7 Lite, 800×1280 portrait, 600 dp width) → rail
+    //  - R5CRB0W66MK (Flip3 unfolded, 720×1768, 360 dp inner) → bottom bar
+    //  - foldable Flip3 cover screen (260 dp) → bottom bar
+    val useSideRail = isAtLeastTablet() && showHomeNav
+
+    // Shared nav-target resolution: both the side rail (tablet) and the
+    // bottom bar (phone) drive the same {Library, Playing, Voices,
+    // Settings} dock, so the selected tab + onSelect logic is identical
+    // across both surfaces. Extracting them here keeps the two surfaces
+    // in lockstep — a future tab addition lands in one place.
+    val selectedTab = when (currentRoute?.substringBefore("?")) {
+        StoryvoxRoutes.SETTINGS_HUB,
+        StoryvoxRoutes.SETTINGS -> HomeTab.Settings
+        StoryvoxRoutes.VOICE_LIBRARY -> HomeTab.Voices
+        StoryvoxRoutes.PLAYING -> HomeTab.Playing
+        // Library + Browse + Follows + Inbox + History sub-tabs and
+        // Reader / Audiobook drill-downs all light the Library pill —
+        // Library is still the umbrella for that whole tree.
+        else -> HomeTab.Library
+    }
+    val onSelectTab: (HomeTab) -> Unit = { tab ->
+        val target = when (tab) {
+            HomeTab.Library -> StoryvoxRoutes.LIBRARY
+            HomeTab.Playing -> StoryvoxRoutes.PLAYING
+            HomeTab.Voices -> StoryvoxRoutes.VOICE_LIBRARY
+            HomeTab.Settings -> StoryvoxRoutes.SETTINGS_HUB
+        }
+        if (target != currentRoute) {
+            // Pop everything above the start destination so tab
+            // switches don't accumulate, then push the target.
+            // `launchSingleTop` collapses repeated taps on the active
+            // tab. See the historical comment block in the old
+            // bottomBar lambda for why we deliberately don't use
+            // saveState/restoreState here.
+            navController.navigate(target) {
+                popUpTo(StoryvoxRoutes.LIBRARY)
+                launchSingleTop = true
+            }
+        }
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
         bottomBar = {
-            if (showBottomBar) {
+            // Bottom bar renders on phone-width screens only — at 600 dp+
+            // the side rail (rendered below as a Row peer of the Scaffold
+            // body content) carries the dock.
+            if (showHomeNav && !useSideRail) {
                 BottomTabBar(
-                    // v0.5.48 — `{Library, Playing, Voices, Settings}`
-                    // dock per JP feedback restoring Playing + Voices
-                    // alongside the v0.5.40 Settings primary slot. The
-                    // base-route stripping handles PR #475's magic-link
-                    // query-arg suffix (`library?sharedUrl=...`).
-                    selected = when (currentRoute?.substringBefore("?")) {
-                        StoryvoxRoutes.SETTINGS_HUB,
-                        StoryvoxRoutes.SETTINGS -> HomeTab.Settings
-                        StoryvoxRoutes.VOICE_LIBRARY -> HomeTab.Voices
-                        StoryvoxRoutes.PLAYING -> HomeTab.Playing
-                        // Library + Browse + Follows + Inbox + History
-                        // sub-tabs and Reader / Audiobook drill-downs
-                        // all light the Library pill — Library is
-                        // still the umbrella for that whole tree.
-                        else -> HomeTab.Library
-                    },
-                    onSelect = { tab ->
-                        val target = when (tab) {
-                            HomeTab.Library -> StoryvoxRoutes.LIBRARY
-                            HomeTab.Playing -> StoryvoxRoutes.PLAYING
-                            HomeTab.Voices -> StoryvoxRoutes.VOICE_LIBRARY
-                            HomeTab.Settings -> StoryvoxRoutes.SETTINGS_HUB
-                        }
-                        if (target != currentRoute) {
-                            // Pop everything above the start destination so
-                            // tab switches don't accumulate, then push the
-                            // target. `launchSingleTop` collapses repeated
-                            // taps on the active tab.
-                            //
-                            // Deliberately NOT using `saveState`/`restoreState`:
-                            // that pair, combined with the mixed enter/exit
-                            // transition types between home tabs (fade) and
-                            // drill-down routes (slide), caused the NavHost
-                            // transition state machine to commit the back-
-                            // stack change without ever rendering the target
-                            // composable — taps on Library from inside a
-                            // reader chapter appeared dead even though the
-                            // OS back button returned to the reader, proving
-                            // the navigation had landed on the back-stack.
-                            // Net loss: tab state isn't preserved across
-                            // switches (e.g. you start at the top of Library
-                            // each time). Net win: the nav actually renders.
-                            navController.navigate(target) {
-                                // Pop everything above the start destination
-                                // (LIBRARY after v0.5.40 restructure) so tab
-                                // switches don't pile up the back stack.
-                                // Using the start route name instead of
-                                // `findStartDestination().id` to avoid the
-                                // extra import; equivalent result.
-                                popUpTo(StoryvoxRoutes.LIBRARY)
-                                launchSingleTop = true
-                            }
-                        }
-                    },
+                    // v0.5.48 — `{Library, Playing, Voices, Settings}` dock
+                    // per JP feedback restoring Playing + Voices alongside
+                    // the v0.5.40 Settings primary slot. The base-route
+                    // stripping handles PR #475's magic-link query-arg
+                    // suffix (`library?sharedUrl=...`).
+                    selected = selectedTab,
+                    onSelect = onSelectTab,
                 )
             }
         },
@@ -454,19 +461,36 @@ private fun StoryvoxNavHostContent(
                 }
             }
 
-        NavHost(
-            navController = navController,
-            // Restructure (v0.5.40) — Library is the start destination
-            // and primary umbrella surface. Playing (HybridReaderScreen)
-            // is reached via the Resume card on the Library tab when
-            // the user has a continue-listening entry; if they don't,
-            // landing on Library showed them an empty grid before too,
-            // but the empty-state copy now invites them to Browse
-            // (which is one Library sub-tab away, not a separate
-            // bottom-bar destination).
-            startDestination = StoryvoxRoutes.LIBRARY,
-            modifier = Modifier.padding(padding),
+        // Issue #629 — when the side rail is active (tablet+),
+        // wrap the NavHost in a Row so the rail sits at the start
+        // edge and the content area uses the remaining width via
+        // Modifier.weight(1f). On phone width the wrapper Row
+        // collapses to just the NavHost (the rail is null) so the
+        // existing layout stays identical at < 600 dp.
+        androidx.compose.foundation.layout.Row(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize(),
         ) {
+            if (useSideRail) {
+                SideNavRail(
+                    selected = selectedTab,
+                    onSelect = onSelectTab,
+                )
+            }
+            NavHost(
+                navController = navController,
+                // Restructure (v0.5.40) — Library is the start destination
+                // and primary umbrella surface. Playing (HybridReaderScreen)
+                // is reached via the Resume card on the Library tab when
+                // the user has a continue-listening entry; if they don't,
+                // landing on Library showed them an empty grid before too,
+                // but the empty-state copy now invites them to Browse
+                // (which is one Library sub-tab away, not a separate
+                // bottom-bar destination).
+                startDestination = StoryvoxRoutes.LIBRARY,
+                modifier = Modifier.weight(1f).fillMaxSize(),
+            ) {
             composable(
                 StoryvoxRoutes.PLAYING,
                 enterTransition = homeEnter,
@@ -1118,7 +1142,8 @@ private fun StoryvoxNavHostContent(
                     onBack = { navController.popBackStack() },
                 )
             }
-        }
+            } // closes NavHost(...) builder lambda
+        } // Issue #629 — closes the Row wrapper added for tablet side-rail layout
     }
 }
 

@@ -43,6 +43,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -254,9 +257,27 @@ fun LibraryScreen(
                 edgePadding = spacing.md,
             ) {
                 LibraryTab.entries.forEach { tab ->
+                    val isSelected = state.tab == tab
                     Tab(
-                        selected = state.tab == tab,
+                        selected = isSelected,
                         onClick = { viewModel.selectTab(tab) },
+                        // Issue #613 (v1.0 blocker) — Material3's Tab
+                        // applies Role.Tab via its internal clickable on
+                        // 1.2+, but earlier baselines + custom
+                        // SecondaryScrollableTabRow layouts have been
+                        // observed (R5CRB0W66MK semantics dump,
+                        // 2026-05-15) dropping the role on the merged
+                        // node. Belt-and-suspenders an explicit
+                        // `role = Role.Tab` + `selected` here so the
+                        // a11y tree always carries both, regardless of
+                        // Material version. The semantics modifier
+                        // comes BEFORE Tab's internal clickable so the
+                        // role properties get merged in rather than
+                        // overwritten.
+                        modifier = Modifier.semantics {
+                            role = Role.Tab
+                            selected = isSelected
+                        },
                         text = {
                             // Issue #383 — Inbox tab carries an unread-count
                             // badge. BadgedBox positions the badge at the

@@ -80,6 +80,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import `in`.jphe.storyvox.feature.api.UiPlaybackState
 import `in`.jphe.storyvox.feature.api.UiSleepTimerMode
@@ -91,6 +92,7 @@ import `in`.jphe.storyvox.ui.component.ErrorBlock
 import `in`.jphe.storyvox.ui.component.ErrorPlacement
 import `in`.jphe.storyvox.ui.component.FictionCoverThumb
 import `in`.jphe.storyvox.ui.component.fictionMonogram
+import `in`.jphe.storyvox.ui.component.humanizeVoiceLabel
 import `in`.jphe.storyvox.ui.component.MagicSkeletonTile
 import `in`.jphe.storyvox.ui.component.MagicSpinner
 import `in`.jphe.storyvox.ui.theme.LocalMotion
@@ -444,6 +446,35 @@ fun AudiobookView(
                 // flow's swap.
                 var coverFeedbackAtMs by remember { mutableLongStateOf(0L) }
                 var feedbackShowsPause by remember { mutableStateOf(false) }
+                // Issue #623 — slow Ken-Burns scale on the cover while the
+                // engine warms. Pre-fix the warmup window (1-3s typical,
+                // 5-15s on slow voices) showed a static cover + a spinner
+                // ring + a "Warming Brian…" subtitle. The static cover
+                // read as "did the app freeze?" — even with the spinner,
+                // motion on the focal element (the cover) is what
+                // confirms "alive, working" at a glance.
+                //
+                // Fix: 0.95x → 1.05x scale over 4000 ms, EaseInOut,
+                // infinite reverse. Drives only while `showSpinner` is
+                // true; clamps to 1.0f when not warming so the cover
+                // doesn't pulse during normal playback. Honors
+                // `LocalReducedMotion` (vestibular-sensitive users get
+                // a static cover during warmup too — the spinner +
+                // subtitle copy carries the "we're working" signal).
+                val coverInfinite = rememberInfiniteTransition(label = "cover-ken-burns")
+                val kenBurnsScale by if (reducedMotion || !showSpinner) {
+                    remember { androidx.compose.runtime.mutableFloatStateOf(1f) }
+                } else {
+                    coverInfinite.animateFloat(
+                        initialValue = 0.95f,
+                        targetValue = 1.05f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(durationMillis = 4000, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse,
+                        ),
+                        label = "ken-burns-scale",
+                    )
+                }
                 Box(contentAlignment = Alignment.Center) {
                     FictionCoverThumb(
                         coverUrl = state.coverUrl,
@@ -451,6 +482,17 @@ fun AudiobookView(
                         monogram = fictionMonogram(author = "", title = state.fictionTitle),
                         modifier = Modifier
                             .size(width = 220.dp, height = 330.dp)
+                            // Issue #623 — graphicsLayer is cheap (a
+                            // single matrix transform, no relayout) so
+                            // we drive the warmup pulse from here. When
+                            // not warming the scale snaps to 1f (no
+                            // recomposition cost beyond the layer
+                            // creation itself, since the value is
+                            // remember-stable).
+                            .graphicsLayer {
+                                scaleX = kenBurnsScale
+                                scaleY = kenBurnsScale
+                            }
                             .clickable(
                                 role = androidx.compose.ui.semantics.Role.Button,
                                 onClickLabel = if (state.isPlaying) "Pause" else "Play",
@@ -1245,6 +1287,171 @@ internal fun formatVoiceLabel(raw: String): String {
     return "$engine · $voiceId"
 }
 
+/**
+ * Issue #609 (v1.0 blocker) — humanize a raw engine:voiceId for TalkBack.
+ *
+ * The visual chip can show `Piper · piper_vctk_en_GB_medium` (a
+ * power-user-readable identifier) without confusing sighted users —
+ * they parse the engine prefix at a glance. TalkBack on R5CRB0W66MK
+ * reads that string out *literally*, character by character — "piper
+ * underscore vctk underscore en underscore GB underscore medium" —
+ * which is a 12-syllable bedlam for what should be one phrase.
+ *
+ * Humanization rules, ordered to match real catalog ids:
+ *  1. Strip the engine prefix already separated by the colon.
+ *  2. Replace underscores / hyphens / dots with spaces so words break.
+ *  3. Recognise common locale tokens (`en_US`, `en-GB`, `en`, `pt_BR`)
+ *     and rewrite them to "English (United States)" / "English (United
+ *     Kingdom)" / "English" / "Portuguese (Brazil)".
+ *  4. Recognise voice-tier qualifiers (`medium`, `high`, `low`,
+ *     `multilingual`, `studio`, `turbo`, `hd`, `dragon`) and keep
+ *     them as separate words.
+ *  5. Title-case each remaining token (catalog names like `vctk`,
+ *     `ljspeech`, `aria` become `Vctk`, `Ljspeech`, `Aria` — a small
+ *     loss for the catalog-acronym case, but readable for narrator
+ *     names which are the common case).
+ *  6. Prepend the engine name from [formatVoiceLabel].
+ *
+ * The output is a TalkBack-only string; the visible chip label still
+ * uses [formatVoiceLabel] so power users keep their identifier
+ * preview. Test coverage in AudiobookViewSemanticsTest.
+ */
+internal fun humanizeVoiceLabel(raw: String): String {
+    if (raw.isBlank()) return "no voice selected"
+    if (raw.equals("Default", ignoreCase = true)) return "Default"
+    // Two-shape support:
+    //  - "piper:en_US-amy-medium" (engine:voiceId form, what the API
+    //    surfaces when an engine prefix is present)
+    //  - "piper_en_US_amy_medium" (the same voice arriving as a flat
+    //    catalog id — what `AppBindings.voiceLabel = voiceId` actually
+    //    passes through when the upstream `voiceId` is the bare
+    //    catalog identifier, observed on R83W80CAFZB 2026-05-16).
+    // We detect the colon-free shape and treat the first
+    // recognisably-engine token as the engine prefix.
+    val (engineId, voiceId) = if (raw.contains(':')) {
+        raw.split(':', limit = 2).let { it[0] to it[1] }
+    } else {
+        // Heuristic: if the first underscore/hyphen-separated token
+        // matches a known engine, treat it as the engine prefix.
+        // Otherwise we pass the whole raw string through the
+        // tokenizer (no engine prefix preserved).
+        val firstSplit = raw.split('_', '-', '.', limit = 2)
+        val first = firstSplit.firstOrNull()?.lowercase()
+        if (first in setOf("piper", "azure", "voxsherpa", "sherpa", "kokoro", "android", "system")) {
+            first!! to (firstSplit.getOrNull(1) ?: "")
+        } else {
+            "" to raw
+        }
+    }
+    val engine = when (engineId.lowercase()) {
+        "piper" -> "Piper"
+        "azure" -> "Azure"
+        "voxsherpa", "sherpa", "kokoro" -> "VoxSherpa"
+        "android", "system" -> "System TTS"
+        "" -> ""
+        else -> engineId.replaceFirstChar { it.uppercase() }
+    }
+
+    // Step 1 — split on the catalog separators. Keep tokens lowercased
+    // until the locale + tier rewrites have run; case-restore is the
+    // last step so the rewrite tables don't have to know about case.
+    val rawTokens = voiceId
+        .replace('_', ' ')
+        .replace('-', ' ')
+        .replace('.', ' ')
+        .split(' ')
+        .filter { it.isNotBlank() }
+
+    // Step 2 — locale + tier rewrite. We walk the tokens, peek for
+    // common two-segment locales (`en us` from `en_US`, etc.) so we
+    // can rewrite them into one human phrase before per-token
+    // title-casing fires.
+    val humanized = mutableListOf<String>()
+    var i = 0
+    while (i < rawTokens.size) {
+        val t = rawTokens[i].lowercase()
+        val pair = rawTokens.getOrNull(i + 1)?.lowercase()
+        val locale = when (t to pair) {
+            "en" to "us" -> "English (United States)"
+            "en" to "gb" -> "English (United Kingdom)"
+            "en" to "au" -> "English (Australia)"
+            "en" to "ca" -> "English (Canada)"
+            "en" to "in" -> "English (India)"
+            "en" to "ie" -> "English (Ireland)"
+            "es" to "es" -> "Spanish (Spain)"
+            "es" to "mx" -> "Spanish (Mexico)"
+            "pt" to "br" -> "Portuguese (Brazil)"
+            "pt" to "pt" -> "Portuguese (Portugal)"
+            "zh" to "cn" -> "Mandarin (China)"
+            "zh" to "tw" -> "Mandarin (Taiwan)"
+            "fr" to "fr" -> "French (France)"
+            "fr" to "ca" -> "French (Canada)"
+            "de" to "de" -> "German"
+            "ja" to "jp" -> "Japanese"
+            "ko" to "kr" -> "Korean"
+            "ru" to "ru" -> "Russian"
+            "it" to "it" -> "Italian"
+            "nl" to "nl" -> "Dutch"
+            else -> null
+        }
+        if (locale != null) {
+            humanized.add(locale)
+            i += 2
+            continue
+        }
+        // Single-token locale fallback. Bare "en" / "es" / "fr".
+        val singleLocale = when (t) {
+            "en" -> "English"
+            "es" -> "Spanish"
+            "pt" -> "Portuguese"
+            "fr" -> "French"
+            "de" -> "German"
+            "ja" -> "Japanese"
+            "ko" -> "Korean"
+            "ru" -> "Russian"
+            "it" -> "Italian"
+            "nl" -> "Dutch"
+            "zh" -> "Mandarin"
+            else -> null
+        }
+        if (singleLocale != null) {
+            humanized.add(singleLocale)
+            i++
+            continue
+        }
+        // Tier rewrite — keep canonical casing.
+        val tier = when (t) {
+            "medium" -> "Medium quality"
+            "high" -> "High quality"
+            "low" -> "Low quality"
+            "multilingual" -> "Multilingual"
+            "studio" -> "Studio"
+            "turbo" -> "Turbo"
+            "hd" -> "HD"
+            "dragon" -> "Dragon"
+            else -> null
+        }
+        if (tier != null) {
+            humanized.add(tier)
+            i++
+            continue
+        }
+        // Default — title-case the token. `vctk` → `Vctk`,
+        // `aria` → `Aria`, `narratorwarm` → `Narratorwarm`. Narrator
+        // names are the common case; acronyms losing their all-caps
+        // appearance is the acceptable trade.
+        humanized.add(t.replaceFirstChar { it.uppercase() })
+        i++
+    }
+    val body = humanized.joinToString(" ")
+    return when {
+        engine.isBlank() && body.isBlank() -> "no voice selected"
+        engine.isBlank() -> body
+        body.isBlank() -> engine
+        else -> "$engine $body"
+    }
+}
+
 // ─── Issue #526 — play-button host sizing ────────────────────────────
 /**
  * Pin the play/pause host Box to this size in dp regardless of whether
@@ -1576,14 +1783,24 @@ internal fun PlayerQuickChips(
             ) {
                 SPEED_PRESETS.forEach { preset ->
                     val selected = isSpeedPresetSelected(state.speed, preset)
+                    // Issue #607 (v1.0 blocker) — pre-fix this row attached
+                    // an explicit `contentDescription = "Playback speed
+                    // 1.25×"` via Modifier.semantics. That string OVERRODE
+                    // FilterChip's built-in `selected` + Role.RadioButton
+                    // semantics, so TalkBack on R5CRB0W66MK announced
+                    // "Playback speed 1.25×" but NEVER said "selected" /
+                    // "not selected" for the active preset — the listener
+                    // couldn't tell which speed was current. The
+                    // contentDescription must NOT be set when FilterChip
+                    // owns the label; let the chip's default semantics
+                    // (label text + selected state + tab role) do the
+                    // work. TalkBack now reads "1.25×, selected" /
+                    // "1.25×, not selected" depending on `selected`.
                     FilterChip(
                         selected = selected,
                         onClick = { onSetSpeed(preset) },
                         label = { Text(formatSpeedPreset(preset)) },
                         colors = brassFilterChipColors(),
-                        modifier = Modifier.semantics {
-                            contentDescription = "Playback speed ${formatSpeedPreset(preset)}"
-                        },
                     )
                 }
             }
@@ -1643,11 +1860,17 @@ internal fun PlayerQuickChips(
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(18.dp),
             )
+            // Issue #619 — humanize the raw `engine:voiceId` into a
+            // chip-friendly `"Brian · US English"` / `"Amy · medium
+            // quality"`. The accessibility label still includes the
+            // engine prefix via [formatVoiceLabel] so a TalkBack user
+            // can disambiguate Piper-Amy vs Azure-Amy when both ship.
+            val humanized = humanizeVoiceLabel(state.voiceLabel)
             AssistChip(
                 onClick = onPickVoice,
                 label = {
                     Text(
-                        formatVoiceLabel(state.voiceLabel).ifBlank { "Pick a voice" },
+                        humanized.ifBlank { "Pick a voice" },
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
@@ -1665,7 +1888,15 @@ internal fun PlayerQuickChips(
                 modifier = Modifier
                     .weight(1f)
                     .semantics {
-                        contentDescription = "Pick voice. Current: ${formatVoiceLabel(state.voiceLabel)}"
+                        // Issue #609 (v1.0 blocker) — TalkBack used to read
+                        // the raw catalog id ("piper_vctk_en_GB_medium")
+                        // literally, one syllable per underscore. The
+                        // humanized form ("Piper Vctk English (United
+                        // Kingdom) Medium quality") is what a sighted
+                        // user mentally translates the chip label into.
+                        // Sighted chip text stays formatVoiceLabel() —
+                        // power users keep their identifier preview.
+                        contentDescription = "Pick voice. Current: ${humanizeVoiceLabel(state.voiceLabel)}"
                     },
             )
         }
